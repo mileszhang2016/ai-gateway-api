@@ -18,6 +18,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/product_cluster"
+	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -35,6 +37,9 @@ const (
 type UpsertParam struct {
 	Name      *string     `json:"name" uri:"instance_pool_name" validate:"required,min=2"`
 	Instances []*Instance `json:"instances" uri:"instances" validate:"min=1,dive"`
+	EPPServer *icluster_conf.EPPServer `json:"epp_server"`
+	Role      *string                  `json:"role"`
+
 }
 
 // CreateRoute route
@@ -53,6 +58,19 @@ func NewUpsertParam(req *http.Request) (*UpsertParam, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if param.Role == nil || *param.Role == "" {
+		param.Role = lib.PString(icluster_conf.ProductPoolRoleCommon)
+	}
+
+	switch *param.Role {
+	case icluster_conf.ProductPoolRoleCommon:
+	case icluster_conf.ProductPoolRoleEPP:
+		if err := product_cluster.CheckEPPServer(param.EPPServer); err != nil {
+			return nil, err
+		}
+	}
+
 
 	return param, err
 }
@@ -117,5 +135,7 @@ func CreateProcess(req *http.Request, product *ibasic.Product, param *UpsertPara
 	return container.PoolManager.CreateProductPool(req.Context(), product, &icluster_conf.PoolParam{
 		Name:      param.Name,
 		Instances: Instancesc2i(param.Instances),
+		Role:      param.Role,
+		EPPServer: param.EPPServer,
 	})
 }

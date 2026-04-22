@@ -35,6 +35,8 @@ type TPools struct {
 	Type           int8      `db:"type"`
 	InstanceDetail string    `db:"instance_detail"`
 	Tag            int8      `db:"tag"`
+	EPPServer      string    `db:"epp_server"`
+	Role           string    `db:"role"`
 }
 
 // TPoolsOne Query One
@@ -76,6 +78,8 @@ type TPoolsParam struct {
 	Type           *int8      `db:"type"`
 	InstanceDetail *string    `db:"instance_detail"`
 	Tag            *int8      `db:"tag"`
+	EPPServer      *string    `db:"epp_server"`
+	Role           *string    `db:"role"`
 	CreatedAt      *time.Time `db:"created_at"`
 	UpdatedAt      *time.Time `db:"updated_at"`
 

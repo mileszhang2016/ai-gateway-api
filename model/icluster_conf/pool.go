@@ -43,6 +43,9 @@ type PoolParam struct {
 	Instances []Instance
 
 	Tag *int8
+
+	EPPServer *EPPServer
+	Role      *string
 }
 
 type Pool struct {
@@ -52,6 +55,8 @@ type Pool struct {
 	Product   *ibasic.Product
 	Instances []Instance
 	Tag       int8
+	Role      string
+	EPPServer *EPPServer
 }
 
 type Instance struct {
@@ -62,6 +67,22 @@ type Instance struct {
 	Tags     map[string]string `json:"tags,omitempty"`
 	Weight   int64             `json:"Weight"`
 	Disable  bool              `json:"Disable"`
+}
+
+const (
+	ProductPoolRoleEPP    = "EPP"
+	ProductPoolRoleCommon = "COMMON"
+)
+
+type EPPServer struct {
+	Domain    *string        `json:"domain"`
+	Port      *int           `json:"port"`
+	Endpoints []*EPPEndpoint `json:"endpoints"`
+}
+
+type EPPEndpoint struct {
+	IP   *string `json:"ip"`
+	Port *int    `json:"port"`
 }
 
 func (i *Instance) IPWithPort() string {

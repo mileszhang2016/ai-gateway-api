@@ -60,6 +60,8 @@ type Instance struct {
 type OneData struct {
 	Name      string      `json:"name" uri:"name"`
 	Instances []*Instance `json:"instances" uri:"instances"`
+	EPPServer *icluster_conf.EPPServer `json:"epp_server"`
+	Role      *string                  `json:"role"`
 }
 
 func NewOneData(pool *icluster_conf.Pool) *OneData {
@@ -77,6 +79,8 @@ func NewOneData(pool *icluster_conf.Pool) *OneData {
 	return &OneData{
 		Name:      pool.Name,
 		Instances: is,
+		EPPServer: pool.EPPServer,
+		Role:      pool.Role,
 	}
 }
 

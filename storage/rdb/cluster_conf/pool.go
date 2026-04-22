@@ -70,11 +70,20 @@ func poolParami2d(data *icluster_conf.PoolParam) (*dao.TPoolsParam, error) {
 		detail = lib.PString(string(bs))
 	}
 
+	var eppServer string
+	if data.EPPServer != nil {
+		tmp, _ := json.Marshal(data.EPPServer)
+		eppServer = string(tmp)
+	}
+
+
 	return &dao.TPoolsParam{
 		Id:             data.ID,
 		Name:           data.Name,
 		ProductID:      data.ProductID,
 		InstanceDetail: detail,
+		Role:           data.Role,
+		EPPServer:      lib.PString(eppServer),
 		Tag:            data.Tag,
 	}, nil
 }
@@ -98,11 +107,18 @@ func (rpps *RDBPoolStorager) CreatePool(ctx context.Context, product *ibasic.Pro
 		return nil, err
 	}
 
-	return &icluster_conf.Pool{
+	result := &icluster_conf.Pool{
 		ID:        newID,
 		Name:      *data.Name,
 		Instances: data.Instances,
-	}, nil
+		EPPServer: data.EPPServer,
+	}
+
+	if data.Role != nil {
+		result.Role = *data.Role
+	}
+
+	return result, nil
 }
 
 func (rpps *RDBPoolStorager) FetchPool(ctx context.Context, name string) (*icluster_conf.Pool, error) {

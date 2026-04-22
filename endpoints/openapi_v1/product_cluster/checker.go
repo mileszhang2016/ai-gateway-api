@@ -16,11 +16,22 @@ package product_cluster
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 )
+
+// 定义错误类型
+type ValidationError struct {
+	Field   string
+	Message string
+}
+
+func (e *ValidationError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Field, e.Message)
+}
 
 const (
 	maxServiceNameLen = 255
@@ -72,4 +83,48 @@ func checkLLMConfig(llmConfig *icluster_conf.LLMConfig) error {
 	}
 
 	return nil
+}
+
+// 校验函数
+func CheckEPPServer(server *icluster_conf.EPPServer) error {
+	if server == nil {
+		return &ValidationError{Field: "epp_server", Message: "Must set epp_server when role is EPP"}
+	}
+	if len(server.Endpoints) == 0 {
+		return &ValidationError{Field: "endpoints", Message: "Must set at least one endpoint"}
+	}
+	for i, endpoint := range server.Endpoints {
+		if endpoint == nil {
+			return &ValidationError{Field: fmt.Sprintf("endpoints[%d]", i), Message: "endpoints must not be empty"}
+		}
+
+		// 校验 IP
+		if endpoint.IP == nil {
+			return &ValidationError{Field: fmt.Sprintf("endpoints[%d].ip", i), Message: "Must set ip"}
+		}
+		if *endpoint.IP == "" {
+			return &ValidationError{Field: fmt.Sprintf("endpoints[%d].ip", i), Message: "Must set ip"}
+		}
+
+		if !isValidIP(*endpoint.IP) {
+			return &ValidationError{Field: fmt.Sprintf("endpoints[%d].ip", i), Message: "invalid ip"}
+		}
+
+		// 校验 Port
+		if endpoint.Port == nil {
+			return &ValidationError{Field: fmt.Sprintf("endpoints[%d].port", i), Message: "Must set port in endpoint"}
+		}
+		if *endpoint.Port < 1 || *endpoint.Port > 65535 {
+			return &ValidationError{Field: fmt.Sprintf("endpoints[%d].port", i), Message: "port must be in 1-65535 in endpoint"}
+		}
+	}
+
+	return nil
+}
+
+// 校验 IP 地址格式
+func isValidIP(ip string) bool {
+	// 支持 IPv4 和 IPv6
+	parsedIP := net.ParseIP(ip)
+	return parsedIP != nil
 }

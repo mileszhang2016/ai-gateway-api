@@ -105,6 +105,7 @@ func newSubCluster(pp *dao.TSubCluster, pool *icluster_conf.Pool, product *ibasi
 		ClusterID:   pp.ClusterID,
 
 		InstancePool: pool,
+		Role:        pool.Role,
 	}
 
 	if pool != nil {

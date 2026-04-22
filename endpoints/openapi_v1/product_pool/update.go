@@ -58,9 +58,15 @@ func UpdateAction(req *http.Request) (interface{}, error) {
 
 	err = container.PoolManager.UpdateProductPool(req.Context(), product, one, &icluster_conf.PoolParam{
 		Instances: Instancesc2i(param.Instances),
+		Role:      param.Role,
+		EPPServer: param.EPPServer,
 	})
 
 	one.Instances = Instancesc2i(param.Instances)
+	if param.Role != nil {
+		one.Role = *param.Role
+	}
+	one.EPPServer = param.EPPServer
 
 	return NewOneData(one), err
 }
