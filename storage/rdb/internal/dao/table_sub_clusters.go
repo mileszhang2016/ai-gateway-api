@@ -33,6 +33,7 @@ type TSubCluster struct {
 	Description string    `db:"description"`
 	PoolsID     int64     `db:"bns_name_id"`
 	Enabled     bool      `db:"enabled"`
+	Role        string    `db:"role"`
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
 }
@@ -78,6 +79,7 @@ type TSubClusterParam struct {
 	PoolsID     *int64     `db:"bns_name_id"`
 	PoolsIDs    []int64    `db:"bns_name_id,in"`
 	Enabled     *bool      `db:"enabled"`
+	Role        *string    `db:"role"`
 	CreatedAt   *time.Time `db:"created_at"`
 	UpdatedAt   *time.Time `db:"updated_at"`
 

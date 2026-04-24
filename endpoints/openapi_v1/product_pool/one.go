@@ -31,6 +31,7 @@ package product_pool
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -80,7 +81,7 @@ func NewOneData(pool *icluster_conf.Pool) *OneData {
 		Name:      pool.Name,
 		Instances: is,
 		EPPServer: pool.EPPServer,
-		Role:      pool.Role,
+		Role:      lib.PString(pool.Role),
 	}
 }
 

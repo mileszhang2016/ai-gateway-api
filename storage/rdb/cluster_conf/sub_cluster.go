@@ -105,7 +105,12 @@ func newSubCluster(pp *dao.TSubCluster, pool *icluster_conf.Pool, product *ibasi
 		ClusterID:   pp.ClusterID,
 
 		InstancePool: pool,
-		Role:        pool.Role,
+		Role:        pp.Role,
+	}
+
+	// 如果数据库 role 为空，从关联的 pool 继承
+	if data.Role == "" && pool != nil {
+		data.Role = pool.Role
 	}
 
 	if pool != nil {

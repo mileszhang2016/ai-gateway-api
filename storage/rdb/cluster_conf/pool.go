@@ -143,7 +143,8 @@ func newPool(pp *dao.TPools, product *ibasic.Product) (*icluster_conf.Pool, erro
 
 		Product: product,
 
-		Tag: pp.Tag,
+		Tag:  pp.Tag,
+		Role: pp.Role,
 	}
 
 	if pp.InstanceDetail == "" || pp.InstanceDetail == "NULL" {
@@ -151,6 +152,13 @@ func newPool(pp *dao.TPools, product *ibasic.Product) (*icluster_conf.Pool, erro
 	}
 	if err := json.Unmarshal([]byte(pp.InstanceDetail), &data.Instances); err != nil {
 		return nil, xerror.WrapDirtyDataErrorWithMsg("pool %s, raw: %s, err: %v", pp.Name, pp.InstanceDetail, err)
+	}
+
+	// 解析 EPP Server JSON
+	if pp.EPPServer != "" && pp.EPPServer != "NULL" {
+		if err := json.Unmarshal([]byte(pp.EPPServer), &data.EPPServer); err != nil {
+			return nil, xerror.WrapDirtyDataErrorWithMsg("pool %s epp_server invalid, raw: %s, err: %v", pp.Name, pp.EPPServer, err)
+		}
 	}
 
 	return data, nil
