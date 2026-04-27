@@ -17,6 +17,7 @@ package product_cluster
 import (
 	"fmt"
 	"net"
+	"regexp"
 	"strconv"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
@@ -88,11 +89,33 @@ func checkLLMConfig(llmConfig *icluster_conf.LLMConfig) error {
 // 校验函数
 func CheckEPPServer(server *icluster_conf.EPPServer) error {
 	if server == nil {
-		return &ValidationError{Field: "epp_server", Message: "Must set epp_server when role is EPP"}
+		return nil
 	}
+
+	// Compatible with api-server behavior:
+	// - domain + port mode
+	// - endpoints mode
+	if (server.Domain == nil || *server.Domain == "") && len(server.Endpoints) == 0 {
+		return nil
+	}
+
+	if server.Domain != nil && *server.Domain != "" {
+		if server.Port == nil {
+			return &ValidationError{Field: "port", Message: "Must be set port"}
+		}
+		if !isValidDomain(*server.Domain) {
+			return &ValidationError{Field: "domain", Message: "invalid domain"}
+		}
+		if *server.Port < 1 || *server.Port > 65535 {
+			return &ValidationError{Field: "port", Message: "port must be in 1-65535"}
+		}
+		return nil
+	}
+
 	if len(server.Endpoints) == 0 {
 		return &ValidationError{Field: "endpoints", Message: "Must set at least one endpoint"}
 	}
+
 	for i, endpoint := range server.Endpoints {
 		if endpoint == nil {
 			return &ValidationError{Field: fmt.Sprintf("endpoints[%d]", i), Message: "endpoints must not be empty"}
@@ -127,4 +150,9 @@ func isValidIP(ip string) bool {
 	// 支持 IPv4 和 IPv6
 	parsedIP := net.ParseIP(ip)
 	return parsedIP != nil
+}
+
+func isValidDomain(domain string) bool {
+	domainRegex := regexp.MustCompile(`^(?i:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$`)
+	return domainRegex.MatchString(domain)
 }

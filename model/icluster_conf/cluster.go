@@ -707,6 +707,10 @@ func NewBfeClusterConf(version string, clusters []*Cluster) *cluster_conf.BfeClu
 			},
 		}
 
+		if clusterConf.GslbBasic.BalanceMode != nil && *clusterConf.GslbBasic.BalanceMode == ProductPoolRoleEPP {
+			clusterConf.GslbBasic.EPPAddr = buildEPPAddrsFromSubClusters(cluster.SubClusters)
+		}
+
 		if cluster.Basic.Protocol != nil && *cluster.Basic.Protocol == "https" {
 			clusterConf.HTTPSConf = &cluster_conf.BackendHTTPS{
 				RSHost:               lib.PString(""),
@@ -763,4 +767,39 @@ func isDomainPool(subClusters []*SubCluster) bool {
 	}
 
 	return false
+}
+
+func buildEPPAddrsFromSubClusters(subClusters []*SubCluster) *[]string {
+	if len(subClusters) == 0 || subClusters[0] == nil || subClusters[0].InstancePool == nil {
+		return nil
+	}
+
+	eppServer := subClusters[0].InstancePool.EPPServer
+	if eppServer == nil {
+		return nil
+	}
+
+	// Prefer domain+port mode; fallback to endpoints mode.
+	if eppServer.Domain != nil && *eppServer.Domain != "" && eppServer.Port != nil && *eppServer.Port > 0 {
+		addrs := []string{fmt.Sprintf("%s:%d", *eppServer.Domain, *eppServer.Port)}
+		return &addrs
+	}
+
+	addrs := make([]string, 0, len(eppServer.Endpoints))
+	for _, endpoint := range eppServer.Endpoints {
+		if endpoint == nil || endpoint.IP == nil || endpoint.Port == nil {
+			continue
+		}
+		if *endpoint.IP == "" || *endpoint.Port <= 0 {
+			continue
+		}
+
+		addrs = append(addrs, fmt.Sprintf("%s:%d", *endpoint.IP, *endpoint.Port))
+	}
+
+	if len(addrs) == 0 {
+		return nil
+	}
+
+	return &addrs
 }
