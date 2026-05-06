@@ -53,7 +53,7 @@ type Instance struct {
 	IP       string            `json:"ip" uri:"ip" validate:"required"`
 	Weight   int64             `json:"weight" uri:"weight" validate:"min=0,max=100"`
 	Ports    map[string]int    `json:"ports" uri:"ports" validate:"required,min=1"`
-	Tags     map[string]string `json:"tags" uri:"tags" validate:"required,min=1"`
+	Tags     map[string]string `json:"tags" uri:"tags"`
 }
 
 // OneData Request Param
