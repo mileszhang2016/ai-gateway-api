@@ -7,7 +7,7 @@ toolchain go1.22.8
 require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/baidu/go-lib v0.0.0-20210316014414-55daa983069e
-	github.com/bfenetworks/bfe v1.8.1-0.20260210095534-487a2c764397
+	github.com/bfenetworks/bfe v1.8.1-0.20260427052401-8d3a8cd44d98
 	github.com/codegangsta/negroni v1.0.0
 	github.com/didi/gendry v1.7.0
 	github.com/go-playground/locales v0.14.0
@@ -31,7 +31,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/gomodule/redigo v2.0.0+incompatible // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/google/uuid v1.3.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
@@ -51,6 +51,6 @@ require (
 	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	google.golang.org/protobuf v1.30.0 // indirect
+	google.golang.org/protobuf v1.35.2 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
