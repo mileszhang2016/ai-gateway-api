@@ -156,7 +156,7 @@ func (rpps *APIKeyStorager) UpdateAPIKey(ctx context.Context, filter *icluster_c
 
 	data := newAPIKeyDataToParam(param)
 
-	// 需要更新额度，需要重新生成AI模型的更新时间
+	// When limit is enabled with a positive quota, reset CreatedAt (AI-models update time).
 	if data.Enable != nil && *data.Enable {
 		if data.IsLimit != nil && *data.IsLimit && data.Limit != nil && *data.Limit > 0 {
 			data.CreatedAt = lib.PTimeNow()

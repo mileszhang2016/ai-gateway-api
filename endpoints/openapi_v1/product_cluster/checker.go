@@ -24,7 +24,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 )
 
-// 定义错误类型
+// ValidationError describes a single field validation failure.
 type ValidationError struct {
 	Field   string
 	Message string
@@ -86,7 +86,7 @@ func checkLLMConfig(llmConfig *icluster_conf.LLMConfig) error {
 	return nil
 }
 
-// 校验函数
+// CheckEPPServer validates EPP server configuration.
 func CheckEPPServer(server *icluster_conf.EPPServer) error {
 	if server == nil {
 		return nil
@@ -121,7 +121,6 @@ func CheckEPPServer(server *icluster_conf.EPPServer) error {
 			return &ValidationError{Field: fmt.Sprintf("endpoints[%d]", i), Message: "endpoints must not be empty"}
 		}
 
-		// 校验 IP
 		if endpoint.IP == nil {
 			return &ValidationError{Field: fmt.Sprintf("endpoints[%d].ip", i), Message: "Must set ip"}
 		}
@@ -133,7 +132,6 @@ func CheckEPPServer(server *icluster_conf.EPPServer) error {
 			return &ValidationError{Field: fmt.Sprintf("endpoints[%d].ip", i), Message: "invalid ip"}
 		}
 
-		// 校验 Port
 		if endpoint.Port == nil {
 			return &ValidationError{Field: fmt.Sprintf("endpoints[%d].port", i), Message: "Must set port in endpoint"}
 		}
@@ -145,9 +143,8 @@ func CheckEPPServer(server *icluster_conf.EPPServer) error {
 	return nil
 }
 
-// 校验 IP 地址格式
+// isValidIP checks whether ip is a valid IPv4 or IPv6 address.
 func isValidIP(ip string) bool {
-	// 支持 IPv4 和 IPv6
 	parsedIP := net.ParseIP(ip)
 	return parsedIP != nil
 }

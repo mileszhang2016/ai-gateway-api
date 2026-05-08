@@ -61,7 +61,7 @@ func (rpps *RDBAIRouteRuleStorager) FetchAIRouteRules(ctx context.Context, filte
 	return rules, nil
 }
 
-// ConvertToRule 将TAIRouteRule转换为Rule（不进行错误校验）
+// ConvertToRule maps dao.TAIRouteRule to iai_route.Rule (no validation of JSON decode errors).
 func ConvertToRule(dbRule *dao.TAIRouteRule) *iai_route.Rule {
 	if dbRule == nil {
 		return nil
@@ -71,7 +71,7 @@ func ConvertToRule(dbRule *dao.TAIRouteRule) *iai_route.Rule {
 		Name: dbRule.Name,
 	}
 
-	// 转换Basic
+	// Map Basic JSON
 	if dbRule.Basic != "" {
 		var basic iai_route.BasicInfo
 		json.Unmarshal([]byte(dbRule.Basic), &basic)
@@ -81,7 +81,7 @@ func ConvertToRule(dbRule *dao.TAIRouteRule) *iai_route.Rule {
 	return rule
 }
 
-// ConvertToTAIRouteRule 将Rule转换为TAIRouteRule（不进行错误校验）
+// ConvertToTAIRouteRule maps iai_route.Rule to dao.TAIRouteRuleParam (no validation of marshal errors).
 func ConvertToTAIRouteRule(rule *iai_route.Rule) *dao.TAIRouteRuleParam {
 	if rule == nil {
 		return nil
@@ -93,7 +93,7 @@ func ConvertToTAIRouteRule(rule *iai_route.Rule) *dao.TAIRouteRuleParam {
 		ProductName: &rule.ProductName,
 	}
 
-	// 转换Basic
+	// Map Basic to JSON
 	if rule.Basic != nil {
 		basicJSON, _ := json.Marshal(rule.Basic)
 		dbRule.Basic = lib.PString(string(basicJSON))

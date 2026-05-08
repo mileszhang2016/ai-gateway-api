@@ -44,7 +44,7 @@ type ProductUpdateParam struct {
 	ContactPersonList []string `json:"contact_person_list"`
 }
 
-// ProductUpdateAction 更新
+// ProductUpdateAction handles PATCH updates to product metadata.
 // Auto Gen By ctrl, Modify as U Need
 func ProductUpdateAction(req *http.Request) (interface{}, error) {
 	param := &ProductUpdateParam{}
