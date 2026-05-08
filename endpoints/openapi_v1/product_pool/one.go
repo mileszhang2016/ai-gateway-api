@@ -31,6 +31,7 @@ package product_pool
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -52,7 +53,7 @@ type Instance struct {
 	IP       string            `json:"ip" uri:"ip" validate:"required"`
 	Weight   int64             `json:"weight" uri:"weight" validate:"min=0,max=100"`
 	Ports    map[string]int    `json:"ports" uri:"ports" validate:"required,min=1"`
-	Tags     map[string]string `json:"tags" uri:"tags" validate:"required,min=1"`
+	Tags     map[string]string `json:"tags" uri:"tags"`
 }
 
 // OneData Request Param
@@ -60,6 +61,8 @@ type Instance struct {
 type OneData struct {
 	Name      string      `json:"name" uri:"name"`
 	Instances []*Instance `json:"instances" uri:"instances"`
+	EPPServer *icluster_conf.EPPServer `json:"epp_server"`
+	Role      *string                  `json:"role"`
 }
 
 func NewOneData(pool *icluster_conf.Pool) *OneData {
@@ -77,6 +80,8 @@ func NewOneData(pool *icluster_conf.Pool) *OneData {
 	return &OneData{
 		Name:      pool.Name,
 		Instances: is,
+		EPPServer: pool.EPPServer,
+		Role:      lib.PString(pool.Role),
 	}
 }
 

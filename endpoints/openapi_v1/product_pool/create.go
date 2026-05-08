@@ -1,3 +1,16 @@
+// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//http: //www.apache.org/licenses/LICENSE-2.0
+//
+//Unless required by applicable law or agreed to in writing, software
+//distributed under the License is distributed on an "AS IS" BASIS,
+//WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//See the License for the specific language governing permissions and
+//limitations under the License. All rights reserved.
 // Copyright (c) 2021 The BFE Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +31,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/product_cluster"
+	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -35,6 +50,9 @@ const (
 type UpsertParam struct {
 	Name      *string     `json:"name" uri:"instance_pool_name" validate:"required,min=2"`
 	Instances []*Instance `json:"instances" uri:"instances" validate:"min=1,dive"`
+	EPPServer *icluster_conf.EPPServer `json:"epp_server"`
+	Role      *string                  `json:"role"`
+
 }
 
 // CreateRoute route
@@ -53,6 +71,19 @@ func NewUpsertParam(req *http.Request) (*UpsertParam, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if param.Role == nil || *param.Role == "" {
+		param.Role = lib.PString(icluster_conf.ProductPoolRoleCommon)
+	}
+
+	switch *param.Role {
+	case icluster_conf.ProductPoolRoleCommon:
+	case icluster_conf.ProductPoolRoleEPP:
+		if err := product_cluster.CheckEPPServer(param.EPPServer); err != nil {
+			return nil, err
+		}
+	}
+
 
 	return param, err
 }
@@ -117,5 +148,7 @@ func CreateProcess(req *http.Request, product *ibasic.Product, param *UpsertPara
 	return container.PoolManager.CreateProductPool(req.Context(), product, &icluster_conf.PoolParam{
 		Name:      param.Name,
 		Instances: Instancesc2i(param.Instances),
+		Role:      param.Role,
+		EPPServer: param.EPPServer,
 	})
 }

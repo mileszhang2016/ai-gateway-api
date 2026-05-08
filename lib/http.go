@@ -43,7 +43,7 @@ type BasicAuthInfo struct {
 	Schema   string
 }
 
-// ReadWithRetry 尝试多次读取指定URL的内容，直到成功或达到最大重试次数。
+// ReadWithRetry reads URLPath with retries until success or retry count is exhausted.
 func ReadWithRetry(URLPath string, timeout int, headers map[string]string, retry int, interval int, basicInfo *BasicAuthInfo) ([]byte, error) {
 	var resp []byte
 	var err error
@@ -120,7 +120,7 @@ func SendFiles(filePaths []string, url string, basicInfo *BasicAuthInfo) (int, [
 		}
 		defer file.Close()
 
-		// 创建一个新的 part for the file
+		// Create a new multipart form part for the file.
 		part, err := writer.CreateFormFile("file", filePath)
 		if err != nil {
 			return 0, nil, fmt.Errorf("failed to create form file: %v", err)
@@ -166,7 +166,7 @@ func SendFiles(filePaths []string, url string, basicInfo *BasicAuthInfo) (int, [
 }
 
 func SendPatchRequest(url string, payload interface{}, basicInfo *BasicAuthInfo) (int, []byte, error) {
-	// 将 payload 编码为 JSON
+	// Encode payload as JSON.
 	var jsonData []byte
 	var err error
 	if payload != nil {
@@ -176,7 +176,7 @@ func SendPatchRequest(url string, payload interface{}, basicInfo *BasicAuthInfo)
 		}
 	}
 
-	// 创建一个新的 HTTP PATCH 请求
+	// Build the HTTP PATCH request.
 	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return 0, nil, fmt.Errorf("failed to create new request: %v", err)
@@ -186,10 +186,10 @@ func SendPatchRequest(url string, payload interface{}, basicInfo *BasicAuthInfo)
 		req.SetBasicAuth(basicInfo.UserName, basicInfo.Password)
 	}
 
-	// 设置请求头
+	// Set request headers.
 	req.Header.Set("Content-Type", "application/json")
 
-	// 使用 HTTP 客户端发送请求
+	// Send the request.
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -197,7 +197,7 @@ func SendPatchRequest(url string, payload interface{}, basicInfo *BasicAuthInfo)
 	}
 	defer resp.Body.Close()
 
-	// 读取并打印响应体
+	// Read response body.
 	responseBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return 0, nil, fmt.Errorf("Error reading response body: %v\n", err)

@@ -98,7 +98,7 @@ func callModelAPI(ctx context.Context, param *RequestParams) (map[string]string,
 	return nil, xerror.WrapParamError(fmt.Errorf(errStr))
 }
 
-// 配置结构
+// FieldMapping describes how to map provider JSON into model fields.
 type FieldMapping struct {
 	ListPath   string            `json:"list_path"`
 	IDField    string            `json:"id_field"`
@@ -114,7 +114,7 @@ type ParserConfig struct {
 	DefaultParser FieldMapping            `json:"default_parser"`
 }
 
-// 加载配置
+// LoadParserConfig reads parser config from a JSON file.
 func LoadParserConfig(filePath string) (*ParserConfig, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -129,20 +129,20 @@ func LoadParserConfig(filePath string) (*ParserConfig, error) {
 	return &config, nil
 }
 
-// 基于配置解析响应
+// ParseModelsWithConfig extracts model records from a provider response using config.
 func ParseModelsWithConfig(response []byte, provider string, config *ParserConfig) ([]map[string]interface{}, error) {
 	var data map[string]interface{}
 	if err := json.Unmarshal(response, &data); err != nil {
 		return nil, fmt.Errorf("invalid JSON response: %w", err)
 	}
 
-	// 获取解析器配置
+	// Resolve field mapping for this provider
 	parserConfig, exists := config.Providers[provider]
 	if !exists {
 		parserConfig = config.DefaultParser
 	}
 
-	// 提取模型列表
+	// Extract model list from JSON
 	models, err := extractModelList(data, parserConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract models: %w", err)
@@ -152,7 +152,7 @@ func ParseModelsWithConfig(response []byte, provider string, config *ParserConfi
 }
 
 func extractModelList(data map[string]interface{}, config FieldMapping) ([]map[string]interface{}, error) {
-	// 如果指定了list_path，按照路径提取
+	// If list_path is set, drill down using dot-separated segments
 	var modelList []interface{}
 
 	if config.ListPath != "" {
@@ -163,7 +163,7 @@ func extractModelList(data map[string]interface{}, config FieldMapping) ([]map[s
 			if m, ok := current.(map[string]interface{}); ok {
 				current = m[part]
 			} else if a, ok := current.([]interface{}); ok && part == "*" {
-				// 处理通配符
+				// Wildcard segment: entire array becomes the model list
 				modelList = a
 				break
 			} else {
@@ -180,7 +180,7 @@ func extractModelList(data map[string]interface{}, config FieldMapping) ([]map[s
 		}
 	}
 
-	// 提取每个模型的字段
+	// Map each list item through field mapping
 	var models []map[string]interface{}
 	for _, item := range modelList {
 		modelMap, ok := item.(map[string]interface{})
@@ -200,7 +200,7 @@ func extractModelList(data map[string]interface{}, config FieldMapping) ([]map[s
 func extractModelFields(model map[string]interface{}, config FieldMapping) map[string]interface{} {
 	result := make(map[string]interface{})
 
-	// 提取标准字段
+	// Standard fields from config
 	if config.IDField != "" {
 		if value, ok := getNestedField(model, config.IDField); ok {
 			result["id"] = value
@@ -225,14 +225,14 @@ func extractModelFields(model map[string]interface{}, config FieldMapping) map[s
 		}
 	}
 
-	// 提取自定义字段
+	// Custom fields from config
 	for key, path := range config.Custom {
 		if value, ok := getNestedField(model, path); ok {
 			result[key] = value
 		}
 	}
 
-	// 如果没有提取到ID，返回nil
+	// Skip entries without an id
 	if _, hasID := result["id"]; !hasID {
 		return nil
 	}
@@ -240,7 +240,7 @@ func extractModelFields(model map[string]interface{}, config FieldMapping) map[s
 	return result
 }
 
-// 获取嵌套字段
+// getNestedField reads a dot-separated path from a nested map.
 func getNestedField(data map[string]interface{}, path string) (interface{}, bool) {
 	parts := strings.Split(path, ".")
 	current := interface{}(data)

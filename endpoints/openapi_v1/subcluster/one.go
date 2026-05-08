@@ -48,6 +48,7 @@ type OneData struct {
 	Ready        bool                     `json:"ready" uri:"ready"`
 	ProductName  string                   `json:"product_name,omitempty"`
 	Instances    []icluster_conf.Instance `json:"instances"`
+	Role         string                   `json:"role"`
 }
 
 // OneParam Request Param
@@ -125,6 +126,7 @@ func newOneData(sc *icluster_conf.SubCluster) *OneData {
 	if sc.InstancePool != nil {
 		tmp.InstancePool = sc.InstancePool.Name
 		tmp.Instances = sc.InstancePool.Instances
+		tmp.Role = sc.InstancePool.Role
 	}
 
 	return tmp

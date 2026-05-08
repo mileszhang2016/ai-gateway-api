@@ -1,3 +1,16 @@
+// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//http: //www.apache.org/licenses/LICENSE-2.0
+//
+//Unless required by applicable law or agreed to in writing, software
+//distributed under the License is distributed on an "AS IS" BASIS,
+//WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//See the License for the specific language governing permissions and
+//limitations under the License. All rights reserved.
 // Copyright (c) 2021 The BFE Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -70,11 +83,20 @@ func poolParami2d(data *icluster_conf.PoolParam) (*dao.TPoolsParam, error) {
 		detail = lib.PString(string(bs))
 	}
 
+	var eppServer string
+	if data.EPPServer != nil {
+		tmp, _ := json.Marshal(data.EPPServer)
+		eppServer = string(tmp)
+	}
+
+
 	return &dao.TPoolsParam{
 		Id:             data.ID,
 		Name:           data.Name,
 		ProductID:      data.ProductID,
 		InstanceDetail: detail,
+		Role:           data.Role,
+		EPPServer:      lib.PString(eppServer),
 		Tag:            data.Tag,
 	}, nil
 }
@@ -98,11 +120,18 @@ func (rpps *RDBPoolStorager) CreatePool(ctx context.Context, product *ibasic.Pro
 		return nil, err
 	}
 
-	return &icluster_conf.Pool{
+	result := &icluster_conf.Pool{
 		ID:        newID,
 		Name:      *data.Name,
 		Instances: data.Instances,
-	}, nil
+		EPPServer: data.EPPServer,
+	}
+
+	if data.Role != nil {
+		result.Role = *data.Role
+	}
+
+	return result, nil
 }
 
 func (rpps *RDBPoolStorager) FetchPool(ctx context.Context, name string) (*icluster_conf.Pool, error) {
@@ -127,7 +156,8 @@ func newPool(pp *dao.TPools, product *ibasic.Product) (*icluster_conf.Pool, erro
 
 		Product: product,
 
-		Tag: pp.Tag,
+		Tag:  pp.Tag,
+		Role: pp.Role,
 	}
 
 	if pp.InstanceDetail == "" || pp.InstanceDetail == "NULL" {
@@ -135,6 +165,13 @@ func newPool(pp *dao.TPools, product *ibasic.Product) (*icluster_conf.Pool, erro
 	}
 	if err := json.Unmarshal([]byte(pp.InstanceDetail), &data.Instances); err != nil {
 		return nil, xerror.WrapDirtyDataErrorWithMsg("pool %s, raw: %s, err: %v", pp.Name, pp.InstanceDetail, err)
+	}
+
+	// Parse EPP Server JSON.
+	if pp.EPPServer != "" && pp.EPPServer != "NULL" {
+		if err := json.Unmarshal([]byte(pp.EPPServer), &data.EPPServer); err != nil {
+			return nil, xerror.WrapDirtyDataErrorWithMsg("pool %s epp_server invalid, raw: %s, err: %v", pp.Name, pp.EPPServer, err)
+		}
 	}
 
 	return data, nil
