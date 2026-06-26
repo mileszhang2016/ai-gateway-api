@@ -65,7 +65,7 @@ func (rpps *APIKeyStorager) CreateAPIKey(ctx context.Context,
 
 func newAPIKeyDataToParam(param *icluster_conf.APIKeyParam) *dao.TAPIKeyParam {
 	data := &dao.TAPIKeyParam{
-		Name:        param.Name,
+		ID:          param.ID,
 		Enable:      param.Enable,
 		Key:         param.Key,
 		IsLimit:     param.IsLimit,
@@ -85,8 +85,8 @@ func newAPIKeyFilterToParam(filter *icluster_conf.APIKeyFilter) *dao.TAPIKeyPara
 
 	return &dao.TAPIKeyParam{
 		ProductName: filter.ProductName,
-		Name:        filter.Name,
 		ID:          filter.ID,
+		InnerID:     filter.InnerID,
 	}
 }
 
@@ -122,8 +122,8 @@ func apiKeyParamToData(one *dao.TAPIKey) *icluster_conf.APIKeyParam {
 	}
 
 	return &icluster_conf.APIKeyParam{
+		InnerID:       &one.InnerID,
 		ID:            &one.ID,
-		Name:          &one.Name,
 		Enable:        &one.Enable,
 		Key:           &one.Key,
 		IsLimit:       &one.IsLimit,

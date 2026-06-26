@@ -12,38 +12,37 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package api_key
+package rate_limit_policy
 
 import (
 	"net/http"
 
-	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
-	"github.com/yf-networks/ai-gateway-api/stateful/container"
-
+	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/export_util"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
+	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
-var DeleteRoute = &xreq.Endpoint{
-	Path:       "/api-keys/{id}",
-	Method:     http.MethodDelete,
-	Handler:    xreq.Convert(DeleteAction),
-	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionDelete),
+// ExportRoute route
+var ExportRoute = &xreq.Endpoint{
+	Path:       "/configs/rate-limit-policy",
+	Method:     http.MethodGet,
+	Handler:    xreq.Convert(ExportAction),
+	Authorizer: iauth.FA(iauth.FeatureRateLimitPolicy, iauth.ActionExport),
 }
 
-var _ xreq.Handler = DeleteAction
+var _ xreq.Handler = ExportAction
 
-func DeleteAction(req *http.Request) (interface{}, error) {
-	oneReq, err := newReq4One(req)
+// ExportAction action
+func ExportAction(req *http.Request) (interface{}, error) {
+	return exportActionProcess(req)
+}
+
+func exportActionProcess(req *http.Request) (interface{}, error) {
+	param, err := export_util.NewExportFromReq(req)
 	if err != nil {
 		return nil, err
 	}
 
-	productName := defaultProductName
-
-	err = container.APIKeyManager.DeleteAPIKey(req.Context(), &icluster_conf.APIKeyFilter{
-		ID:          oneReq.ID,
-		ProductName: &productName,
-	})
-	return nil, err
+	return container.RateLimitPolicyManager.ConfigExport(req.Context(), param.Version)
 }

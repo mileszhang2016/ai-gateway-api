@@ -28,7 +28,7 @@ import (
 
 // APIKeyParam defines the parameters for API key operations
 type APIKeyParam struct {
-	Name        *string    `json:"name"`
+	ID          *string    `json:"id"`
 	Enable      *bool      `json:"enable"`
 	Status      *string    `json:"status,omitempty"`
 	UpdatedTime *string    `json:"updated_time,omitempty"`
@@ -37,8 +37,14 @@ type APIKeyParam struct {
 	// Key is the actual API key string, format: product line name + multiple randomly generated segments
 	Key *string `json:"key"`
 
+	// Description is the API key description
+	Description *string `json:"description,omitempty"`
+
 	// IsLimit indicates whether quota limitation is enabled
 	IsLimit *bool `json:"is_limit"`
+
+	// UnlimitedQuota indicates whether quota is unlimited
+	UnlimitedQuota *bool `json:"unlimited_quota,omitempty"`
 
 	// Limit is the specific quota limit, required when IsLimit is true, range: 0-100000000
 	Limit *int64 `json:"total_quota,omitempty"`
@@ -49,12 +55,16 @@ type APIKeyParam struct {
 	// "1d": One day later
 	// "1h": One hour later
 	// Or timestamp string: "2025-01-01 01:01:01"
-	ExpiredTime    *string  `json:"expired_time,omitempty"`
-	AllowedModels  []string `json:"allowed_models,omitempty"`
-	AllowedCIDR    []string `json:"allowed_subnets,omitempty"`
-	ProductName    *string  `json:"-"`
-	ID             *int64   `json:"-"`
-	RemainingQuota *int64   `json:"remaining_quota,omitempty"`
+	ExpiredTime       *string  `json:"expired_time,omitempty"`
+	AllowedModels     []string `json:"allowed_models,omitempty"`
+	AllowedCIDR       []string `json:"allowed_subnets,omitempty"`
+	Subnet            []string `json:"subnet,omitempty"`
+	EntityID          *string  `json:"entity_id,omitempty"`
+	QuotaPlanID       *int64   `json:"quota_plan_id,omitempty"`
+	RateLimitPolicyID *int64   `json:"rate_limit_policy_id,omitempty"`
+	ProductName       *string  `json:"-"`
+	InnerID           *int64   `json:"-"`
+	RemainingQuota    *int64   `json:"remaining_quota,omitempty"`
 }
 
 // APIKeyTokenParam defines parameters for API key token operations
@@ -73,9 +83,10 @@ type APIKeyTokenFilter struct {
 type APIKeyFilter struct {
 	ProductName  *string
 	ProductNames []string
-	Name         *string
 	ALBGroupName *string
-	ID           *int64
+	ID           *string
+	InnerID      *int64
+	QuotaPlanID  *int64
 }
 
 // APIKeyStorager interface defines storage operations for API keys
@@ -195,7 +206,7 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		}
 
 		_, err = rppm.storager.UpdateAPIKey(ctx, &APIKeyFilter{
-			ID: list[0].ID,
+			InnerID: one.InnerID,
 		}, param)
 		return err
 	})
@@ -205,9 +216,9 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 	param *APIKeyParam) (err error) {
 	err = rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		// Check for duplicate API key name within the same product
+		// Check for duplicate API key ID within the same product
 		list, err := rppm.storager.FetchAPIKeyList(ctx, &APIKeyFilter{
-			Name:        param.Name,
+			ID:          param.ID,
 			ProductName: param.ProductName,
 		})
 		if err != nil {
@@ -215,7 +226,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 		}
 
 		if len(list) > 0 {
-			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Duplicate name with product:%s", *param.ProductName))
+			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Duplicate id with product:%s", *param.ProductName))
 		}
 
 		// Check for existing API key tokens

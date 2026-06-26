@@ -39,6 +39,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/iprotocol"
 	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
+	"github.com/yf-networks/ai-gateway-api/model/quota"
 	"github.com/yf-networks/ai-gateway-api/stateful"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 	"github.com/yf-networks/ai-gateway-api/storage/rdb/ai_route"
@@ -46,6 +47,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/storage/rdb/basic"
 	"github.com/yf-networks/ai-gateway-api/storage/rdb/cluster_conf"
 	"github.com/yf-networks/ai-gateway-api/storage/rdb/protocol"
+	quotaStorage "github.com/yf-networks/ai-gateway-api/storage/rdb/quota"
 	"github.com/yf-networks/ai-gateway-api/storage/rdb/route_conf"
 	"github.com/yf-networks/ai-gateway-api/storage/rdb/txn"
 	"github.com/yf-networks/ai-gateway-api/storage/rdb/version_control"
@@ -117,6 +119,7 @@ func Init() {
 		container.VersionControlManager,
 		container.APIKeyStorager,
 		container.AIRouteRuleStorager,
+		container.QuotaPlanStorager,
 	)
 
 	container.AIRouteRuleManager = iai_route.NewAIRouteRuleManager(
@@ -169,4 +172,40 @@ func Init() {
 		container.PoolStoragerSingleton,
 		container.BFEClusterStoragerSingleton,
 		container.SubClusterStoragerSingleton)
+
+	// Initialize quota management components
+	container.EntityTypeStorager = quotaStorage.NewEntityTypeStorager(stateful.NewBFEDBContext)
+	container.EntityStorager = quotaStorage.NewEntityStorager(stateful.NewBFEDBContext)
+	container.QuotaPlanStorager = quotaStorage.NewQuotaPlanStorager(stateful.NewBFEDBContext)
+	container.QuotaBalanceStorager = quotaStorage.NewQuotaBalanceStorager(stateful.NewBFEDBContext)
+	container.RateLimitPolicyStorager = quotaStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
+
+	container.EntityTypeManager = quota.NewEntityTypeManager(
+		container.TxnStoragerSingleton,
+		container.EntityTypeStorager)
+
+	container.EntityManager = quota.NewEntityManager(
+		container.TxnStoragerSingleton,
+		container.EntityStorager)
+
+	container.QuotaPlanManager = quota.NewQuotaPlanManager(
+		container.TxnStoragerSingleton,
+		container.QuotaPlanStorager,
+		container.QuotaBalanceStorager)
+
+	container.RateLimitPolicyManager = quota.NewRateLimitPolicyManager(
+		container.TxnStoragerSingleton,
+		container.RateLimitPolicyStorager,
+		container.APIKeyStorager)
+
+	// Initialize quota balance sync and reset components
+	container.BalanceSyncManager = quota.NewBalanceSyncManager(
+		container.TxnStoragerSingleton,
+		container.APIKeyStorager,
+		container.QuotaBalanceStorager,
+		container.QuotaPlanStorager)
+
+	container.QuotaResetScheduler = quota.NewQuotaResetScheduler(
+		container.TxnStoragerSingleton,
+		container.BalanceSyncManager)
 }

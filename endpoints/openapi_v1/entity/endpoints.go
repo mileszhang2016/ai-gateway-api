@@ -12,16 +12,14 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package api_key
+package entity
 
 import "github.com/yf-networks/ai-gateway-api/lib/xreq"
 
 var Endpoints = []*xreq.Endpoint{
-	APIKeyCreateRoute,
-	APIKeyUpdateRoute,
-	OneRoute,
-	DeleteRoute,
-	ListRoute,
-	GenerateTokenRoute,
-	ResetQuotaRoute,
+	EntityCreateRoute,
+	EntityListRoute,
+	EntityOneRoute,
+	EntityUpdateRoute,
+	EntityDeleteRoute,
 }

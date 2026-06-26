@@ -12,38 +12,29 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package api_key
+package entity_type
 
 import (
 	"net/http"
 
-	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
-	"github.com/yf-networks/ai-gateway-api/stateful/container"
-
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
+	"github.com/yf-networks/ai-gateway-api/model/quota"
+	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
-var DeleteRoute = &xreq.Endpoint{
-	Path:       "/api-keys/{id}",
-	Method:     http.MethodDelete,
-	Handler:    xreq.Convert(DeleteAction),
-	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionDelete),
+var EntityTypeCreateRoute = &xreq.Endpoint{
+	Path:       "/entity-types",
+	Method:     http.MethodPost,
+	Handler:    xreq.Convert(EntityTypeCreateAction),
+	Authorizer: iauth.FA(iauth.FeatureEntityType, iauth.ActionCreate),
 }
 
-var _ xreq.Handler = DeleteAction
-
-func DeleteAction(req *http.Request) (interface{}, error) {
-	oneReq, err := newReq4One(req)
-	if err != nil {
+func EntityTypeCreateAction(req *http.Request) (interface{}, error) {
+	param := &quota.EntityTypeParam{}
+	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
 	}
 
-	productName := defaultProductName
-
-	err = container.APIKeyManager.DeleteAPIKey(req.Context(), &icluster_conf.APIKeyFilter{
-		ID:          oneReq.ID,
-		ProductName: &productName,
-	})
-	return nil, err
+	return container.EntityTypeManager.CreateEntityType(req.Context(), param)
 }

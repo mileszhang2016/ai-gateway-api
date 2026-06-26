@@ -17,7 +17,6 @@ package api_key
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 
@@ -27,16 +26,11 @@ import (
 )
 
 const (
-	maxLimit   = 100000000 // Maximum allowed quota limit
-	maxNameLen = 255       // Maximum length for API key name
+	maxLimit = 100000000 // Maximum allowed quota limit
 )
 
 // checkCreateAPIKey validates parameters for creating a new API key
 func checkCreateAPIKey(param *icluster_conf.APIKeyParam, productName string) error {
-	if err := checkName(param.Name); err != nil {
-		return err
-	}
-
 	if err := checkAllowSubnet(param.AllowedCIDR); err != nil {
 		return err
 	}
@@ -54,19 +48,6 @@ func checkCreateAPIKey(param *icluster_conf.APIKeyParam, productName string) err
 
 	if err := checkExpiredTime(param.ExpiredTime); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-// checkName validates the API key name
-func checkName(name *string) error {
-	if name == nil || *name == "" {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set name"))
-	}
-
-	if len(*name) > maxNameLen {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("name must between 0 and %s", strconv.Itoa(maxNameLen)))
 	}
 
 	return nil
