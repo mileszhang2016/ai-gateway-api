@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/yf-networks/ai-gateway-api/lib"
+	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 
@@ -30,7 +31,7 @@ import (
 )
 
 var GenerateTokenRoute = &xreq.Endpoint{
-	Path:       "/api-keys/actions/generate",
+	Path:       "/products/{product_name}/api-keys/actions/generate",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(GenerateTokenAction),
 	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionRead),
@@ -39,7 +40,10 @@ var GenerateTokenRoute = &xreq.Endpoint{
 var _ xreq.Handler = GenerateTokenAction
 
 func GenerateTokenAction(req *http.Request) (interface{}, error) {
-	product := defaultProduct()
+	product, err := ibasic.MustGetProduct(req.Context())
+	if err != nil {
+		return nil, err
+	}
 
 	uid, err := uuid.NewV7()
 	if err != nil {

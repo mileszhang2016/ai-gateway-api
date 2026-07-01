@@ -25,7 +25,6 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/iai_route"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
-	"github.com/yf-networks/ai-gateway-api/model/quota"
 	"github.com/yf-networks/ai-gateway-api/stateful"
 )
 
@@ -41,25 +40,15 @@ type ModAPIKeyRuleConf struct {
 
 // ExportContent defines the structure for API key information exported to BFE
 type ExportContent struct {
-	Key            string     `json:"key"`              // API key value
-	Status         int        `json:"status"`           // Key status (enabled/disabled/expired/exhausted)
-	Name           string     `json:"name"`             // API key name
-	UpdatedTime    int64      `json:"update_time"`      // Last update timestamp
-	ExpiredTime    int64      `json:"expired_time"`     // Expiration timestamp
-	UnlimitedQuota bool       `json:"unlimited_quota"`  // Whether quota is unlimited
-	RemainQuota    int64      `json:"remain_quota"`     // Remaining quota
-	Models         string     `json:"models,omitempty"` // Allowed models (comma-separated)
-	Subnet         string     `json:"subnet,omitempty"` // Allowed subnets (comma-separated)
-	QuotaPlan      *QuotaPlan `json:"quota_plan"`       // Quota plan details
-}
-
-// QuotaPlan defines the quota plan structure exported to BFE
-type QuotaPlan struct {
-	Unlimited             bool   `json:"unlimited"`                 // Whether quota is unlimited
-	PassWhenNoEnoughQuota bool   `json:"pass_when_no_enough_quota"` // Whether to pass when quota is not enough
-	Quota                 int64  `json:"quota"`                     // Total quota
-	Unit                  string `json:"unit"`                      // Quota unit
-	ResetPeriod           string `json:"reset_period"`              // Reset period (never/weekly/monthly)
+	Key            string `json:"key"`              // API key value
+	Status         int    `json:"status"`           // Key status (enabled/disabled/expired/exhausted)
+	Name           string `json:"name"`             // API key name
+	UpdatedTime    int64  `json:"update_time"`      // Last update timestamp
+	ExpiredTime    int64  `json:"expired_time"`     // Expiration timestamp
+	UnlimitedQuota bool   `json:"unlimited_quota"`  // Whether quota is unlimited
+	RemainQuota    int64  `json:"remain_quota"`     // Remaining quota
+	Models         string `json:"models,omitempty"` // Allowed models (comma-separated)
+	Subnet         string `json:"subnet,omitempty"` // Allowed subnets (comma-separated)
 }
 
 // ExportAPIKeyRule defines the structure for API key routing rules exported to BFE
@@ -229,7 +218,7 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 		ec := ExportContent{
 			Key:         *one.Key,
 			Status:      status,
-			Name:        *one.ID,
+			Name:        *one.Name,
 			ExpiredTime: expiredTime,
 			UpdatedTime: one.KeyCreateAt.Unix(),
 		}
@@ -250,34 +239,6 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 		// Convert allowed CIDR to comma-separated string
 		if len(one.AllowedCIDR) > 0 {
 			ec.Subnet = strings.Join(one.AllowedCIDR, ",")
-		}
-
-		// Fetch and set quota plan information if exists
-		if one.QuotaPlanID != nil {
-			quotaPlan, err := rlm.quotaPlanStorager.FetchQuotaPlan(ctx, &quota.QuotaPlanFilter{ID: one.QuotaPlanID})
-			if err != nil {
-				return nil, fmt.Errorf("fetch quota plan error: %s", err.Error())
-			}
-			if quotaPlan != nil {
-				qp := &QuotaPlan{
-					Unlimited:             quotaPlan.Unlimited != nil && *quotaPlan.Unlimited,
-					PassWhenNoEnoughQuota: quotaPlan.PassWhenNoEnoughQuota != nil && *quotaPlan.PassWhenNoEnoughQuota,
-				}
-				if quotaPlan.Quota != nil {
-					qp.Quota = *quotaPlan.Quota
-				}
-				if quotaPlan.Unit != nil {
-					qp.Unit = *quotaPlan.Unit
-				} else {
-					qp.Unit = "total_token"
-				}
-				if quotaPlan.ResetPeriod != nil {
-					qp.ResetPeriod = *quotaPlan.ResetPeriod
-				} else {
-					qp.ResetPeriod = "never"
-				}
-				ec.QuotaPlan = qp
-			}
 		}
 
 		// Add to configuration

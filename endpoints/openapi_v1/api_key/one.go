@@ -17,23 +17,26 @@ package api_key
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 
+	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 )
 
 // OneRoute route
 var OneRoute = &xreq.Endpoint{
-	Path:       "/api-keys/{id}",
+	Path:       "/products/{product_name}/api-keys/{api_key_name}",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(OneAction),
 	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionRead),
 }
 
 type OneReq struct {
-	ID *string `uri:"id" validate:"required,max=255"`
+	ProductName *string `uri:"product_name" validate:"required"`
+	APIKeyName  *string `uri:"api_key_name" validate:"required,max=255"`
 }
 
 var _ xreq.Handler = OneAction
@@ -45,11 +48,19 @@ func OneAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	productName := defaultProductName
+	products, err := container.ProductManager.FetchProducts(req.Context(), &ibasic.ProductFilter{
+		Name: oneReq.ProductName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(products) != 1 {
+		return nil, xerror.WrapParamErrorWithMsg("Invalid Product")
+	}
 
 	one, err := container.APIKeyManager.FetchAPIKey(req.Context(), &icluster_conf.APIKeyFilter{
-		ID:          oneReq.ID,
-		ProductName: &productName,
+		Name:        oneReq.APIKeyName,
+		ProductName: oneReq.ProductName,
 	})
 	if err != nil {
 		return nil, err

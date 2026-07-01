@@ -17,15 +17,17 @@ package api_key
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 
+	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 )
 
 var DeleteRoute = &xreq.Endpoint{
-	Path:       "/api-keys/{id}",
+	Path:       "/products/{product_name}/api-keys/{api_key_name}",
 	Method:     http.MethodDelete,
 	Handler:    xreq.Convert(DeleteAction),
 	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionDelete),
@@ -39,11 +41,19 @@ func DeleteAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	productName := defaultProductName
+	products, err := container.ProductManager.FetchProducts(req.Context(), &ibasic.ProductFilter{
+		Name: oneReq.ProductName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(products) != 1 {
+		return nil, xerror.WrapParamErrorWithMsg("Invalid Product")
+	}
 
 	err = container.APIKeyManager.DeleteAPIKey(req.Context(), &icluster_conf.APIKeyFilter{
-		ID:          oneReq.ID,
-		ProductName: &productName,
+		Name:        oneReq.APIKeyName,
+		ProductName: oneReq.ProductName,
 	})
 	return nil, err
 }

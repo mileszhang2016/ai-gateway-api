@@ -30,7 +30,7 @@ import (
 var _ xreq.Handler = APIKeyUpdateAction
 
 var APIKeyUpdateRoute = &xreq.Endpoint{
-	Path:       "/api-keys/{id}",
+	Path:       "/products/{product_name}/api-keys/{api_key_name}",
 	Method:     http.MethodPatch,
 	Handler:    xreq.Convert(APIKeyUpdateAction),
 	Authorizer: iauth.FA(iauth.FeatureAPIKey, iauth.ActionUpdate),
@@ -49,9 +49,19 @@ func APIKeyUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	param.ID = lib.PString(*oneReq.ID)
+	products, err := container.ProductManager.FetchProducts(req.Context(), &ibasic.ProductFilter{
+		Name: oneReq.ProductName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(products) != 1 {
+		return nil, xerror.WrapParamErrorWithMsg("Invalid Product")
+	}
 
-	return APIKeyUpdateProcess(req.Context(), param, defaultProduct())
+	param.Name = lib.PString(*oneReq.APIKeyName)
+
+	return APIKeyUpdateProcess(req.Context(), param, products[0])
 }
 
 func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, product *ibasic.Product) (*ibasic.Product, error) {
@@ -60,22 +70,16 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 	}
 
 	return nil, container.APIKeyManager.UpdateAPIKey(ctx, &icluster_conf.APIKeyFilter{
-		ID:          param.ID,
+		Name:        param.Name,
 		ProductName: &product.Name,
 	}, &icluster_conf.APIKeyParam{
-		Enable:            param.Enable,
-		Key:               param.Key,
-		Description:       param.Description,
-		IsLimit:           param.IsLimit,
-		UnlimitedQuota:    param.UnlimitedQuota,
-		Limit:             param.Limit,
-		ExpiredTime:       param.ExpiredTime,
-		AllowedModels:     param.AllowedModels,
-		AllowedCIDR:       param.AllowedCIDR,
-		Subnet:            param.Subnet,
-		EntityID:          param.EntityID,
-		QuotaPlanID:       param.QuotaPlanID,
-		RateLimitPolicyID: param.RateLimitPolicyID,
-		ProductName:       &product.Name,
+		Enable:        param.Enable,
+		Key:           param.Key,
+		IsLimit:       param.IsLimit,
+		Limit:         param.Limit,
+		ExpiredTime:   param.ExpiredTime,
+		AllowedModels: param.AllowedModels,
+		AllowedCIDR:   param.AllowedCIDR,
+		ProductName:   &product.Name,
 	})
 }

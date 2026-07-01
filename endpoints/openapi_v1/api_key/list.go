@@ -17,6 +17,7 @@ package api_key
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 
@@ -25,7 +26,7 @@ import (
 )
 
 var ListRoute = &xreq.Endpoint{
-	Path:       "/api-keys",
+	Path:       "/products/{product_name}/api-keys",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(ListAction),
 	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionReadAll),
@@ -34,10 +35,13 @@ var ListRoute = &xreq.Endpoint{
 var _ xreq.Handler = OneAction
 
 func ListAction(req *http.Request) (interface{}, error) {
-	productName := defaultProductName
+	product, err := ibasic.MustGetProduct(req.Context())
+	if err != nil {
+		return nil, err
+	}
 
 	list, err := container.APIKeyManager.FetchAPIKeyList(req.Context(), &icluster_conf.APIKeyFilter{
-		ProductName: &productName,
+		ProductName: &product.Name,
 	})
 	if err != nil {
 		return nil, err

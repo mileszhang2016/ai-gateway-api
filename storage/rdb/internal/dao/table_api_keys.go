@@ -25,24 +25,18 @@ import (
 const tAPIKeyTableName = "api_keys"
 
 type TAPIKey struct {
-	InnerID           int64     `db:"inner_id"`
-	ID                string    `db:"id"`
-	Enable            bool      `db:"enable"`
-	Key               string    `db:"api_key"`
-	Description       string    `db:"description"`
-	IsLimit           bool      `db:"is_limit"`
-	UnlimitedQuota    bool      `db:"unlimited_quota"`
-	ProductName       string    `db:"product_name"`
-	Limit             int64     `db:"total_quota"`
-	ExpiredTime       string    `db:"expired_time"`
-	AllowedModels     string    `db:"allowed_models"`
-	AllowedCIDR       string    `db:"allowed_cidr"`
-	Subnet            string    `db:"subnet"`
-	EntityID          *string   `db:"entity_id"`
-	QuotaPlanID       *int64    `db:"quota_plan_id"`
-	RateLimitPolicyID *int64    `db:"rate_limit_policy_id"`
-	CreatedAt         time.Time `db:"created_at"`
-	UpdatedAt         time.Time `db:"updated_at"`
+	ID            int64     `db:"id"`
+	Name          string    `db:"name"`
+	Enable        bool      `db:"enable"`
+	Key           string    `db:"api_key"`
+	IsLimit       bool      `db:"is_limit"`
+	ProductName   string    `db:"product_name"`
+	Limit         int64     `db:"total_quota"`
+	ExpiredTime   string    `db:"expired_time"`
+	AllowedModels string    `db:"allowed_models"`
+	AllowedCIDR   string    `db:"allowed_cidr"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
 }
 
 // TAPIKeyOne Query One
@@ -73,25 +67,19 @@ func TAPIKeyList(dbCtx lib.DBContexter, where *TAPIKeyParam) ([]*TAPIKey, error)
 }
 
 type TAPIKeyParam struct {
-	InnerID *int64 `db:"inner_id"`
+	ID *int64 `db:"id"`
 
-	ID                *string    `db:"id"`
-	Enable            *bool      `db:"enable"`
-	Key               *string    `db:"api_key"`
-	Description       *string    `db:"description"`
-	IsLimit           *bool      `db:"is_limit"`
-	UnlimitedQuota    *bool      `db:"unlimited_quota"`
-	ProductName       *string    `db:"product_name"`
-	Limit             *int64     `db:"total_quota"`
-	ExpiredTime       *string    `db:"expired_time"`
-	AllowedModels     *string    `db:"allowed_models"`
-	AllowedCIDR       *string    `db:"allowed_cidr"`
-	Subnet            *string    `db:"subnet"`
-	EntityID          *string    `db:"entity_id"`
-	QuotaPlanID       *int64     `db:"quota_plan_id"`
-	RateLimitPolicyID *int64     `db:"rate_limit_policy_id"`
-	CreatedAt         *time.Time `db:"created_at"`
-	UpdatedAt         *time.Time `db:"updated_at"`
+	Name          *string    `db:"name"`
+	Enable        *bool      `db:"enable"`
+	Key           *string    `db:"api_key"`
+	IsLimit       *bool      `db:"is_limit"`
+	ProductName   *string    `db:"product_name"`
+	Limit         *int64     `db:"total_quota"`
+	ExpiredTime   *string    `db:"expired_time"`
+	AllowedModels *string    `db:"allowed_models"`
+	AllowedCIDR   *string    `db:"allowed_cidr"`
+	CreatedAt     *time.Time `db:"created_at"`
+	UpdatedAt     *time.Time `db:"updated_at"`
 
 	OrderBy *string `db:"_orderby"`
 }

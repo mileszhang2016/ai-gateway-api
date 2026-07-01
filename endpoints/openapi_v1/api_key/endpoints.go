@@ -23,5 +23,4 @@ var Endpoints = []*xreq.Endpoint{
 	DeleteRoute,
 	ListRoute,
 	GenerateTokenRoute,
-	ResetQuotaRoute,
 }

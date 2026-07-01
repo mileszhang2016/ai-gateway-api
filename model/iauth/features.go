@@ -116,12 +116,6 @@ const (
 	FeatureNLBCluster Feature = "NLBCluster"
 	FeatureAIRoute    Feature = "AIRoute"
 	FeatureAPIKey     Feature = "APIKey"
-
-	// quota management
-	FeatureEntityType      Feature = "EntityType"
-	FeatureEntity          Feature = "Entity"
-	FeatureQuotaPlan       Feature = "QuotaPlan"
-	FeatureRateLimitPolicy Feature = "RateLimitPolicy"
 )
 
 var (
@@ -200,7 +194,5 @@ var scope2permission = map[string]map[Feature]Action{
 		FeatureCert:              ActionExport,
 		FeatureActiveHealthCheck: ActionExport,
 		FeatureExtraFile:         ActionExport,
-		FeatureAPIKey:            ActionExport,
-		FeatureRateLimitPolicy:   ActionExport,
 	},
 }
