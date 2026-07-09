@@ -51,6 +51,16 @@ func EntityTypeDeleteAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapRecordNotExist("Entity-Type")
 	}
 
+	entities, err := container.EntityManager.FetchEntityList(req.Context(), &quota.EntityFilter{
+		Type: delReq.TypeName,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(entities) > 0 {
+		return nil, xerror.WrapParamErrorWithMsg("cannot delete entity type with associated entities")
+	}
+
 	return nil, container.EntityTypeManager.DeleteEntityType(req.Context(), &quota.EntityTypeFilter{
 		TypeName: delReq.TypeName,
 	})

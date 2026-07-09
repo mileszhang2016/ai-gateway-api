@@ -78,3 +78,5 @@ Lang          = "zh"
 "^Cluster (.+) Not Exist$"                = "集群 %s 不存在"
 "^Cluster (.+) Not Ready$"                  = "集群 %s 未准备完成"
 "^Rule (.+) Refer To This Cluster$"          = "集群被转发规则 %s 引用"
+
+"cannot delete entity type with associated entities" = "无法删除已有组织关联的组织类型"
