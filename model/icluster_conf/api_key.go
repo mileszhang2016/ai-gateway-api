@@ -23,38 +23,44 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/model/itxn"
+	"github.com/yf-networks/ai-gateway-api/model/shared"
 	"github.com/yf-networks/ai-gateway-api/stateful"
 )
 
 // APIKeyParam defines the parameters for API key operations
 type APIKeyParam struct {
-	Name        *string    `json:"name"`
-	Enable      *bool      `json:"enable"`
+	ID          *string    `json:"id"`
+	Enable      *bool      `json:"enabled"`
 	Status      *string    `json:"status,omitempty"`
-	UpdatedTime *string    `json:"updated_time,omitempty"`
+	CreateTime  *int64     `json:"create_time,omitempty"`
+	UpdatedTime *int64     `json:"update_time,omitempty"`
 	KeyCreateAt *time.Time `json:"-"`
 
 	// Key is the actual API key string, format: product line name + multiple randomly generated segments
 	Key *string `json:"key"`
 
-	// IsLimit indicates whether quota limitation is enabled
-	IsLimit *bool `json:"is_limit"`
+	// Description is the API key description
+	Description *string `json:"description,omitempty"`
 
-	// Limit is the specific quota limit, required when IsLimit is true, range: 0-100000000
-	Limit *int64 `json:"total_quota,omitempty"`
+	// UnlimitedQuota indicates whether quota is unlimited
+	UnlimitedQuota *bool `json:"unlimited_quota,omitempty"`
 
-	// ExpiredTime defines the expiration time with formats:
-	// Empty string: Never expires
-	// "1m": One month later
-	// "1d": One day later
-	// "1h": One hour later
-	// Or timestamp string: "2025-01-01 01:01:01"
-	ExpiredTime    *string  `json:"expired_time,omitempty"`
-	AllowedModels  []string `json:"allowed_models,omitempty"`
-	AllowedCIDR    []string `json:"allowed_subnets,omitempty"`
-	ProductName    *string  `json:"-"`
-	ID             *int64   `json:"-"`
-	RemainingQuota *int64   `json:"remaining_quota,omitempty"`
+	// ExpiredTime defines the expiration time as Unix timestamp (seconds)
+	// -1: Never expires
+	// Other values: Unix timestamp
+	ExpiredTime       *int64   `json:"expired_time,omitempty"`
+	Models            []string `json:"models,omitempty"`
+	Subnet            []string `json:"subnet,omitempty"`
+	EntityID          *string  `json:"entity_id,omitempty"`
+	QuotaPlanID       *int64   `json:"quota_plan_id,omitempty"`
+	RateLimitPolicyID *int64   `json:"rate_limit_policy_id,omitempty"`
+	ProductName       *string  `json:"-"`
+	InnerID           *int64   `json:"-"`
+	RemainingQuota    *int64   `json:"remaining_quota,omitempty"`
+
+	QuotaPlan       *shared.QuotaPlanParam       `json:"quota_plan,omitempty"`
+	RateLimitPolicy *shared.RateLimitPolicyParam `json:"rate_limit_policy,omitempty"`
+	Entity          *shared.EntitySummary        `json:"entity,omitempty"`
 }
 
 // APIKeyTokenParam defines parameters for API key token operations
@@ -73,9 +79,10 @@ type APIKeyTokenFilter struct {
 type APIKeyFilter struct {
 	ProductName  *string
 	ProductNames []string
-	Name         *string
 	ALBGroupName *string
-	ID           *int64
+	ID           *string
+	InnerID      *int64
+	QuotaPlanID  *int64
 }
 
 // APIKeyStorager interface defines storage operations for API keys
@@ -92,43 +99,70 @@ type APIKeyStorager interface {
 
 // APIKeyManager manages API key operations with transaction support
 type APIKeyManager struct {
-	storager        APIKeyStorager
-	txn             itxn.TxnStorager
-	clusterStorager ClusterStorager
+	storager                APIKeyStorager
+	txn                     itxn.TxnStorager
+	clusterStorager         ClusterStorager
+	quotaPlanStorager       QuotaPlanStorager
+	rateLimitPolicyStorager RateLimitPolicyStorager
+	entityStorager          shared.EntityStorager
+	quotaBalanceStorager    shared.QuotaBalanceStorager
+}
+
+// QuotaPlanStorager interface defines storage operations for quota plans
+type QuotaPlanStorager interface {
+	CreateQuotaPlan(ctx context.Context, param *shared.QuotaPlanParam) (int64, error)
+	UpdateQuotaPlan(ctx context.Context, id int64, param *shared.QuotaPlanParam) (int64, error)
+	DeleteQuotaPlan(ctx context.Context, id int64) error
+	FetchQuotaPlan(ctx context.Context, id int64) (*shared.QuotaPlanParam, error)
+}
+
+// RateLimitPolicyStorager interface defines storage operations for rate limit policies
+type RateLimitPolicyStorager interface {
+	CreateRateLimitPolicy(ctx context.Context, param *shared.RateLimitPolicyParam) (int64, error)
+	UpdateRateLimitPolicy(ctx context.Context, id int64, param *shared.RateLimitPolicyParam) (int64, error)
+	DeleteRateLimitPolicy(ctx context.Context, id int64) error
+	FetchRateLimitPolicy(ctx context.Context, id int64) (*shared.RateLimitPolicyParam, error)
 }
 
 // NewAPIKeyManager creates a new APIKeyManager instance
-func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager, clusterStorager ClusterStorager) *APIKeyManager {
+func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager, clusterStorager ClusterStorager,
+	quotaPlanStorager QuotaPlanStorager, rateLimitPolicyStorager RateLimitPolicyStorager,
+	entityStorager shared.EntityStorager, quotaBalanceStorager shared.QuotaBalanceStorager) *APIKeyManager {
 	return &APIKeyManager{
-		txn:             txn,
-		storager:        storager,
-		clusterStorager: clusterStorager,
+		txn:                     txn,
+		storager:                storager,
+		clusterStorager:         clusterStorager,
+		quotaPlanStorager:       quotaPlanStorager,
+		rateLimitPolicyStorager: rateLimitPolicyStorager,
+		entityStorager:          entityStorager,
+		quotaBalanceStorager:    quotaBalanceStorager,
 	}
 }
 
 // GetRemainingQuota calculates the remaining quota for an API key
 func GetRemainingQuota(param *APIKeyParam) (*int64, error) {
-	// Retrieve used quota from Redis cache
-	used, err := stateful.DefaultClientSet.RedisClient.GetInt64(stateful.AIUsedQuotaKey(*param.Key, param.KeyCreateAt.Unix()))
+	if param.UnlimitedQuota != nil && *param.UnlimitedQuota {
+		return nil, nil
+	}
+
+	if param.QuotaPlan == nil || param.QuotaPlan.Quota == nil {
+		return nil, nil
+	}
+
+	remain, err := stateful.DefaultClientSet.RedisClient.GetInt64(stateful.AIUsedQuotaKey(*param.Key))
 	if err != nil {
 		if strings.Contains(err.Error(), "redigo: nil returned") {
-			// If no usage record exists, return the full limit
-			return lib.PInt64(*param.Limit), nil
+			return param.QuotaPlan.Quota, nil
 		}
 
 		return nil, fmt.Errorf("get %s-%d from cache is error:%s", *param.Key, param.KeyCreateAt.Unix(), err.Error())
 	}
 
-	// Calculate remaining quota
-	if param.Limit != nil {
-		if *param.Limit > used {
-			return lib.PInt64(*param.Limit - used), nil
-		}
-		return nil, nil
+	if remain < 0 {
+		remain = 0
 	}
 
-	// No limit set
-	return nil, nil
+	return &remain, nil
 }
 
 // FetchAPIKeyList retrieves API keys based on filter criteria
@@ -136,7 +170,15 @@ func (rppm *APIKeyManager) FetchAPIKeyList(ctx context.Context,
 	filter *APIKeyFilter) (list []*APIKeyParam, err error) {
 	err = rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		list, err = rppm.storager.FetchAPIKeyList(ctx, filter)
-		return err
+		if err != nil {
+			return err
+		}
+		for _, one := range list {
+			if err := rppm.populateAssociatedData(ctx, one); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 
 	return
@@ -152,6 +194,7 @@ func (rppm *APIKeyManager) FetchAPIKey(ctx context.Context,
 		}
 		if len(list) > 0 {
 			one = list[0]
+			return rppm.populateAssociatedData(ctx, one)
 		}
 		return nil
 	})
@@ -159,16 +202,79 @@ func (rppm *APIKeyManager) FetchAPIKey(ctx context.Context,
 	return
 }
 
+func (rppm *APIKeyManager) populateAssociatedData(ctx context.Context, one *APIKeyParam) error {
+	if one.QuotaPlan == nil {
+		one.QuotaPlan = &shared.QuotaPlanParam{}
+	}
+	if one.RateLimitPolicy == nil {
+		one.RateLimitPolicy = &shared.RateLimitPolicyParam{}
+	}
+
+	if one.QuotaPlanID != nil && rppm.quotaPlanStorager != nil {
+		quotaPlan, err := rppm.quotaPlanStorager.FetchQuotaPlan(ctx, *one.QuotaPlanID)
+		if err != nil {
+			return err
+		}
+
+		if rppm.quotaBalanceStorager != nil {
+			balance, err := rppm.quotaBalanceStorager.FetchQuotaBalance(ctx, *one.QuotaPlanID)
+			if err != nil {
+				return err
+			}
+			quotaPlan.Balance = balance
+		}
+
+		one.QuotaPlan = quotaPlan
+	}
+
+	if one.RateLimitPolicyID != nil && rppm.rateLimitPolicyStorager != nil {
+		rateLimitPolicy, err := rppm.rateLimitPolicyStorager.FetchRateLimitPolicy(ctx, *one.RateLimitPolicyID)
+		if err != nil {
+			return err
+		}
+		one.RateLimitPolicy = rateLimitPolicy
+	}
+
+	if one.EntityID != nil && rppm.entityStorager != nil {
+		entity, err := rppm.entityStorager.FetchEntity(ctx, &shared.EntityFilter{EntityID: one.EntityID})
+		if err != nil {
+			return err
+		}
+		one.Entity = entity
+	}
+
+	return nil
+}
+
 // DeleteAPIKey deletes an API key based on filter criteria
 func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilter) error {
 	return rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		// Verify the API key exists before deletion
 		list, err := rppm.storager.FetchAPIKeyList(ctx, filter)
 		if err != nil {
 			return err
 		}
 		if len(list) == 0 {
 			return xerror.WrapRecordNotExist("APIKey")
+		}
+
+		one := list[0]
+
+		if one.QuotaPlanID != nil && rppm.quotaBalanceStorager != nil {
+			if err := rppm.quotaBalanceStorager.DeleteQuotaBalance(ctx, *one.QuotaPlanID); err != nil {
+				return err
+			}
+		}
+
+		if one.QuotaPlanID != nil && rppm.quotaPlanStorager != nil {
+			if err := rppm.quotaPlanStorager.DeleteQuotaPlan(ctx, *one.QuotaPlanID); err != nil {
+				return err
+			}
+		}
+
+		if one.RateLimitPolicyID != nil && rppm.rateLimitPolicyStorager != nil {
+			if err := rppm.rateLimitPolicyStorager.DeleteRateLimitPolicy(ctx, *one.RateLimitPolicyID); err != nil {
+				return err
+			}
 		}
 
 		return rppm.storager.DeleteAPIKey(ctx, filter)
@@ -178,7 +284,6 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 // UpdateAPIKey updates an existing API key
 func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) error {
 	return rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		// Verify the API key exists before update
 		list, err := rppm.storager.FetchAPIKeyList(ctx, filter)
 		if err != nil {
 			return err
@@ -188,14 +293,47 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		}
 
 		one := list[0]
-		// Skip quota update if the limit value remains unchanged
-		if param.Enable != nil && *param.Enable && param.IsLimit != nil && *param.IsLimit &&
-			param.Limit != nil && *param.Limit > 0 && one.Limit != nil && *param.Limit == *one.Limit {
-			param.Limit = nil
+
+		if param.QuotaPlan != nil && rppm.quotaPlanStorager != nil {
+			if one.QuotaPlanID != nil {
+				_, err = rppm.quotaPlanStorager.UpdateQuotaPlan(ctx, *one.QuotaPlanID, param.QuotaPlan)
+				if err != nil {
+					return err
+				}
+			} else {
+				quotaPlanID, err := rppm.quotaPlanStorager.CreateQuotaPlan(ctx, param.QuotaPlan)
+				if err != nil {
+					return err
+				}
+				param.QuotaPlanID = &quotaPlanID
+
+				if param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited {
+					if rppm.quotaBalanceStorager != nil && param.QuotaPlan.Quota != nil {
+						if err := rppm.quotaBalanceStorager.CreateQuotaBalance(ctx, quotaPlanID, param.QuotaPlan.Quota); err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+
+		if param.RateLimitPolicy != nil && rppm.rateLimitPolicyStorager != nil {
+			if one.RateLimitPolicyID != nil {
+				_, err = rppm.rateLimitPolicyStorager.UpdateRateLimitPolicy(ctx, *one.RateLimitPolicyID, param.RateLimitPolicy)
+				if err != nil {
+					return err
+				}
+			} else {
+				rateLimitPolicyID, err := rppm.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
+				if err != nil {
+					return err
+				}
+				param.RateLimitPolicyID = &rateLimitPolicyID
+			}
 		}
 
 		_, err = rppm.storager.UpdateAPIKey(ctx, &APIKeyFilter{
-			ID: list[0].ID,
+			InnerID: one.InnerID,
 		}, param)
 		return err
 	})
@@ -205,9 +343,9 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 	param *APIKeyParam) (err error) {
 	err = rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		// Check for duplicate API key name within the same product
+		// Check for duplicate API key ID within the same product
 		list, err := rppm.storager.FetchAPIKeyList(ctx, &APIKeyFilter{
-			Name:        param.Name,
+			ID:          param.ID,
 			ProductName: param.ProductName,
 		})
 		if err != nil {
@@ -215,7 +353,18 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 		}
 
 		if len(list) > 0 {
-			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Duplicate name with product:%s", *param.ProductName))
+			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Duplicate id with product:%s", *param.ProductName))
+		}
+
+		// Check if entity_id exists
+		if param.EntityID != nil && *param.EntityID != "" && rppm.entityStorager != nil {
+			entity, err := rppm.entityStorager.FetchEntity(ctx, &shared.EntityFilter{EntityID: param.EntityID})
+			if err != nil {
+				return err
+			}
+			if entity == nil {
+				return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Entity not found: %s", *param.EntityID))
+			}
 		}
 
 		// Check for existing API key tokens
@@ -229,9 +378,38 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 
 		// Set updated time based on existing token or current time
 		if len(tokens) > 0 {
-			param.UpdatedTime = lib.PString(tokens[0].CreatedAt.Format(lib.FormatTimeYYMMDD_HHMMSS))
+			updatedTime := tokens[0].CreatedAt.Unix()
+			param.UpdatedTime = &updatedTime
 		} else {
-			param.UpdatedTime = lib.PString(time.Now().Format(lib.FormatTimeYYMMDD_HHMMSS))
+			updatedTime := time.Now().Unix()
+			param.UpdatedTime = &updatedTime
+		}
+
+		// Create QuotaPlan if provided
+		if param.QuotaPlan != nil && rppm.quotaPlanStorager != nil {
+			quotaPlanID, err := rppm.quotaPlanStorager.CreateQuotaPlan(ctx, param.QuotaPlan)
+			if err != nil {
+				return err
+			}
+			param.QuotaPlanID = &quotaPlanID
+
+			// Create QuotaBalance if quota_plan is not unlimited
+			if param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited {
+				if rppm.quotaBalanceStorager != nil && param.QuotaPlan.Quota != nil {
+					if err := rppm.quotaBalanceStorager.CreateQuotaBalance(ctx, quotaPlanID, param.QuotaPlan.Quota); err != nil {
+						return err
+					}
+				}
+			}
+		}
+
+		// Create RateLimitPolicy if provided
+		if param.RateLimitPolicy != nil && rppm.rateLimitPolicyStorager != nil {
+			rateLimitPolicyID, err := rppm.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
+			if err != nil {
+				return err
+			}
+			param.RateLimitPolicyID = &rateLimitPolicyID
 		}
 
 		_, err = rppm.storager.CreateAPIKey(ctx, param)

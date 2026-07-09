@@ -74,6 +74,6 @@ func (r *Redis) Init() error {
 	return nil
 }
 
-func AIUsedQuotaKey(key string, updatetime int64) string {
-	return fmt.Sprintf("usedquota_%s:%d", key, updatetime)
+func AIUsedQuotaKey(key string) string {
+	return fmt.Sprintf("QUOTA_%s", key)
 }

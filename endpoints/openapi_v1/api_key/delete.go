@@ -17,17 +17,16 @@ package api_key
 import (
 	"net/http"
 
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
-	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
-	"github.com/yf-networks/ai-gateway-api/stateful/container"
-
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
+	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
+	"github.com/yf-networks/ai-gateway-api/model/quota"
+	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
 var DeleteRoute = &xreq.Endpoint{
-	Path:       "/products/{product_name}/api-keys/{api_key_name}",
+	Path:       "/api-keys/{id}",
 	Method:     http.MethodDelete,
 	Handler:    xreq.Convert(DeleteAction),
 	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionDelete),
@@ -41,19 +40,30 @@ func DeleteAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	products, err := container.ProductManager.FetchProducts(req.Context(), &ibasic.ProductFilter{
-		Name: oneReq.ProductName,
+	productName := defaultProductName
+
+	// Fetch API key to get quotaPlanID for deleting associated quota balances
+	apiKey, err := container.APIKeyManager.FetchAPIKey(req.Context(), &icluster_conf.APIKeyFilter{
+		ID:          oneReq.ID,
+		ProductName: &productName,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if len(products) != 1 {
-		return nil, xerror.WrapParamErrorWithMsg("Invalid Product")
+	if apiKey == nil {
+		return nil, xerror.WrapRecordNotExist("API-Key")
+	}
+
+	// Delete quota balances associated with the quota plan
+	if apiKey.QuotaPlanID != nil {
+		if err := container.QuotaBalanceStorager.DeleteQuotaBalance(req.Context(), &quota.QuotaBalanceFilter{QuotaPlanID: apiKey.QuotaPlanID}); err != nil {
+			return nil, err
+		}
 	}
 
 	err = container.APIKeyManager.DeleteAPIKey(req.Context(), &icluster_conf.APIKeyFilter{
-		Name:        oneReq.APIKeyName,
-		ProductName: oneReq.ProductName,
+		ID:          oneReq.ID,
+		ProductName: &productName,
 	})
 	return nil, err
 }

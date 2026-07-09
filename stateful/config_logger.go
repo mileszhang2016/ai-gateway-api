@@ -60,14 +60,20 @@ func (config *Config) InitLog() error {
 		return errors.New("logger access must be set when RunTime.RecordSQL")
 	}
 
+	ExceptionLogger = loggers["exception"]
+	if ExceptionLogger == nil {
+		return errors.New("logger exception must be set")
+	}
+
 	log.Logger = AccessLogger
 
 	return nil
 }
 
 var (
-	SQLLogger    log4go.Logger
-	AccessLogger log4go.Logger
+	SQLLogger       log4go.Logger
+	AccessLogger    log4go.Logger
+	ExceptionLogger log4go.Logger
 )
 
 func CloseLog() {

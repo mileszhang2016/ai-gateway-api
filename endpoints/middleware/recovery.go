@@ -60,6 +60,8 @@ func (rec *Recovery) ServeHTTP(rw http.ResponseWriter, req *http.Request, next h
 
 			stateful.AccessLogger.Warn(requestInfo.String())
 
+			stateful.ExceptionLogger.Error("PANIC in HTTP handler: err=%v\n%s", err, stackString)
+
 			r := &xreq.Result{
 				Code:   requestInfo.StatusCode,
 				ErrMsg: requestInfo.RetMsg,

@@ -17,49 +17,76 @@ package imods
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
-	"github.com/bfenetworks/bfe/bfe_modules/mod_ai_token_auth"
-	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/model/iai_route"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
+	"github.com/yf-networks/ai-gateway-api/model/quota"
 	"github.com/yf-networks/ai-gateway-api/stateful"
 )
 
 // ConfigTopicProductAPIKeyRule is the configuration topic for API key rules
 const ConfigTopicProductAPIKeyRule = "mod_api_key_rule"
 
+const (
+	TokenStatusEnabled   = 1
+	TokenStatusDisabled  = 2
+	TokenStatusExpired   = 3
+	TokenStatusExhausted = 4
+)
+
 // ModAPIKeyRuleConf defines the configuration structure for API key rules module
 type ModAPIKeyRuleConf struct {
-	Version *string                             `json:"version"`
-	Config  map[string][]*ExportAPIKeyRule      `json:"config"`
-	Tokens  map[string]map[string]ExportContent `json:"tokens"`
+	Version    *string                          `json:"version"`
+	Config     map[string][]*TokenRuleFile      `json:"config"`
+	QuotaPlans map[string][]*QuotaPlan          `json:"QuotaPlans"`
+	Tokens     map[string]map[string]*TokenFile `json:"tokens"`
 }
 
-// ExportContent defines the structure for API key information exported to BFE
-type ExportContent struct {
-	Key            string `json:"key"`              // API key value
-	Status         int    `json:"status"`           // Key status (enabled/disabled/expired/exhausted)
-	Name           string `json:"name"`             // API key name
-	UpdatedTime    int64  `json:"update_time"`      // Last update timestamp
-	ExpiredTime    int64  `json:"expired_time"`     // Expiration timestamp
-	UnlimitedQuota bool   `json:"unlimited_quota"`  // Whether quota is unlimited
-	RemainQuota    int64  `json:"remain_quota"`     // Remaining quota
-	Models         string `json:"models,omitempty"` // Allowed models (comma-separated)
-	Subnet         string `json:"subnet,omitempty"` // Allowed subnets (comma-separated)
+type TokenRuleFile struct {
+	Cond   *string
+	Action *ActionFile
 }
 
-// ExportAPIKeyRule defines the structure for API key routing rules exported to BFE
-type ExportAPIKeyRule struct {
-	Cond   *string             `json:"Cond"`   // Routing condition
-	Action *ExportAPIKeyAction `json:"action"` // Routing action
+type ApikeyTag struct {
+	TagName  string //eg entity.type
+	TagValue string //eg entity.name
 }
 
-// ExportAPIKeyAction defines the action for API key routing rules
-type ExportAPIKeyAction struct {
-	CMD *string `json:"cmd"` // Command to execute
+type ActionFile struct {
+	Cmd string
+}
+
+type QuotaPlan struct {
+	Id          string
+	Unlimited   bool
+	PassNoQuota bool
+	RedisKey    string
+	CreateTime  int64
+	ExpiredTime int64 // -1 means never expired
+	Quota       int64 // 配额总量
+	ResetMode   int   // 0 – 非周期性；1 – 周期性的配额包
+}
+
+type TokenFile struct {
+	Key            string  `json:"key"`
+	Enabled        int     `json:"enabled"`
+	Status         int     `json:"status"`
+	Name           string  `json:"name"`
+	UpdateTime     int64   `json:"update_time"`
+	ExpiredTime    int64   `json:"expired_time"` // -1 means never expired
+	UnlimitedQuota bool    `json:"unlimited_quota"`
+	Models         *string `json:"allow_models"` // allowed models
+	BlockModels    *string `json:"block_models"` // blocked models
+	Subnet         *string `json:"subnet"`       // allowed subnet
+	Tags           []ApikeyTag
+	QuotaPlans     []string `json:"quota_plans"` // quotaPlan IDs
+	models         []string
+	blockModels    []string
+	subnet         []*net.IPNet
 }
 
 // UpdateVersion updates the configuration version
@@ -149,110 +176,109 @@ func (rlm *APIKeyRuleManager) buildAIRouteAPIKeyRules(ctx context.Context) (map[
 
 // APIKeyRuleGenerator generates API key rules and token information for BFE configuration
 func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversion_control.ExportData, error) {
-	// Fetch API key rules from storage
+	rlm.quotaPlanCache = make(map[string][]*QuotaPlan)
+
 	product2config, err := rlm.buildAIRouteAPIKeyRules(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert rules to BFE format
-	productName2Config := make(map[string][]*ExportAPIKeyRule)
+	productName2Config := make(map[string][]*TokenRuleFile)
 	for productName, productConfig := range product2config {
 		if len(productConfig.Rules) > 0 {
 			productName2Config[productName] = convertAPIKeyRulesToBfeRules(productConfig.Rules)
 		}
 	}
 
-	// Fetch API key list from storage
 	apiKeyList, err := rlm.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{})
 	if err != nil {
 		return nil, err
 	}
 
-	// Build token configuration for each product
-	apiKey2Config := make(map[string]map[string]ExportContent)
+	apiKey2Config := make(map[string]map[string]*TokenFile)
 	for _, one := range apiKeyList {
-		// Initialize product map if not exists
 		if _, ok := apiKey2Config[*one.ProductName]; !ok {
-			items := make(map[string]ExportContent)
+			items := make(map[string]*TokenFile)
 			apiKey2Config[*one.ProductName] = items
 		}
 
-		// Parse expiration time
-		expiredTime := int64(UnlimitedQuota) // Default to unlimited
-		if one.ExpiredTime != nil && *one.ExpiredTime != "" {
-			t, err := time.ParseInLocation(lib.FormatTimeYYMMDD_HHMMSS, *one.ExpiredTime, time.Local)
-			if err != nil {
-				return nil, fmt.Errorf("parse expired time:%s is error:%s", *one.ExpiredTime, err.Error())
-			}
-			expiredTime = t.Unix()
+		expiredTime := int64(UnlimitedQuota)
+		if one.ExpiredTime != nil {
+			expiredTime = *one.ExpiredTime
 		}
 
-		// Determine key status and quota
-		limit := int64(0)
-		status := mod_ai_token_auth.TokenStatusDisabled
+		status := TokenStatusDisabled
+		var remainQuota int64
 		if one.Enable != nil && *one.Enable {
-			if *one.IsLimit {
-				limit = *one.Limit
-				status = mod_ai_token_auth.TokenStatusEnabled
+			isUnlimited := one.UnlimitedQuota != nil && *one.UnlimitedQuota
+			if !isUnlimited {
+				status = TokenStatusEnabled
 				remainingQuota, err := icluster_conf.GetRemainingQuota(one)
 				if err != nil {
 					return nil, err
 				}
 
 				if remainingQuota != nil {
-					// Check if key has expired
+					remainQuota = *remainingQuota
 					if expiredTime != int64(UnlimitedQuota) && time.Now().Local().Unix() >= expiredTime {
-						status = mod_ai_token_auth.TokenStatusExpired
+						status = TokenStatusExpired
+					} else if remainQuota <= 0 {
+						status = TokenStatusExhausted
 					}
-				} else {
-					status = mod_ai_token_auth.TokenStatusExhausted
 				}
 			} else {
-				status = mod_ai_token_auth.TokenStatusEnabled
+				status = TokenStatusEnabled
 			}
 		}
 
-		// Build export content
 		items := apiKey2Config[*one.ProductName]
-		ec := ExportContent{
-			Key:         *one.Key,
-			Status:      status,
-			Name:        *one.Name,
-			ExpiredTime: expiredTime,
-			UpdatedTime: one.KeyCreateAt.Unix(),
+
+		tokenFile := &TokenFile{
+			Key:            *one.Key,
+			Enabled:        2,
+			Status:         status,
+			Name:           *one.ID,
+			ExpiredTime:    expiredTime,
+			UpdateTime:     one.KeyCreateAt.Unix(),
+			UnlimitedQuota: one.UnlimitedQuota != nil && *one.UnlimitedQuota,
+		}
+		if one.Enable != nil && *one.Enable {
+			tokenFile.Enabled = 1
 		}
 
-		// Set quota information
-		if *one.IsLimit {
-			ec.UnlimitedQuota = false
-			ec.RemainQuota = limit
-		} else {
-			ec.UnlimitedQuota = true
+		if len(one.Models) > 0 {
+			modelsStr := strings.Join(one.Models, ",")
+			if modelsStr == "*" {
+				modelsStr = ""
+			}
+			tokenFile.Models = &modelsStr
 		}
 
-		// Convert allowed models to comma-separated string
-		if len(one.AllowedModels) > 0 {
-			ec.Models = strings.Join(one.AllowedModels, ",")
+		if len(one.Subnet) > 0 {
+			subnetStr := strings.Join(one.Subnet, ",")
+			if subnetStr == "*" {
+				subnetStr = ""
+			}
+			tokenFile.Subnet = &subnetStr
 		}
 
-		// Convert allowed CIDR to comma-separated string
-		if len(one.AllowedCIDR) > 0 {
-			ec.Subnet = strings.Join(one.AllowedCIDR, ",")
+		quotaPlanIDs, tags, err := rlm.fetchQuotaPlansWithEntityHierarchy(ctx, one, *one.ProductName)
+		if err != nil {
+			return nil, fmt.Errorf("fetch quota plans error: %s", err.Error())
 		}
+		tokenFile.QuotaPlans = quotaPlanIDs
+		tokenFile.Tags = tags
 
-		// Add to configuration
-		items[*one.Key] = ec
+		items[*one.Key] = tokenFile
 		apiKey2Config[*one.ProductName] = items
 	}
 
-	// Build final configuration
 	conf := &ModAPIKeyRuleConf{
-		Config: productName2Config,
-		Tokens: apiKey2Config,
+		Config:     productName2Config,
+		QuotaPlans: rlm.quotaPlanCache,
+		Tokens:     apiKey2Config,
 	}
 
-	// Set version to zero (will be updated by version control system)
 	conf.UpdateVersion(iversion_control.ZeroVersion)
 
 	return &iversion_control.ExportData{
@@ -262,21 +288,145 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 }
 
 // convertAPIKeyRulesToBfeRules converts internal API key rules to BFE format
-func convertAPIKeyRulesToBfeRules(oldRules []*APIKeyRule) []*ExportAPIKeyRule {
-	exportRules := make([]*ExportAPIKeyRule, len(oldRules))
+func convertAPIKeyRulesToBfeRules(oldRules []*APIKeyRule) []*TokenRuleFile {
+	exportRules := make([]*TokenRuleFile, len(oldRules))
 	for i, rule := range oldRules {
-		newRule := &ExportAPIKeyRule{
+		newRule := &TokenRuleFile{
 			Cond: &rule.Cond,
 		}
 
-		// Include action if present
 		if len(rule.Actions) > 0 {
-			newRule.Action = &ExportAPIKeyAction{
-				CMD: &rule.Actions[0].Cmd,
+			newRule.Action = &ActionFile{
+				Cmd: rule.Actions[0].Cmd,
 			}
 		}
 
 		exportRules[i] = newRule
 	}
 	return exportRules
+}
+
+func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Context, apiKey *icluster_conf.APIKeyParam, productName string) ([]string, []ApikeyTag, error) {
+	quotaPlanIDs := make([]string, 0)
+	tags := make([]ApikeyTag, 0)
+
+	if apiKey.QuotaPlanID != nil && rlm.quotaPlanStorager != nil {
+		quotaPlan, err := rlm.quotaPlanStorager.FetchQuotaPlan(ctx, &quota.QuotaPlanFilter{ID: apiKey.QuotaPlanID})
+		if err != nil {
+			return nil, nil, err
+		}
+		if quotaPlan != nil {
+			qp := convertQuotaPlanToExport(quotaPlan, *apiKey.Key, *apiKey.Key)
+			if !rlm.isQuotaPlanCached(productName, qp.Id) {
+				if _, ok := rlm.quotaPlanCache[productName]; !ok {
+					rlm.quotaPlanCache[productName] = make([]*QuotaPlan, 0)
+				}
+				rlm.quotaPlanCache[productName] = append(rlm.quotaPlanCache[productName], qp)
+			}
+			quotaPlanIDs = append(quotaPlanIDs, qp.Id)
+		}
+	}
+
+	if apiKey.EntityID != nil && *apiKey.EntityID != "" && rlm.entityStorager != nil {
+		entity, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: apiKey.EntityID})
+		if err != nil {
+			return nil, nil, err
+		}
+		if entity != nil {
+			entityQuotaPlanIDs, entityTags, err := rlm.fetchEntityQuotaPlanHierarchy(ctx, entity, productName)
+			if err != nil {
+				return nil, nil, err
+			}
+			quotaPlanIDs = append(quotaPlanIDs, entityQuotaPlanIDs...)
+			tags = append(tags, entityTags...)
+		}
+	}
+
+	return quotaPlanIDs, tags, nil
+}
+
+func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context, entity *quota.EntityParam, productName string) ([]string, []ApikeyTag, error) {
+	quotaPlanIDs := make([]string, 0)
+	tags := make([]ApikeyTag, 0)
+
+	if entity.EntityID != nil && entity.Type != nil && entity.Name != nil {
+		tags = append(tags, ApikeyTag{
+			TagName:  *entity.Type,
+			TagValue: *entity.Name,
+		})
+	}
+
+	if entity.QuotaPlanID != nil && rlm.quotaPlanStorager != nil {
+		quotaPlan, err := rlm.quotaPlanStorager.FetchQuotaPlan(ctx, &quota.QuotaPlanFilter{ID: entity.QuotaPlanID})
+		if err != nil {
+			return nil, nil, err
+		}
+		if quotaPlan != nil && entity.EntityID != nil {
+			qp := convertQuotaPlanToExport(quotaPlan, *entity.EntityID, *entity.EntityID)
+			if !rlm.isQuotaPlanCached(productName, qp.Id) {
+				if _, ok := rlm.quotaPlanCache[productName]; !ok {
+					rlm.quotaPlanCache[productName] = make([]*QuotaPlan, 0)
+				}
+				rlm.quotaPlanCache[productName] = append(rlm.quotaPlanCache[productName], qp)
+			}
+			quotaPlanIDs = append(quotaPlanIDs, qp.Id)
+		}
+	}
+
+	if entity.ParentID != nil && *entity.ParentID != "" && rlm.entityStorager != nil {
+		parentEntity, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: entity.ParentID})
+		if err != nil {
+			return nil, nil, err
+		}
+		if parentEntity != nil {
+			parentQuotaPlanIDs, parentTags, err := rlm.fetchEntityQuotaPlanHierarchy(ctx, parentEntity, productName)
+			if err != nil {
+				return nil, nil, err
+			}
+			quotaPlanIDs = append(quotaPlanIDs, parentQuotaPlanIDs...)
+			tags = append(tags, parentTags...)
+		}
+	}
+
+	return quotaPlanIDs, tags, nil
+}
+
+func (rlm *APIKeyRuleManager) isQuotaPlanCached(productName, id string) bool {
+	qpList, ok := rlm.quotaPlanCache[productName]
+	if !ok {
+		return false
+	}
+	for _, qp := range qpList {
+		if qp.Id == id {
+			return true
+		}
+	}
+	return false
+}
+
+func convertQuotaPlanToExport(qp *quota.QuotaPlanParam, id string, redisKeyID string) *QuotaPlan {
+	result := &QuotaPlan{
+		Id:          id,
+		RedisKey:    fmt.Sprintf("QUOTA_%s", redisKeyID),
+		Unlimited:   qp.Unlimited != nil && *qp.Unlimited,
+		PassNoQuota: qp.PassWhenNoEnoughQuota != nil && *qp.PassWhenNoEnoughQuota,
+		ExpiredTime: -1,
+	}
+	if qp.Quota != nil {
+		result.Quota = *qp.Quota
+	}
+	if qp.ResetPeriod != nil {
+		if *qp.ResetPeriod == "weekly" || *qp.ResetPeriod == "monthly" {
+			result.ResetMode = 1
+		} else {
+			result.ResetMode = 0
+		}
+	} else {
+		result.ResetMode = 0
+	}
+	if qp.CreateTime != nil {
+		result.CreateTime = *qp.CreateTime
+	}
+
+	return result
 }

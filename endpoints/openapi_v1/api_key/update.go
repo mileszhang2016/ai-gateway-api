@@ -30,7 +30,7 @@ import (
 var _ xreq.Handler = APIKeyUpdateAction
 
 var APIKeyUpdateRoute = &xreq.Endpoint{
-	Path:       "/products/{product_name}/api-keys/{api_key_name}",
+	Path:       "/api-keys/{id}",
 	Method:     http.MethodPatch,
 	Handler:    xreq.Convert(APIKeyUpdateAction),
 	Authorizer: iauth.FA(iauth.FeatureAPIKey, iauth.ActionUpdate),
@@ -49,37 +49,50 @@ func APIKeyUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	products, err := container.ProductManager.FetchProducts(req.Context(), &ibasic.ProductFilter{
-		Name: oneReq.ProductName,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(products) != 1 {
-		return nil, xerror.WrapParamErrorWithMsg("Invalid Product")
-	}
+	param.ID = lib.PString(*oneReq.ID)
 
-	param.Name = lib.PString(*oneReq.APIKeyName)
-
-	return APIKeyUpdateProcess(req.Context(), param, products[0])
+	return APIKeyUpdateProcess(req.Context(), param, defaultProduct())
 }
 
-func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, product *ibasic.Product) (*ibasic.Product, error) {
+func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, product *ibasic.Product) (*icluster_conf.APIKeyParam, error) {
 	if err := checkUpdateAPIKey(param, product.Name); err != nil {
 		return nil, xerror.WrapParamError(err)
 	}
 
-	return nil, container.APIKeyManager.UpdateAPIKey(ctx, &icluster_conf.APIKeyFilter{
-		Name:        param.Name,
+	existing, err := container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+		ID:          param.ID,
+		ProductName: &product.Name,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return nil, xerror.WrapRecordNotExist("API-Key")
+	}
+
+	err = container.APIKeyManager.UpdateAPIKey(ctx, &icluster_conf.APIKeyFilter{
+		ID:          param.ID,
 		ProductName: &product.Name,
 	}, &icluster_conf.APIKeyParam{
-		Enable:        param.Enable,
-		Key:           param.Key,
-		IsLimit:       param.IsLimit,
-		Limit:         param.Limit,
-		ExpiredTime:   param.ExpiredTime,
-		AllowedModels: param.AllowedModels,
-		AllowedCIDR:   param.AllowedCIDR,
-		ProductName:   &product.Name,
+		Enable:          param.Enable,
+		Key:             param.Key,
+		Description:     param.Description,
+		UnlimitedQuota:  param.UnlimitedQuota,
+		ExpiredTime:     param.ExpiredTime,
+		Models:          param.Models,
+		Subnet:          param.Subnet,
+		EntityID:        param.EntityID,
+		ProductName:     &product.Name,
+		QuotaPlan:       param.QuotaPlan,
+		RateLimitPolicy: param.RateLimitPolicy,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+		ID:          param.ID,
+		ProductName: &product.Name,
 	})
 }

@@ -18,9 +18,12 @@ import "github.com/yf-networks/ai-gateway-api/lib/xreq"
 
 var Endpoints = []*xreq.Endpoint{
 	APIKeyCreateRoute,
+	APIKeyFullUpdateRoute,
 	APIKeyUpdateRoute,
 	OneRoute,
 	DeleteRoute,
 	ListRoute,
 	GenerateTokenRoute,
+	ResetQuotaRoute,
+	GetQuotaPlanRoute,
 }
