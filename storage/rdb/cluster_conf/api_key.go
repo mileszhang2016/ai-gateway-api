@@ -44,38 +44,39 @@ func (rpps *APIKeyStorager) CreateAPIKey(ctx context.Context,
 
 	data := newAPIKeyDataToParam(param)
 
-	allowedModels := make([]string, 0)
-	if len(param.AllowedModels) > 0 {
-		allowedModels = param.AllowedModels
+	models := []string{"*"}
+	if len(param.Models) > 0 {
+		models = param.Models
 	}
-	allowedModelsValue, _ := json.Marshal(allowedModels)
-	data.AllowedModels = lib.PString(string(allowedModelsValue))
+	modelsValue, _ := json.Marshal(models)
+	data.AllowedModels = lib.PString(string(modelsValue))
 
 	data.CreatedAt = lib.PTimeNow()
 
-	allowedSubnets := make([]string, 0)
-	if len(param.AllowedCIDR) > 0 {
-		allowedSubnets = param.AllowedCIDR
+	subnet := []string{"*"}
+	if len(param.Subnet) > 0 {
+		subnet = param.Subnet
 	}
-	allowedSubnetsValue, _ := json.Marshal(allowedSubnets)
-	data.AllowedCIDR = lib.PString(string(allowedSubnetsValue))
+	subnetValue, _ := json.Marshal(subnet)
+	data.Subnet = lib.PString(string(subnetValue))
 
 	return dao.TAPIKeyCreate(dbCtx, data)
 }
 
 func newAPIKeyDataToParam(param *icluster_conf.APIKeyParam) *dao.TAPIKeyParam {
-	data := &dao.TAPIKeyParam{
-		Name:        param.Name,
-		Enable:      param.Enable,
-		Key:         param.Key,
-		IsLimit:     param.IsLimit,
-		Limit:       param.Limit,
-		ExpiredTime: param.ExpiredTime,
-		ProductName: param.ProductName,
-		UpdatedAt:   lib.PTimeNow(),
+	return &dao.TAPIKeyParam{
+		ID:                param.ID,
+		Enable:            param.Enable,
+		Key:               param.Key,
+		Description:       param.Description,
+		UnlimitedQuota:    param.UnlimitedQuota,
+		ExpiredTime:       param.ExpiredTime,
+		ProductName:       param.ProductName,
+		EntityID:          param.EntityID,
+		QuotaPlanID:       param.QuotaPlanID,
+		RateLimitPolicyID: param.RateLimitPolicyID,
+		UpdatedAt:         lib.PTimeNow(),
 	}
-
-	return data
 }
 
 func newAPIKeyFilterToParam(filter *icluster_conf.APIKeyFilter) *dao.TAPIKeyParam {
@@ -85,8 +86,9 @@ func newAPIKeyFilterToParam(filter *icluster_conf.APIKeyFilter) *dao.TAPIKeyPara
 
 	return &dao.TAPIKeyParam{
 		ProductName: filter.ProductName,
-		Name:        filter.Name,
 		ID:          filter.ID,
+		InnerID:     filter.InnerID,
+		QuotaPlanID: filter.QuotaPlanID,
 	}
 }
 
@@ -111,29 +113,42 @@ func (rpps *APIKeyStorager) FetchAPIKeyList(ctx context.Context,
 }
 
 func apiKeyParamToData(one *dao.TAPIKey) *icluster_conf.APIKeyParam {
-	allowedModels := make([]string, 0)
+	models := []string{"*"}
 	if one.AllowedModels != "" {
-		json.Unmarshal([]byte(one.AllowedModels), &allowedModels)
+		json.Unmarshal([]byte(one.AllowedModels), &models)
+	}
+	if len(models) == 0 {
+		models = []string{"*"}
 	}
 
-	allowedSubnets := make([]string, 0)
-	if one.AllowedCIDR != "" {
-		json.Unmarshal([]byte(one.AllowedCIDR), &allowedSubnets)
+	subnet := []string{"*"}
+	if one.Subnet != "" {
+		json.Unmarshal([]byte(one.Subnet), &subnet)
 	}
+	if len(subnet) == 0 {
+		subnet = []string{"*"}
+	}
+
+	createTime := one.CreatedAt.Unix()
+	updateTime := one.UpdatedAt.Unix()
 
 	return &icluster_conf.APIKeyParam{
-		ID:            &one.ID,
-		Name:          &one.Name,
-		Enable:        &one.Enable,
-		Key:           &one.Key,
-		IsLimit:       &one.IsLimit,
-		Limit:         &one.Limit,
-		ExpiredTime:   &one.ExpiredTime,
-		AllowedModels: allowedModels,
-		AllowedCIDR:   allowedSubnets,
-		ProductName:   &one.ProductName,
-		KeyCreateAt:   &one.CreatedAt,
-		UpdatedTime:   lib.PString(one.CreatedAt.Format(lib.FormatTimeYYMMDD_HHMMSS)),
+		InnerID:           &one.InnerID,
+		ID:                &one.ID,
+		Enable:            &one.Enable,
+		Key:               &one.Key,
+		Description:       &one.Description,
+		UnlimitedQuota:    &one.UnlimitedQuota,
+		ExpiredTime:       &one.ExpiredTime,
+		Models:            models,
+		Subnet:            subnet,
+		ProductName:       &one.ProductName,
+		KeyCreateAt:       &one.CreatedAt,
+		CreateTime:        &createTime,
+		UpdatedTime:       &updateTime,
+		EntityID:          one.EntityID,
+		QuotaPlanID:       one.QuotaPlanID,
+		RateLimitPolicyID: one.RateLimitPolicyID,
 	}
 }
 
@@ -156,19 +171,19 @@ func (rpps *APIKeyStorager) UpdateAPIKey(ctx context.Context, filter *icluster_c
 
 	data := newAPIKeyDataToParam(param)
 
-	// When limit is enabled with a positive quota, reset CreatedAt (AI-models update time).
-	if data.Enable != nil && *data.Enable {
-		if data.IsLimit != nil && *data.IsLimit && data.Limit != nil && *data.Limit > 0 {
-			data.CreatedAt = lib.PTimeNow()
-		}
+	models := []string{"*"}
+	if len(param.Models) > 0 {
+		models = param.Models
 	}
+	modelsValue, _ := json.Marshal(models)
+	data.AllowedModels = lib.PString(string(modelsValue))
 
-	allowedSubnets := make([]string, 0)
-	if len(param.AllowedCIDR) > 0 {
-		allowedSubnets = param.AllowedCIDR
+	subnet := []string{"*"}
+	if len(param.Subnet) > 0 {
+		subnet = param.Subnet
 	}
-	allowedSubnetsValue, _ := json.Marshal(allowedSubnets)
-	data.AllowedCIDR = lib.PString(string(allowedSubnetsValue))
+	subnetValue, _ := json.Marshal(subnet)
+	data.Subnet = lib.PString(string(subnetValue))
 
 	return dao.TAPIKeyUpdate(dbCtx, data, newAPIKeyFilterToParam(filter))
 }

@@ -16,55 +16,174 @@ package api_key
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
+	"github.com/yf-networks/ai-gateway-api/model/quota"
+	"github.com/yf-networks/ai-gateway-api/model/shared"
+	"github.com/yf-networks/ai-gateway-api/stateful"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
+
+const defaultProductName = "AI_product"
+
+func defaultProduct() *ibasic.Product {
+	return &ibasic.Product{Name: defaultProductName}
+}
 
 var _ xreq.Handler = APIKeyCreateAction
 
 var APIKeyCreateRoute = &xreq.Endpoint{
-	Path:       "/products/{product_name}/api-keys",
+	Path:       "/api-keys",
 	Method:     http.MethodPost,
 	Handler:    xreq.Convert(APIKeyCreateAction),
 	Authorizer: iauth.FA(iauth.FeatureAPIKey, iauth.ActionCreate),
 }
 
 func APIKeyCreateAction(req *http.Request) (interface{}, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
-	if err != nil {
-		return nil, err
-	}
-
 	param := &icluster_conf.APIKeyParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
 	}
 
-	return APIKeyCreateProcess(req.Context(), param, product)
+	return APIKeyCreateProcess(req.Context(), param, defaultProduct())
 }
 
-func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, product *ibasic.Product) (*ibasic.Product, error) {
+func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, product *ibasic.Product) (*icluster_conf.APIKeyParam, error) {
+	if param.Key == nil || *param.Key == "" {
+		generatedKey, err := generateAPIKeyValue(product.Name)
+		if err != nil {
+			return nil, err
+		}
+		param.Key = &generatedKey
+	}
+
 	if err := checkCreateAPIKey(param, product.Name); err != nil {
 		return nil, xerror.WrapParamError(err)
 	}
 
-	err := container.APIKeyManager.CreateAPIKey(ctx, &icluster_conf.APIKeyParam{
-		Name:          param.Name,
-		Enable:        param.Enable,
-		Key:           param.Key,
-		IsLimit:       param.IsLimit,
-		Limit:         param.Limit,
-		ExpiredTime:   param.ExpiredTime,
-		AllowedModels: param.AllowedModels,
-		AllowedCIDR:   param.AllowedCIDR,
-		ProductName:   &product.Name,
+	if param.EntityID != nil && *param.EntityID != "" {
+		entity, err := container.EntityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: param.EntityID})
+		if err != nil {
+			return nil, err
+		}
+		if entity == nil {
+			return nil, xerror.WrapRecordNotExist("Entity")
+		}
+	}
+
+	if param.Enable == nil {
+		enabled := true
+		param.Enable = &enabled
+	}
+
+	apiKeyID, err := generateAPIKeyID(ctx, product.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	if param.QuotaPlan == nil {
+		param.QuotaPlan = &shared.QuotaPlanParam{
+			Unlimited:             lib.PBool(true),
+			PassWhenNoEnoughQuota: lib.PBool(false),
+		}
+	}
+
+	if param.RateLimitPolicy == nil {
+		param.RateLimitPolicy = &shared.RateLimitPolicyParam{
+			Enabled: lib.PBool(false),
+			Rules: &shared.RateLimitRules{
+				TpmConfigs:     []shared.TPMConfig{},
+				RpmConfigs:     []shared.RPMConfig{},
+				MaxConcurrency: lib.PInt(0),
+			},
+		}
+	}
+
+	err = container.APIKeyManager.CreateAPIKey(ctx, &icluster_conf.APIKeyParam{
+		ID:              lib.PString(apiKeyID),
+		Enable:          param.Enable,
+		Key:             param.Key,
+		Description:     param.Description,
+		UnlimitedQuota:  param.UnlimitedQuota,
+		ExpiredTime:     param.ExpiredTime,
+		Models:          param.Models,
+		Subnet:          param.Subnet,
+		EntityID:        param.EntityID,
+		ProductName:     &product.Name,
+		QuotaPlan:       param.QuotaPlan,
+		RateLimitPolicy: param.RateLimitPolicy,
 	})
 
-	return nil, err
+	if err == nil && param.Key != nil && param.QuotaPlan != nil &&
+		(param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
+		param.QuotaPlan.Quota != nil {
+		redisKey := stateful.AIUsedQuotaKey(*param.Key)
+		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
+		if errGet != nil {
+			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, *param.QuotaPlan.Quota)
+		} else {
+			delta := *param.QuotaPlan.Quota - currentValue
+			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+		ID:          &apiKeyID,
+		ProductName: &product.Name,
+	})
+}
+
+// generateAPIKeyID generates a unique API-Key ID with format "api-key-{sequence}"
+func generateAPIKeyID(ctx context.Context, productName string) (string, error) {
+	// Get all API keys to find the max sequence number
+	list, err := container.APIKeyManager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{
+		ProductName: &productName,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	maxSeq := 0
+	for _, apiKey := range list {
+		if apiKey.ID != nil {
+			var seq int
+			if _, err := fmt.Sscanf(*apiKey.ID, "api-key-%d", &seq); err == nil {
+				if seq > maxSeq {
+					maxSeq = seq
+				}
+			}
+		}
+	}
+
+	return fmt.Sprintf("api-key-%d", maxSeq+1), nil
+}
+
+// generateAPIKeyValue generates a random API-Key value with format "{productName}-{randomChars}"
+// randomChars consists of uppercase letters, lowercase letters, and numbers
+func generateAPIKeyValue(productName string) (string, error) {
+	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	const keyLength = 24
+
+	b := make([]byte, keyLength)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+
+	for i := range b {
+		b[i] = charset[int(b[i])%len(charset)]
+	}
+
+	return fmt.Sprintf("%s-%s", productName, string(b)), nil
 }

@@ -17,34 +17,20 @@ package api_key
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
-	"time"
 
-	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
-)
-
-const (
-	maxLimit   = 100000000 // Maximum allowed quota limit
-	maxNameLen = 255       // Maximum length for API key name
+	"github.com/yf-networks/ai-gateway-api/model/shared"
 )
 
 // checkCreateAPIKey validates parameters for creating a new API key
 func checkCreateAPIKey(param *icluster_conf.APIKeyParam, productName string) error {
-	if err := checkName(param.Name); err != nil {
-		return err
+	if param.Description == nil || *param.Description == "" {
+		return xerror.WrapParamErrorWithMsg("description is required")
 	}
 
-	if err := checkAllowSubnet(param.AllowedCIDR); err != nil {
-		return err
-	}
-
-	if param.IsLimit == nil {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set is_limit"))
-	}
-	if err := checkLimit(param.Limit, param.IsLimit); err != nil {
+	if err := checkAllowSubnet(param.Subnet); err != nil {
 		return err
 	}
 
@@ -56,39 +42,30 @@ func checkCreateAPIKey(param *icluster_conf.APIKeyParam, productName string) err
 		return err
 	}
 
-	return nil
-}
-
-// checkName validates the API key name
-func checkName(name *string) error {
-	if name == nil || *name == "" {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set name"))
-	}
-
-	if len(*name) > maxNameLen {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("name must between 0 and %s", strconv.Itoa(maxNameLen)))
+	if err := checkRateLimitPolicy(param.RateLimitPolicy); err != nil {
+		return err
 	}
 
 	return nil
 }
 
 // checkExpiredTime validates the expiration time format
-func checkExpiredTime(expiredTime *string) error {
-	if expiredTime == nil || *expiredTime == "" {
+func checkExpiredTime(expiredTime *int64) error {
+	if expiredTime == nil {
 		return nil
 	}
 
-	_, err := time.Parse(lib.FormatTimeYYMMDD_HHMMSS, *expiredTime)
-	return err
+	// -1 表示永不过期，其他值必须是有效的 Unix 时间戳
+	if *expiredTime < -1 {
+		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Invalid expired_time: %d", *expiredTime))
+	}
+
+	return nil
 }
 
 // checkUpdateAPIKey validates parameters for updating an existing API key
 func checkUpdateAPIKey(param *icluster_conf.APIKeyParam, productName string) error {
-	if err := checkAllowSubnet(param.AllowedCIDR); err != nil {
-		return err
-	}
-
-	if err := checkLimit(param.Limit, param.IsLimit); err != nil {
+	if err := checkAllowSubnet(param.Subnet); err != nil {
 		return err
 	}
 
@@ -103,6 +80,10 @@ func checkUpdateAPIKey(param *icluster_conf.APIKeyParam, productName string) err
 	}
 
 	if err := checkExpiredTime(param.ExpiredTime); err != nil {
+		return err
+	}
+
+	if err := checkRateLimitPolicy(param.RateLimitPolicy); err != nil {
 		return err
 	}
 
@@ -145,31 +126,13 @@ func isValidChar(c rune) bool {
 		(c == '_') // Underscore (_)
 }
 
-// checkLimit validates the quota limit parameters
-func checkLimit(limit *int64, isLimit *bool) error {
-	if isLimit == nil || !*isLimit {
-		// If not limiting, limit should be nil
-		if limit == nil {
-			return nil
-		}
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Invalid total_quota"))
-	}
-
-	// If limiting, limit must be set and within valid range
-	if limit == nil {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set total_quota"))
-	}
-
-	if *limit >= 0 && *limit <= maxLimit {
-		return nil
-	}
-
-	return xerror.WrapParamErrorWithMsg(fmt.Sprintf("total_quota must be between 0 and %d", maxLimit))
-}
-
 // checkAllowSubnet validates CIDR subnet format
 func checkAllowSubnet(cidrs []string) error {
 	for _, cidr := range cidrs {
+		if cidr == "*" {
+			return nil
+		}
+
 		arr := strings.Split(cidr, "/")
 		if len(arr) != 2 {
 			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("invalid subnet format:%s", cidr))
@@ -187,4 +150,45 @@ func checkAllowSubnet(cidrs []string) error {
 	}
 
 	return nil
+}
+
+func checkRateLimitPolicy(policy *shared.RateLimitPolicyParam) error {
+	if policy == nil {
+		return nil
+	}
+
+	if policy.Enabled != nil && *policy.Enabled {
+		if policy.Rules == nil || (len(policy.Rules.TpmConfigs) == 0 && len(policy.Rules.RpmConfigs) == 0) {
+			return xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, rules.tpm or rules.rpm must be set")
+		}
+	}
+
+	if policy.Rules != nil {
+		for _, tpm := range policy.Rules.TpmConfigs {
+			if tpm.WindowMinutes < 1 || tpm.WindowMinutes > 360 {
+				return xerror.WrapParamErrorWithMsg(fmt.Sprintf("tpm window_minutes must be between 1 and 360, got %d", tpm.WindowMinutes))
+			}
+
+			if tpm.StepMinutes < 1 || tpm.StepMinutes > 360 {
+				return xerror.WrapParamErrorWithMsg(fmt.Sprintf("tpm step_minutes must be between 1 and 360, got %d", tpm.StepMinutes))
+			}
+
+			if tpm.StepMinutes > tpm.WindowMinutes {
+				return xerror.WrapParamErrorWithMsg(fmt.Sprintf("tpm step_minutes (%d) must be <= window_minutes (%d)", tpm.StepMinutes, tpm.WindowMinutes))
+			}
+		}
+
+		for _, rpm := range policy.Rules.RpmConfigs {
+			if rpm.WindowMinutes < 1 || rpm.WindowMinutes > 360 {
+				return xerror.WrapParamErrorWithMsg(fmt.Sprintf("rpm window_minutes must be between 1 and 360, got %d", rpm.WindowMinutes))
+			}
+		}
+	}
+
+	return nil
+}
+
+// checkFullUpdateAPIKey validates parameters for full updating an existing API key
+func checkFullUpdateAPIKey(param *icluster_conf.APIKeyParam, productName string) error {
+	return checkUpdateAPIKey(param, productName)
 }

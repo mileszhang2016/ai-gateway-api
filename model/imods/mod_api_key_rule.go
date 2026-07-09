@@ -19,6 +19,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/model/itxn"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
+	"github.com/yf-networks/ai-gateway-api/model/quota"
 )
 
 type APIKeyRuleManager struct {
@@ -26,6 +27,9 @@ type APIKeyRuleManager struct {
 	versionControlManager *iversion_control.VersionControlManager
 	apiKeyStorager        icluster_conf.APIKeyStorager
 	aiRouteStorager       iai_route.AIRouteRuleStorager
+	quotaPlanStorager     quota.QuotaPlanStorager
+	entityStorager        quota.EntityStorager
+	quotaPlanCache        map[string][]*QuotaPlan
 }
 
 const (
@@ -61,11 +65,15 @@ const (
 func NewAPIKeyRuleManager(txn itxn.TxnStorager,
 	versionControlManager *iversion_control.VersionControlManager,
 	apiKeyStorager icluster_conf.APIKeyStorager,
-	aiRouteStorager iai_route.AIRouteRuleStorager) *APIKeyRuleManager {
+	aiRouteStorager iai_route.AIRouteRuleStorager,
+	quotaPlanStorager quota.QuotaPlanStorager,
+	entityStorager quota.EntityStorager) *APIKeyRuleManager {
 	return &APIKeyRuleManager{
 		txn:                   txn,
 		versionControlManager: versionControlManager,
 		apiKeyStorager:        apiKeyStorager,
 		aiRouteStorager:       aiRouteStorager,
+		quotaPlanStorager:     quotaPlanStorager,
+		entityStorager:        entityStorager,
 	}
 }

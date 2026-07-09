@@ -187,8 +187,8 @@ func Render(w http.ResponseWriter, req *http.Request, res *Result) {
 		res.Code = http.StatusOK
 	case 400 <= res.Code && res.Code < 500:
 	case res.Code == 555:
-	// case 300 <= res.Code && res.Code < 400:
-	// case 500 <= res.Code && res.Code < 600:
+	case 300 <= res.Code && res.Code < 400:
+	case 500 <= res.Code && res.Code < 600:
 	// dont change code value
 	default:
 		res.Code = http.StatusInternalServerError

@@ -76,6 +76,12 @@ func Resolve(err error) *ResolveResult {
 	case etExistedData:
 		rr.Type = "Record Existed"
 		rr.ErrNo = 555
+	case etDuplicateData:
+		rr.Type = "Duplicate Data"
+		rr.ErrNo = 556
+	case etConflict:
+		rr.Type = "Conflict"
+		rr.ErrNo = 409
 	case etDependentUnReady:
 		rr.Type = "Dependent Not Ready"
 		rr.Msg = err.Error()

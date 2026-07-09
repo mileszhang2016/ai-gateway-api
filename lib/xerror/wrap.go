@@ -30,7 +30,9 @@ const (
 	etNullData         = "Model.NullData"
 	etDependentUnReady = "Model.DependentUnReady"
 	etExistedData      = "Model.ExistedData"
+	etDuplicateData    = "Model.DuplicateData"
 	etDao              = "DAO"
+	etConflict         = "Model.Conflict"
 
 	etAuthenticateFail = "Authentication.Fail"
 	etAuthorizateFail  = "Authorization.Fail"
@@ -119,6 +121,20 @@ func WrapRecordExisted(topic ...string) error {
 	return errors.Wrap(fmt.Errorf(msg), etExistedData)
 }
 
+// WrapDuplicateData Duplicate Data
+func WrapDuplicateData(topic ...string) error {
+	msg := "Duplicate Data"
+	if len(topic) == 1 {
+		msg = topic[0] + " " + msg
+	}
+	return errors.Wrap(fmt.Errorf(msg), etDuplicateData)
+}
+
+// WrapDuplicateDataErrorWithMsg Just Service layout invoke
+func WrapDuplicateDataErrorWithMsg(msg string, args ...interface{}) error {
+	return errors.Wrap(fmt.Errorf(msg, args...), etDuplicateData)
+}
+
 // WrapDirtyDataError Just Service layout invoke
 func WrapDirtyDataError(err error) error {
 	if err == nil {
@@ -133,4 +149,9 @@ func WrapDirtyDataError(err error) error {
 // WrapDirtyDataErrorWithMsg Just Service layout invoke
 func WrapDirtyDataErrorWithMsg(msg string, args ...interface{}) error {
 	return errors.Wrap(fmt.Errorf(msg, args...), etDirtyData)
+}
+
+// WrapConflictErrorWithMsg Just Service layout invoke
+func WrapConflictErrorWithMsg(msg string, args ...interface{}) error {
+	return errors.Wrap(fmt.Errorf(msg, args...), etConflict)
 }

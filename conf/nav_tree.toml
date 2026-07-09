@@ -29,7 +29,8 @@ id = "consumer.admin.list"
 text = "ConsumerManage"
 allowed_roles = ["admin"]
 children = [
-    { id = "APIKey.list", text = "APIKeyManage", allowed_roles = ["admin"] }
+    { id = "APIKey.list", text = "APIKeyManage", allowed_roles = ["admin"] },
+    { id = "Entity.list", text = "EntityManage", allowed_roles = ["admin"] }
 ]
 
 [[children]]
