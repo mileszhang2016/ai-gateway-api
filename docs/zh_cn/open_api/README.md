@@ -1,127 +1,102 @@
-# 整体说明
+# OpenAPI 接口文档
 
-## API规范
+欢迎使用瑛菲AI网关的 OpenAPI 接口文档。本文档提供了所有对外暴露的 RESTful API 的详细说明。
 
-一个典型API包括如下部分：
-- 接口名：一句话描述接口名
-- 基本信息
-- 输入参数
-- 返回参数
+---
 
-### 基本信息
+## 一、规范说明
 
-**URL格式说明**
-- API遵守一般RESTful风格，API的URL格式：
-    - http://ai_gateway_api:port/open-api/{ver}/{endpoint}?{arg=value}
-    - 例子：http://127.0.0.1:8086/open-api/v1/products
-- API URL各部分说明
-    - ai_gateway_api: 服务器地址，一般是域名或者IP地址
-    - port：API服务的端口号
-    - ver：当前API的版本
-    - endpoint：REST风格的资源路径
-    - arg：参数名
-    - value：参数值
+API 规范、鉴权机制等通用说明请参考 [norms.md](norms.md)。
 
-若无特殊说明，后续文档的具体API只描述Endopoint.
+---
 
-**method说明**
+## 二、接口文档列表
 
-若无特殊说明，method 遵循如下约定：
-- GET：读取
-- POST: 创建
-- PATCH：更新
-- DELETE：删除
+### 2.1 全局管理
 
-举例：
+| 文档 | 说明 |
+|------|------|
+| [auth.md](auth.md) | 用户和鉴权机制说明 |
 
-| 项目  | 值  | 说明 | 
-| - | - | - |
-| 含义	| 创建产品线 | |
-| 端点 | /products | |
-| 版本 | v1 |  |
-| method | POST | - |
+### 2.2 配额控制与限流
 
-### 请求参数
+| 文档 | 说明 |
+|------|------|
+| [api_key.md](api_key.md) | API-Key 管理（创建、查询、更新、删除、配额计划、限流策略） |
+| [entity_type.md](entity_type.md) | Entity-Type 管理（创建、查询、更新、删除Entity类型定义） |
+| [entity.md](entity.md) | Entity 管理（创建、查询、更新、删除实体，支持层级结构和配额配置） |
 
-请求参数分为：
+### 2.3 产品线管理
 
-- URI参数
-- Query参数
-- Body内容
+| 文档 | 说明 |
+|------|------|
+| [products.md](products.md) | 产品线管理（创建、查询、更新、删除产品线） |
 
-举例：
+### 2.4 BFE 集群管理
 
-| 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
-| - | -  | - | - | - | 
-| phone_list | []string | 联系人列表 |  Y | |
-| HealthCheck | object | 健康检查配置 |  Y | |
-| HealthCheck.Interval | int64 | 健康检查间隔 | Y | - |
+| 文档 | 说明 |
+|------|------|
+| [bfe_cluster.md](bfe_cluster.md) | BFE 集群管理 |
+| [clusters.md](clusters.md) | 集群管理 |
+| [subclusters.md](subclusters.md) | 子集群管理 |
 
-HTTP BODY中参数示例
+### 2.5 实例池管理
+
+| 文档 | 说明 |
+|------|------|
+| [bfe_pools.md](bfe_pools.md) | BFE 实例池管理 |
+| [product_pools.md](product_pools.md) | 产品线实例池管理 |
+
+### 2.6 路由规则
+
+| 文档 | 说明 |
+|------|------|
+| [ai_route_rule.md](ai_route_rule.md) | AI 路由规则管理 |
+| [forward_rule.md](forward_rule.md) | 转发规则管理 |
+
+### 2.7 流量管理
+
+| 文档 | 说明 |
+|------|------|
+| [traffic.md](traffic.md) | 流量管理 |
+
+### 2.8 证书与域名
+
+| 文档 | 说明 |
+|------|------|
+| [certificate.md](certificate.md) | 证书管理 |
+| [domains.md](domains.md) | 域名管理 |
+
+---
+
+## 三、快速开始
+
+### 3.1 基础 URL
+
 ```
-{ 
-    "name": "bfe", 
-    "description": "demo product", 
-    "mail_list": ["op@bfenetwork.com"],
-    "phone_list": ["13512341234", "13543214321"],
-    "contact_person_list": ["manager@bfenetwork.com"]
-}
+http://ai_gateway_api:port/open-api/v1/{endpoint}
 ```
 
+示例：`http://127.0.0.1:8086/open-api/v1/api-keys`
 
-### 返回数据
+### 3.2 认证方式
 
-所有API的返回值格式为：
+在 HTTP Authorization Header 中加入 Token：
 
 ```
+Authorization: Token YOUR_TOKEN
+```
+
+### 3.3 返回格式
+
+所有 API 返回统一格式：
+
+```json
 {
-	"ErrNum": number,
-	"ErrMsg": "string message",
-	"Data": json_object
+    "ErrNum": 200,
+    "ErrMsg": "success",
+    "Data": {}
 }
 ```
 
-- ErrNum: 返回码
-    - 200: 调用成功时
-    - 调用失败时，
-        - 402：没有调用权限造成的失败
-        - 422：参数不合法造成的失败
-        - 510：集群/分流规则创建时实例池未ready
-        - 404：查询/修改/删除不存在的对象时
-        - 555：创建重复对象时
-        - 500：其他业务逻辑错误，一律返回500
-- Data: 返回的数据结构
-    - 调用成功时，返回json格式的数据
-    - 调用失败时，返回null
-- ErrMsg: 文本消息
-    - 调用成功时，ErrMsg是success或空串
-    - 调用失败时，ErrMsg是相关的错误信息
-
-
-举例：
-```
-{
-	"ErrNum": 200,
-	"ErrMsg": "Succ",
-	"Data": {
-		"name": "bfe",
-		"description": "demo product",
-		"mail_list": ["op@bfenetwork.com"],
-		"phone_list": ["13512341234", "13543214321"],
-		"contact_person_list": ["manager@bfenetwork.com"]
-	}
-}
-```
-
-说明：API文档中中API的返回结果，仅给出Data部分。
-
-
-## 鉴权机制
-- API使用Token机制鉴权
-- 访问时在HTTP Authorization HEADER中加入SessionKey/Token
-- 鉴权详细机制见 [用户和鉴权](global/auth.md)
-- Session Key的使用示例：
-
-```
-curl http://127.1:8086/open-api/v1/products/demo/clusters -H "Authorization: Session gc0JnZJpkMBmqJf1dbcV" 
-```
+详细规范请参考 [norms.md](norms.md)。
