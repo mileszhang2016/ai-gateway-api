@@ -32,6 +32,7 @@ REGISTRY ?=
 PLATFORMS ?= linux/amd64,linux/arm64
 BUILDER_NAME ?= ai-gateway-api-builder
 NO_CACHE ?= false
+DASHBOARD_VERSION ?= v0.0.3
 DOCKER_BUILD_ARGS ?=
 
 # Derived tags
@@ -90,6 +91,7 @@ package-bin:
 # make docker
 docker:
 	docker build $(if $(filter 1 true TRUE True,$(NO_CACHE)),--no-cache,) $(DOCKER_BUILD_ARGS) \
+		--build-arg DASHBOARD_VERSION=$(DASHBOARD_VERSION) \
 		-t $(IMAGE_LOCAL) \
 		-t $(IMAGE_LATEST_LOCAL) \
 		.
@@ -101,6 +103,7 @@ docker-push:
 	@docker buildx use $(BUILDER_NAME)
 	@docker buildx inspect --bootstrap >/dev/null
 	docker buildx build $(if $(filter 1 true TRUE True,$(NO_CACHE)),--no-cache,) $(DOCKER_BUILD_ARGS) \
+		--build-arg DASHBOARD_VERSION=$(DASHBOARD_VERSION) \
 		--platform $(PLATFORMS) \
 		--push \
 		-t $(IMAGE_REMOTE) \
