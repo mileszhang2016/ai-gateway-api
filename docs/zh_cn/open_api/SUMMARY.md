@@ -1,6 +1,6 @@
 # Summary
 * [OpenAPI说明](README.md)
-* 配额控制与限流
+* API-KEY和Entity管理
     * [API-Key](api_key.md)
     * [Entity-Type](entity_type.md)
     * [Entity](entity.md)
