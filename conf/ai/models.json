@@ -10,5 +10,13 @@
   {
     "name":"千问",
     "id": "qwen"
+  },
+  {
+    "name":"火山CodePlan",
+    "id": "huoshancodeplan"
+  },
+  {
+    "name":"百炼TokenPlan",
+    "id": "bailiantokenplan"
   }
 ]

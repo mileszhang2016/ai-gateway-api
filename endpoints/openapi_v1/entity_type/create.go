@@ -45,6 +45,10 @@ func EntityTypeCreateAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapParamErrorWithMsg("level must be between 1 and 5")
 	}
 
+	if param.Description != nil && len(*param.Description) >= 256 {
+		return nil, xerror.WrapParamErrorWithMsg("description must be less than 256 characters")
+	}
+
 	existing, err := container.EntityTypeManager.FetchEntityType(req.Context(), &quota.EntityTypeFilter{
 		TypeName: param.TypeName,
 	})

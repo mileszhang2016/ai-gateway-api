@@ -88,6 +88,7 @@ type TAPIKeyParam struct {
 	UpdatedAt         *time.Time `db:"updated_at"`
 
 	OrderBy *string `db:"_orderby"`
+	Limit   []uint  `db:"_limit"`
 }
 
 // TAPIKeyCreate One/Multiple

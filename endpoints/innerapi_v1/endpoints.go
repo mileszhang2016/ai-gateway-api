@@ -20,6 +20,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/extra_file"
 	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/gslb_data"
 	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/mod_api_key"
+	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/mod_body_process"
 	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/protocol"
 	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/rate_limit_policy"
 	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/server_data"
@@ -35,6 +36,7 @@ func endpoints() []*xreq.Endpoint {
 		protocol.ServertCertExportEndpoint,
 		extra_file.ExportExtraFileEndpoint,
 		mod_api_key.ExportRoute,
+		mod_body_process.ExportRoute,
 		rate_limit_policy.ExportRoute,
 	}
 }

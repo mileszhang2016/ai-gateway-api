@@ -188,6 +188,10 @@ func Init() {
 		container.EntityStorager,
 	)
 
+	container.ModBodyProcessManager = imods.NewModBodyProcessManager(
+		container.VersionControlManager,
+	)
+
 	container.QuotaPlanManager = quota.NewQuotaPlanManager(
 		container.TxnStoragerSingleton,
 		container.QuotaPlanStorager,

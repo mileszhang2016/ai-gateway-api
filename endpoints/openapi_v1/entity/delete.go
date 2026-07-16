@@ -15,11 +15,13 @@
 package entity
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
+	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/model/quota"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -57,6 +59,16 @@ func EntityDeleteAction(req *http.Request) (interface{}, error) {
 	}
 	if len(children) > 0 {
 		return nil, xerror.WrapConflictErrorWithMsg("entity has children, cannot delete")
+	}
+
+	apiKeys, err := container.APIKeyManager.FetchAPIKeyList(req.Context(), &icluster_conf.APIKeyFilter{
+		EntityID: deleteReq.EntityID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(apiKeys) > 0 {
+		return nil, xerror.WrapParamErrorWithMsg(fmt.Sprintf("cannot delete entity with associated api-keys"))
 	}
 
 	return nil, container.EntityManager.DeleteEntity(req.Context(), &quota.EntityFilter{

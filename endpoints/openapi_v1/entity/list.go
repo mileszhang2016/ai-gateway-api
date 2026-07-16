@@ -45,17 +45,24 @@ func EntityListAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	if filter.Page == nil || *filter.Page < 1 {
-		defaultPage := 1
-		filter.Page = &defaultPage
-	}
-	if filter.PageSize == nil || *filter.PageSize < 1 {
-		defaultPageSize := 20
-		filter.PageSize = &defaultPageSize
-	}
-	if *filter.PageSize > 100 {
-		maxPageSize := 100
-		filter.PageSize = &maxPageSize
+	var page, pageSize int
+	isPagination := filter.Page != nil || filter.PageSize != nil
+	if isPagination {
+		page = 1
+		if filter.Page != nil && *filter.Page > 0 {
+			page = *filter.Page
+		}
+
+		pageSize = 20
+		if filter.PageSize != nil && *filter.PageSize > 0 {
+			pageSize = *filter.PageSize
+		}
+		if pageSize > 100 {
+			pageSize = 100
+		}
+
+		filter.Page = &page
+		filter.PageSize = &pageSize
 	}
 
 	if filter.Type != nil && *filter.Type == "" {
@@ -72,17 +79,17 @@ func EntityListAction(req *http.Request) (interface{}, error) {
 	}
 
 	total := len(list)
-	page := *filter.Page
-	pageSize := *filter.PageSize
-
-	start := (page - 1) * pageSize
-	end := start + pageSize
-	if start >= total {
-		list = []*quota.EntityParam{}
-	} else if end > total {
-		list = list[start:]
-	} else {
-		list = list[start:end]
+	if isPagination {
+		countFilter := &quota.EntityFilter{
+			Type:        filter.Type,
+			ParentID:    filter.ParentID,
+			QuotaPlanID: filter.QuotaPlanID,
+		}
+		allList, err := container.EntityManager.FetchEntityList(req.Context(), countFilter)
+		if err != nil {
+			return nil, err
+		}
+		total = len(allList)
 	}
 
 	resp := &EntityListResponse{

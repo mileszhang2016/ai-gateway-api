@@ -20,7 +20,7 @@
 | type | string | Entity类型 | Y | 必须引用已定义的Entity-Type |
 | parent_id | string | 父Entity ID | N | 为空表示根节点 |
 | allow_models | []string | 允许访问的模型白名单 | N | 包含"*"表示允许访问所有模型，默认值为允许访问所有模型 |
-| block_models | []string | 禁止访问的模型黑名单 | N | 包含"*"表示禁止访问所有模型，默认值为空数组；若某模型同时出现在allow_models和block_models中，以block_models为准 |
+| block_models | []string | 禁止访问的模型黑名单 | N | 包含"*"表示不禁止任何模型，默认值为空数组；若某模型同时出现在allow_models和block_models中，以block_models为准 |
 | quota_plan | object | 配额计划 | N | 同Quota Plan结构（不含balance），若未设置则使用默认值 |
 | rate_limit_policy | object | 限流策略 | N | 同Rate Limit Policy结构，若未设置则使用默认值（enabled=false） |
 

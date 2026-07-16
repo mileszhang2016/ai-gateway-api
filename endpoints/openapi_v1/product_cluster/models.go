@@ -50,6 +50,14 @@ func ListModelsAction(req *http.Request) (interface{}, error) {
 }
 
 func listModelsProcess(ctx context.Context, param *RequestParams) (interface{}, error) {
+	staticProviders := map[string]bool{
+		"huoshancodeplan": true,
+		"bailiantokenplan": true,
+	}
+	if staticProviders[param.ProviderType] {
+		return loadStaticModelList(param.ProviderType)
+	}
+
 	parserConf, err := LoadParserConfig("conf/ai/model_definition.json")
 	if err != nil {
 		return nil, xerror.WrapParamError(err)
@@ -61,6 +69,24 @@ func listModelsProcess(ctx context.Context, param *RequestParams) (interface{}, 
 	}
 
 	return ParseModelsWithConfig([]byte(response["result"]), param.ProviderType, parserConf)
+}
+
+func loadStaticModelList(providerType string) ([]map[string]interface{}, error) {
+	data, err := os.ReadFile("conf/ai/model_list.json")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read model list config: %w", err)
+	}
+
+	var config map[string][]map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse model list config: %w", err)
+	}
+
+	if models, ok := config[providerType]; ok {
+		return models, nil
+	}
+
+	return nil, xerror.WrapParamError(fmt.Errorf("no static models found for provider_type: %s", providerType))
 }
 
 func callModelAPI(ctx context.Context, param *RequestParams) (map[string]string, error) {

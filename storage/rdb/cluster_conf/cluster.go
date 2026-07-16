@@ -220,6 +220,25 @@ func (rm *RDBClusterStorager) fetchLBMatrixs(dbCtx *lib.DBContext, clusterIDs []
 		return nil, err
 	}
 
+	return parseLBMatrixList(manualLbList)
+}
+
+// FetchLBMatrixList returns all lb_matrices data
+func (rm *RDBClusterStorager) FetchLBMatrixList(ctx context.Context) (map[int64]map[string]map[string]int, error) {
+	dbCtx, err := rm.dbCtxFactory(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	manualLbList, err := dao.TLbMatrixList(dbCtx, &dao.TLbMatrixParam{})
+	if err != nil {
+		return nil, err
+	}
+
+	return parseLBMatrixList(manualLbList)
+}
+
+func parseLBMatrixList(manualLbList []*dao.TLbMatrix) (map[int64]map[string]map[string]int, error) {
 	rst := map[int64]map[string]map[string]int{}
 	for _, one := range manualLbList {
 		data := map[string]map[string]int{}

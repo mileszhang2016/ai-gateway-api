@@ -17,11 +17,13 @@ package entity
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/quota"
+	"github.com/yf-networks/ai-gateway-api/stateful"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
@@ -85,5 +87,53 @@ func EntityFullUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	return container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{EntityID: fullUpdateReq.EntityID})
+	// 获取更新后的 Entity
+	updated, err := container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{EntityID: fullUpdateReq.EntityID})
+	if err != nil {
+		return nil, err
+	}
+
+	// 检查配额计划，如果非无限制则需要确保 quota_balance 和 Redis key 存在
+	if param.QuotaPlan != nil && (param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
+		updated != nil && updated.QuotaPlanID != nil {
+		balance, err := container.QuotaPlanManager.FetchQuotaBalance(req.Context(), *updated.QuotaPlanID)
+		if err != nil {
+			return nil, err
+		}
+		if balance == nil {
+			if err := container.QuotaPlanManager.CreateQuotaBalance(req.Context(), *updated.QuotaPlanID, param.QuotaPlan.Quota); err != nil {
+				return nil, err
+			}
+		}
+
+		if updated.EntityID != nil {
+			redisKey := stateful.AIUsedQuotaKey(*updated.EntityID)
+			currentVal, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
+			if errGet != nil {
+				if strings.Contains(errGet.Error(), "redigo: nil returned") {
+					quotaVal := int64(0)
+					if param.QuotaPlan.Quota != nil {
+						quotaVal = *param.QuotaPlan.Quota
+					}
+					_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, quotaVal)
+					if err != nil {
+						return nil, err
+					}
+				} else {
+					return nil, errGet
+				}
+			} else if currentVal == 0 {
+				quotaVal := int64(0)
+				if param.QuotaPlan.Quota != nil {
+					quotaVal = *param.QuotaPlan.Quota
+				}
+				_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, quotaVal)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	return updated, nil
 }

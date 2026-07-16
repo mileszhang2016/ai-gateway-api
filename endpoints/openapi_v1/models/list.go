@@ -30,9 +30,10 @@ type ModelMapping struct {
 }
 
 type ServiceModel struct {
-	Name          string         `json:"name"`
-	DisplayName   string         `json:"display_name"`
-	Models        []string       `json:"models"`
+	Name          string          `json:"name"`
+	DisplayName   string          `json:"display_name"`
+	ClusterName   string          `json:"cluster_name"`
+	Models        []string        `json:"models"`
 	ModelMappings []*ModelMapping `json:"model_mappings"`
 }
 
@@ -72,6 +73,7 @@ func ModelsListAction(req *http.Request) (interface{}, error) {
 			serviceMap[serviceName] = &ServiceModel{
 				Name:          serviceName,
 				DisplayName:   capitalize(serviceName),
+				ClusterName:   cluster.Name,
 				Models:        make([]string, 0),
 				ModelMappings: make([]*ModelMapping, 0),
 			}

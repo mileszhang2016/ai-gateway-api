@@ -17,6 +17,7 @@ package api_key
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
@@ -24,6 +25,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
+	"github.com/yf-networks/ai-gateway-api/stateful"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
@@ -91,8 +93,49 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 		return nil, err
 	}
 
-	return container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+	// 获取更新后的 API-Key
+	updated, err := container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
 		ID:          param.ID,
 		ProductName: &product.Name,
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 检查配额计划，如果非无限制则需要确保 quota_balance 和 Redis key 存在
+	if param.QuotaPlan != nil && (param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
+		updated != nil && updated.QuotaPlanID != nil {
+		// 检查 quota_balance 是否存在，不存在则创建
+		balance, err := container.QuotaPlanManager.FetchQuotaBalance(ctx, *updated.QuotaPlanID)
+		if err != nil {
+			return nil, err
+		}
+		if balance == nil {
+			if err := container.QuotaPlanManager.CreateQuotaBalance(ctx, *updated.QuotaPlanID, param.QuotaPlan.Quota); err != nil {
+				return nil, err
+			}
+		}
+
+		// 检查 Redis key 是否存在，不存在则创建
+		if updated.Key != nil {
+			redisKey := stateful.AIUsedQuotaKey(*updated.Key)
+			_, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
+			if errGet != nil {
+				if strings.Contains(errGet.Error(), "redigo: nil returned") {
+					quotaVal := int64(0)
+					if param.QuotaPlan.Quota != nil {
+						quotaVal = *param.QuotaPlan.Quota
+					}
+					_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, quotaVal)
+					if err != nil {
+						return nil, err
+					}
+				} else {
+					return nil, errGet
+				}
+			}
+		}
+	}
+
+	return updated, nil
 }

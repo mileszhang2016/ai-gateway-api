@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
@@ -28,6 +29,10 @@ import (
 func checkCreateAPIKey(param *icluster_conf.APIKeyParam, productName string) error {
 	if param.Description == nil || *param.Description == "" {
 		return xerror.WrapParamErrorWithMsg("description is required")
+	}
+
+	if len(*param.Description) >= 512 {
+		return xerror.WrapParamErrorWithMsg("description must be less than 512 characters")
 	}
 
 	if err := checkAllowSubnet(param.Subnet); err != nil {
@@ -46,6 +51,10 @@ func checkCreateAPIKey(param *icluster_conf.APIKeyParam, productName string) err
 		return err
 	}
 
+	if err := checkQuotaPlan(param.QuotaPlan); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -60,11 +69,23 @@ func checkExpiredTime(expiredTime *int64) error {
 		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Invalid expired_time: %d", *expiredTime))
 	}
 
+	// 非-1的时间戳必须大于等于当前时间
+	if *expiredTime != -1 {
+		currentTime := time.Now().Unix()
+		if *expiredTime < currentTime {
+			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("expired_time must be >= current time, got %d, current %d", *expiredTime, currentTime))
+		}
+	}
+
 	return nil
 }
 
 // checkUpdateAPIKey validates parameters for updating an existing API key
 func checkUpdateAPIKey(param *icluster_conf.APIKeyParam, productName string) error {
+	if param.Description != nil && len(*param.Description) >= 512 {
+		return xerror.WrapParamErrorWithMsg("description must be less than 512 characters")
+	}
+
 	if err := checkAllowSubnet(param.Subnet); err != nil {
 		return err
 	}
@@ -158,8 +179,14 @@ func checkRateLimitPolicy(policy *shared.RateLimitPolicyParam) error {
 	}
 
 	if policy.Enabled != nil && *policy.Enabled {
-		if policy.Rules == nil || (len(policy.Rules.TpmConfigs) == 0 && len(policy.Rules.RpmConfigs) == 0) {
-			return xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, rules.tpm or rules.rpm must be set")
+		if policy.Rules == nil {
+			return xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, rules must be set")
+		}
+		hasTpm := len(policy.Rules.TpmConfigs) > 0
+		hasRpm := len(policy.Rules.RpmConfigs) > 0
+		hasConcurrency := policy.Rules.MaxConcurrency != nil && *policy.Rules.MaxConcurrency > 0
+		if !hasTpm && !hasRpm && !hasConcurrency {
+			return xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, at least one of rules.tpm, rules.rpm, or rules.max_concurrency(>0) must be set")
 		}
 	}
 
@@ -188,7 +215,27 @@ func checkRateLimitPolicy(policy *shared.RateLimitPolicyParam) error {
 	return nil
 }
 
+func checkQuotaPlan(quotaPlan *shared.QuotaPlanParam) error {
+	if quotaPlan == nil {
+		return nil
+	}
+
+	if quotaPlan.Quota != nil && *quotaPlan.Quota < 0 {
+		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("quota must be >= 0, got %d", *quotaPlan.Quota))
+	}
+
+	return nil
+}
+
 // checkFullUpdateAPIKey validates parameters for full updating an existing API key
 func checkFullUpdateAPIKey(param *icluster_conf.APIKeyParam, productName string) error {
+	if param.Description == nil || *param.Description == "" {
+		return xerror.WrapParamErrorWithMsg("description is required")
+	}
+
+	if len(*param.Description) >= 512 {
+		return xerror.WrapParamErrorWithMsg("description must be less than 512 characters")
+	}
+
 	return checkUpdateAPIKey(param, productName)
 }
