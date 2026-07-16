@@ -13,6 +13,7 @@ children = [
     { id = "SubCluster.list", text = "SubClusterManage", allowed_roles = ["admin"] },
     { id = "AICluster.list", text = "AIClusterManage", allowed_roles = ["admin"] },
     { id = "gslb.list", text = "SubClusterLB", allowed_roles = ["admin"] }
+    { id = "certs.list", text = "CertsManage", allowed_roles = ["admin"] }
 ]
 
 [[children]]

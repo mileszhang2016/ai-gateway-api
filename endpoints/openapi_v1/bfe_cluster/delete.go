@@ -15,8 +15,10 @@
 package bfe_cluster
 
 import (
+	"fmt"
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
@@ -46,7 +48,16 @@ func newBFEClusterDeleteParam4Delete(req *http.Request) (*BFEClusterDeleteParam,
 }
 
 func deleteActionProcess(req *http.Request, param *BFEClusterDeleteParam) error {
-	err := container.BFEClusterManager.DeleteBFECluster(req.Context(), &ibasic.BFEClusterParam{
+	// Check if the BFE cluster is used by any AI cluster's scheduler (lb_matrix)
+	used, err := container.ClusterManager.IsBFEClusterUsed(req.Context(), *param.Name)
+	if err != nil {
+		return err
+	}
+	if used {
+		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("BFE cluster %s is used by AI cluster scheduler, cannot delete", *param.Name))
+	}
+
+	err = container.BFEClusterManager.DeleteBFECluster(req.Context(), &ibasic.BFEClusterParam{
 		Name: param.Name,
 	})
 

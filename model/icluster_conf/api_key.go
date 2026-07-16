@@ -77,12 +77,17 @@ type APIKeyTokenFilter struct {
 
 // APIKeyFilter defines filters for querying API keys
 type APIKeyFilter struct {
-	ProductName  *string
-	ProductNames []string
-	ALBGroupName *string
-	ID           *string
-	InnerID      *int64
-	QuotaPlanID  *int64
+	ProductName     *string
+	ProductNames    []string
+	ALBGroupName    *string
+	ID              *string
+	InnerID         *int64
+	QuotaPlanID     *int64
+	Page            *int
+	PageSize        *int
+	Enabled         *bool
+	EntityID        *string
+	UnlimitedQuota  *bool
 }
 
 // APIKeyStorager interface defines storage operations for API keys

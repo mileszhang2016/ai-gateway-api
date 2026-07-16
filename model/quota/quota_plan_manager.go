@@ -137,3 +137,15 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 func (m *QuotaPlanManager) FetchQuotaBalance(ctx context.Context, planID int64) (*QuotaBalanceParam, error) {
 	return m.balanceStorager.FetchQuotaBalance(ctx, &QuotaBalanceFilter{QuotaPlanID: &planID})
 }
+
+// CreateQuotaBalance 创建配额余额
+func (m *QuotaPlanManager) CreateQuotaBalance(ctx context.Context, planID int64, quota *int64) error {
+	now := time.Now()
+	_, err := m.balanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
+		QuotaPlanID: &planID,
+		Used:        lib.PInt64(0),
+		Remaining:   quota,
+		LastResetAt: &now,
+	})
+	return err
+}

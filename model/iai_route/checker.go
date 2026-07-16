@@ -39,7 +39,11 @@ func validatePathFilter(pathFilter *PathFilter, ruleName string) error {
 		return fmt.Errorf("Must set path_filter.ignore_case for rule [%s]", ruleName)
 	}
 
-	if pathFilter.MatchMode == nil || (*pathFilter.MatchMode != "" && !validMatchModes[*pathFilter.MatchMode]) {
+	if pathFilter.MatchMode == nil {
+		return fmt.Errorf("Invalid path_filter.match_mode value for rule [%s]: match_mode is empty", ruleName)
+	}
+
+	if pathFilter.MatchMode != nil && *pathFilter.MatchMode != "" && !validMatchModes[*pathFilter.MatchMode] {
 		return fmt.Errorf("Invalid path_filter.match_mode value for rule [%s]: %s", ruleName, *pathFilter.MatchMode)
 	}
 

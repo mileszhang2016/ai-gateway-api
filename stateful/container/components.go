@@ -70,6 +70,7 @@ var (
 	AuthorizeManager                *iauth.AuthorizeManager
 	PoolManager                     *icluster_conf.PoolManager
 	APIKeyRuleManager               *imods.APIKeyRuleManager
+	ModBodyProcessManager           *imods.ModBodyProcessManager
 	APIKeyManager                   *icluster_conf.APIKeyManager
 	AIRouteRuleManager              *iai_route.AIRouteRuleManager
 

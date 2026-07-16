@@ -1,0 +1,62 @@
+{
+  "huoshancodeplan": [
+    {
+      "id": "kimi-k2.7-code",
+      "name": "kimi-k2.7-code",
+      "description": "kimi-k2.7-code",
+      "max_tokens": 4096,
+      "provider_type": "huoshancodeplan"
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "deepseek-v4-pro",
+      "description": "deepseek-v4-pro",
+      "max_tokens": 8192,
+      "provider_type": "huoshancodeplan"
+    },
+    {
+      "id": "glm-5.2",
+      "name": "glm-5.2",
+      "description": "glm-5.2",
+      "max_tokens": 16384,
+      "provider_type": "huoshancodeplan"
+    },
+    {
+      "id": "kimi-k2.6",
+      "name": "kimi-k2.6",
+      "description": "kimi-k2.6",
+      "max_tokens": 16384,
+      "provider_type": "huoshancodeplan"
+    }
+  ],
+  "bailiantokenplan": [
+    {
+      "id": "qwen3.7-plus",
+      "name": "qwen3.7-plus",
+      "description": "qwen3.7-plus",
+      "max_tokens": 4096,
+      "provider_type": "bailiantokenplan"
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "deepseek-v4-pro",
+      "description": "deepseek-v4-pro",
+      "max_tokens": 8192,
+      "provider_type": "bailiantokenplan"
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "name": "kimi-k2.7-code",
+      "description": "kimi-k2.7-code",
+      "max_tokens": 16384,
+      "provider_type": "bailiantokenplan"
+    },
+    {
+      "id": "glm-5.2",
+      "name": "glm-5.2",
+      "description": "glm-5.2",
+      "max_tokens": 16384,
+      "provider_type": "bailiantokenplan"
+    }
+  ]
+}

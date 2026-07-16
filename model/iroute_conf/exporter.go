@@ -103,6 +103,18 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 		productMapID2Name[domain.ProductID] = product.Name
 	}
 
+	//insert default product
+	for _, product := range products {
+		if product.Name == defaultProduct {
+			productMapID2Name[product.ID] = defaultProduct
+			defaultDomain := &Domain{
+				ProductID: product.ID,
+				Name:      "127.0.0.1",
+			}
+			domains = append(domains, defaultDomain)
+		}
+	}
+
 	routeRules, err := rm.storager.FetchRouteRules(ctx, products, clusters)
 	if err != nil {
 		return nil, err

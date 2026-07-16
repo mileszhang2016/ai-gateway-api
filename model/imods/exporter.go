@@ -246,12 +246,59 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 			tokenFile.Enabled = 1
 		}
 
-		if len(one.Models) > 0 {
-			modelsStr := strings.Join(one.Models, ",")
-			if modelsStr == "*" {
-				modelsStr = ""
+		// Collect allow_models and block_models from entity hierarchy
+		var entityAllowModels []string
+		var entityBlockModels []string
+		if one.EntityID != nil && *one.EntityID != "" && rlm.entityStorager != nil {
+			entityAllowModels, entityBlockModels, err = rlm.fetchEntityModelHierarchy(ctx, *one.EntityID)
+			if err != nil {
+				return nil, fmt.Errorf("fetch entity model hierarchy error: %s", err.Error())
 			}
+		}
+
+		// Collect api-key's non-empty, non-* allow_models
+		var apiKeyAllowModels []string
+		for _, m := range one.Models {
+			if m != "" && m != "*" {
+				apiKeyAllowModels = append(apiKeyAllowModels, m)
+			}
+		}
+
+		// entityAllowModels is already the intersection of all non-* entity allow_models
+		// Compute the final intersection: api-key models ∩ entity models
+		var finalAllowModels []string
+		if len(apiKeyAllowModels) == 0 && len(entityAllowModels) == 0 {
+			// Rule 1: both are empty or * → allow all
+			modelsStr := ""
 			tokenFile.Models = &modelsStr
+		} else {
+			// Rule 2: compute intersection of all non-empty, non-* models
+			if len(apiKeyAllowModels) == 0 {
+				finalAllowModels = entityAllowModels
+			} else if len(entityAllowModels) == 0 {
+				finalAllowModels = apiKeyAllowModels
+			} else {
+				finalAllowModels = intersectSlices(apiKeyAllowModels, entityAllowModels)
+			}
+
+			if len(finalAllowModels) == 0 {
+				// Rule 3: intersection empty → disable the token, models empty
+				modelsStr := ""
+				tokenFile.Models = &modelsStr
+				tokenFile.Enabled = 2
+			} else {
+				modelsStr := strings.Join(finalAllowModels, ",")
+				tokenFile.Models = &modelsStr
+			}
+		}
+
+		// Merge block_models from entity hierarchy (union of all)
+		if len(entityBlockModels) > 0 {
+			blockModelsStr := strings.Join(entityBlockModels, ",")
+			if blockModelsStr == "*" {
+				blockModelsStr = ""
+			}
+			tokenFile.BlockModels = &blockModelsStr
 		}
 
 		if len(one.Subnet) > 0 {
@@ -389,6 +436,89 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context,
 	}
 
 	return quotaPlanIDs, tags, nil
+}
+
+// fetchEntityModelHierarchy recursively collects AllowModels and BlockModels from the entity hierarchy
+// Returns:
+//   - intersectedAllowModels: intersection of all AllowModels from entities in the hierarchy (nil if any entity has empty AllowModels)
+//   - unionBlockModels: union of all BlockModels from entities in the hierarchy
+func (rlm *APIKeyRuleManager) fetchEntityModelHierarchy(ctx context.Context, entityID string) ([]string, []string, error) {
+	entity, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: &entityID})
+	if err != nil {
+		return nil, nil, err
+	}
+	if entity == nil {
+		return nil, nil, nil
+	}
+
+	var allAllowModels [][]string
+	var allBlockModels []string
+
+	rlm.collectEntityModels(ctx, entity, &allAllowModels, &allBlockModels)
+
+	return intersectAllowModels(allAllowModels), allBlockModels, nil
+}
+
+// collectEntityModels recursively walks the entity hierarchy to collect AllowModels and BlockModels
+// If an entity's AllowModels or BlockModels contains "*", it is skipped (meaning allow/block all)
+func (rlm *APIKeyRuleManager) collectEntityModels(ctx context.Context, entity *quota.EntityParam, allAllowModels *[][]string, allBlockModels *[]string) {
+	if len(entity.AllowModels) > 0 && !containsStar(entity.AllowModels) {
+		*allAllowModels = append(*allAllowModels, entity.AllowModels)
+	}
+	if len(entity.BlockModels) > 0 && !containsStar(entity.BlockModels) {
+		*allBlockModels = append(*allBlockModels, entity.BlockModels...)
+	}
+
+	if entity.ParentID != nil && *entity.ParentID != "" && rlm.entityStorager != nil {
+		parent, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: entity.ParentID})
+		if err != nil || parent == nil {
+			return
+		}
+		rlm.collectEntityModels(ctx, parent, allAllowModels, allBlockModels)
+	}
+}
+
+// containsStar checks if the string slice contains "*"
+func containsStar(slice []string) bool {
+	for _, s := range slice {
+		if s == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+// intersectAllowModels computes the intersection of multiple AllowModels slices
+// Returns nil if there are no AllowModels configured at any entity level
+func intersectAllowModels(allAllowModels [][]string) []string {
+	if len(allAllowModels) == 0 {
+		return nil
+	}
+
+	result := make([]string, len(allAllowModels[0]))
+	copy(result, allAllowModels[0])
+
+	for _, models := range allAllowModels[1:] {
+		result = intersectSlices(result, models)
+	}
+
+	return result
+}
+
+// intersectSlices returns the intersection of two string slices
+func intersectSlices(a, b []string) []string {
+	set := make(map[string]bool)
+	for _, s := range b {
+		set[s] = true
+	}
+
+	var result []string
+	for _, s := range a {
+		if set[s] {
+			result = append(result, s)
+		}
+	}
+	return result
 }
 
 func (rlm *APIKeyRuleManager) isQuotaPlanCached(productName, id string) bool {

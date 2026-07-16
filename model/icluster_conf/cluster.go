@@ -309,6 +309,7 @@ type ClusterStorager interface {
 	ClusterCreate(ctx context.Context, product *ibasic.Product, param *ClusterParam, subClusters []*SubCluster) (int64, error)
 	ClusterDelete(ctx context.Context, product *ibasic.Product, cluster *Cluster) error
 	BindSubCluster(ctx context.Context, cluster *Cluster, appendSubClusters, unbindSubClusters []*SubCluster) error
+	FetchLBMatrixList(ctx context.Context) (map[int64]map[string]map[string]int, error)
 }
 
 type ClusterManager struct {
@@ -635,6 +636,22 @@ func (cm *ClusterManager) DeleteCluster(ctx context.Context, product *ibasic.Pro
 	})
 
 	return
+}
+
+// IsBFEClusterUsed checks if a BFE cluster is referenced in any lb_matrix (scheduler) of any AI cluster
+func (cm *ClusterManager) IsBFEClusterUsed(ctx context.Context, bfeClusterName string) (bool, error) {
+	lbMatrixMap, err := cm.storager.FetchLBMatrixList(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	for _, lbMatrix := range lbMatrixMap {
+		if _, ok := lbMatrix[bfeClusterName]; ok {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 var (

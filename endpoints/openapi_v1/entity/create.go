@@ -160,6 +160,19 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 		}
 	}
 
+	if param.EntityID != nil && param.QuotaPlan != nil &&
+		param.QuotaPlan.Unlimited != nil && *param.QuotaPlan.Unlimited {
+		redisKey := stateful.AIUsedQuotaKey(*param.EntityID)
+		defaultQuota := int64(100000000)
+		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
+		if errGet != nil {
+			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, defaultQuota)
+		} else {
+			delta := defaultQuota - currentValue
+			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
+		}
+	}
+
 	return container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{EntityID: param.EntityID})
 }
 

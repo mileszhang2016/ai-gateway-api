@@ -84,12 +84,22 @@ func newAPIKeyFilterToParam(filter *icluster_conf.APIKeyFilter) *dao.TAPIKeyPara
 		return nil
 	}
 
-	return &dao.TAPIKeyParam{
-		ProductName: filter.ProductName,
-		ID:          filter.ID,
-		InnerID:     filter.InnerID,
-		QuotaPlanID: filter.QuotaPlanID,
+	param := &dao.TAPIKeyParam{
+		ProductName:     filter.ProductName,
+		ID:              filter.ID,
+		InnerID:         filter.InnerID,
+		QuotaPlanID:     filter.QuotaPlanID,
+		Enable:          filter.Enabled,
+		EntityID:        filter.EntityID,
+		UnlimitedQuota:  filter.UnlimitedQuota,
 	}
+
+	if filter.Page != nil && filter.PageSize != nil {
+		offset := (*filter.Page - 1) * *filter.PageSize
+		param.Limit = []uint{uint(offset), uint(*filter.PageSize)}
+	}
+
+	return param
 }
 
 func (rpps *APIKeyStorager) FetchAPIKeyList(ctx context.Context,
