@@ -30,7 +30,8 @@
 | sticky_sessions| object |  会话保持| Y | 内容见 [表：会话保持](#sticky_sessions)| 
 | sub_clusters| []string |  集群中挂载的子集群| Y |  | 
 | scheduler| object |  内网流量配置| Y | 具体说明见 [调度说明](traffic.md#scheduler_explain)  | 
-| passive_health_check| object |  被动健康检查| Y | 具体字段见 [表：被动健康检查](#passive_health_check) | 
+| passive_health_check| object |  被动健康检查| Y | 具体字段见 [表：被动健康检查](#passive_health_check) |
+| llm_config| object |  AI LLM服务配置| N | 开启AI网关能力时必填，具体字段见 [表：LLM配置](#llm_config) | 
 
 <a id="connection">表：连接设置</a>
 
@@ -73,7 +74,35 @@
 | interval| int |  连续健康检查的时间间隔 | Y | 单位ms | 
 | host| string |  健康检查请求的域名| Y | 域名后的部分 | 
 | uri| string |  健康检查请求的URI  | Y |  | 
-| statuscode| int |  期望的健康检查返回码 | Y | 如果需要忽略返回码，此处可以填0 | 
+| statuscode| int |  期望的健康检查返回码 | Y | 如果需要忽略返回码，此处可以填0 |
+
+<a id="llm_config">表: LLM配置</a>
+
+| 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
+| - | -  | - | - | - |
+| enable| bool |  AI LLM服务开关 | Y |  llm_config被设置时必填。设置为true时，开启AI网关转发能力，此时以下相关字段也需填写 |
+| service_name| string |  服务名称 | 条件必填 |  enable为true时必填。最长255字符 |
+| group| string |  分组名称 | N | 最长255字符 |
+| model_endpoint| object |  模型列表端点配置 | 条件必填 |  enable为true时必填。用于调用第三方AI模型提供商的模型列表接口，具体字段见 [表：Endpoint](#endpoint) |
+| models| []string |  支持的模型名称列表 | 条件必填 |  enable为true时必填。指定该集群支持的AI模型名称 |
+| model_mappings| []object |  模型名称映射 | N | 用于将用户请求的模型名映射为后端实际使用的模型名，具体字段见 [表：模型映射](#model_mapping) |
+| key| string |  服务认证密钥 | N | 用于后端AI服务的认证 |
+| provider_type| string |  AI模型提供商类型 | N | 取值如：deepseek、openai、qwen 等 |
+
+<a id="endpoint">表: Endpoint</a>
+
+| 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
+| - | -  | - | - | - |
+| schema| string |  请求协议 | Y |  取值为 http、https |
+| uri| string |  请求URI | Y |  例如：/v1/models |
+| headers| map[string]string |  请求头参数 | N | 自定义请求头 |
+
+<a id="model_mapping">表: 模型映射</a>
+
+| 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
+| - | -  | - | - | - |
+| key| string |  用户请求的模型名 | Y |  |
+| value| string |  映射后的实际模型名 | Y |  |
 
 #### HTTP BODY中参数示例
 ```
@@ -115,7 +144,31 @@
 		"failnum": 10,
 		"host": "news.bfe-networks.com",
 		"uri": "/index.html",
-		"statuscode": 200,
+		"statuscode": 200
+	},
+	"llm_config": {
+		"enable": true,
+		"service_name": "deepseek-service",
+		"group": "llm-group",
+		"model_endpoint": {
+			"schema": "https",
+			"uri": "/v1/models",
+			"headers": {
+				"Authorization": "Bearer ${API_KEY}"
+			}
+		},
+		"models": [
+			"deepseek-chat",
+			"deepseek-coder"
+		],
+		"model_mappings": [
+			{
+				"key": "gpt-4",
+				"value": "deepseek-chat"
+			}
+		],
+		"key": "sk-xxxxxxxxxxxx",
+		"provider_type": "deepseek"
 	}
 }
 ```
