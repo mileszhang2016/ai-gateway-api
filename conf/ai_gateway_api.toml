@@ -57,6 +57,16 @@ MaxIdleConns        = 100
 ConnMaxIdleTimeInMs = 500000
 ConnMaxLifetimeInMs = 5000000
 
+# SQLite database config example
+# see db_ddl_sqlite.sql for table creation
+# [Databases.bfe_db]
+# DBName               = "./data/ai_gateway.db"
+# Driver               = "sqlite"
+# MaxOpenConns         = 50
+# MaxIdleConns         = 10
+# ConnMaxIdleTimeInMs  = 500000
+# ConnMaxLifetimeInMs  = 5000000
+
 
 # ---------------------------------
 # Dependence Config

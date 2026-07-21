@@ -137,5 +137,8 @@ func DuplicateEntryError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "Error 1062: Duplicate entry")
+	msg := err.Error()
+	return strings.Contains(msg, "Error 1062: Duplicate entry") ||
+		strings.Contains(msg, "UNIQUE constraint failed") ||
+		strings.Contains(msg, "duplicate key value violates unique constraint")
 }

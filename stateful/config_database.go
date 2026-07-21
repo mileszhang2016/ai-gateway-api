@@ -20,8 +20,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yf-networks/ai-gateway-api/lib"
+	_ "github.com/glebarez/go-sqlite"
 	"github.com/go-sql-driver/mysql"
+	"github.com/yf-networks/ai-gateway-api/lib"
+)
+
+const (
+	DriverMySQL  = "mysql"
+	DriverSQLite = "sqlite"
 )
 
 type DbConfig struct {
@@ -31,12 +37,36 @@ type DbConfig struct {
 
 	ConnMaxIdleTimeInMs int
 	ConnMaxLifetimeInMs int
-	MaxOpenConns        int `validate:"required,min=0"` // max open connections in database connection pool
-	MaxIdleConns      	int // max idle connections in database connection pool
+	MaxOpenConns        int `validate:"required,min=0"`
+	MaxIdleConns        int
+}
+
+func (c *DbConfig) FormatDSN() (string, error) {
+	switch c.Driver {
+	case DriverMySQL:
+		return c.Config.FormatDSN(), nil
+	case DriverSQLite:
+		if c.Config.DBName == "" {
+			return "", fmt.Errorf("sqlite DBName is required")
+		}
+		return c.Config.DBName, nil
+	default:
+		return "", fmt.Errorf("unsupported driver: %s", c.Driver)
+	}
 }
 
 func NewDB(dbConfig *DbConfig) (*sql.DB, error) {
-	db, err := sql.Open(dbConfig.Driver, dbConfig.FormatDSN())
+	dsn, err := dbConfig.FormatDSN()
+	if err != nil {
+		return nil, err
+	}
+
+	driverName := dbConfig.Driver
+	if driverName == DriverSQLite {
+		driverName = "sqlite"
+	}
+
+	db, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, err
 	}
