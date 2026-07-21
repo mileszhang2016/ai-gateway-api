@@ -1,0 +1,440 @@
+-- SQLite DDL for AI Gateway
+
+-- create bfe_clusters
+DROP TABLE IF EXISTS bfe_clusters;
+CREATE TABLE bfe_clusters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  pool_name TEXT NOT NULL DEFAULT '',
+  capacity INTEGER NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  gtc_enabled INTEGER NOT NULL DEFAULT 1,
+  gtc_manual_enabled INTEGER NOT NULL DEFAULT 1,
+  exempt_traffic_check INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE TRIGGER bfe_clusters_updated_at AFTER UPDATE ON bfe_clusters
+  FOR EACH ROW BEGIN UPDATE bfe_clusters SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create products
+DROP TABLE IF EXISTS products;
+CREATE TABLE products (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  mail_list TEXT NOT NULL,
+  contact_person TEXT NOT NULL,
+  sms_list TEXT NOT NULL DEFAULT 'no sms',
+  description TEXT NOT NULL DEFAULT 'no desc',
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE TRIGGER products_updated_at AFTER UPDATE ON products
+  FOR EACH ROW BEGIN UPDATE products SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create domains
+DROP TABLE IF EXISTS domains;
+CREATE TABLE domains (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  product_id INTEGER NOT NULL,
+  type INTEGER NOT NULL,
+  using_advanced_redirect INTEGER NOT NULL DEFAULT 0,
+  using_advanced_hsts INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE INDEX domains_product_id ON domains (product_id);
+CREATE INDEX domains_type ON domains (type);
+CREATE TRIGGER domains_updated_at AFTER UPDATE ON domains
+  FOR EACH ROW BEGIN UPDATE domains SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create clusters
+DROP TABLE IF EXISTS clusters;
+CREATE TABLE clusters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT 'no desc',
+  product_id INTEGER NOT NULL,
+  protocol TEXT NOT NULL DEFAULT 'http',
+  max_idle_conn_per_host INTEGER NOT NULL DEFAULT 2,
+  timeout_conn_serv INTEGER NOT NULL DEFAULT 50000,
+  timeout_response_header INTEGER NOT NULL DEFAULT 50000,
+  timeout_readbody_client INTEGER NOT NULL DEFAULT 30000,
+  timeout_read_client_again INTEGER NOT NULL DEFAULT 30000,
+  timeout_write_client INTEGER NOT NULL DEFAULT 60000,
+  healthcheck_schem TEXT NOT NULL DEFAULT 'http',
+  healthcheck_interval INTEGER NOT NULL DEFAULT 1000,
+  healthcheck_failnum INTEGER NOT NULL DEFAULT 10,
+  healthcheck_host TEXT NOT NULL,
+  healthcheck_uri TEXT NOT NULL,
+  healthcheck_statuscode INTEGER NOT NULL DEFAULT 200,
+  clientip_carry INTEGER NOT NULL DEFAULT 0,
+  port_carry INTEGER NOT NULL DEFAULT 0,
+  max_retry_in_cluster INTEGER NOT NULL DEFAULT 3,
+  max_retry_cross_cluster INTEGER NOT NULL DEFAULT 0,
+  ready INTEGER NOT NULL DEFAULT 1,
+  hash_strategy INTEGER NOT NULL DEFAULT 0,
+  cookie_key TEXT NOT NULL DEFAULT 'BAIDUID',
+  hash_header TEXT NOT NULL DEFAULT 'Cookie:BAIDUID',
+  session_sticky INTEGER NOT NULL DEFAULT 0,
+  req_write_buffer_size INTEGER NOT NULL DEFAULT 512,
+  req_flush_interval INTEGER NOT NULL DEFAULT 0,
+  res_flush_interval INTEGER NOT NULL DEFAULT 20,
+  cancel_on_client_close INTEGER NOT NULL DEFAULT 0,
+  failure_status INTEGER NOT NULL DEFAULT 0,
+  max_conns_per_host INTEGER NOT NULL DEFAULT 0,
+  llm_config TEXT,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE TRIGGER clusters_updated_at AFTER UPDATE ON clusters
+  FOR EACH ROW BEGIN UPDATE clusters SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create lb_matrices
+DROP TABLE IF EXISTS lb_matrices;
+CREATE TABLE lb_matrices (
+  cluster_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lb_matrix TEXT NOT NULL,
+  product_id INTEGER NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TRIGGER lb_matrices_updated_at AFTER UPDATE ON lb_matrices
+  FOR EACH ROW BEGIN UPDATE lb_matrices SET updated_at = CURRENT_TIMESTAMP WHERE cluster_id = OLD.cluster_id; END;
+
+-- create sub_clusters
+DROP TABLE IF EXISTS sub_clusters;
+CREATE TABLE sub_clusters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  cluster_id INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  description TEXT NOT NULL DEFAULT 'no desc',
+  bns_name_id INTEGER NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  role TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name, product_id)
+);
+CREATE INDEX sub_clusters_cluster_id ON sub_clusters (cluster_id);
+CREATE TRIGGER sub_clusters_updated_at AFTER UPDATE ON sub_clusters
+  FOR EACH ROW BEGIN UPDATE sub_clusters SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create pools
+DROP TABLE IF EXISTS pools;
+CREATE TABLE pools (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  product_id INTEGER NOT NULL DEFAULT 0,
+  ready INTEGER NOT NULL DEFAULT 1,
+  instance_detail TEXT,
+  type INTEGER NOT NULL DEFAULT 1,
+  tag INTEGER NOT NULL DEFAULT 0,
+  role TEXT NOT NULL DEFAULT 'COMMON',
+  epp_server TEXT,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE TRIGGER pools_updated_at AFTER UPDATE ON pools
+  FOR EACH ROW BEGIN UPDATE pools SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create route_basic_rules
+DROP TABLE IF EXISTS route_basic_rules;
+CREATE TABLE route_basic_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  description TEXT NOT NULL DEFAULT '',
+  product_id INTEGER NOT NULL,
+  host_names TEXT NOT NULL,
+  paths TEXT NOT NULL,
+  cluster_id INTEGER NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX route_basic_rules_product_id ON route_basic_rules (product_id);
+CREATE TRIGGER route_basic_rules_updated_at AFTER UPDATE ON route_basic_rules
+  FOR EACH ROW BEGIN UPDATE route_basic_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create route_advance_rules
+DROP TABLE IF EXISTS route_advance_rules;
+CREATE TABLE route_advance_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  product_id INTEGER NOT NULL,
+  expression BLOB NOT NULL,
+  cluster_id INTEGER NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX route_advance_rules_product_id ON route_advance_rules (product_id);
+CREATE TRIGGER route_advance_rules_updated_at AFTER UPDATE ON route_advance_rules
+  FOR EACH ROW BEGIN UPDATE route_advance_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create route_cases
+DROP TABLE IF EXISTS route_cases;
+CREATE TABLE route_cases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  description TEXT NOT NULL DEFAULT '',
+  product_id INTEGER NOT NULL,
+  url TEXT NOT NULL,
+  method TEXT NOT NULL DEFAULT '',
+  protocol TEXT NOT NULL DEFAULT '',
+  header TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  expect_cluster TEXT NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX route_cases_product_id ON route_cases (product_id);
+CREATE TRIGGER route_cases_updated_at AFTER UPDATE ON route_cases
+  FOR EACH ROW BEGIN UPDATE route_cases SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create certificates
+DROP TABLE IF EXISTS certificates;
+CREATE TABLE certificates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cert_name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT 'no desc',
+  is_default INTEGER NOT NULL DEFAULT 0,
+  expired_date TEXT NOT NULL,
+  cert_file_name TEXT NOT NULL,
+  cert_file_path TEXT NOT NULL,
+  key_file_name TEXT NOT NULL,
+  key_file_path TEXT NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (cert_name)
+);
+CREATE TRIGGER certificates_updated_at AFTER UPDATE ON certificates
+  FOR EACH ROW BEGIN UPDATE certificates SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create extra_files
+DROP TABLE IF EXISTS extra_files;
+CREATE TABLE extra_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  product_id INTEGER NOT NULL DEFAULT 0,
+  description TEXT NOT NULL DEFAULT '',
+  md5 TEXT NOT NULL,
+  content TEXT,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name, product_id)
+);
+CREATE INDEX extra_files_product_id ON extra_files (product_id);
+CREATE TRIGGER extra_files_updated_at AFTER UPDATE ON extra_files
+  FOR EACH ROW BEGIN UPDATE extra_files SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create config_versions
+DROP TABLE IF EXISTS config_versions;
+CREATE TABLE config_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  data_sign TEXT NOT NULL,
+  version TEXT NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TRIGGER config_versions_updated_at AFTER UPDATE ON config_versions
+  FOR EACH ROW BEGIN UPDATE config_versions SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create users
+DROP TABLE IF EXISTS users;
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  type INTEGER NOT NULL DEFAULT 0,
+  password TEXT NOT NULL DEFAULT '',
+  ticket TEXT NOT NULL DEFAULT '',
+  ticket_created_at DATETIME NOT NULL DEFAULT '0000-01-01 00:00:00',
+  scopes TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name, type)
+);
+CREATE TRIGGER users_updated_at AFTER UPDATE ON users
+  FOR EACH ROW BEGIN UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create user_products
+DROP TABLE IF EXISTS user_products;
+CREATE TABLE user_products (
+  user_id INTEGER NOT NULL,
+  product_id INTEGER NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, product_id)
+);
+CREATE TRIGGER user_products_updated_at AFTER UPDATE ON user_products
+  FOR EACH ROW BEGIN UPDATE user_products SET updated_at = CURRENT_TIMESTAMP WHERE user_id = OLD.user_id AND product_id = OLD.product_id; END;
+
+-- create api_keys
+DROP TABLE IF EXISTS api_keys;
+CREATE TABLE api_keys (
+  inner_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT NOT NULL DEFAULT '',
+  enable INTEGER NOT NULL DEFAULT 0,
+  api_key TEXT NOT NULL DEFAULT '',
+  description TEXT DEFAULT '',
+  unlimited_quota INTEGER DEFAULT 0,
+  product_name TEXT NOT NULL DEFAULT '',
+  expired_time INTEGER NOT NULL DEFAULT -1,
+  allowed_models TEXT,
+  subnet TEXT,
+  entity_id TEXT DEFAULT NULL,
+  quota_plan_id INTEGER DEFAULT NULL,
+  rate_limit_policy_id INTEGER DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT '0000-01-01 00:00:00',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (id)
+);
+CREATE INDEX api_keys_product_name ON api_keys (product_name);
+CREATE INDEX api_keys_entity_id ON api_keys (entity_id);
+CREATE INDEX api_keys_quota_plan_id ON api_keys (quota_plan_id);
+CREATE INDEX api_keys_rate_limit_policy_id ON api_keys (rate_limit_policy_id);
+CREATE TRIGGER api_keys_updated_at AFTER UPDATE ON api_keys
+  FOR EACH ROW BEGIN UPDATE api_keys SET updated_at = CURRENT_TIMESTAMP WHERE inner_id = OLD.inner_id; END;
+
+-- create api_key_tokens
+DROP TABLE IF EXISTS api_key_tokens;
+CREATE TABLE api_key_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  api_key TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT '0000-01-01 00:00:00',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (api_key)
+);
+CREATE TRIGGER api_key_tokens_updated_at AFTER UPDATE ON api_key_tokens
+  FOR EACH ROW BEGIN UPDATE api_key_tokens SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create ai_route_rules
+DROP TABLE IF EXISTS ai_route_rules;
+CREATE TABLE ai_route_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL DEFAULT '',
+  basic TEXT NOT NULL,
+  product_name TEXT NOT NULL DEFAULT '',
+  idx INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT '0000-01-01 00:00:00',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE INDEX ai_route_rules_idx ON ai_route_rules (idx);
+CREATE TRIGGER ai_route_rules_updated_at AFTER UPDATE ON ai_route_rules
+  FOR EACH ROW BEGIN UPDATE ai_route_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create route_default_rules
+DROP TABLE IF EXISTS route_default_rules;
+CREATE TABLE route_default_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cmd TEXT NOT NULL,
+  params TEXT,
+  product_id INTEGER NOT NULL,
+  route_action TEXT,
+  description TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT '0000-01-01 00:00:00',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (product_id)
+);
+CREATE TRIGGER route_default_rules_updated_at AFTER UPDATE ON route_default_rules
+  FOR EACH ROW BEGIN UPDATE route_default_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create entity_types
+DROP TABLE IF EXISTS entity_types;
+CREATE TABLE entity_types (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type_name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  level INTEGER NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (type_name)
+);
+CREATE INDEX entity_types_level ON entity_types (level);
+CREATE TRIGGER entity_types_updated_at AFTER UPDATE ON entity_types
+  FOR EACH ROW BEGIN UPDATE entity_types SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create entities
+DROP TABLE IF EXISTS entities;
+CREATE TABLE entities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  parent_id TEXT DEFAULT NULL,
+  allow_models TEXT,
+  block_models TEXT,
+  quota_plan_id INTEGER DEFAULT NULL,
+  rate_limit_policy_id INTEGER DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (entity_id),
+  UNIQUE (name)
+);
+CREATE INDEX entities_parent_id ON entities (parent_id);
+CREATE INDEX entities_type ON entities (type);
+CREATE INDEX entities_quota_plan_id ON entities (quota_plan_id);
+CREATE INDEX entities_rate_limit_policy_id ON entities (rate_limit_policy_id);
+CREATE TRIGGER entities_updated_at AFTER UPDATE ON entities
+  FOR EACH ROW BEGIN UPDATE entities SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create quota_plans
+DROP TABLE IF EXISTS quota_plans;
+CREATE TABLE quota_plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  unlimited INTEGER DEFAULT 1,
+  pass_when_no_enough_quota INTEGER DEFAULT 0,
+  quota INTEGER DEFAULT 0,
+  unit TEXT DEFAULT 'total_token',
+  reset_period TEXT DEFAULT 'never',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX quota_plans_unlimited ON quota_plans (unlimited);
+CREATE TRIGGER quota_plans_updated_at AFTER UPDATE ON quota_plans
+  FOR EACH ROW BEGIN UPDATE quota_plans SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create quota_balances
+DROP TABLE IF EXISTS quota_balances;
+CREATE TABLE quota_balances (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  quota_plan_id INTEGER NOT NULL,
+  used INTEGER DEFAULT 0,
+  remaining INTEGER DEFAULT 0,
+  last_reset_at DATETIME DEFAULT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (quota_plan_id)
+);
+CREATE INDEX quota_balances_remaining ON quota_balances (remaining);
+CREATE TRIGGER quota_balances_updated_at AFTER UPDATE ON quota_balances
+  FOR EACH ROW BEGIN UPDATE quota_balances SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create rate_limit_policies
+DROP TABLE IF EXISTS rate_limit_policies;
+CREATE TABLE rate_limit_policies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  enabled INTEGER DEFAULT 0,
+  max_concurrency INTEGER DEFAULT -1,
+  tpm_configs TEXT,
+  rpm_configs TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX rate_limit_policies_enabled ON rate_limit_policies (enabled);
+CREATE TRIGGER rate_limit_policies_updated_at AFTER UPDATE ON rate_limit_policies
+  FOR EACH ROW BEGIN UPDATE rate_limit_policies SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- insert default user
+INSERT INTO users (id, name, password, scopes, created_at) VALUES (1, 'admin', 'admin', 'System', CURRENT_TIMESTAMP);
+
+INSERT INTO products (id, name, description, mail_list, contact_person, created_at) VALUES
+  (1, 'BFE', 'Build-in Product, User by System Manager', 'bfe@cncf.com', 'bfe', CURRENT_TIMESTAMP);
+
+INSERT INTO products (name, description, mail_list, contact_person, created_at) VALUES ('AI_product', 'ai 产品线', '', '', CURRENT_TIMESTAMP);
