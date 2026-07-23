@@ -40,6 +40,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
 	"github.com/yf-networks/ai-gateway-api/model/quota"
+	"github.com/yf-networks/ai-gateway-api/model/shared"
 	"github.com/yf-networks/ai-gateway-api/stateful"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 	"github.com/yf-networks/ai-gateway-api/storage/rdb/ai_route"
@@ -167,6 +168,10 @@ func Init() {
 	container.QuotaPlanStorager = quotaStorage.NewQuotaPlanStorager(stateful.NewBFEDBContext)
 	container.QuotaBalanceStorager = quotaStorage.NewQuotaBalanceStorager(stateful.NewBFEDBContext)
 	container.RateLimitPolicyStorager = quotaStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
+	container.RouteRulesStorager = quotaStorage.NewRouteRulesStorager(stateful.NewBFEDBContext)
+	container.RouteRulesManager = shared.NewRouteRulesManager(
+		container.TxnStoragerSingleton,
+		container.RouteRulesStorager)
 
 	container.EntityTypeManager = quota.NewEntityTypeManager(
 		container.TxnStoragerSingleton,
@@ -178,6 +183,7 @@ func Init() {
 		container.EntityTypeStorager,
 		quota.NewQuotaPlanStoragerAdapter(container.QuotaPlanStorager),
 		quota.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
+		container.RouteRulesStorager,
 		container.QuotaBalanceStorager)
 
 	container.APIKeyRuleManager = imods.NewAPIKeyRuleManager(
@@ -205,12 +211,19 @@ func Init() {
 		container.EntityStorager,
 		container.VersionControlManager)
 
+	container.AIRouteExporter = imods.NewAIRouteExporter(
+		container.APIKeyStorager,
+		container.EntityStorager,
+		container.RouteRulesStorager,
+		container.VersionControlManager)
+
 	container.APIKeyManager = icluster_conf.NewAPIKeyManager(
 		container.TxnStoragerSingleton,
 		container.APIKeyStorager,
 		container.ClusterStoragerSingleton,
 		quota.NewQuotaPlanStoragerAdapter(container.QuotaPlanStorager),
 		quota.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
+		container.RouteRulesStorager,
 		quota.NewEntityStoragerAdapter(container.EntityStorager),
 		quota.NewQuotaBalanceStoragerAdapter(container.QuotaBalanceStorager),
 	)

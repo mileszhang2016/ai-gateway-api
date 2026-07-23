@@ -67,6 +67,30 @@ type RateLimitPolicyParam struct {
 	Rules   *RateLimitRules `json:"rules"`
 }
 
+type AiRouteTargetParam struct {
+	ClusterName *string `json:"ClusterName"`
+	Model       *string `json:"Model"`
+	Weight      *int    `json:"Weight"`
+}
+
+type AiRouteFallbackParam struct {
+	ClusterName *string `json:"ClusterName"`
+	Model       *string `json:"Model"`
+}
+
+type AiRouteRuleParam struct {
+	Name      *string                 `json:"name"`
+	Cond      *string                 `json:"Cond"`
+	Targets   []*AiRouteTargetParam   `json:"targets"`
+	Fallbacks []*AiRouteFallbackParam `json:"fallbacks"`
+}
+
+type RouteRulesParam struct {
+	ID      *int64              `json:"id,omitempty"`
+	Enabled *bool               `json:"enabled"`
+	Rules   []*AiRouteRuleParam `json:"rules"`
+}
+
 type QuotaPlanStorager interface {
 	CreateQuotaPlan(ctx context.Context, param *QuotaPlanParam) (int64, error)
 	UpdateQuotaPlan(ctx context.Context, id int64, param *QuotaPlanParam) (int64, error)

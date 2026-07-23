@@ -17,6 +17,7 @@ package innerapi_v1
 import (
 	"github.com/gorilla/mux"
 
+	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/ai_route"
 	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/extra_file"
 	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/gslb_data"
 	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/mod_api_key"
@@ -38,6 +39,7 @@ func endpoints() []*xreq.Endpoint {
 		mod_api_key.ExportRoute,
 		mod_body_process.ExportRoute,
 		rate_limit_policy.ExportRoute,
+		ai_route.ExportRoute,
 	}
 }
 

@@ -286,12 +286,12 @@ func (m *BalanceSyncManager) resetAPIKeysRedisUsage(ctx context.Context, planID 
 			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
 		}
 		if err != nil {
-			fmt.Printf("Failed to reset Redis value for API-Key %d (key=%s): %v\n",
+			fmt.Printf("Failed to reset Redis value for API-Key %s (key=%s): %v\n",
 				*apiKey.ID, *apiKey.Key, err)
 			continue
 		}
 
-		fmt.Printf("Reset Redis value for API-Key %d (key=%s, redisKey=%s) to %d\n",
+		fmt.Printf("Reset Redis value for API-Key %s (key=%s, redisKey=%s) to %d\n",
 			*apiKey.ID, *apiKey.Key, redisKey, quotaTotal)
 	}
 

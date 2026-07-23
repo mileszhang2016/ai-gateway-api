@@ -47,6 +47,10 @@ func (s *EntityStorager) CreateEntity(ctx context.Context, param *quota.EntityPa
 	return dao.TEntityCreate(dbCtx, data)
 }
 
+func (s *EntityStorager) FetchEntityByRouteRulesID(ctx context.Context, routeRulesID int64) (*quota.EntityParam, error) {
+	return s.FetchEntity(ctx, &quota.EntityFilter{RouteRulesID: &routeRulesID})
+}
+
 func (s *EntityStorager) FetchEntity(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
@@ -113,18 +117,19 @@ func entityFilterToParam(filter *quota.EntityFilter) *dao.TEntityParam {
 	}
 
 	hasCondition := filter.EntityID != nil || filter.Name != nil ||
-		filter.Type != nil || filter.ParentID != nil || filter.QuotaPlanID != nil
+		filter.Type != nil || filter.ParentID != nil || filter.QuotaPlanID != nil || filter.RouteRulesID != nil
 
 	if !hasCondition && (filter.Page == nil || filter.PageSize == nil) {
 		return nil
 	}
 
 	param := &dao.TEntityParam{
-		EntityID:    filter.EntityID,
-		Name:        filter.Name,
-		Type:        filter.Type,
-		ParentID:    filter.ParentID,
-		QuotaPlanID: filter.QuotaPlanID,
+		EntityID:     filter.EntityID,
+		Name:         filter.Name,
+		Type:         filter.Type,
+		ParentID:     filter.ParentID,
+		QuotaPlanID:  filter.QuotaPlanID,
+		RouteRulesID: filter.RouteRulesID,
 	}
 
 	if filter.Page != nil && filter.PageSize != nil {
@@ -146,6 +151,7 @@ func entityDataToParam(param *quota.EntityParam) *dao.TEntityParam {
 		ParentID:          param.ParentID,
 		QuotaPlanID:       param.QuotaPlanID,
 		RateLimitPolicyID: param.RateLimitPolicyID,
+		RouteRulesID:      param.RouteRulesID,
 	}
 
 	// 转换 AllowModels 为 JSON 字符串
@@ -176,6 +182,7 @@ func entityParamToData(one *dao.TEntity) *quota.EntityParam {
 		ParentID:          one.ParentID,
 		QuotaPlanID:       one.QuotaPlanID,
 		RateLimitPolicyID: one.RateLimitPolicyID,
+		RouteRulesID:      one.RouteRulesID,
 	}
 
 	createTime := one.CreatedAt.Unix()

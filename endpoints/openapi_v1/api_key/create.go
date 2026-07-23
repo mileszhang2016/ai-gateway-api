@@ -107,6 +107,13 @@ func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 		}
 	}
 
+	if param.RouteRules == nil {
+		param.RouteRules = &shared.RouteRulesParam{
+			Enabled: lib.PBool(false),
+			Rules:   []*shared.AiRouteRuleParam{},
+		}
+	}
+
 	err = container.APIKeyManager.CreateAPIKey(ctx, &icluster_conf.APIKeyParam{
 		ID:              lib.PString(apiKeyID),
 		Enable:          param.Enable,
@@ -120,6 +127,7 @@ func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 		ProductName:     &product.Name,
 		QuotaPlan:       param.QuotaPlan,
 		RateLimitPolicy: param.RateLimitPolicy,
+		RouteRules:      param.RouteRules,
 	})
 
 	if err == nil && param.Key != nil && param.QuotaPlan != nil &&

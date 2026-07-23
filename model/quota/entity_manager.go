@@ -32,6 +32,7 @@ type EntityManager struct {
 	entityTypeStorager      EntityTypeStorager
 	quotaPlanStorager       shared.QuotaPlanStorager
 	rateLimitPolicyStorager shared.RateLimitPolicyStorager
+	routeRulesStorager      shared.RouteRulesStorager
 	quotaBalanceStorager    QuotaBalanceStorager
 }
 
@@ -40,6 +41,7 @@ func NewEntityManager(txn itxn.TxnStorager, storager EntityStorager,
 	entityTypeStorager EntityTypeStorager,
 	quotaPlanStorager shared.QuotaPlanStorager,
 	rateLimitPolicyStorager shared.RateLimitPolicyStorager,
+	routeRulesStorager shared.RouteRulesStorager,
 	quotaBalanceStorager QuotaBalanceStorager) *EntityManager {
 	return &EntityManager{
 		txn:                     txn,
@@ -47,6 +49,7 @@ func NewEntityManager(txn itxn.TxnStorager, storager EntityStorager,
 		entityTypeStorager:      entityTypeStorager,
 		quotaPlanStorager:       quotaPlanStorager,
 		rateLimitPolicyStorager: rateLimitPolicyStorager,
+		routeRulesStorager:      routeRulesStorager,
 		quotaBalanceStorager:    quotaBalanceStorager,
 	}
 }
@@ -97,6 +100,14 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 				return err
 			}
 			param.RateLimitPolicyID = &rateLimitPolicyID
+		}
+
+		if param.RouteRules != nil && m.routeRulesStorager != nil {
+			routeRulesID, err := m.routeRulesStorager.CreateRouteRules(ctx, shared.RouteRulesTypeEntity, param.EntityID, param.RouteRules)
+			if err != nil {
+				return err
+			}
+			param.RouteRulesID = &routeRulesID
 		}
 
 		id, err = m.storager.CreateEntity(ctx, param)
@@ -243,6 +254,21 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 			}
 		}
 
+		if param.RouteRules != nil && m.routeRulesStorager != nil {
+			if one.RouteRulesID != nil {
+				_, err = m.routeRulesStorager.UpdateRouteRules(ctx, *one.RouteRulesID, param.RouteRules)
+				if err != nil {
+					return err
+				}
+			} else {
+				routeRulesID, err := m.routeRulesStorager.CreateRouteRules(ctx, shared.RouteRulesTypeEntity, one.EntityID, param.RouteRules)
+				if err != nil {
+					return err
+				}
+				param.RouteRulesID = &routeRulesID
+			}
+		}
+
 		affected, err = m.storager.UpdateEntity(ctx, &EntityFilter{EntityID: one.EntityID}, param)
 		return err
 	})
@@ -289,6 +315,12 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 			}
 		}
 
+		if one.RouteRulesID != nil && m.routeRulesStorager != nil {
+			if err := m.routeRulesStorager.DeleteRouteRules(ctx, *one.RouteRulesID); err != nil {
+				return err
+			}
+		}
+
 		return m.storager.DeleteEntity(ctx, filter)
 	})
 }
@@ -329,6 +361,27 @@ func (m *EntityManager) populateAssociatedData(ctx context.Context, one *EntityP
 			return err
 		}
 		one.RateLimitPolicy = rateLimitPolicy
+	}
+
+	if one.RouteRules == nil {
+		one.RouteRules = &shared.RouteRulesParam{}
+	}
+	if one.RouteRules.Enabled == nil {
+		enabled := false
+		one.RouteRules.Enabled = &enabled
+	}
+	if one.RouteRules.Rules == nil {
+		one.RouteRules.Rules = []*shared.AiRouteRuleParam{}
+	}
+
+	if one.RouteRulesID != nil && m.routeRulesStorager != nil {
+		routeRules, err := m.routeRulesStorager.FetchRouteRulesByID(ctx, *one.RouteRulesID)
+		if err != nil {
+			return err
+		}
+		if routeRules != nil {
+			one.RouteRules = routeRules
+		}
 	}
 
 	return nil
