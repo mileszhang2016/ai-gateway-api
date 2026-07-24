@@ -19,20 +19,19 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
 // DeleteRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var DeleteEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/sub-clusters/{sub_cluster_name}",
-	Method:     http.MethodDelete,
-	Handler:    xreq.Convert(DeleteAction),
-	Authorizer: iauth.FAP(iauth.FeatureSubCluster, iauth.ActionDelete),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var DeleteEndpoint = &xreq.Endpoint{
+// 	Path:       "/sub-clusters/{sub_cluster_name}",
+// 	Method:     http.MethodDelete,
+// 	Handler:    xreq.Convert(DeleteAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureSubCluster, iauth.ActionDelete),
+// }
 
 var _ xreq.Handler = DeleteAction
 
@@ -49,7 +48,7 @@ func DeleteAction(req *http.Request) (interface{}, error) {
 
 func deleteActionProcess(req *http.Request, param *OneParam) (*OneData, error) {
 	// get product info
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

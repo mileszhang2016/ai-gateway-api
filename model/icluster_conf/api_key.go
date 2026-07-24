@@ -77,17 +77,17 @@ type APIKeyTokenFilter struct {
 
 // APIKeyFilter defines filters for querying API keys
 type APIKeyFilter struct {
-	ProductName     *string
-	ProductNames    []string
-	ALBGroupName    *string
-	ID              *string
-	InnerID         *int64
-	QuotaPlanID     *int64
-	Page            *int
-	PageSize        *int
-	Enabled         *bool
-	EntityID        *string
-	UnlimitedQuota  *bool
+	ProductName    *string
+	ProductNames   []string
+	ALBGroupName   *string
+	ID             *string
+	InnerID        *int64
+	QuotaPlanID    *int64
+	Page           *int
+	PageSize       *int
+	Enabled        *bool
+	EntityID       *string
+	UnlimitedQuota *bool
 }
 
 // APIKeyStorager interface defines storage operations for API keys
@@ -152,6 +152,10 @@ func GetRemainingQuota(param *APIKeyParam) (*int64, error) {
 
 	if param.QuotaPlan == nil || param.QuotaPlan.Quota == nil {
 		return nil, nil
+	}
+
+	if stateful.DefaultClientSet == nil || stateful.DefaultClientSet.RedisClient == nil {
+		return param.QuotaPlan.Quota, nil
 	}
 
 	remain, err := stateful.DefaultClientSet.RedisClient.GetInt64(stateful.AIUsedQuotaKey(*param.Key))

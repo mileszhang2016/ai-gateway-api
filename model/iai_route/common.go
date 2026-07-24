@@ -16,7 +16,6 @@ package iai_route
 
 import (
 	"github.com/bfenetworks/bfe/bfe_basic/condition"
-	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 )
 
 const (
@@ -24,6 +23,32 @@ const (
 	MatchModeExact  = "exact_match"
 	MatchModeSuffix = "suffix_match"
 )
+
+// RouteAction
+type RouteAction struct {
+	Forward           *ActionForward           `json:"forward,omitempty"`
+	GoToAdvancedRules *ActionGoToAdvancedRules `json:"go_to_advanced_rules,omitempty"`
+	Redirect          *ActionRedirect          `json:"redirect,omitempty"`
+	Response          *ActionResponse          `json:"response,omitempty"`
+}
+
+type ActionForward struct {
+	ClusterName string `json:"cluster_name"`
+	URL         string `json:"url"`
+}
+
+type ActionResponse struct {
+	StatusCode  string `json:"status_code"`
+	ContentType string `json:"content_type"`
+	Body        string `json:"body"`
+}
+
+type ActionRedirect struct {
+	URL string `json:"url"`
+}
+
+type ActionGoToAdvancedRules struct {
+}
 
 // Rule
 type Rule struct {
@@ -35,12 +60,12 @@ type Rule struct {
 
 // BasicInfo
 type BasicInfo struct {
-	Domain        *string                  `json:"domain,omitempty"`
-	PathFilter    *PathFilter              `json:"path_filter"`
-	Method        *string                  `json:"method,omitempty"`
-	HeaderFilters []*BasicHeaderFilter     `json:"header_filters,omitempty"`
-	ModelFilter   *ModelFilter             `json:"model_filter,omitempty"`
-	ExpectAction  *iroute_conf.RouteAction `json:"expect_action"`
+	Domain        *string              `json:"domain,omitempty"`
+	PathFilter    *PathFilter          `json:"path_filter"`
+	Method        *string              `json:"method,omitempty"`
+	HeaderFilters []*BasicHeaderFilter `json:"header_filters,omitempty"`
+	ModelFilter   *ModelFilter         `json:"model_filter,omitempty"`
+	ExpectAction  *RouteAction         `json:"expect_action"`
 }
 
 // BasicHeaderFilter

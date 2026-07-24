@@ -115,7 +115,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 		}
 	}
 
-	routeRules, err := rm.storager.FetchRouteRules(ctx, products, clusters)
+	routeRules, err := rm.storager.FetchRoutRules(ctx, products, clusters)
 	if err != nil {
 		return nil, err
 	}

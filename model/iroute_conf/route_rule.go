@@ -36,11 +36,13 @@ import (
 	"github.com/bfenetworks/bfe/bfe_basic/condition"
 	"github.com/bfenetworks/bfe/bfe_config/bfe_route_conf/route_rule_conf"
 
+	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/model/itxn"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
+	"github.com/yf-networks/ai-gateway-api/stateful"
 )
 
 type BasicRouteRule struct {
@@ -52,82 +54,32 @@ type BasicRouteRule struct {
 }
 
 type AdvanceRouteRule struct {
-	Name          string
-	Description   string
-	Expression    string
-	ClusterName   string
-	ClusterID     int64
-	RouteAction   *RouteAction    `json:"action"`
-	ExtendActions []*ExtendAction `json:"extend_actions"`
+	Name        string
+	Description string
+	Expression  string
+	ClusterName string
+	ClusterID   int64
 }
 
 type RouteRuleCase struct {
 	Description   string
 	URL           string
 	Method        string
-	Body          string
 	Header        map[string]string
 	ExpectCluster string
-	ExpectAction  *RouteAction
 }
 
 type ProductRouteRule struct {
-	DefaultRouteRule  *DefaultRouteRule
+	BasicRouteRules   []*BasicRouteRule
 	AdvanceRouteRules []*AdvanceRouteRule
+
+	RouteCases []*RouteRuleCase
 }
 
 type HostUsedInfo struct {
 	Type   string
 	Detail string
 }
-
-type ExtendAction struct {
-	Cmd    string   `json:"cmd"`
-	Params []string `json:"params"`
-}
-
-type RouteAction struct {
-	Forward           *ActionForward           `json:"forward,omitempty"`
-	GoToAdvancedRules *ActionGoToAdvancedRules `json:"go_to_advanced_rules,omitempty"`
-	Redirect          *ActionRedirect          `json:"redirect,omitempty"`
-	Response          *ActionResponse          `json:"response,omitempty"`
-}
-
-type ActionResponse struct {
-	StatusCode  string `json:"status_code"`
-	ContentType string `json:"content_type"`
-	Body        string `json:"body"`
-}
-
-type ActionRedirect struct {
-	URL string `json:"url"`
-}
-
-type ActionGoToAdvancedRules struct {
-}
-
-type ActionForward struct {
-	ClusterName string `json:"cluster_name"`
-	URL         string `json:"url"`
-}
-
-type DefaultRouteRule struct {
-	Cmd           string
-	Params        []string
-	Description   string
-	RouteAction   *RouteAction    `json:"action"`
-	ExtendActions []*ExtendAction `json:"extend_actions"`
-}
-
-const (
-	HOSTSET = "HOST_SET"
-	PATHSET = "PATH_SET"
-
-	DefaultRouteRuleCmdForward      = "FORWARD"
-	DefaultRouteRuleCmdRedirect     = "REDIRECT"
-	DefaultRouteRuleCmdReturn       = "RETURN"
-	DefaultRouteRuleCmdSendResponse = "SEND_RESPONSE"
-)
 
 var (
 	DefaultExpression = "default_t()"
@@ -137,6 +89,17 @@ var (
 )
 
 func (prr *ProductRouteRule) HostBeUsed(host string) *HostUsedInfo {
+	for _, brr := range prr.BasicRouteRules {
+		for _, h := range brr.HostNames {
+			if host == h {
+				return &HostUsedInfo{
+					Type:   "BasicConditionExpression",
+					Detail: host,
+				}
+			}
+		}
+	}
+
 	keyword := fmt.Sprintf(`req_host_in("%s")`, host)
 
 	for _, arr := range prr.AdvanceRouteRules {
@@ -152,26 +115,57 @@ func (prr *ProductRouteRule) HostBeUsed(host string) *HostUsedInfo {
 }
 
 type ProductRouteRuleConvertResult struct {
+	BasicRouteRuleFiles    []route_rule_conf.BasicRouteRuleFile
 	AdvancedRouteRuleFiles []route_rule_conf.AdvancedRouteRuleFile
-	DefaultRouteRule       DefaultRouteRuleFile
-	ReferClusterNames      []string
+
+	ReferClusterNames []string
 }
 
-type DefaultRouteRuleFile struct {
-	Cmd           *string
-	Params        []string
-	RouteAction   *RouteAction
-	ExtendActions []*ExtendAction
+type RouteRuleRunCaseResult struct {
+	RouteRuleCase
+	ActualCluster string
+	Pass          bool
+}
+
+func (pfr *ProductRouteRule) Convert() (*ProductRouteRuleConvertResult, error) {
+	if len(pfr.AdvanceRouteRules) == 0 ||
+		pfr.AdvanceRouteRules[len(pfr.AdvanceRouteRules)-1].Expression != "default_t()" {
+		return nil, xerror.WrapParamErrorWithMsg("Last ForwardRule Expression Must Be default_t()")
+	}
+
+	clusterNameMap := map[string]bool{}
+	basicRules := route_rule_conf.BasicRouteRuleFiles{}
+	for _, one := range pfr.BasicRouteRules {
+		clusterNameMap[one.ClusterName] = true
+		basicRules = append(basicRules, route_rule_conf.BasicRouteRuleFile{
+			Hostname:    one.HostNames,
+			Path:        one.Paths,
+			ClusterName: &one.ClusterName,
+		})
+	}
+
+	advanceRules := route_rule_conf.AdvancedRouteRuleFiles{}
+	for _, one := range pfr.AdvanceRouteRules {
+		clusterNameMap[one.ClusterName] = true
+		advanceRules = append(advanceRules, route_rule_conf.AdvancedRouteRuleFile{
+			Cond:        lib.PString(one.Expression),
+			ClusterName: &one.ClusterName,
+		})
+	}
+
+	return &ProductRouteRuleConvertResult{
+		BasicRouteRuleFiles:    basicRules,
+		AdvancedRouteRuleFiles: advanceRules,
+
+		ReferClusterNames: lib.StringMap2Slice(clusterNameMap),
+	}, nil
 }
 
 type RouteRuleStorager interface {
-	UpsertDefaultProductRule(ctx context.Context, product *ibasic.Product, rule *DefaultRouteRule) error
-	UpsertAdvanceProductRule(ctx context.Context, product *ibasic.Product, rules []*AdvanceRouteRule) error
-	FetchDefaultRouteRules(ctx context.Context, products []*ibasic.Product) ([]*DefaultRouteRule, error)
-	FetchAdvanceRouteRules(ctx context.Context, products []*ibasic.Product, clusters []*icluster_conf.Cluster) ([]*AdvanceRouteRule, error)
+	UpsertProductRule(ctx context.Context, product *ibasic.Product, rule *ProductRouteRule) error
 	FetchProductRule(ctx context.Context, product *ibasic.Product,
 		clusterList []*icluster_conf.Cluster) (*ProductRouteRule, error)
-	FetchRouteRules(ctx context.Context, products []*ibasic.Product,
+	FetchRoutRules(ctx context.Context, products []*ibasic.Product,
 		clusterList []*icluster_conf.Cluster) (map[int64]*ProductRouteRule, error)
 }
 
@@ -202,54 +196,82 @@ func (rm *RouteRuleManager) ExpressionVerify(ctx context.Context, expression str
 	return err
 }
 
-func (rm *RouteRuleManager) FetchDefaultRouteRules(ctx context.Context, products []*ibasic.Product) (rules []*DefaultRouteRule, err error) {
-	err = rm.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		rules, err = rm.storager.FetchDefaultRouteRules(ctx, products)
+func (rm *RouteRuleManager) UpsertProductRule(ctx context.Context, product *ibasic.Product, rule *ProductRouteRule) error {
+	cr, err := rule.Convert()
+	if err != nil {
 		return err
-	})
+	}
 
-	return
-}
+	var clusterList []*icluster_conf.Cluster
+	var clusterMap map[string]*icluster_conf.Cluster
 
-func (rm *RouteRuleManager) UpsertDefaultProductRule(ctx context.Context, product *ibasic.Product, rule *DefaultRouteRule) (err error) {
 	err = rm.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		return rm.storager.UpsertDefaultProductRule(ctx, product, rule)
+		// verify cluster
+		if referClusters := cr.ReferClusterNames; len(referClusters) > 0 {
+			clusterList, err = rm.clusterStorager.FetchClusterList(ctx, &icluster_conf.ClusterFilter{
+				Names:   referClusters,
+				Product: product,
+			})
+			if err != nil {
+				return err
+			}
+
+			clusterList = icluster_conf.AppendAdvancedRuleCluster(clusterList)
+			clusterMap = icluster_conf.ClusterList2MapByName(clusterList)
+			for _, clusterName := range referClusters {
+				if icluster_conf.SystemKeepRouteNames[clusterName] {
+					continue
+				}
+
+				cluster, ok := clusterMap[clusterName]
+				if !ok {
+					return xerror.WrapModelErrorWithMsg("Cluster %s Not Exist", clusterName)
+				}
+
+				if !stateful.IgnoreBNSStatusCheck {
+					if !cluster.Ready {
+						return xerror.WrapModelErrorWithMsg("Cluster %s Not Ready", clusterName)
+					}
+				}
+			}
+		}
+
+		for _, one := range rule.AdvanceRouteRules {
+			one.ClusterID = clusterMap[one.ClusterName].ID
+		}
+		for _, one := range rule.BasicRouteRules {
+			one.ClusterID = clusterMap[one.ClusterName].ID
+		}
+
+		if err := rm.storager.UpsertProductRule(ctx, product, rule); err != nil {
+			return err
+		}
+
+		return nil
 	})
 
-	return
-}
-
-func (rm *RouteRuleManager) UpsertAdvanceProductRule(ctx context.Context, product *ibasic.Product, rules []*AdvanceRouteRule) (err error) {
-	err = rm.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		return rm.storager.UpsertAdvanceProductRule(ctx, product, rules)
-	})
-
-	return
+	return err
 }
 
 func (rm *RouteRuleManager) ClusterDeleteChecker(ctx context.Context, product *ibasic.Product, cluster *icluster_conf.Cluster) error {
-	rules, err := rm.storager.FetchAdvanceRouteRules(ctx, []*ibasic.Product{product}, []*icluster_conf.Cluster{cluster})
+	m, err := rm.storager.FetchRoutRules(ctx, []*ibasic.Product{product}, []*icluster_conf.Cluster{cluster})
 	if err != nil {
 		return err
 	}
 
-	if len(rules) > 0 {
-		return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", rules[0].Name)
-	}
-
-	defaultRules, err := rm.storager.FetchDefaultRouteRules(ctx, []*ibasic.Product{product})
-	if err != nil {
-		return err
-	}
-
-	if len(defaultRules) == 0 {
+	if m == nil || m[product.ID] == nil {
 		return nil
 	}
 
-	one := defaultRules[0]
-	if one.RouteAction != nil && one.RouteAction.Forward != nil && one.RouteAction.Forward.ClusterName == cluster.Name {
-		return xerror.WrapModelErrorWithMsg("Default rule Refer To This Cluster")
+	rule := m[product.ID]
+	if len(rule.AdvanceRouteRules) > 0 {
+		return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", rule.AdvanceRouteRules[0].Name)
 	}
+
+	if len(rule.BasicRouteRules) > 0 {
+		return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", rule.BasicRouteRules[0].Description)
+	}
+
 	return nil
 }
 
@@ -264,7 +286,7 @@ func (rm *RouteRuleManager) FetchProductRule(ctx context.Context, product *ibasi
 
 		clusters = icluster_conf.AppendAdvancedRuleCluster(clusters)
 
-		m, err := rm.storager.FetchRouteRules(ctx, []*ibasic.Product{product}, clusters)
+		m, err := rm.storager.FetchRoutRules(ctx, []*ibasic.Product{product}, clusters)
 		if err != nil {
 			return err
 		}

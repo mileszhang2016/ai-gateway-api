@@ -5,16 +5,9 @@
     * [Entity-Type](entity_type.md)
     * [Entity](entity.md)
 * 全局资源
-    * [产品线](products.md)
-    * [BFE集群](bfe_cluster.md)
-    * [BFE实例池](bfe_pools.md)
-    * [域名](domains.md)
+    * [AI网关实例池](bfe_pools.md)
     * [证书](certificate.md)
     * [认证/授权](auth.md)
 * 产品线资源
-    * [实例池](product_pools.md)
-    * [子集群](subclusters.md)
     * [集群](clusters.md)
-    * [流量调度](traffic.md)
-    * [转发规则](forward_rule.md)
     * [AI路由规则](ai_route_rule.md)

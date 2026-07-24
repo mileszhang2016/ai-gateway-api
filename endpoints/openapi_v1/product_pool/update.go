@@ -32,20 +32,19 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
 // UpdateRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var UpdateEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/instance-pools/{instance_pool_name}",
-	Method:     http.MethodPatch,
-	Handler:    xreq.Convert(UpdateAction),
-	Authorizer: iauth.FAP(iauth.FeatureProductPool, iauth.ActionUpdate),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var UpdateEndpoint = &xreq.Endpoint{
+// 	Path:       "/instance-pools/{instance_pool_name}",
+// 	Method:     http.MethodPatch,
+// 	Handler:    xreq.Convert(UpdateAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureProductPool, iauth.ActionUpdate),
+// }
 
 var _ xreq.Handler = UpdateAction
 
@@ -57,7 +56,7 @@ func UpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

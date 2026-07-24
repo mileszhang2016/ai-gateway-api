@@ -19,7 +19,6 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -28,12 +27,13 @@ var _ xreq.Handler = ProductCreateAction
 
 // ProductCreateRoute route
 // Auto Gen By ctrl, Modify as U Need
-var ProductCreateEndpoint = &xreq.Endpoint{
-	Path:       "/products",
-	Method:     http.MethodPost,
-	Handler:    xreq.Convert(ProductCreateAction),
-	Authorizer: iauth.FA(iauth.FeatureProduct, iauth.ActionCreate),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var ProductCreateEndpoint = &xreq.Endpoint{
+// 	Path:       "/products",
+// 	Method:     http.MethodPost,
+// 	Handler:    xreq.Convert(ProductCreateAction),
+// 	Authorizer: iauth.FA(iauth.FeatureProduct, iauth.ActionCreate),
+// }
 
 // ProductCreateParam Param
 // Auto Gen By ctrl, Modify as U Need

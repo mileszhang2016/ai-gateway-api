@@ -32,7 +32,6 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 
@@ -114,6 +113,8 @@ type ClusterData struct {
 
 	PassiveHealthCheck *PassiveHealthCheck `json:"passive_health_check"`
 
+	InstancePool []icluster_conf.Instance `json:"instance_pool"`
+
 	SubClusters []string `json:"sub_clusters"`
 
 	Scheduler map[string]map[string]int `json:"scheduler,omitempty"`
@@ -175,6 +176,15 @@ func clusterModel2Control(cluster *icluster_conf.Cluster) *ClusterData {
 		LLMConfig: cluster.LLMConfig,
 	}
 
+	// Populate InstancePool from sub-clusters' instance pools
+	if len(cluster.SubClusters) > 0 {
+		for _, sc := range cluster.SubClusters {
+			if sc.InstancePool != nil {
+				rsp.InstancePool = append(rsp.InstancePool, sc.InstancePool.Instances...)
+			}
+		}
+	}
+
 	return rsp
 }
 
@@ -196,7 +206,7 @@ func PassiveHealthCheckM2C(phc *icluster_conf.ClusterPassiveHealthCheck) *Passiv
 // OneRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 var OneEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/clusters/{cluster_name}",
+	Path:       "/clusters/{cluster_name}",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(OneAction),
 	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionRead),
@@ -223,7 +233,7 @@ func OneAction(req *http.Request) (interface{}, error) {
 }
 
 func oneActionProcess(req *http.Request, param *OneParam) (*ClusterData, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

@@ -34,8 +34,6 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -61,8 +59,7 @@ type Instance struct {
 type OneData struct {
 	Name      string      `json:"name" uri:"name"`
 	Instances []*Instance `json:"instances" uri:"instances"`
-	EPPServer *icluster_conf.EPPServer `json:"epp_server"`
-	Role      *string                  `json:"role"`
+	Role      *string     `json:"role"`
 }
 
 func NewOneData(pool *icluster_conf.Pool) *OneData {
@@ -80,19 +77,19 @@ func NewOneData(pool *icluster_conf.Pool) *OneData {
 	return &OneData{
 		Name:      pool.Name,
 		Instances: is,
-		EPPServer: pool.EPPServer,
 		Role:      lib.PString(pool.Role),
 	}
 }
 
 // OneRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var OneEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/instance-pools/{instance_pool_name}",
-	Method:     http.MethodGet,
-	Handler:    xreq.Convert(OneAction),
-	Authorizer: iauth.FAP(iauth.FeatureProductPool, iauth.ActionRead),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var OneEndpoint = &xreq.Endpoint{
+// 	Path:       "/instance-pools/{instance_pool_name}",
+// 	Method:     http.MethodGet,
+// 	Handler:    xreq.Convert(OneAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureProductPool, iauth.ActionRead),
+// }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func NewOneParam(req *http.Request) (*OneParam, error) {
@@ -111,7 +108,7 @@ func OneAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

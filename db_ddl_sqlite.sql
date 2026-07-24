@@ -438,3 +438,31 @@ INSERT INTO products (id, name, description, mail_list, contact_person, created_
   (1, 'BFE', 'Build-in Product, User by System Manager', 'bfe@cncf.com', 'bfe', CURRENT_TIMESTAMP);
 
 INSERT INTO products (name, description, mail_list, contact_person, created_at) VALUES ('AI_product', 'ai 产品线', '', '', CURRENT_TIMESTAMP);
+
+-- pools 表初始化数据
+INSERT INTO pools (id, name, product_id, ready, instance_detail, type, tag, role, created_at, updated_at) VALUES (
+    1,
+    'BFE.aipool',
+    1,
+    1,
+    '[{"Name":"127.0.0.1","Addr":"127.0.0.1","Port":8080,"Ports":{"Default":8080},"tags":{"key":"value"},"Weight":1,"Disable":false}]',
+    1,
+    1,
+    'COMMON',
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+);
+
+-- bfe_clusters 表初始化数据
+INSERT INTO bfe_clusters (id, name, pool_name, capacity, enabled, gtc_enabled, gtc_manual_enabled, exempt_traffic_check, created_at, updated_at) VALUES (
+    1,
+    'BFE-AI_product.szyf',
+    'BFE.aipool',
+    0,
+    1,
+    1,
+    1,
+    0,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+);

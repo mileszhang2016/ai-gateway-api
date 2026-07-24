@@ -35,7 +35,6 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -59,6 +58,15 @@ type PassiveHealthCheckParam struct {
 	Uri        *string `json:"uri" validate:"required,min=1,startswith=/"`
 }
 
+// Instance Request Param
+type Instance struct {
+	Hostname string            `json:"hostname" validate:"required,min=2"`
+	IP       string            `json:"ip" validate:"required"`
+	Weight   int64             `json:"weight" validate:"min=0,max=100"`
+	Ports    map[string]int    `json:"ports" validate:"required,min=1"`
+	Tags     map[string]string `json:"tags"`
+}
+
 // UpsertParam Request Param
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 type UpsertParam struct {
@@ -67,9 +75,11 @@ type UpsertParam struct {
 	Basic          *BasicParam          `json:"basic"`
 	StickySessions *StickySessionsParam `json:"sticky_sessions"`
 
-	SubClusters []string `json:"sub_clusters"`
+	// InstancePool replaces SubClusters - system auto-creates instance-pool and sub-cluster from this
+	InstancePool []*Instance `json:"instance_pool"`
 
-	Scheduler map[string]map[string]int `json:"scheduler"`
+	// Scheduler is auto-generated, no longer required in request
+	// Scheduler map[string]map[string]int `json:"scheduler"`
 
 	PassiveHealthCheck *PassiveHealthCheckParam `json:"passive_health_check"`
 	LLMConfig          *icluster_conf.LLMConfig `json:"llm_config"`
@@ -126,7 +136,7 @@ type StickySessionsParam struct {
 // CreateRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 var CreateEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/clusters",
+	Path:       "/clusters",
 	Method:     http.MethodPost,
 	Handler:    xreq.Convert(CreateAction),
 	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionCreate),
@@ -144,12 +154,10 @@ func newCreateParam4Create(req *http.Request) (*UpsertParam, error) {
 		return nil, err
 	}
 
-	if len(param.Scheduler) == 0 {
-		return nil, xerror.WrapParamErrorWithMsg("Scheduler Want Be Set")
-	}
+	// Scheduler is auto-generated from DefaultAIClusterName config
 
-	if len(param.SubClusters) == 0 {
-		return nil, xerror.WrapParamErrorWithMsg("SubClusters Want Be Set")
+	if len(param.InstancePool) == 0 {
+		return nil, xerror.WrapParamErrorWithMsg("InstancePool Want Be Set")
 	}
 
 	if param.Basic == nil {
@@ -189,16 +197,16 @@ var (
 	clusterHashStrategyClientIDOnly     = "CLIENT_ID_ONLY"
 	clusterHashStrategyClientIPOnly     = "CLIENT_IP_ONLY"
 	clusterHashStrategyClientIDPrefered = "CLIENT_ID_PREFERED"
+	defaultWeight                       = int64(1)
 )
 
 func clusterParamControlModel(param *UpsertParam) *icluster_conf.ClusterParam {
 	rst := &icluster_conf.ClusterParam{
 		Name:        param.Name,
 		Description: param.Description,
-		SubClusters: param.SubClusters,
-		Scheduler:   param.Scheduler,
 		LLMConfig:   param.LLMConfig,
 	}
+	// SubClusters and Scheduler are auto-generated in CreateActionProcess
 
 	if basic := param.Basic; basic != nil {
 		rst.Basic = &icluster_conf.ClusterBasicParam{
@@ -288,13 +296,44 @@ func PassiveHealthCheckParamC2M(passiveHealthCheck *PassiveHealthCheckParam) *ic
 	}
 }
 
+func Instancesc2i(is []*Instance) []icluster_conf.Instance {
+	rst := []icluster_conf.Instance{}
+	for _, instance := range is {
+		port := 0
+		if instance.Ports != nil {
+			port = instance.Ports["Default"]
+		}
+
+		weight := instance.Weight
+		if weight == 0 {
+			weight = defaultWeight
+		}
+
+		rst = append(rst, icluster_conf.Instance{
+			HostName: instance.Hostname,
+			IP:       instance.IP,
+			Weight:   weight,
+			Ports:    instance.Ports,
+			Port:     port,
+			Tags:     instance.Tags,
+		})
+	}
+
+	return rst
+}
+
 func CreateActionProcess(req *http.Request, _param *UpsertParam) (*ClusterData, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}
 
 	param := clusterParamControlModel(_param)
+	// InstancePool is auto-handled by model layer (creates pool + sub-cluster + scheduler in one transaction)
+	if len(_param.InstancePool) == 0 {
+		return nil, xerror.WrapParamErrorWithMsg("instance_pool is required")
+	}
+	param.InstancePool = Instancesc2i(_param.InstancePool)
 
 	err = container.ClusterManager.CreateCluster(req.Context(), product, param)
 	if err != nil {

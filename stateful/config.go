@@ -45,12 +45,14 @@ type ServerConfig struct {
 }
 
 type RunTimeConfig struct {
-	SessionExpireInDay      int  `validate:"required,min=1"`
-	SkipTokenValidate       bool // skip user identify, you can open it when debug
-	RecordSQL               bool
-	StaticFilePath          string
-	Debug                   bool
-	AIRouteInnerProductName string // AI inner product name,default AI_product
+	SessionExpireInDay        int    `validate:"required,min=1"`
+	SkipTokenValidate         bool   // skip user identify, you can open it when debug
+	RecordSQL                 bool
+	StaticFilePath            string
+	Debug                     bool
+	AIRouteInnerProductName   string // AI inner product name,default AI_product
+	DefaultAIInstancePoolName string // default AI instance pool name, e.g. "BFE.aipool"
+	DefaultAIClusterName      string // default AI cluster name, e.g. "BFE-AI_product.szyf"
 }
 
 type Config struct {

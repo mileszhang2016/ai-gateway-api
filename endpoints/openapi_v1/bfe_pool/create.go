@@ -21,20 +21,19 @@ import (
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/product_pool"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
-// CreateRoute route
+// CreateRoute route - deprecated, endpoint registration removed per optimization plan v1.2
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var CreateEndpoint = &xreq.Endpoint{
-	Path:       "/bfe-pools",
-	Method:     http.MethodPost,
-	Handler:    xreq.Convert(CreateAction),
-	Authorizer: iauth.FA(iauth.FeatureBFEPool, iauth.ActionReadAll),
-}
+// var CreateEndpoint = &xreq.Endpoint{
+// 	Path:       "/alb-pools",
+// 	Method:     http.MethodPost,
+// 	Handler:    xreq.Convert(CreateAction),
+// 	Authorizer: iauth.FA(iauth.FeatureBFEPool, iauth.ActionReadAll),
+// }
 
 var _ xreq.Handler = CreateAction
 

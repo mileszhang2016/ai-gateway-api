@@ -18,8 +18,6 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -32,12 +30,13 @@ type CreateParam struct {
 
 // CreateRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var CreateEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/domains",
-	Method:     http.MethodPost,
-	Handler:    xreq.Convert(CreateAction),
-	Authorizer: iauth.FAP(iauth.FeatureDomain, iauth.ActionCreate),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var CreateEndpoint = &xreq.Endpoint{
+// 	Path:       "/domains",
+// 	Method:     http.MethodPost,
+// 	Handler:    xreq.Convert(CreateAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureDomain, iauth.ActionCreate),
+// }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func newCreateParam4Create(req *http.Request) (*CreateParam, error) {
@@ -47,7 +46,7 @@ func newCreateParam4Create(req *http.Request) (*CreateParam, error) {
 }
 
 func CreateActionProcess(req *http.Request, param *CreateParam) (*OneData, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

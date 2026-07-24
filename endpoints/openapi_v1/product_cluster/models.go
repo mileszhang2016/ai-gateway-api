@@ -25,7 +25,7 @@ const (
 var _ xreq.Handler = ListModelsAction
 
 var ListModelsRoute = &xreq.Endpoint{
-	Path:       "/products/{product_name}/models",
+	Path:       "/models",
 	Method:     http.MethodPost,
 	Handler:    xreq.Convert(ListModelsAction),
 	Authorizer: iauth.FA(iauth.FeatureProductCluster, iauth.ActionCreate),

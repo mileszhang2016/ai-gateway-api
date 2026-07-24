@@ -20,8 +20,6 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -35,12 +33,13 @@ type BindSubCluster struct {
 
 // BindSubClusterRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var BindSubClusterEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/clusters/{cluster_name}/sub-clusters",
-	Method:     http.MethodPatch,
-	Handler:    xreq.Convert(BindSubClusterAction),
-	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionUpdate),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var BindSubClusterEndpoint = &xreq.Endpoint{
+// 	Path:       "/clusters/{cluster_name}/sub-clusters",
+// 	Method:     http.MethodPatch,
+// 	Handler:    xreq.Convert(BindSubClusterAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionUpdate),
+// }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func newBindSubCluster4BindSubCluster(req *http.Request) (*BindSubCluster, error) {
@@ -50,7 +49,7 @@ func newBindSubCluster4BindSubCluster(req *http.Request) (*BindSubCluster, error
 }
 
 func bindSubClusterActionProcess(req *http.Request, param *BindSubCluster) (*ClusterData, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

@@ -16,12 +16,13 @@ package icluster_conf
 
 import (
 	"context"
+	"net"
 
+	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/cluster_table_conf"
+	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/gslb_conf"
 	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
-	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/cluster_table_conf"
-	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/gslb_conf"
 )
 
 const (
@@ -56,9 +57,14 @@ func (rm *ClusterManager) clusterTableConfGenerator(ctx context.Context) (*ivers
 
 			subClusterBackend := make(cluster_table_conf.SubClusterBackend, 0, len(subCluster.InstancePool.Instances))
 			for _, instance := range subCluster.InstancePool.Instances {
+				addr := instance.IP
+				// IPv6 地址需要加 [] 包裹
+				if ip := net.ParseIP(addr); ip != nil && ip.To4() == nil {
+					addr = "[" + addr + "]"
+				}
 				subClusterBackend = append(subClusterBackend, &cluster_table_conf.BackendConf{
 					Name:   lib.PString(instance.HostName),
-					Addr:   lib.PString(instance.IP),
+					Addr:   lib.PString(addr),
 					Port:   lib.PInt(instance.Port),
 					Weight: lib.PInt(int(instance.Weight)),
 				})

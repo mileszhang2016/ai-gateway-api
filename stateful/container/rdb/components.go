@@ -128,6 +128,7 @@ func Init() {
 		container.ClusterStoragerSingleton,
 		container.SubClusterStoragerSingleton,
 		container.BFEClusterStoragerSingleton,
+		container.PoolStoragerSingleton,
 		container.VersionControlManager,
 		map[string]func(context.Context, *ibasic.Product, *icluster_conf.Cluster) error{
 			"rules": container.RouteRuleManager.ClusterDeleteChecker,

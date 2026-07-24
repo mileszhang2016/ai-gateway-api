@@ -62,7 +62,9 @@ func (rlm *AIRouteRuleManager) CreateAIRouteRule(ctx context.Context,
 			return err
 		}
 
-		return rlm.routeStorager.UpsertAdvanceProductRule(ctx, product, advanceRules)
+		return rlm.routeStorager.UpsertProductRule(ctx, product, &iroute_conf.ProductRouteRule{
+			AdvanceRouteRules: advanceRules,
+		})
 	})
 
 	return

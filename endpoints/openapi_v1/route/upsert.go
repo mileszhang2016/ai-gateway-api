@@ -33,11 +33,6 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
-	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
-	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
 type ProductRouteRuleParam struct {
@@ -45,10 +40,35 @@ type ProductRouteRuleParam struct {
 }
 
 type DefaultRouteRule struct {
-	Cmd         string                   `json:"cmd"`
-	Params      []string                 `json:"params"`
-	Description string                   `json:"description"`
-	RouteAction *iroute_conf.RouteAction `json:"action,omitempty"`
+	Cmd         string       `json:"cmd"`
+	Params      []string     `json:"params"`
+	Description string       `json:"description"`
+	RouteAction *RouteAction `json:"action,omitempty"`
+}
+
+type RouteAction struct {
+	Forward           *ActionForward           `json:"forward,omitempty"`
+	GoToAdvancedRules *ActionGoToAdvancedRules `json:"go_to_advanced_rules,omitempty"`
+	Redirect          *ActionRedirect          `json:"redirect,omitempty"`
+	Response          *ActionResponse          `json:"response,omitempty"`
+}
+
+type ActionForward struct {
+	ClusterName string `json:"cluster_name"`
+	URL         string `json:"url"`
+}
+
+type ActionResponse struct {
+	StatusCode  string `json:"status_code"`
+	ContentType string `json:"content_type"`
+	Body        string `json:"body"`
+}
+
+type ActionRedirect struct {
+	URL string `json:"url"`
+}
+
+type ActionGoToAdvancedRules struct {
 }
 
 type ProductRouteRuleData struct {
@@ -61,25 +81,15 @@ func newProductRouteRuleData(pfr *ProductRouteRuleParam) *ProductRouteRuleData {
 	}
 }
 
-func routeRuleParam2routeRule(p *ProductRouteRuleParam) *iroute_conf.ProductRouteRule {
-	return &iroute_conf.ProductRouteRule{
-		DefaultRouteRule: &iroute_conf.DefaultRouteRule{
-			Cmd:         p.DefaultRouteRule.Cmd,
-			Params:      p.DefaultRouteRule.Params,
-			Description: p.DefaultRouteRule.Description,
-			RouteAction: p.DefaultRouteRule.RouteAction,
-		},
-	}
-}
-
 // UpsertRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var UpsertEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/routes",
-	Method:     http.MethodPatch,
-	Handler:    xreq.Convert(UpsertAction),
-	Authorizer: iauth.FAP(iauth.FeatureRoute, iauth.ActionUpdate),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var UpsertEndpoint = &xreq.Endpoint{
+// 	Path:       "/routes",
+// 	Method:     http.MethodPatch,
+// 	Handler:    xreq.Convert(UpsertAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureRoute, iauth.ActionUpdate),
+// }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func newRuleInfoFromReq(req *http.Request) (*ProductRouteRuleParam, error) {
@@ -93,19 +103,11 @@ func newRuleInfoFromReq(req *http.Request) (*ProductRouteRuleParam, error) {
 		return nil, xerror.WrapParamErrorWithMsg("default_forward_rule cant be nil")
 	}
 
-	rule.DefaultRouteRule.Cmd = iroute_conf.DefaultExpression
-
 	return rule, err
 }
 
 func UpsertActionProcess(req *http.Request, rule *ProductRouteRuleParam) (*ProductRouteRuleData, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
-	if err != nil {
-		return nil, err
-	}
-
-	ipfr := routeRuleParam2routeRule(rule)
-	err = container.RouteRuleManager.UpsertDefaultProductRule(req.Context(), product, ipfr.DefaultRouteRule)
+	_, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

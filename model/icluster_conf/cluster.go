@@ -140,6 +140,9 @@ type ClusterParam struct {
 	PassiveHealthCheck *ClusterPassiveHealthCheckParam
 
 	LLMConfig *LLMConfig
+
+	// InstancePool auto-creates instance-pool and sub-cluster from these instances
+	InstancePool []Instance
 }
 
 type ClusterBasicConnection struct {
@@ -288,6 +291,7 @@ func ClusterList2MapByID(list []*Cluster) map[int64]*Cluster {
 
 func NewClusterManager(txn itxn.TxnStorager, storager ClusterStorager,
 	subClusterStorager SubClusterStorager, bfeClusterStorager ibasic.BFEClusterStorager,
+	poolStorager PoolStorager,
 	versionControlManager *iversion_control.VersionControlManager,
 	deleteCheckers map[string]func(context.Context, *ibasic.Product, *Cluster) error) *ClusterManager {
 
@@ -296,6 +300,7 @@ func NewClusterManager(txn itxn.TxnStorager, storager ClusterStorager,
 		storager:              storager,
 		subClusterStorager:    subClusterStorager,
 		bfeClusterStorager:    bfeClusterStorager,
+		poolStorager:          poolStorager,
 		versionControlManager: versionControlManager,
 
 		deleteCheckers: deleteCheckers,
@@ -318,6 +323,7 @@ type ClusterManager struct {
 	storager           ClusterStorager
 	subClusterStorager SubClusterStorager
 	bfeClusterStorager ibasic.BFEClusterStorager
+	poolStorager       PoolStorager
 
 	versionControlManager *iversion_control.VersionControlManager
 
@@ -358,6 +364,69 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 		}
 		if len(old) != 0 {
 			return xerror.WrapRecordExisted("cluster")
+		}
+
+		// Auto-create instance-pool and sub-cluster if InstancePool is provided
+		if len(param.InstancePool) > 0 {
+			poolName := product.Name + "." + *param.Name
+			clusterName := *param.Name
+
+			// Create instance-pool
+			var pN string
+			pN, err = poolNameJudger(product.Name, poolName)
+			if err != nil {
+				return err
+			}
+			poolName = pN
+
+			old, err := cm.poolStorager.FetchPool(ctx, poolName)
+			if err != nil {
+				return err
+			}
+			if old != nil {
+				return xerror.WrapRecordExisted()
+			}
+
+			pool, err := cm.poolStorager.CreatePool(ctx, product, &PoolParam{
+				Name:      &poolName,
+				Instances: param.InstancePool,
+				Role:      lib.PString(ProductPoolRoleCommon),
+				Tag:       &PoolTagProduct,
+			})
+			if err != nil {
+				return err
+			}
+
+			// Create sub-cluster
+			err = cm.subClusterStorager.CreateSubCluster(ctx, &SubClusterParam{
+				Name:         &clusterName,
+				PoolName:     &poolName,
+				Product:      product,
+				InstancePool: pool,
+				Cluster: &Cluster{
+					ID:   -1,
+					Name: "unbinding",
+				},
+			})
+			if err != nil {
+				return err
+			}
+
+			// Auto-generate scheduler using DefaultAIClusterName config
+			if param.Scheduler == nil {
+				defaultClusterName := stateful.DefaultConfig.RunTime.DefaultAIClusterName
+				param.Scheduler = map[string]map[string]int{
+					defaultClusterName: {
+						clusterName: 100,
+						BlackHole:   0,
+					},
+				}
+			}
+
+			// Set SubClusters for binding
+			if len(param.SubClusters) == 0 {
+				param.SubClusters = []string{clusterName}
+			}
 		}
 
 		bindingSubClusters, err := cm.subClusterStorager.FetchSubClusterList(ctx, &SubClusterFilter{
@@ -516,6 +585,21 @@ func (cm *ClusterManager) UpdateCluster(ctx context.Context, product *ibasic.Pro
 	param *ClusterParam) (err error) {
 
 	err = cm.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		// Auto-sync instance_pool to instance-pool if provided
+		if len(param.InstancePool) > 0 {
+			// Find the pool from the cluster's sub-clusters
+			for _, sc := range oldData.SubClusters {
+				if sc.InstancePool != nil {
+					if err = cm.poolStorager.UpdatePool(ctx, sc.InstancePool, &PoolParam{
+						Instances: param.InstancePool,
+					}); err != nil {
+						return err
+					}
+					break
+				}
+			}
+		}
+
 		if err = cm.checkManualLB(ctx, oldData, param); err != nil {
 			return err
 		}
@@ -621,6 +705,18 @@ func (cm *ClusterManager) DeleteCluster(ctx context.Context, product *ibasic.Pro
 			err = checker(ctx, product, cluster)
 			if err != nil {
 				return err
+			}
+		}
+
+		// Cascade delete sub-clusters and their instance-pools
+		for _, sc := range cluster.SubClusters {
+			if err = cm.subClusterStorager.DeleteSubCluster(ctx, sc); err != nil {
+				return err
+			}
+			if sc.InstancePool != nil {
+				if err = cm.poolStorager.DeletePool(ctx, sc.InstancePool); err != nil {
+					return err
+				}
 			}
 		}
 

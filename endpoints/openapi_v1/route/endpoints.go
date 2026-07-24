@@ -19,7 +19,5 @@ import (
 )
 
 var Endpoints = []*xreq.Endpoint{
-	ListEndpoint,
-	UpsertEndpoint,
 	ExpressionVerifyEndpoint,
 }

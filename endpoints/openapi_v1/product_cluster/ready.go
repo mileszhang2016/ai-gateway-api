@@ -20,7 +20,6 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -35,7 +34,7 @@ type ReadyRspParam struct {
 // ReadyRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 var ReadyEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/clusters/{cluster_name}/ready",
+	Path:       "/clusters/{cluster_name}/ready",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(ReadyAction),
 	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionRead),
@@ -49,7 +48,7 @@ func newOneParam4Ready(req *http.Request) (*OneParam, error) {
 }
 
 func readyActionProcess(req *http.Request, param *OneParam) (*ReadyRspParam, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

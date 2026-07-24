@@ -33,8 +33,6 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -59,12 +57,13 @@ type OneParam struct {
 
 // OneRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var OneEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/sub-clusters/{sub_cluster_name}",
-	Method:     http.MethodGet,
-	Handler:    xreq.Convert(OneAction),
-	Authorizer: iauth.FAP(iauth.FeatureSubCluster, iauth.ActionRead),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var OneEndpoint = &xreq.Endpoint{
+// 	Path:       "/sub-clusters/{sub_cluster_name}",
+// 	Method:     http.MethodGet,
+// 	Handler:    xreq.Convert(OneAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureSubCluster, iauth.ActionRead),
+// }
 
 var _ xreq.Handler = OneAction
 
@@ -88,7 +87,7 @@ func newOneParam4One(req *http.Request) (*OneParam, error) {
 
 func oneActionProcess(req *http.Request, param *OneParam) (*OneData, error) {
 	// get product info
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

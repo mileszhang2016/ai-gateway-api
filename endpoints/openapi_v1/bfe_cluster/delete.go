@@ -20,7 +20,6 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -33,12 +32,13 @@ type BFEClusterDeleteParam struct {
 
 // DeleteRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var DeleteEndpoint = &xreq.Endpoint{
-	Path:       "/bfe-clusters/{name}",
-	Method:     http.MethodDelete,
-	Handler:    xreq.Convert(DeleteAction),
-	Authorizer: iauth.FA(iauth.FeatureBFECluster, iauth.ActionDelete),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var DeleteEndpoint = &xreq.Endpoint{
+// 	Path:       "/alb-clusters/{name}",
+// 	Method:     http.MethodDelete,
+// 	Handler:    xreq.Convert(DeleteAction),
+// 	Authorizer: iauth.FA(iauth.FeatureBFECluster, iauth.ActionDelete),
+// }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func newBFEClusterDeleteParam4Delete(req *http.Request) (*BFEClusterDeleteParam, error) {

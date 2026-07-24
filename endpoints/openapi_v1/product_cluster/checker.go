@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 )
@@ -44,6 +45,11 @@ func checkLLMConfig(llmConfig *icluster_conf.LLMConfig) error {
 		return nil
 	}
 
+	// Enable defaults to true, no longer required in request
+	if llmConfig.Enable == nil {
+		llmConfig.Enable = lib.PBool(true)
+	}
+
 	if llmConfig.ServiceName != nil && len(*llmConfig.ServiceName) > maxServiceNameLen {
 		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("llm_config.service_name length must be lower than %s", strconv.Itoa(maxServiceNameLen)))
 	}
@@ -61,11 +67,7 @@ func checkLLMConfig(llmConfig *icluster_conf.LLMConfig) error {
 		}
 	}
 
-	if llmConfig.Enable == nil {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set llm_config.enable"))
-	}
-
-	if llmConfig.Enable != nil && *llmConfig.Enable {
+	if *llmConfig.Enable {
 		if llmConfig.ServiceName == nil || *llmConfig.ServiceName == "" {
 			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set llm_config.service_name"))
 		}

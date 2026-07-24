@@ -35,7 +35,6 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -43,7 +42,7 @@ import (
 // UpdateBasicRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 var UpdateBasicEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/clusters/{cluster_name}",
+	Path:       "/clusters/{cluster_name}",
 	Method:     http.MethodPatch,
 	Handler:    xreq.Convert(UpdateAction),
 	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionUpdate),
@@ -56,13 +55,7 @@ func newUpdateParam4Update(req *http.Request) (*UpsertParam, error) {
 		return nil, err
 	}
 
-	if param.SubClusters != nil {
-		return nil, xerror.WrapParamErrorWithMsg("Invoke Bind API To Modify SubCluster")
-	}
-
-	if param.Scheduler != nil {
-		return nil, xerror.WrapParamErrorWithMsg("Invoke Scheduler API To Modify Scheduler Setting")
-	}
+	// SubClusters and Scheduler are auto-managed, no longer manually set via update
 
 	if ss := param.StickySessions; ss != nil {
 		if *ss.HashStrategy != clusterHashStrategyClientIPOnly && ss.HashHeader == nil {
@@ -89,7 +82,7 @@ func newUpdateParam4Update(req *http.Request) (*UpsertParam, error) {
 }
 
 func updateActionProcess(req *http.Request, param *UpsertParam) (*ClusterData, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +97,13 @@ func updateActionProcess(req *http.Request, param *UpsertParam) (*ClusterData, e
 		return nil, xerror.WrapRecordNotExist("Cluster")
 	}
 
-	if err := container.ClusterManager.UpdateCluster(req.Context(), product, cluster, clusterParamControlModel(param)); err != nil {
+	// InstancePool is auto-handled by model layer (updates pool in one transaction)
+	_modelParam := clusterParamControlModel(param)
+	if len(param.InstancePool) > 0 {
+		_modelParam.InstancePool = Instancesc2i(param.InstancePool)
+	}
+
+	if err := container.ClusterManager.UpdateCluster(req.Context(), product, cluster, _modelParam); err != nil {
 		return nil, err
 	}
 

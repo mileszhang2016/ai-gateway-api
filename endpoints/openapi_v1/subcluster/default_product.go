@@ -1,0 +1,22 @@
+package subcluster
+
+import (
+	"context"
+
+	"github.com/yf-networks/ai-gateway-api/lib/xerror"
+	"github.com/yf-networks/ai-gateway-api/model/ibasic"
+	"github.com/yf-networks/ai-gateway-api/stateful"
+	"github.com/yf-networks/ai-gateway-api/stateful/container"
+)
+
+func getDefaultProduct(ctx context.Context) (*ibasic.Product, error) {
+	name := stateful.DefaultConfig.RunTime.AIRouteInnerProductName
+	products, err := container.ProductManager.FetchProducts(ctx, &ibasic.ProductFilter{Name: &name})
+	if err != nil {
+		return nil, err
+	}
+	if len(products) != 1 {
+		return nil, xerror.WrapParamErrorWithMsg("Default Product Not Exist")
+	}
+	return products[0], nil
+}

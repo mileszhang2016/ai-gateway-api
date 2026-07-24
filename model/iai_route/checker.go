@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
-	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 )
 
 // validatePathFilter validates the path filter
@@ -56,7 +55,7 @@ func validatePathFilter(pathFilter *PathFilter, ruleName string) error {
 }
 
 // validateExpectForward validates the expected forward action
-func validateExpectForward(forward *iroute_conf.ActionForward, ruleName string) error {
+func validateExpectForward(forward *ActionForward, ruleName string) error {
 	if forward.ClusterName == "" {
 		return fmt.Errorf("cluster_name cannot be empty for expect_action.forward in rule [%s]", ruleName)
 	}
@@ -67,7 +66,7 @@ func validateExpectForward(forward *iroute_conf.ActionForward, ruleName string) 
 }
 
 // validateExpectAction validates the expected action
-func validateExpectAction(action *iroute_conf.RouteAction, ruleName string) error {
+func validateExpectAction(action *RouteAction, ruleName string) error {
 	actionCount := 0
 	if action.Forward != nil {
 		actionCount++

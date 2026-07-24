@@ -31,7 +31,6 @@ package route_conf
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/yf-networks/ai-gateway-api/lib"
@@ -59,14 +58,144 @@ type RouteRuleStorager struct {
 	versionControlStorager iversion_control.VersionControlStorager
 }
 
-func (rs *RouteRuleStorager) UpsertAdvanceProductRule(ctx context.Context, product *ibasic.Product,
-	rules []*iroute_conf.AdvanceRouteRule) error {
+func newDaoRouteBasicRuleParam(product *ibasic.Product, rule *iroute_conf.BasicRouteRule) (*dao.TRouteBasicRuleParam, error) {
+	bsHostNames, err := json.Marshal(rule.HostNames)
+	if err != nil {
+		return nil, xerror.WrapDirtyDataError(err)
+	}
+	bsPaths, err := json.Marshal(rule.Paths)
+	if err != nil {
+		return nil, xerror.WrapDirtyDataError(err)
+	}
+
+	return &dao.TRouteBasicRuleParam{
+		Description: lib.PString(rule.Description),
+		ProductID:   lib.PInt64(product.ID),
+		HostNames:   bsHostNames,
+		ClusterID:   &rule.ClusterID,
+		Paths:       bsPaths,
+	}, nil
+}
+
+func (rs *RouteRuleStorager) FetchProductRule(ctx context.Context, product *ibasic.Product,
+	clusterList []*icluster_conf.Cluster) (*iroute_conf.ProductRouteRule, error) {
+	m, err := rs.FetchRoutRules(ctx, []*ibasic.Product{product}, clusterList)
+	if err != nil {
+		return nil, err
+	}
+
+	return m[product.ID], nil
+}
+
+func (rs *RouteRuleStorager) FetchRoutRules(ctx context.Context, products []*ibasic.Product,
+	clusterList []*icluster_conf.Cluster) (map[int64]*iroute_conf.ProductRouteRule, error) {
+
+	var productIDs []int64
+	productID2Name := map[int64]string{}
+	for _, one := range products {
+		productIDs = append(productIDs, one.ID)
+		productID2Name[one.ID] = one.Name
+	}
+
+	dbCtx, err := rs.dbCtxFactory(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	advanceRules, err := dao.TRouteAdvanceRuleList(dbCtx, &dao.TRouteAdvanceRuleParam{
+		ProductIDs: productIDs,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	basicRules, err := dao.TRouteBasicRuleList(dbCtx, &dao.TRouteBasicRuleParam{
+		ProductIDs: productIDs,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	clusterMap := icluster_conf.ClusterList2MapByID(clusterList)
+
+	product2ProductRouteRule := map[int64]*iroute_conf.ProductRouteRule{}
+	for _, one := range advanceRules {
+		rule := product2ProductRouteRule[one.ProductID]
+		if rule == nil {
+			rule = &iroute_conf.ProductRouteRule{}
+			product2ProductRouteRule[one.ProductID] = rule
+		}
+
+		cluster := clusterMap[one.ClusterID]
+		if cluster == nil {
+			continue
+		}
+		rule.AdvanceRouteRules = append(rule.AdvanceRouteRules, &iroute_conf.AdvanceRouteRule{
+			Name:        one.Name,
+			Description: one.Description,
+			Expression:  one.Expression,
+			ClusterName: cluster.Name,
+			ClusterID:   one.ClusterID,
+		})
+	}
+
+	for _, one := range basicRules {
+		rule := product2ProductRouteRule[one.ProductID]
+		if rule == nil {
+			rule = &iroute_conf.ProductRouteRule{}
+			product2ProductRouteRule[one.ProductID] = rule
+		}
+
+		cluster := clusterMap[one.ClusterID]
+		if cluster == nil {
+			continue
+		}
+		basicRule, err := newRouteBasicRule(one, cluster)
+		if err != nil {
+			return nil, err
+		}
+		rule.BasicRouteRules = append(rule.BasicRouteRules, basicRule)
+	}
+
+	return product2ProductRouteRule, nil
+}
+
+func newRouteBasicRule(param *dao.TRouteBasicRule, cluster *icluster_conf.Cluster) (*iroute_conf.BasicRouteRule, error) {
+	rule := &iroute_conf.BasicRouteRule{
+		Description: param.Description,
+		ClusterID:   param.ClusterID,
+		ClusterName: cluster.Name,
+	}
+	if err := json.Unmarshal(param.HostNames, &rule.HostNames); err != nil {
+		return nil, xerror.WrapDirtyDataErrorWithMsg("HostNames: %s, err: %v", string(param.HostNames), err)
+	}
+	if err := json.Unmarshal(param.Paths, &rule.Paths); err != nil {
+		return nil, xerror.WrapDirtyDataErrorWithMsg("Paths: %s, err: %v", string(param.Paths), err)
+	}
+
+	return rule, nil
+}
+
+func (rs *RouteRuleStorager) UpsertProductRule(ctx context.Context, product *ibasic.Product,
+	rule *iroute_conf.ProductRouteRule) error {
 
 	now := lib.PTime(time.Now())
 
+	// prepare db data
+	daoBasicRules := []*dao.TRouteBasicRuleParam{}
+	for _, one := range rule.BasicRouteRules {
+		data, err := newDaoRouteBasicRuleParam(product, one)
+		if err != nil {
+			return err
+		}
+		data.CreatedAt = now
+		data.UpdatedAt = now
+		daoBasicRules = append(daoBasicRules, data)
+	}
+
 	daoAdvanceRules := []*dao.TRouteAdvanceRuleParam{}
-	for _, one := range rules {
-		daoAdvanceRule := &dao.TRouteAdvanceRuleParam{
+	for _, one := range rule.AdvanceRouteRules {
+		daoAdvanceRules = append(daoAdvanceRules, &dao.TRouteAdvanceRuleParam{
 			ProductID:   &product.ID,
 			Name:        lib.PString(one.Name),
 			ClusterID:   lib.PInt64(one.ClusterID),
@@ -74,9 +203,7 @@ func (rs *RouteRuleStorager) UpsertAdvanceProductRule(ctx context.Context, produ
 			Description: lib.PString(one.Description),
 			CreatedAt:   now,
 			UpdatedAt:   now,
-		}
-
-		daoAdvanceRules = append(daoAdvanceRules, daoAdvanceRule)
+		})
 	}
 
 	dbCtx, err := rs.dbCtxFactory(ctx)
@@ -97,304 +224,23 @@ func (rs *RouteRuleStorager) UpsertAdvanceProductRule(ctx context.Context, produ
 		return err
 	}
 
+	if _, err := dao.TRouteBasicRuleDelete(dbCtx, &dao.TRouteBasicRuleParam{
+		ProductID: &product.ID,
+	}); err != nil {
+		return err
+	}
+
 	if len(daoAdvanceRules) > 0 {
 		if _, err := dao.TRouteAdvanceRuleCreate(dbCtx, daoAdvanceRules...); err != nil {
 			return err
 		}
 	}
 
-	return nil
-}
-
-func (rs *RouteRuleStorager) UpsertDefaultProductRule(ctx context.Context,
-	product *ibasic.Product,
-	rule *iroute_conf.DefaultRouteRule) error {
-	dbCtx, err := rs.dbCtxFactory(ctx)
-	if err != nil {
-		return err
-	}
-
-	if _, err := dao.TRouteDefaultRuleDelete(dbCtx, &dao.TRouteDefaultRuleParam{
-		ProductID: &product.ID,
-	}); err != nil {
-		return err
-	}
-
-	if rule != nil {
-		paramBytes, err := json.Marshal(rule.Params)
-		if err != nil {
-			return err
-		}
-
-		defaultRule := &dao.TRouteDefaultRuleParam{
-			ProductID:   &product.ID,
-			Cmd:         &rule.Cmd,
-			Params:      lib.PString(string(paramBytes)),
-			Description: &rule.Description,
-		}
-
-		if rule.RouteAction != nil {
-			b, _ := json.Marshal(rule.RouteAction)
-			defaultRule.RouteAction = lib.PString(string(b))
-		} else {
-			defaultRule.RouteAction = lib.PString("")
-		}
-
-		if _, err := dao.TRouteDefaultRuleCreate(dbCtx, defaultRule); err != nil {
+	if len(daoBasicRules) > 0 {
+		if _, err := dao.TRouteBasicRuleCreate(dbCtx, daoBasicRules...); err != nil {
 			return err
 		}
 	}
 
 	return nil
-}
-
-func (rs *RouteRuleStorager) FetchProductRule(ctx context.Context, product *ibasic.Product,
-	clusterList []*icluster_conf.Cluster) (*iroute_conf.ProductRouteRule, error) {
-	m, err := rs.FetchRouteRules(ctx, []*ibasic.Product{product}, clusterList)
-	if err != nil {
-		return nil, err
-	}
-
-	return m[product.ID], nil
-}
-
-func (rs *RouteRuleStorager) FetchRouteRules(ctx context.Context, products []*ibasic.Product,
-	clusterList []*icluster_conf.Cluster) (map[int64]*iroute_conf.ProductRouteRule, error) {
-
-	// 1. Prepare product mappings
-	productIDs := prepareProductMappings(products)
-
-	// 2. Initialize database context
-	dbCtx, err := rs.dbCtxFactory(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. Initialize result map
-	product2ProductRouteRule := initializeResultMap(products)
-
-	// 4. Fetch and process advance rules
-	clusterMap := icluster_conf.ClusterList2MapByID(clusterList)
-	err = fetchAndProcessAdvanceRules(dbCtx, productIDs, clusterMap, product2ProductRouteRule)
-	if err != nil {
-		return nil, err
-	}
-
-	// 5. Fetch and process default rules
-	err = fetchAndProcessDefaultRules(dbCtx, product2ProductRouteRule)
-	if err != nil {
-		return nil, err
-	}
-
-	return product2ProductRouteRule, nil
-}
-
-// prepareProductMappings prepares product ID list and ID to name mapping
-func prepareProductMappings(products []*ibasic.Product) []int64 {
-	productIDs := make([]int64, 0, len(products))
-	for _, product := range products {
-		productIDs = append(productIDs, product.ID)
-	}
-	return productIDs
-}
-
-// initializeResultMap initializes the result map with empty ProductRouteRule for each product
-func initializeResultMap(products []*ibasic.Product) map[int64]*iroute_conf.ProductRouteRule {
-	result := make(map[int64]*iroute_conf.ProductRouteRule, len(products))
-
-	for _, product := range products {
-		result[product.ID] = &iroute_conf.ProductRouteRule{
-			AdvanceRouteRules: make([]*iroute_conf.AdvanceRouteRule, 0),
-			DefaultRouteRule:  nil,
-		}
-	}
-
-	return result
-}
-
-// fetchAndProcessAdvanceRules fetches advance rules from database and processes them
-func fetchAndProcessAdvanceRules(dbCtx *lib.DBContext, productIDs []int64,
-	clusterMap map[int64]*icluster_conf.Cluster,
-	product2ProductRouteRule map[int64]*iroute_conf.ProductRouteRule) error {
-	filter := &dao.TRouteAdvanceRuleParam{}
-	if len(productIDs) > 0 {
-		filter.ProductIDs = productIDs
-	}
-
-	advanceRules, err := dao.TRouteAdvanceRuleList(dbCtx, filter)
-	if err != nil {
-		return err
-	}
-
-	for _, rule := range advanceRules {
-		productRule, exists := product2ProductRouteRule[rule.ProductID]
-		if !exists {
-			// Skip rules for products not in the input list
-			continue
-		}
-
-		cluster, clusterExists := clusterMap[rule.ClusterID]
-		if !clusterExists {
-			// Skip rules with non-existent clusters
-			continue
-		}
-
-		advanceRouteRule := &iroute_conf.AdvanceRouteRule{
-			Name:        rule.Name,
-			Description: rule.Description,
-			Expression:  rule.Expression,
-			ClusterName: cluster.Name,
-			ClusterID:   rule.ClusterID,
-		}
-
-		productRule.AdvanceRouteRules = append(productRule.AdvanceRouteRules, advanceRouteRule)
-	}
-
-	return nil
-}
-
-// fetchAndProcessDefaultRules fetches default rules from database and processes them
-func fetchAndProcessDefaultRules(dbCtx *lib.DBContext,
-	product2ProductRouteRule map[int64]*iroute_conf.ProductRouteRule) error {
-
-	defaultRules, err := dao.TRouteDefaultRuleList(dbCtx, &dao.TRouteDefaultRuleParam{})
-	if err != nil {
-		return err
-	}
-
-	for _, defaultRule := range defaultRules {
-		productRule, exists := product2ProductRouteRule[defaultRule.ProductID]
-		if !exists {
-			// Skip default rules for products not in the input list
-			continue
-		}
-
-		routeAction := &iroute_conf.RouteAction{}
-
-		// Safely unmarshal JSON
-		if defaultRule.RouteAction != "" {
-			if err := json.Unmarshal([]byte(defaultRule.RouteAction), routeAction); err != nil {
-				return fmt.Errorf("unmarshal:%s is error:%s", defaultRule.RouteAction, err.Error())
-			}
-		}
-
-		// Create default route rule, append to advance rules.
-		advanceRouteRule := &iroute_conf.AdvanceRouteRule{
-			Expression:  defaultRule.Cmd,
-			Description: defaultRule.Description,
-			ClusterName: routeAction.Forward.ClusterName,
-		}
-
-		productRule.AdvanceRouteRules = append(productRule.AdvanceRouteRules, advanceRouteRule)
-	}
-
-	return nil
-}
-
-func (rs *RouteRuleStorager) FetchDefaultRouteRules(ctx context.Context, products []*ibasic.Product) ([]*iroute_conf.DefaultRouteRule, error) {
-	var productIDs []int64
-	for _, one := range products {
-		productIDs = append(productIDs, one.ID)
-	}
-
-	dbCtx, err := rs.dbCtxFactory(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	defaultRules, err := dao.TRouteDefaultRuleList(dbCtx, &dao.TRouteDefaultRuleParam{
-		ProductIDs: productIDs,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	rules := make([]*iroute_conf.DefaultRouteRule, 0)
-	for _, one := range defaultRules {
-		defaultRule, err := newRouteDefaultRule(one)
-		if err != nil {
-			return nil, err
-		}
-		rules = append(rules, defaultRule)
-	}
-
-	return rules, nil
-}
-
-func (rs *RouteRuleStorager) FetchAdvanceRouteRules(ctx context.Context, products []*ibasic.Product, clusters []*icluster_conf.Cluster) ([]*iroute_conf.AdvanceRouteRule, error) {
-	var productIDs []int64
-	for _, one := range products {
-		productIDs = append(productIDs, one.ID)
-	}
-
-	clusterMap := icluster_conf.ClusterList2MapByID(clusters)
-
-	dbCtx, err := rs.dbCtxFactory(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	advanceRules, err := dao.TRouteAdvanceRuleList(dbCtx, &dao.TRouteAdvanceRuleParam{
-		ProductIDs: productIDs,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	rules := make([]*iroute_conf.AdvanceRouteRule, 0)
-	for _, one := range advanceRules {
-		advanceRule := &iroute_conf.AdvanceRouteRule{
-			Name:        one.Name,
-			Description: one.Description,
-			Expression:  one.Expression,
-			ClusterID:   one.ClusterID,
-		}
-
-		if one.ClusterID > 0 {
-			cluster := clusterMap[one.ClusterID]
-			if cluster == nil {
-				continue
-			}
-
-			advanceRule.ClusterName = cluster.Name
-		}
-
-		advanceRule.ClusterName = one.Name
-		rules = append(rules, advanceRule)
-	}
-
-	return rules, nil
-}
-
-func newRouteDefaultRule(param *dao.TRouteDefaultRule) (*iroute_conf.DefaultRouteRule, error) {
-	rule := &iroute_conf.DefaultRouteRule{
-		Cmd:         param.Cmd,
-		Description: param.Description,
-	}
-
-	if err := json.Unmarshal([]byte(param.Params), &rule.Params); err != nil {
-		return nil, xerror.WrapDirtyDataErrorWithMsg("Params: %s, err: %v", string(param.Params), err)
-	}
-
-	if param.RouteAction != "" {
-		routeAction := &iroute_conf.RouteAction{}
-		json.Unmarshal([]byte(param.RouteAction), &routeAction)
-		rule.RouteAction = routeAction
-	} else {
-		routeAction := &iroute_conf.RouteAction{}
-
-		switch rule.Cmd {
-		case iroute_conf.DefaultRouteRuleCmdForward:
-			routeAction.Forward = &iroute_conf.ActionForward{
-				ClusterName: rule.Params[0],
-			}
-		case iroute_conf.DefaultRouteRuleCmdSendResponse:
-			routeAction.Response = &iroute_conf.ActionResponse{
-				StatusCode: rule.Params[0],
-			}
-		}
-		rule.RouteAction = routeAction
-	}
-
-	return rule, nil
 }

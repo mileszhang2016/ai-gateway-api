@@ -18,8 +18,4 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 )
 
-var Endpoints = []*xreq.Endpoint{
-	CreateEndpoint,
-	DeleteEndpoint,
-	ListEndpoint,
-}
+var Endpoints = []*xreq.Endpoint{}
