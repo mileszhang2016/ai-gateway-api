@@ -124,7 +124,8 @@ func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 
 	if err == nil && param.Key != nil && param.QuotaPlan != nil &&
 		(param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
-		param.QuotaPlan.Quota != nil {
+		param.QuotaPlan.Quota != nil &&
+		stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
 		redisKey := stateful.AIUsedQuotaKey(*param.Key)
 		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
 		if errGet != nil {

@@ -18,18 +18,17 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
-// ListRoute route
+// ListRoute route - deprecated, endpoint registration removed per optimization plan v1.2
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var ListEndpoint = &xreq.Endpoint{
-	Path:       "/bfe-pools",
-	Method:     http.MethodGet,
-	Handler:    xreq.Convert(ListAction),
-	Authorizer: iauth.FA(iauth.FeatureBFEPool, iauth.ActionReadAll),
-}
+// var ListEndpoint = &xreq.Endpoint{
+// 	Path:       "/alb-pools",
+// 	Method:     http.MethodGet,
+// 	Handler:    xreq.Convert(ListAction),
+// 	Authorizer: iauth.FA(iauth.FeatureBFEPool, iauth.ActionReadAll),
+// }
 
 var _ xreq.Handler = ListAction
 

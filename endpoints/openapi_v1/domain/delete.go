@@ -19,8 +19,6 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -33,12 +31,13 @@ type DeleteParam struct {
 
 // DeleteRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var DeleteEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/domains/{domain_name}",
-	Method:     http.MethodDelete,
-	Handler:    xreq.Convert(DeleteAction),
-	Authorizer: iauth.FAP(iauth.FeatureDomain, iauth.ActionDelete),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var DeleteEndpoint = &xreq.Endpoint{
+// 	Path:       "/domains/{domain_name}",
+// 	Method:     http.MethodDelete,
+// 	Handler:    xreq.Convert(DeleteAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureDomain, iauth.ActionDelete),
+// }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func newDeleteParam4Delete(req *http.Request) (*DeleteParam, error) {
@@ -56,7 +55,7 @@ func DeleteAction(req *http.Request) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

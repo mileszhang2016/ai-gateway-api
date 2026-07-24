@@ -22,13 +22,14 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
+	"github.com/yf-networks/ai-gateway-api/stateful"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
 // UpdateRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 var UpdateEndpoint = &xreq.Endpoint{
-	Path:       "/bfe-pools/{instance_pool_name}",
+	Path:       "/alb-pool",
 	Method:     http.MethodPatch,
 	Handler:    xreq.Convert(UpdateAction),
 	Authorizer: iauth.FA(iauth.FeatureBFEPool, iauth.ActionUpdate),
@@ -44,7 +45,9 @@ func UpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	one, err := container.PoolManager.FetchBFEPool(req.Context(), *param.Name)
+	poolName := stateful.DefaultConfig.RunTime.DefaultAIInstancePoolName
+
+	one, err := container.PoolManager.FetchBFEPool(req.Context(), poolName)
 	if err != nil {
 		return nil, err
 	}

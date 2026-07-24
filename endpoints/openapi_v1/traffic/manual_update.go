@@ -19,20 +19,19 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
 // ManualUpdateRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var ManualUpdateEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/clusters/{cluster_name}/scheduler",
-	Method:     http.MethodPatch,
-	Handler:    xreq.Convert(ManualUpdateAction),
-	Authorizer: iauth.FAP(iauth.FeatureTraffic, iauth.ActionUpdate),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var ManualUpdateEndpoint = &xreq.Endpoint{
+// 	Path:       "/clusters/{cluster_name}/schedulers",
+// 	Method:     http.MethodPatch,
+// 	Handler:    xreq.Convert(ManualUpdateAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureTraffic, iauth.ActionUpdate),
+// }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func newManualUpdateParam4ManualUpdate(req *http.Request) (map[string]map[string]int, error) {
@@ -42,7 +41,7 @@ func newManualUpdateParam4ManualUpdate(req *http.Request) (map[string]map[string
 }
 
 func manualUpdateActionProcess(req *http.Request, updateParam map[string]map[string]int) (*OneData, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

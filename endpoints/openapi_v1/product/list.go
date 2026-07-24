@@ -45,12 +45,13 @@ var _ xreq.Handler = ProductListAction
 
 // ProductListRoute route
 // Auto Gen By ctrl, Modify as U Need
-var ProductListEndpoint = &xreq.Endpoint{
-	Path:       "/products",
-	Method:     http.MethodGet,
-	Handler:    xreq.Convert(ProductListAction),
-	Authorizer: iauth.FA(iauth.FeatureProduct, iauth.ActionRead),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var ProductListEndpoint = &xreq.Endpoint{
+// 	Path:       "/products",
+// 	Method:     http.MethodGet,
+// 	Handler:    xreq.Convert(ProductListAction),
+// 	Authorizer: iauth.FA(iauth.FeatureProduct, iauth.ActionRead),
+// }
 
 // ProductListAction get list
 // Auto Gen By ctrl, Modify as U Need

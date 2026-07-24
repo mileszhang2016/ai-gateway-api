@@ -19,8 +19,6 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -41,12 +39,13 @@ type UseStatusRsp struct {
 
 // UseStatusRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var UseStatusEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/domains/{domain_name}/use-status",
-	Method:     http.MethodGet,
-	Handler:    xreq.Convert(UseStatusAction),
-	Authorizer: iauth.FAP(iauth.FeatureDomain, iauth.ActionRead),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var UseStatusEndpoint = &xreq.Endpoint{
+// 	Path:       "/domains/{domain_name}/use-status",
+// 	Method:     http.MethodGet,
+// 	Handler:    xreq.Convert(UseStatusAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureDomain, iauth.ActionRead),
+// }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func newOneParam4UseStatus(req *http.Request) (*OneParam, error) {
@@ -56,7 +55,7 @@ func newOneParam4UseStatus(req *http.Request) (*OneParam, error) {
 }
 
 func useStatusActionProcess(req *http.Request, param *OneParam) (*UseStatusRsp, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

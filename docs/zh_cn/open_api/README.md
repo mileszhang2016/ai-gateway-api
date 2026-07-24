@@ -2,6 +2,8 @@
 
 欢迎使用瑛菲AI网关的 OpenAPI 接口文档。本文档提供了所有对外暴露的 RESTful API 的详细说明。
 
+> **优化说明：** 已删除以下独立接口文档，相关功能已集成到集群接口中或不再对外暴露：[bfe_cluster.md]、[domains.md]、[subclusters.md]、[product_pools.md]、[traffic.md]、[forward_rule.md]、[products.md]。
+
 ---
 
 ## 一、规范说明
@@ -26,46 +28,29 @@ API 规范、鉴权机制等通用说明请参考 [norms.md](norms.md)。
 | [entity_type.md](entity_type.md) | Entity-Type 管理（创建、查询、更新、删除Entity类型定义） |
 | [entity.md](entity.md) | Entity 管理（创建、查询、更新、删除实体，支持层级结构和配额配置） |
 
-### 2.3 产品线管理
+### 2.3 实例池管理
 
 | 文档 | 说明 |
 |------|------|
-| [products.md](products.md) | 产品线管理（创建、查询、更新、删除产品线） |
+| [bfe_pools.md](bfe_pools.md) | AI 网关实例池管理（获取详情、更新实例） |
 
-### 2.4 BFE 集群管理
-
-| 文档 | 说明 |
-|------|------|
-| [bfe_cluster.md](bfe_cluster.md) | BFE 集群管理 |
-| [clusters.md](clusters.md) | 集群管理 |
-| [subclusters.md](subclusters.md) | 子集群管理 |
-
-### 2.5 实例池管理
+### 2.4 集群管理
 
 | 文档 | 说明 |
 |------|------|
-| [bfe_pools.md](bfe_pools.md) | BFE 实例池管理 |
-| [product_pools.md](product_pools.md) | 产品线实例池管理 |
+| [clusters.md](clusters.md) | 集群管理（一键创建、更新、删除、就绪检查、模型管理） |
 
-### 2.6 路由规则
+### 2.5 路由规则
 
 | 文档 | 说明 |
 |------|------|
 | [ai_route_rule.md](ai_route_rule.md) | AI 路由规则管理 |
-| [forward_rule.md](forward_rule.md) | 转发规则管理 |
 
-### 2.7 流量管理
-
-| 文档 | 说明 |
-|------|------|
-| [traffic.md](traffic.md) | 流量管理 |
-
-### 2.8 证书与域名
+### 2.6 证书
 
 | 文档 | 说明 |
 |------|------|
 | [certificate.md](certificate.md) | 证书管理 |
-| [domains.md](domains.md) | 域名管理 |
 
 ---
 

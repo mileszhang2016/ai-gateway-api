@@ -25,6 +25,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
+	"github.com/yf-networks/ai-gateway-api/model/quota"
 	"github.com/yf-networks/ai-gateway-api/stateful"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -72,6 +73,15 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 		return nil, xerror.WrapRecordNotExist("API-Key")
 	}
 
+	// 从最早获取的 existing 中取旧配额值
+	var oldQuota int64
+	if existing.QuotaPlanID != nil {
+		oldPlan, errPlan := container.QuotaPlanManager.FetchQuotaPlan(ctx, &quota.QuotaPlanFilter{ID: existing.QuotaPlanID})
+		if errPlan == nil && oldPlan != nil && oldPlan.Quota != nil {
+			oldQuota = *oldPlan.Quota
+		}
+	}
+
 	err = container.APIKeyManager.UpdateAPIKey(ctx, &icluster_conf.APIKeyFilter{
 		ID:          param.ID,
 		ProductName: &product.Name,
@@ -116,7 +126,7 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 			}
 		}
 
-		// 检查 Redis key 是否存在，不存在则创建
+		// 检查 Redis key 是否存在，不存在则创建，存在则更新差值（新请求参数 quota - existing 旧 quota）
 		if updated.Key != nil {
 			redisKey := stateful.AIUsedQuotaKey(*updated.Key)
 			_, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
@@ -132,6 +142,12 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 					}
 				} else {
 					return nil, errGet
+				}
+			} else if param.QuotaPlan.Quota != nil {
+				delta := *param.QuotaPlan.Quota - oldQuota
+				_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
+				if err != nil {
+					return nil, err
 				}
 			}
 		}

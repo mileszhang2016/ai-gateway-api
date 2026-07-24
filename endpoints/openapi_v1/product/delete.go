@@ -20,7 +20,6 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
@@ -28,12 +27,13 @@ var _ xreq.Handler = ProductDeleteAction
 
 // ProductDeleteEndpoint
 // Auto Gen By ctrl, Modify as U Need
-var ProductDeleteEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}",
-	Method:     http.MethodDelete,
-	Handler:    xreq.Convert(ProductDeleteAction),
-	Authorizer: iauth.FAP(iauth.FeatureProduct, iauth.ActionDelete),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var ProductDeleteEndpoint = &xreq.Endpoint{
+// 	Path:       "/products/{product_name}",
+// 	Method:     http.MethodDelete,
+// 	Handler:    xreq.Convert(ProductDeleteAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureProduct, iauth.ActionDelete),
+// }
 
 // ProductDeleteAction delete product
 // Auto Gen By ctrl, Modify as U Need

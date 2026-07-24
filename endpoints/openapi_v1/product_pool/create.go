@@ -35,7 +35,6 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
@@ -48,21 +47,21 @@ const (
 // UpsertParam Request Param
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 type UpsertParam struct {
-	Name      *string     `json:"name" uri:"instance_pool_name" validate:"required,min=2"`
-	Instances []*Instance `json:"instances" uri:"instances" validate:"min=1,dive"`
+	Name      *string                  `json:"name" uri:"instance_pool_name"`
+	Instances []*Instance              `json:"instances" uri:"instances" validate:"min=1,dive"`
 	EPPServer *icluster_conf.EPPServer `json:"epp_server"`
 	Role      *string                  `json:"role"`
-
 }
 
 // CreateRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var CreateEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/instance-pools",
-	Method:     http.MethodPost,
-	Handler:    xreq.Convert(CreateAction),
-	Authorizer: iauth.FAP(iauth.FeatureProductPool, iauth.ActionCreate),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var CreateEndpoint = &xreq.Endpoint{
+// 	Path:       "/instance-pools",
+// 	Method:     http.MethodPost,
+// 	Handler:    xreq.Convert(CreateAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureProductPool, iauth.ActionCreate),
+// }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func NewUpsertParam(req *http.Request) (*UpsertParam, error) {
@@ -84,7 +83,6 @@ func NewUpsertParam(req *http.Request) (*UpsertParam, error) {
 		}
 	}
 
-
 	return param, err
 }
 
@@ -98,7 +96,11 @@ func CreateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	product, err := ibasic.MustGetProduct(req.Context())
+	if param.Name == nil || *param.Name == "" {
+		return nil, xerror.WrapParamErrorWithMsg("instance pool name is required")
+	}
+
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

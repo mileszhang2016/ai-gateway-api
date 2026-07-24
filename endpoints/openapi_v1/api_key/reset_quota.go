@@ -100,7 +100,7 @@ func ResetQuotaAction(req *http.Request) (interface{}, error) {
 	}
 
 	// 重置 Redis 中的值为 quota 总量
-	if apiKey.Key != nil {
+	if apiKey.Key != nil && stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
 		redisKey := stateful.AIUsedQuotaKey(*apiKey.Key)
 
 		var resetQuota int64

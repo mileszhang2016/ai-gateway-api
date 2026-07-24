@@ -19,134 +19,109 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iai_route"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
+	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
-// UpdateRulesRequest defines the request parameters for updating AI route rules
-type UpdateRulesRequest struct {
-	Rules []*iai_route.Rule `json:"rules"`
+func routeRuleParam2routeRule(p *ProductRouteRuleParam) *iroute_conf.ProductRouteRule {
+	afrs := []*iroute_conf.AdvanceRouteRule{}
+	for _, one := range p.AdvanceRouteRules {
+		afrs = append(afrs, &iroute_conf.AdvanceRouteRule{
+			Description: one.Description,
+			ClusterName: one.ClusterName,
+			Expression:  one.Expression,
+			Name:        one.Name,
+		})
+	}
+
+	// append default catch-all rule if not present, route to first advance rule's cluster
+	if len(afrs) > 0 && afrs[len(afrs)-1].Expression != "default_t()" {
+		afrs = append(afrs, &iroute_conf.AdvanceRouteRule{
+			Description: "default catch-all rule",
+			ClusterName: afrs[len(afrs)-1].ClusterName,
+			Expression:  "default_t()",
+			Name:        "default",
+		})
+	}
+
+	bfrs := []*iroute_conf.BasicRouteRule{}
+	for _, one := range p.BasicRouteRules {
+		clusterName := one.ClusterName
+		if clusterName == icluster_conf.RouteAdvancedModeClusterName {
+			clusterName = icluster_conf.RouteAdvancedModeClusterName4DP
+		}
+		bfrs = append(bfrs, &iroute_conf.BasicRouteRule{
+			HostNames:   one.HostNames,
+			Paths:       one.Paths,
+			Description: one.Description,
+			ClusterName: clusterName,
+		})
+	}
+
+	return &iroute_conf.ProductRouteRule{
+		BasicRouteRules:   bfrs,
+		AdvanceRouteRules: afrs,
+	}
 }
 
-// UpdateRoute is the endpoint definition for updating AI route rules
+// UpdateRoute route
+// AUTO GEN BY ctrl, MODIFY AS U NEED
 var UpdateRoute = &xreq.Endpoint{
-	Path:       "/products/{product_name}/ai-route-rules",
+	Path:       "/ai-route-rules",
 	Method:     http.MethodPatch,
 	Handler:    xreq.Convert(UpdateAction),
-	Authorizer: iauth.FAP(iauth.FeatureAIRoute, iauth.ActionCreate),
+	Authorizer: iauth.FAP(iauth.FeatureAIRoute, iauth.ActionUpdate),
 }
 
-// newReqParam parses and validates the update request parameters
-func newReqParam(req *http.Request) (*UpdateRulesRequest, *ibasic.Product, error) {
-	param := &UpdateRulesRequest{}
-	if err := xreq.BindJSON(req, param); err != nil {
-		return nil, nil, err
-	}
-
-	product, err := ibasic.MustGetProduct(req.Context())
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Validate all rules
-	for i, rule := range param.Rules {
-		if err := iai_route.ValidateRule(rule, i); err != nil {
-			return nil, nil, xerror.WrapParamError(err)
-		}
-
-		param.Rules[i].ProductName = product.Name
-	}
-
-	return param, product, nil
-}
-
-// updateProcess handles the business logic for updating AI route rules
-func updateProcess(req *http.Request, param *UpdateRulesRequest, product *ibasic.Product) (interface{}, error) {
-	// Fetch default route rules for validation
-	defaultRules, err := container.RouteRuleManager.FetchDefaultRouteRules(req.Context(), nil)
+// AUTO GEN BY ctrl, MODIFY AS U NEED
+func newRuleInfoFromReq(req *http.Request) (*ProductRouteRuleParam, error) {
+	rule := &ProductRouteRuleParam{}
+	err := xreq.BindJSON(req, rule)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(defaultRules) == 0 {
-		return nil, xerror.WrapParamErrorWithMsg("Must set default route rule")
-	}
-
-	// Build route rules parameter
-	routeRules := ProductRouteRuleParam{
-		AdvanceRouteRules: buildAdvanceRouteRules(req.Context(), param.Rules),
-	}
-
-	// Get cluster names from rules and fetch cluster information
-	clusterNames := getClusterNames(param.Rules)
-	clusterMap := make(map[string]int64)
-	if len(clusterNames) > 0 {
-		clusterList, err := container.ClusterManager.FetchClusterList(req.Context(), &icluster_conf.ClusterFilter{Names: clusterNames})
-		if err != nil {
-			return nil, err
+	for _, one := range rule.AdvanceRouteRules {
+		if one == nil {
+			return nil, xerror.WrapParamErrorWithMsg("AdvanceRouteRules element cant be nil")
 		}
-		clusterMap = buildClusterMap(clusterList)
+	}
+	for _, one := range rule.BasicRouteRules {
+		if one == nil {
+			return nil, xerror.WrapParamErrorWithMsg("BasicRouteRules element cant be nil")
+		}
 	}
 
-	// Convert advance rules to internal configuration format
-	advanceRules, err := convertAdvanceRules2IrouteConf(routeRules.AdvanceRouteRules, clusterMap)
+	return rule, err
+}
+
+func UpdateActionProcess(req *http.Request, rule *ProductRouteRuleParam) (*ProductRouteRuleData, error) {
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}
 
-	// Create or update AI route rules
-	err = container.AIRouteRuleManager.CreateAIRouteRule(req.Context(),
-		param.Rules,
-		product,
-		advanceRules)
+	ipfr := routeRuleParam2routeRule(rule)
+
+	err = container.RouteRuleManager.UpsertProductRule(req.Context(), product, ipfr)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build response
-	response := make(map[string]interface{})
-	response["rules"] = param.Rules
-
-	return response, err
+	return newProductRouteRuleData(rule), nil
 }
 
-// buildClusterMap creates a mapping from cluster name to cluster ID
-func buildClusterMap(clusterList []*icluster_conf.Cluster) map[string]int64 {
-	clusterMap := make(map[string]int64)
-	for _, cluster := range clusterList {
-		clusterMap[cluster.Name] = cluster.ID
-	}
-	return clusterMap
-}
-
-// getClusterNames extracts unique cluster names from rules
-func getClusterNames(rules []*iai_route.Rule) []string {
-	names := make([]string, 0)
-	nameMap := make(map[string]bool)
-	for _, rule := range rules {
-		name := rule.Basic.ExpectAction.Forward.ClusterName
-		if _, ok := nameMap[name]; ok {
-			continue
-		}
-		nameMap[name] = true
-
-		names = append(names, name)
-	}
-	return names
-}
-
-// UpdateAction implements the xreq.Handler interface for updating AI route rules
 var _ xreq.Handler = UpdateAction
 
-// UpdateAction is the main handler for updating AI route rules
+// UpdateAction action
+// AUTO GEN BY ctrl, MODIFY AS U NEED
 func UpdateAction(req *http.Request) (interface{}, error) {
-	param, product, err := newReqParam(req)
+	rule, err := newRuleInfoFromReq(req)
 	if err != nil {
 		return nil, err
 	}
 
-	return updateProcess(req, param, product)
+	return UpdateActionProcess(req, rule)
 }

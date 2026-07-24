@@ -18,7 +18,6 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
@@ -31,12 +30,13 @@ type BFEClusterDetail struct {
 
 // ListRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var ListEndpoint = &xreq.Endpoint{
-	Path:       "/bfe-clusters",
-	Method:     http.MethodGet,
-	Handler:    xreq.Convert(ListAction),
-	Authorizer: iauth.FA(iauth.FeatureBFECluster, iauth.ActionReadAll),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var ListEndpoint = &xreq.Endpoint{
+// 	Path:       "/alb-clusters",
+// 	Method:     http.MethodGet,
+// 	Handler:    xreq.Convert(ListAction),
+// 	Authorizer: iauth.FA(iauth.FeatureBFECluster, iauth.ActionReadAll),
+// }
 
 func listActionProcess(req *http.Request) ([]*BFEClusterDetail, error) {
 	list, err := container.BFEClusterManager.FetchBFEClusters(req.Context(), nil)

@@ -184,9 +184,9 @@ func checkRateLimitPolicy(policy *shared.RateLimitPolicyParam) error {
 		}
 		hasTpm := len(policy.Rules.TpmConfigs) > 0
 		hasRpm := len(policy.Rules.RpmConfigs) > 0
-		hasConcurrency := policy.Rules.MaxConcurrency != nil && *policy.Rules.MaxConcurrency > 0
+		hasConcurrency := policy.Rules.MaxConcurrency != nil && *policy.Rules.MaxConcurrency >= 0
 		if !hasTpm && !hasRpm && !hasConcurrency {
-			return xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, at least one of rules.tpm, rules.rpm, or rules.max_concurrency(>0) must be set")
+			return xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, at least one of rules.tpm, rules.rpm, or rules.max_concurrency(>=0) must be set")
 		}
 	}
 

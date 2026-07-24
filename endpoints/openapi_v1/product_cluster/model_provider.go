@@ -15,7 +15,7 @@ import (
 var _ xreq.Handler = ListModelProvidersAction
 
 var ListModelProvidersRoute = &xreq.Endpoint{
-	Path:       "/products/{product_name}/model-providers",
+	Path:       "/model-providers",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(ListModelProvidersAction),
 	Authorizer: iauth.FA(iauth.FeatureProductCluster, iauth.ActionCreate),

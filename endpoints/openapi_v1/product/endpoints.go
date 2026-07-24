@@ -17,10 +17,5 @@ package product
 import "github.com/yf-networks/ai-gateway-api/lib/xreq"
 
 var Routers = []*xreq.Endpoint{
-	ProductOneEndpoint,
-	ProductListEndpoint,
-	ProductDeleteEndpoint,
-	ProductUpdateEndpoint,
-	ProductCreateEndpoint,
 	ProductModelsRoute,
 }

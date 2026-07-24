@@ -20,7 +20,6 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 )
 
@@ -28,12 +27,13 @@ var _ xreq.Handler = ProductOneAction
 
 // ProductOneRoute route
 // Auto Gen By ctrl, Modify as U Need
-var ProductOneEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}",
-	Method:     http.MethodGet,
-	Handler:    xreq.Convert(ProductOneAction),
-	Authorizer: iauth.FAP(iauth.FeatureProduct, iauth.ActionRead),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var ProductOneEndpoint = &xreq.Endpoint{
+// 	Path:       "/products/{product_name}",
+// 	Method:     http.MethodGet,
+// 	Handler:    xreq.Convert(ProductOneAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureProduct, iauth.ActionRead),
+// }
 
 // ProductData one response
 // Auto Gen By ctrl, Modify as U Need

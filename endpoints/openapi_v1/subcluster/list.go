@@ -18,20 +18,19 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
 // ListRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var ListEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/sub-clusters",
-	Method:     http.MethodGet,
-	Handler:    xreq.Convert(ListAction),
-	Authorizer: iauth.FAP(iauth.FeatureSubCluster, iauth.ActionRead),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var ListEndpoint = &xreq.Endpoint{
+// 	Path:       "/sub-clusters",
+// 	Method:     http.MethodGet,
+// 	Handler:    xreq.Convert(ListAction),
+// 	Authorizer: iauth.FAP(iauth.FeatureSubCluster, iauth.ActionRead),
+// }
 
 var _ xreq.Handler = ListAction
 
@@ -43,7 +42,7 @@ func ListAction(req *http.Request) (interface{}, error) {
 
 func listActionProcess(req *http.Request) ([]*OneData, error) {
 	// get product info
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

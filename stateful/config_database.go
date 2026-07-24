@@ -45,7 +45,7 @@ func (c *DbConfig) FormatDSN() (string, error) {
 	switch c.Driver {
 	case DriverMySQL:
 		return c.Config.FormatDSN(), nil
-	case DriverSQLite:
+	case DriverSQLite, "sqlite-strip":
 		if c.Config.DBName == "" {
 			return "", fmt.Errorf("sqlite DBName is required")
 		}

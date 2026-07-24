@@ -1,44 +1,104 @@
-# BFE实例池
-## 1 创建实例池
+# ALB实例池
+
+> **v1.2 优化说明：** 接口从 `/alb-pools` 改为 `/alb-pool`，移除 `{instance_pool_name}` URI 参数，使用配置文件中的默认 AI 网关实例池名称。移除列表、创建、删除接口。
+
+## 1 获取默认 AI 网关实例池详情
+
 ### 基本信息
-| 项目  | 值  | 说明 | 
+| 项目  | 值  | 说明 |
 | - | - | - |
-| 含义	| 创建BFE的实例池 ||
-| 端点	| /bfe-pools ||
-| 动作	| POST  | - |
+| 含义	| 获取默认 AI 网关实例池的详情 ||
+| 端点	| /alb-pool ||
+| 动作	| GET | - |
+
+### 输入参数
+无 URI 参数，无 Body 参数。
+
+### 处理逻辑
+1. 从配置文件 `RunTime` 中读取 `DefaultAIInstancePoolName`（默认值：`BFE.aipool`）
+2. 查询实例池，若不存在则返回错误
+3. 返回实例池详情（包含实例列表）
+
+### 返回数据(Data内容)
+
+| 参数名 | 类型 | 参数含义 |
+|--------|------|----------|
+| name | string | 实例池完整名称 |
+| instances | []Instance | 实例列表 |
+| instances[].hostname | string | 实例所在主机名 |
+| instances[].ip | string | 实例 IP 地址 |
+| instances[].weight | int | 实例权重，范围 [0,100] |
+| instances[].ports | map[string]int | 实例端口，至少包含 Default |
+| instances[].tags | map[string]string | 实例标签 |
+
+#### 成功返回数据示例
+
+```json
+{
+    "name": "BFE.aipool",
+    "instances": [
+        {
+            "hostname": "127.0.0.1",
+            "ip": "127.0.0.1",
+            "weight": 1,
+            "ports": {
+                "Default": 8080
+            },
+            "tags": {
+                "key": "value"
+            }
+        }
+    ]
+}
+```
+
+---
+
+## 2 更新默认 AI 网关实例池
+
+### 基本信息
+| 项目  | 值  | 说明 |
+| - | - | - |
+| 含义 |	全量更新默认 AI 网关实例池的实例列表 | 该更新是全量更新，不支持仅添加部分数据 |
+| 端点 |	/alb-pool ||
+| method |	PATCH | - |
 
 ### 输入参数
 
-#### URI 参数
-| 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
-| - | -  | - | - | - | 
-| product_name | string | 产品线名字 | Y | - |
+无 URI 参数。
 
 #### Body参数
+
 | 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
-| - | -  | - | - | - | 
-| name| string | 实例池的完整名字 | Y | 格式为 BFE.{instance_pool_name}， 强制要求前缀为 "BFE." |
-| instances| [] |  实例列表 | Y | |
-| instances[].hostname| string | 实例所在的主机名 | Y |在没有DNS时，可以填写主机的IP地址|
-| instances[].ip| string |  实例的IP地址 | Y | |
-| instances[].weight| int | 实例的权重，数字范围[0,100] | Y | |
-| instances[].ports| string | 实例上的端口 | Y |  每个端口有一个名字 <br> 每个实例至少有一个默认端口，名字是Default |
-| instances[].tags| map[string]string | 实例上的标签 | N | 每个标签都是一个key/value对 |
+| - | -  | - | - | - |
+| instances | []Instance | 实例列表 | Y | 全量替换当前实例池中的实例 |
+| instances[].hostname | string | 实例所在主机名 | Y | 无 DNS 时可填写 IP 地址 |
+| instances[].ip | string | 实例 IP 地址 | Y | |
+| instances[].weight | int | 实例权重，范围 [0,100] | Y | |
+| instances[].ports | map[string]int | 实例端口 | Y | 至少包含 Default 端口 |
+| instances[].tags | map[string]string | 实例标签 | N | |
+
+**移除字段说明：**
+
+| 移除字段 | 原因 |
+|----------|------|
+| `name` | 实例池名称由配置项 `DefaultAIInstancePoolName` 提供，无需在请求中传入 |
+| `epp_server` | AI 网关实例池角色固定为 `COMMON`，无需 EPP Server 配置 |
 
 #### HTTP BODY中参数示例
-```
+
+```json
 {
-    "name": "BFE.instance_pool2", 
-    "instances": [ 
-        { 
-            "hostname": "hostname1", 
-            "ip": "10.70.29.3", 
-            "weight": 1, 
+    "instances": [
+        {
+            "hostname": "127.0.0.1",
+            "ip": "127.0.0.1",
+            "weight": 1,
             "ports": {
-                "Default": 80
+                "Default": 8080
             },
             "tags": {
-                "tag1": "val1"
+                "key": "value"
             }
         }
     ]
@@ -46,106 +106,4 @@
 ```
 
 ### 返回数据(Data内容)
-同创建接口
-
-#### 成功返回数据示例
-
-```
-{
-    "name": "BFE.instance_pool2", 
-    "instances": [ 
-        { 
-            "hostname": "hostname1", 
-            "ip": "10.70.29.3", 
-            "weight": 1, 
-            "ports": {
-                "Default": 80
-            },
-            "tags": {
-                "tag1": "val1"
-            }
-        }
-    ]
-}
-```
-
-
-## 2 实例池列表
-### 基本信息
-| 项目  | 值  | 说明 | 
-| - | - | - |
-| 含义	| 获取BFE的实例池列表  | |
-| 端点	| /bfe-pools | |
-| 动作	| GET  | - |
-
-### 输入参数
-无
-
-### 返回数据(Data内容)
-
-为一个字符串数组，每个元素为实例池名。
-#### 成功返回数据示例
-
-```
-[ 
-    "BFE.instance_pool1",
-    "BFE.instance_pool2" 
-]
-```
-
-
-## 3 实例池详情
-### 基本信息
-| 项目  | 值  | 说明 | 
-| - | - | - |
-| 含义 | 	获取BFE的实例池的详情 ||
-| 端点 | 	/bfe-pools/{instance_pool_name} ||
-| method | 	GET | - | 
-
-### 输入参数
-
-#### URI 参数
-| 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
-| - | -  | - | - | - | 
-|	instance_pool_name | string | 实例池名字 | Y | - |
-
-### 返回数据(Data内容)
-
-同创建接口
-
-## 4 更新实例池
-### 基本信息
-| 项目  | 值  | 说明 | 
-| - | - | - |
-| 含义 |	更新BFE的实例池 | 该更新是全量更新，不支持仅添加部分数据 |
-| 端点 |	/bfe-pools/{instance_pool_name} ||
-| method |	PATCH | - | 
-
-### 输入参数
-同创建接口
-
-- 名字不可修改
-
-
-### 返回数据(Data内容)
-同创建接口
-
-
-## 5 删除实例池
-### 基本信息
-| 项目  | 值  | 说明 | 
-| - | - | - |
-| 含义	| 删除BFE的实例池 ||
-| 端点	| /bfe-pools/{instance_pool_name} ||
-| 动作	| DELETE | - |
-
-### 输入参数
-
-#### URI 参数
-| 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
-| - | -  | - | - | - | 
-|	instance_pool_name | string | 实例池名字 | Y | - |
-
-### 返回数据(Data内容)
-
-同创建接口
+同 GET 接口。

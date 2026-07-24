@@ -19,18 +19,18 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/product_pool"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
-// DeleteRoute route
+// DeleteRoute route - deprecated, endpoint registration removed per optimization plan v1.2
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var DeleteEndpoint = &xreq.Endpoint{
-	Path:       "/bfe-pools/{instance_pool_name}",
-	Method:     http.MethodDelete,
-	Handler:    xreq.Convert(DeleteAction),
-	Authorizer: iauth.FA(iauth.FeatureBFEPool, iauth.ActionDelete),
-}
+//
+//	var DeleteEndpoint = &xreq.Endpoint{
+//		Path:       "/alb-pools/{instance_pool_name}",
+//		Method:     http.MethodDelete,
+//		Handler:    xreq.Convert(DeleteAction),
+//		Authorizer: iauth.FA(iauth.FeatureBFEPool, iauth.ActionDelete),
+//	}
 var _ xreq.Handler = DeleteAction
 
 // DeleteAction action

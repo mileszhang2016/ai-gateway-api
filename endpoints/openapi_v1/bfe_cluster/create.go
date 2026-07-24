@@ -19,7 +19,6 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -33,12 +32,13 @@ type BFEClusterCreateParam struct {
 
 // CreateRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var CreateEndpoint = &xreq.Endpoint{
-	Path:       "/bfe-clusters",
-	Method:     http.MethodPost,
-	Handler:    xreq.Convert(CreateAction),
-	Authorizer: iauth.FA(iauth.FeatureBFECluster, iauth.ActionCreate),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+// var CreateEndpoint = &xreq.Endpoint{
+// 	Path:       "/alb-clusters",
+// 	Method:     http.MethodPost,
+// 	Handler:    xreq.Convert(CreateAction),
+// 	Authorizer: iauth.FA(iauth.FeatureBFECluster, iauth.ActionCreate),
+// }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func newBFEClusterCreateParam4Create(req *http.Request) (*BFEClusterCreateParam, error) {

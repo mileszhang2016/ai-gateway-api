@@ -20,7 +20,6 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -28,14 +27,14 @@ import (
 // DeleteRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 var DeleteEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/clusters/{cluster_name}",
+	Path:       "/clusters/{cluster_name}",
 	Method:     http.MethodDelete,
 	Handler:    xreq.Convert(DeleteAction),
 	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionDelete),
 }
 
 func deleteActionProcess(req *http.Request, param *OneParam) (*ClusterData, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +50,7 @@ func deleteActionProcess(req *http.Request, param *OneParam) (*ClusterData, erro
 		return nil, xerror.WrapRecordNotExist("Cluster")
 	}
 
+	// Cascade cleanup (sub-clusters, instance-pools, cluster) is handled in model layer within a single transaction
 	if err := container.ClusterManager.DeleteCluster(req.Context(), product, one); err != nil {
 		return nil, err
 	}

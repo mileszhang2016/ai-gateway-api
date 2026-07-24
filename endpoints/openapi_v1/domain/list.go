@@ -18,8 +18,6 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -38,18 +36,20 @@ type OneData struct {
 
 // ListRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
-var ListEndpoint = &xreq.Endpoint{
-	Path:       "/products/{product_name}/domains",
-	Method:     http.MethodGet,
-	Handler:    xreq.Convert(ListAction),
-	Authorizer: iauth.FAP(iauth.FeatureDomain, iauth.ActionRead),
-}
+// deprecated, endpoint registration removed per optimization plan v1.2
+//
+//	var ListEndpoint = &xreq.Endpoint{
+//		Path:       "/domains",
+//		Method:     http.MethodGet,
+//		Handler:    xreq.Convert(ListAction),
+//		Authorizer: iauth.FAP(iauth.FeatureDomain, iauth.ActionRead),
+//	}
 var _ xreq.Handler = ListAction
 
 // ListAction action
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func ListAction(req *http.Request) (interface{}, error) {
-	product, err := ibasic.MustGetProduct(req.Context())
+	product, err := getDefaultProduct(req.Context())
 	if err != nil {
 		return nil, err
 	}

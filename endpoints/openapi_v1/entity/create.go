@@ -90,8 +90,14 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 	}
 
 	if param.RateLimitPolicy != nil && param.RateLimitPolicy.Enabled != nil && *param.RateLimitPolicy.Enabled {
-		if param.RateLimitPolicy.Rules == nil || (len(param.RateLimitPolicy.Rules.TpmConfigs) == 0 && len(param.RateLimitPolicy.Rules.RpmConfigs) == 0) {
-			return nil, xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, rules.tpm or rules.rpm must be set")
+		if param.RateLimitPolicy.Rules == nil {
+			return nil, xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, rules must be set")
+		}
+		hasTpm := len(param.RateLimitPolicy.Rules.TpmConfigs) > 0
+		hasRpm := len(param.RateLimitPolicy.Rules.RpmConfigs) > 0
+		hasConcurrency := param.RateLimitPolicy.Rules.MaxConcurrency != nil && *param.RateLimitPolicy.Rules.MaxConcurrency >= 0
+		if !hasTpm && !hasRpm && !hasConcurrency {
+			return nil, xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, at least one of rules.tpm, rules.rpm, or rules.max_concurrency(>=0) must be set")
 		}
 	}
 

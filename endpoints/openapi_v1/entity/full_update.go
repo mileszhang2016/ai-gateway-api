@@ -54,9 +54,30 @@ func EntityFullUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapRecordNotExist("Entity")
 	}
 
+	// 从最早获取的 existing 中取旧配额值
+	var oldQuota int64
+	if existing.QuotaPlanID != nil {
+		oldPlan, errPlan := container.QuotaPlanManager.FetchQuotaPlan(req.Context(), &quota.QuotaPlanFilter{ID: existing.QuotaPlanID})
+		if errPlan == nil && oldPlan != nil && oldPlan.Quota != nil {
+			oldQuota = *oldPlan.Quota
+		}
+	}
+
 	param := &quota.EntityParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
+	}
+
+	if param.RateLimitPolicy != nil && param.RateLimitPolicy.Enabled != nil && *param.RateLimitPolicy.Enabled {
+		if param.RateLimitPolicy.Rules == nil {
+			return nil, xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, rules must be set")
+		}
+		hasTpm := len(param.RateLimitPolicy.Rules.TpmConfigs) > 0
+		hasRpm := len(param.RateLimitPolicy.Rules.RpmConfigs) > 0
+		hasConcurrency := param.RateLimitPolicy.Rules.MaxConcurrency != nil && *param.RateLimitPolicy.Rules.MaxConcurrency >= 0
+		if !hasTpm && !hasRpm && !hasConcurrency {
+			return nil, xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, at least one of rules.tpm, rules.rpm, or rules.max_concurrency(>=0) must be set")
+		}
 	}
 
 	if param.RateLimitPolicy != nil && param.RateLimitPolicy.Rules != nil {
@@ -108,7 +129,7 @@ func EntityFullUpdateAction(req *http.Request) (interface{}, error) {
 
 		if updated.EntityID != nil {
 			redisKey := stateful.AIUsedQuotaKey(*updated.EntityID)
-			currentVal, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
+			_, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
 			if errGet != nil {
 				if strings.Contains(errGet.Error(), "redigo: nil returned") {
 					quotaVal := int64(0)
@@ -122,12 +143,9 @@ func EntityFullUpdateAction(req *http.Request) (interface{}, error) {
 				} else {
 					return nil, errGet
 				}
-			} else if currentVal == 0 {
-				quotaVal := int64(0)
-				if param.QuotaPlan.Quota != nil {
-					quotaVal = *param.QuotaPlan.Quota
-				}
-				_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, quotaVal)
+			} else if param.QuotaPlan.Quota != nil {
+				delta := *param.QuotaPlan.Quota - oldQuota
+				_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
 				if err != nil {
 					return nil, err
 				}

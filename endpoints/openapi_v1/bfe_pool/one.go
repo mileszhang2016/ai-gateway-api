@@ -21,13 +21,14 @@ import (
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
+	"github.com/yf-networks/ai-gateway-api/stateful"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
 // OneRoute route
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 var OneEndpoint = &xreq.Endpoint{
-	Path:       "/bfe-pools/{instance_pool_name}",
+	Path:       "/alb-pool",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(OneAction),
 	Authorizer: iauth.FA(iauth.FeatureBFEPool, iauth.ActionReadAll),
@@ -38,12 +39,9 @@ var _ xreq.Handler = OneAction
 // OneAction action
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func OneAction(req *http.Request) (interface{}, error) {
-	param, err := product_pool.NewOneParam(req)
-	if err != nil {
-		return nil, err
-	}
+	poolName := stateful.DefaultConfig.RunTime.DefaultAIInstancePoolName
 
-	one, err := container.PoolManager.FetchBFEPool(req.Context(), param.InstancePoolName)
+	one, err := container.PoolManager.FetchBFEPool(req.Context(), poolName)
 	if err != nil {
 		return nil, err
 	}

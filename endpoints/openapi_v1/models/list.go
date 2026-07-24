@@ -14,7 +14,7 @@ import (
 var _ xreq.Handler = ModelsListAction
 
 var ModelsListRoute = &xreq.Endpoint{
-	Path:       "/models",
+	Path:       "/global-models",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(ModelsListAction),
 	Authorizer: iauth.FA(iauth.FeatureProduct, iauth.ActionRead),
