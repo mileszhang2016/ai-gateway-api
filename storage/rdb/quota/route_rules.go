@@ -123,6 +123,85 @@ func (s *RouteRulesStorager) FetchRouteRulesByID(ctx context.Context, id int64) 
 	return routeRulesDataToParam(one), nil
 }
 
+func (s *RouteRulesStorager) FetchRouteRulesList(ctx context.Context, filter *shared.RouteRulesFilter) ([]*shared.RouteTableParam, int64, error) {
+	dbCtx, err := s.dbCtxFactory(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	where := routeRulesFilterToParam(filter)
+
+	// Query total count without pagination
+	allList, err := dao.TRouteRulesList(dbCtx, where)
+	if err != nil {
+		return nil, 0, err
+	}
+	if allList == nil {
+		allList = []*dao.TRouteRules{}
+	}
+	total := int64(len(allList))
+
+	// Apply pagination
+	page := 1
+	pageSize := 20
+	if filter.Page != nil && *filter.Page > 0 {
+		page = *filter.Page
+	}
+	if filter.PageSize != nil && *filter.PageSize > 0 {
+		pageSize = *filter.PageSize
+		if pageSize > 100 {
+			pageSize = 100
+		}
+	}
+	offset := (page - 1) * pageSize
+	if offset < 0 {
+		offset = 0
+	}
+	where.Limit = []uint{uint(offset), uint(pageSize)}
+
+	list, err := dao.TRouteRulesList(dbCtx, where)
+	if err != nil {
+		return nil, 0, err
+	}
+	if list == nil {
+		list = []*dao.TRouteRules{}
+	}
+
+	result := make([]*shared.RouteTableParam, 0, len(list))
+	for _, one := range list {
+		result = append(result, &shared.RouteTableParam{
+			Type:    one.Type,
+			Owner:   one.Owner,
+			Enabled: one.Enabled,
+		})
+	}
+
+	return result, total, nil
+}
+
+func routeRulesFilterToParam(filter *shared.RouteRulesFilter) *dao.TRouteRulesParam {
+	if filter == nil {
+		return nil
+	}
+
+	param := &dao.TRouteRulesParam{
+		Type:  filter.Type,
+		Owner: filter.Owner,
+	}
+	if filter.Enabled != nil {
+		param.Enabled = filter.Enabled
+	}
+	if filter.SortBy != nil && *filter.SortBy != "" {
+		order := *filter.SortBy
+		if filter.SortOrder != nil && (*filter.SortOrder == "asc" || *filter.SortOrder == "desc") {
+			order += " " + *filter.SortOrder
+		}
+		param.OrderBy = &order
+	}
+
+	return param
+}
+
 func marshalRouteRules(rules []*shared.AiRouteRuleParam) (*string, error) {
 	if rules == nil {
 		return lib.PString("[]"), nil

@@ -30,14 +30,20 @@ const (
 
 // RouteRulesFilter defines filters for querying route rules
 type RouteRulesFilter struct {
-	Type  *string
-	Owner *string
+	Type      *string `form:"type"`
+	Owner     *string `form:"owner"`
+	Enabled   *bool   `form:"enabled"`
+	Page      *int    `form:"page"`
+	PageSize  *int    `form:"page_size"`
+	SortBy    *string `form:"sort_by"`
+	SortOrder *string `form:"sort_order"`
 }
 
 // RouteRulesStorager defines storage operations for route rules
 type RouteRulesStorager interface {
 	CreateRouteRules(ctx context.Context, ruleType string, owner *string, param *RouteRulesParam) (int64, error)
 	FetchRouteRules(ctx context.Context, ruleType string, owner *string) (*RouteRulesParam, error)
+	FetchRouteRulesList(ctx context.Context, filter *RouteRulesFilter) ([]*RouteTableParam, int64, error)
 	UpdateRouteRules(ctx context.Context, id int64, param *RouteRulesParam) (int64, error)
 	DeleteRouteRules(ctx context.Context, id int64) error
 	FetchRouteRulesByID(ctx context.Context, id int64) (*RouteRulesParam, error)
@@ -154,6 +160,19 @@ func (m *RouteRulesManager) FetchRouteRulesByID(ctx context.Context, id int64) (
 	})
 
 	return result, err
+}
+
+// ListRouteTables lists route tables with pagination
+func (m *RouteRulesManager) ListRouteTables(ctx context.Context, filter *RouteRulesFilter) ([]*RouteTableParam, int64, error) {
+	var result []*RouteTableParam
+	var total int64
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		var err error
+		result, total, err = m.storager.FetchRouteRulesList(ctx, filter)
+		return err
+	})
+
+	return result, total, err
 }
 
 func (m *RouteRulesManager) validateRouteRules(param *RouteRulesParam) error {

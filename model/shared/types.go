@@ -91,6 +91,12 @@ type RouteRulesParam struct {
 	Rules   []*AiRouteRuleParam `json:"rules"`
 }
 
+type RouteTableParam struct {
+	Type    string `json:"type"`
+	Owner   string `json:"owner"`
+	Enabled bool   `json:"enabled"`
+}
+
 type QuotaPlanStorager interface {
 	CreateQuotaPlan(ctx context.Context, param *QuotaPlanParam) (int64, error)
 	UpdateQuotaPlan(ctx context.Context, id int64, param *QuotaPlanParam) (int64, error)

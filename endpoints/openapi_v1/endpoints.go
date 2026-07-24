@@ -34,6 +34,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/product_cluster"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/product_pool"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/route"
+	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/route_tables"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/subcluster"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/traffic"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
@@ -67,6 +68,7 @@ func endpoints() []*xreq.Endpoint {
 		entity_type.Endpoints,
 		entity.Endpoints,
 		global_route_rules.Endpoints,
+		route_tables.Endpoints,
 		models.Endpoints,
 	)
 }
