@@ -108,6 +108,10 @@ func checkUpdateAPIKey(param *icluster_conf.APIKeyParam, productName string) err
 		return err
 	}
 
+	if err := checkQuotaPlan(param.QuotaPlan); err != nil {
+		return err
+	}
+
 	return nil
 }
 

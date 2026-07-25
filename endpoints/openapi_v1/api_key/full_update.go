@@ -128,7 +128,7 @@ func APIKeyFullUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyPar
 		}
 
 		// 检查 Redis key 是否存在，不存在则创建，存在则更新差值（新请求参数 quota - existing 旧 quota）
-		if updated.Key != nil {
+		if updated.Key != nil && stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
 			redisKey := stateful.AIUsedQuotaKey(*updated.Key)
 			_, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
 			if errGet != nil {

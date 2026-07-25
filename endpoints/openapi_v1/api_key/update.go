@@ -16,6 +16,7 @@ package api_key
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -73,6 +74,17 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 		return nil, xerror.WrapRecordNotExist("API-Key")
 	}
 
+	// 检查 entity_id 是否存在（如果传入的话）
+	if param.EntityID != nil && *param.EntityID != "" {
+		entity, err := container.EntityManager.FetchEntity(ctx, &quota.EntityFilter{EntityID: param.EntityID})
+		if err != nil {
+			return nil, err
+		}
+		if entity == nil {
+			return nil, xerror.WrapParamErrorWithMsg(fmt.Sprintf("Entity not found: %s", *param.EntityID))
+		}
+	}
+
 	// 从最早获取的 existing 中取旧配额值
 	var oldQuota int64
 	if existing.QuotaPlanID != nil {
@@ -128,7 +140,7 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 		}
 
 		// 检查 Redis key 是否存在，不存在则创建，存在则更新差值（新请求参数 quota - existing 旧 quota）
-		if updated.Key != nil {
+		if updated.Key != nil && stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
 			redisKey := stateful.AIUsedQuotaKey(*updated.Key)
 			_, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
 			if errGet != nil {
