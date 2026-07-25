@@ -18,7 +18,7 @@
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| id | string | 是 | API-Key 唯一标识 |
+| id | string | 是 | API-Key 唯一标识（最大255字符） |
 
 ### 返回数据字段
 
@@ -41,7 +41,11 @@
 |------|------|---------|---------|
 | AK-7-001 | 查询有配额的 API-Key | 正常参数 | 验证返回完整配额信息 |
 | AK-7-002 | 查询不存在的 API-Key | 异常参数 | 验证返回 404 |
-| AK-7-003 | 验证 balance 字段结构 | 返回数据校验 | 验证 used 和 remaining 字段 |
+| AK-7-003 | 验证 balance 字段结构 | 返回数据校验 | 验证 used/remaining 类型和关系 |
+| AK-7-004 | 查询无限配额的 API-Key | 正常参数 | 验证 unlimited=true |
+| AK-7-005 | 查询无配额计划的 API-Key | 正常参数 | 验证返回 nil |
+| AK-7-006 | id 超长（>255字符） | 边界值 | 验证 ErrNum=422 |
+| AK-7-007 | 验证返回字段完整性 | 返回数据校验 | 验证所有字段存在且类型正确 |
 
 ---
 
@@ -68,6 +72,7 @@
 #### 预期返回结果
 
 **ErrNum**：200  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
@@ -90,7 +95,8 @@
 
 #### 预期返回结果
 
-**ErrNum**：404
+**ErrNum**：404  
+**ErrMsg**：包含 "API-Key" 和 "not exist"
 
 ---
 
@@ -98,7 +104,7 @@
 
 #### 设计思路
 
-验证 balance 对象包含 used 和 remaining 两个字段，且为数字类型。
+验证 balance 对象包含 used 和 remaining 两个字段，且为数字类型，used + remaining = quota。
 
 #### 前提数据准备
 
@@ -107,10 +113,117 @@
 #### 预期返回结果
 
 **ErrNum**：200  
+**ErrMsg**：success
 
 **Data.balance 校验**：
 
 | 字段 | 预期类型 | 预期值 |
 |------|---------|--------|
-| balance.used | number | 0 |
-| balance.remaining | number | = quota（初始剩余=配额） |
+| balance.used | number | ≥ 0 |
+| balance.remaining | number | ≥ 0 |
+| used + remaining | — | = quota |
+
+---
+
+### AK-7-004：查询无限配额的 API-Key
+
+#### 设计思路
+
+验证查询 unlimited=true 的 API-Key 时，返回 unlimited=true。
+
+#### 前提数据准备
+
+- 先创建一个 unlimited_quota=true 的 API-Key
+
+#### 执行步骤
+
+1. 创建 API-Key（unlimited_quota=true, quota_plan.unlimited=true）
+2. 发送 GET 请求
+3. 验证 unlimited=true
+
+#### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success  
+**Data.unlimited**：true
+
+---
+
+### AK-7-005：查询无配额计划的 API-Key
+
+#### 设计思路
+
+验证查询未设置 quota_plan 的 API-Key 时，系统自动创建默认配额计划（unlimited=true, quota=0, unit="total_token", reset_period="never"）。
+
+#### 前提数据准备
+
+- 先创建一个不传 quota_plan 的 API-Key
+
+#### 执行步骤
+
+1. 创建 API-Key（仅传 description）
+2. 发送 GET 请求
+3. 验证返回默认配额计划
+
+#### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 |
+|------|--------|
+| unlimited | true |
+| quota | 0 |
+| unit | "total_token" |
+| reset_period | "never" |
+| balance.used | 0 |
+| balance.remaining | 0 |
+
+---
+
+### AK-7-006：id 超长（>255字符）
+
+#### 设计思路
+
+验证 URI 参数 id 超过 255 字符时返回参数错误。
+
+#### 请求参数
+
+URI：`/open-api/v1/api-keys/<256字符>/quota-plan`
+
+#### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "id" 和 "invalid"
+
+---
+
+### AK-7-007：验证返回字段完整性
+
+#### 设计思路
+
+验证返回数据结构包含所有字段（unlimited, pass_when_no_enough_quota, quota, unit, reset_period, balance）且类型正确。
+
+#### 前提数据准备
+
+- 先创建一个带配额计划的 API-Key
+
+#### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 必填字段校验**：
+
+| 键名 | 预期类型 |
+|------|---------|
+| unlimited | bool |
+| pass_when_no_enough_quota | bool |
+| quota | number（>0） |
+| unit | string（非空） |
+| reset_period | string（非空） |
+| balance | object（非空） |
+| balance.used | number |
+| balance.remaining | number |
