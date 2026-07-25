@@ -18,7 +18,7 @@
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| id | string | 是 | API-Key 唯一标识 |
+| id | string | 是 | API-Key 唯一标识（最大255字符） |
 
 ### Body 参数
 
@@ -49,6 +49,10 @@
 | AK-8-002 | 不传 quota 重置（按当前配额） | 正常参数 | 验证不传参数时按当前配额重置 |
 | AK-8-003 | 重置不存在的 API-Key | 异常参数 | 验证返回 404 |
 | AK-8-004 | 验证返回结构完整性 | 返回数据校验 | 验证 previous_quota、new_quota、balance 字段 |
+| AK-8-005 | 重置无配额计划的 API-Key | 异常参数 | 验证返回 422 |
+| AK-8-006 | 重置配额为 0 | 边界值 | 验证 quota=0 重置成功 |
+| AK-8-007 | 重置配额为负数 | 边界值 | 验证 quota<0 行为 |
+| AK-8-008 | id 超长（>255字符） | 边界值 | 验证 ErrNum=422 |
 
 ---
 
@@ -84,6 +88,7 @@
 #### 预期返回结果
 
 **ErrNum**：200  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
@@ -119,6 +124,7 @@
 #### 预期返回结果
 
 **ErrNum**：200  
+**ErrMsg**：success  
 **Data.previous_quota**：100000000  
 **Data.new_quota**：100000000  
 **Data.balance.used**：0
@@ -141,7 +147,8 @@
 
 #### 预期返回结果
 
-**ErrNum**：404
+**ErrNum**：404  
+**ErrMsg**：包含 "API-Key" 和 "not exist"
 
 ---
 
@@ -149,7 +156,7 @@
 
 #### 设计思路
 
-验证重置后返回的 Data 包含所有必要字段。
+验证重置后返回的 Data 包含所有必要字段且类型正确。
 
 #### 前提数据准备
 
@@ -158,6 +165,7 @@
 #### 预期返回结果
 
 **ErrNum**：200  
+**ErrMsg**：success
 
 **Data 顶层键校验**：
 
@@ -170,3 +178,109 @@
 | balance.previous_remaining | number |
 | balance.new_remaining | number |
 | balance.used | number |
+
+---
+
+### AK-8-005：重置无配额计划的 API-Key
+
+#### 设计思路
+
+验证重置未设置配额计划的 API-Key 时，由于系统自动创建了默认配额计划（unlimited=true），配额管理器拒绝重置无限配额，返回 500。
+
+#### 前提数据准备
+
+- 先创建一个不传 quota_plan 的 API-Key
+
+#### 执行步骤
+
+1. 创建 API-Key（仅传 description）
+2. 发送 POST 请求
+3. 验证返回 500
+
+#### 请求参数
+
+```json
+{
+    "quota": 50000000
+}
+```
+
+#### 预期返回结果
+
+**ErrNum**：500  
+**ErrMsg**：包含 "cannot reset balance for unlimited quota"
+
+---
+
+### AK-8-006：重置配额为 0
+
+#### 设计思路
+
+验证传入 quota=0 时重置成功。
+
+#### 前提数据准备
+
+- 先创建一个带配额计划（quota=100000000）的 API-Key
+
+#### 请求参数
+
+```json
+{
+    "quota": 0
+}
+```
+
+#### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success  
+**Data.new_quota**：0  
+**Data.balance.new_remaining**：0
+
+---
+
+### AK-8-007：重置配额为负数
+
+#### 设计思路
+
+验证传入负数 quota 时接口行为（可能被接受或返回参数错误）。
+
+#### 前提数据准备
+
+- 先创建一个带配额计划（quota=100000000）的 API-Key
+
+#### 请求参数
+
+```json
+{
+    "quota": -100
+}
+```
+
+#### 预期返回结果
+
+**ErrNum**：200（可能接受）或 422
+
+---
+
+### AK-8-008：id 超长（>255字符）
+
+#### 设计思路
+
+验证 URI 参数 id 超过 255 字符时返回参数错误。
+
+#### 请求参数
+
+URI：`/open-api/v1/api-keys/<256字符>/quota-plan/reset`
+
+Body：
+```json
+{
+    "quota": 50000000
+}
+```
+
+#### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "id" 和 "invalid"

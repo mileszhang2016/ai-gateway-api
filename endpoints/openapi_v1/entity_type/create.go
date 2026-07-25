@@ -41,7 +41,10 @@ func EntityTypeCreateAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapParamErrorWithMsg("type_name is required")
 	}
 
-	if param.Level != nil && (*param.Level < 1 || *param.Level > 5) {
+	if param.Level == nil {
+		return nil, xerror.WrapParamErrorWithMsg("level is required")
+	}
+	if *param.Level < 1 || *param.Level > 5 {
 		return nil, xerror.WrapParamErrorWithMsg("level must be between 1 and 5")
 	}
 
