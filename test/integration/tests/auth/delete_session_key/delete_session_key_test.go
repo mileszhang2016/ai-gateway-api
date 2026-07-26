@@ -62,11 +62,11 @@ func TestDeleteSessionKey_Normal_Success(t *testing.T) {
 }
 
 func TestDeleteSessionKey_Abnormal_NotFound(t *testing.T) {
-	// AUTH-10-002: 删除不存在的 key
+	// AUTH-10-002: 删除不存在的 key，接口返回 401（Authenticate Fail）
 	client := testutil.GetClient()
 	resp, err := client.Delete("/open-api/v1/auth/session-keys/non_existent_session_key")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	testutil.AssertErrCode(t, resp, 404)
+	testutil.AssertErrCode(t, resp, 401)
 }

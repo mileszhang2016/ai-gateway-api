@@ -72,27 +72,27 @@ func TestSetAdmin_Normal_RemoveAdmin(t *testing.T) {
 	testutil.AssertSuccess(t, resp)
 }
 
-func TestSetAdmin_Required_MissingIsAdmin(t *testing.T) {
-	// AUTH-5-003: 缺少 is_admin
+func TestSetAdmin_Default_IsAdminFalse(t *testing.T) {
+	// AUTH-5-003: 未传 is_admin 时，默认取消管理员权限
 	client := testutil.GetClient()
 
-	// 创建用户
+	// 创建管理员用户
 	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
 		"user_name": "test_user_noadmin",
 		"password":  "password@123",
-		"is_admin":  false,
+		"is_admin":  true,
 	})
 	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
 	testutil.AssertSuccess(t, resp)
 
-	// 设置管理员，缺少 is_admin
+	// 未传 is_admin，应默认取消管理员权限
 	resp, err = client.Patch("/open-api/v1/auth/users/test_user_noadmin/is_admin", map[string]interface{}{})
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	testutil.AssertErrCode(t, resp, 422)
+	testutil.AssertSuccess(t, resp)
 }
 
 func TestSetAdmin_Abnormal_UserNotFound(t *testing.T) {

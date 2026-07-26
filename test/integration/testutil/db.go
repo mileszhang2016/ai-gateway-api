@@ -67,6 +67,65 @@ func InitTestDB(dbPath, ddlPath string) error {
 	return nil
 }
 
+// SeedTestData 插入默认测试数据
+// DDL 已插入默认 product/pool/bfe_cluster，这里补充 clusters 表缺少的默认集群记录
+func SeedTestData(dbPath string) error {
+	db, err := sql.Open("sqlite-strip", dbPath)
+	if err != nil {
+		return fmt.Errorf("open sqlite db: %w", err)
+	}
+	defer db.Close()
+
+	// 查询 AI_product 的 id
+	var productID int64
+	err = db.QueryRow("SELECT id FROM products WHERE name = 'AI_product'").Scan(&productID)
+	if err != nil {
+		return fmt.Errorf("find AI_product: %w", err)
+	}
+
+	// 插入默认 cluster（AI_route 规则引用）
+	// clusters 表在 DDL 中未初始化，但 AI_route 设置规则时会校验该表
+	_, err = db.Exec(`
+		INSERT OR IGNORE INTO clusters (
+			id, name, description, product_id, protocol,
+			healthcheck_host, healthcheck_uri, created_at, updated_at
+		) VALUES (
+			1, 'BFE-AI_product.szyf', 'Default AI cluster for integration tests', ?, 'http',
+			'localhost', '/health', datetime('now'), datetime('now')
+		);
+	`, productID)
+	if err != nil {
+		return fmt.Errorf("seed cluster: %w", err)
+	}
+
+	// 预置 Auth 模块各测试用例依赖的产品线（原 /open-api/v1/products 创建接口已废弃）
+	productNames := []string{
+		"product_demo",
+		"product_search",
+		"product_empty",
+		"product_unbind",
+		"product_token",
+		"product_token_del",
+		"product_token_search",
+		"product_token_list",
+		"product_token_list2",
+		"product_token_detail",
+		"product_token_empty",
+	}
+	for _, name := range productNames {
+		_, err = db.Exec(`
+			INSERT OR IGNORE INTO products (
+				name, mail_list, contact_person, sms_list, description, created_at, updated_at
+			) VALUES (?, 'test@example.com', 'test', 'no sms', 'Seeded product for integration tests', datetime('now'), datetime('now'));
+		`, name)
+		if err != nil {
+			return fmt.Errorf("seed product %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
 // CleanupTestDB 清理测试数据库文件
 func CleanupTestDB(dbPath string) {
 	os.Remove(dbPath)

@@ -1,6 +1,7 @@
 package partial_update
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -108,7 +109,7 @@ func TestPartialUpdateEntity_Normal_UpdateQuotaPlan(t *testing.T) {
 		t.Fatalf("get id failed: %v", err)
 	}
 
-	// 更新配额计划（当前返回500系统错误）
+	// 更新配额计划
 	resp, err = client.Patch("/open-api/v1/entities/"+entityID.(string), map[string]interface{}{
 		"quota_plan": map[string]interface{}{
 			"unlimited":    false,
@@ -120,5 +121,28 @@ func TestPartialUpdateEntity_Normal_UpdateQuotaPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	testutil.AssertErrCode(t, resp, 500)
+	testutil.AssertSuccess(t, resp)
+	testutil.AssertDataNotEmpty(t, resp)
+
+	// 验证配额计划字段
+	var updatedData map[string]interface{}
+	if err := json.Unmarshal(resp.Data, &updatedData); err != nil {
+		t.Fatalf("unmarshal updated data: %v", err)
+	}
+	quotaPlan, ok := updatedData["quota_plan"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("quota_plan not found or not object in response")
+	}
+	if quotaPlan["unlimited"] != false {
+		t.Errorf("expected quota_plan.unlimited=false, got %v", quotaPlan["unlimited"])
+	}
+	if quotaPlan["quota"] != float64(50000000) {
+		t.Errorf("expected quota_plan.quota=50000000, got %v", quotaPlan["quota"])
+	}
+	if quotaPlan["unit"] != "total_token" {
+		t.Errorf("expected quota_plan.unit=total_token, got %v", quotaPlan["unit"])
+	}
+	if quotaPlan["reset_period"] != "weekly" {
+		t.Errorf("expected quota_plan.reset_period=weekly, got %v", quotaPlan["reset_period"])
+	}
 }

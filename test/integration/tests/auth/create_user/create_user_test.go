@@ -76,8 +76,8 @@ func TestCreateUser_Required_MissingPassword(t *testing.T) {
 	testutil.AssertErrCode(t, resp, 422)
 }
 
-func TestCreateUser_Required_MissingIsAdmin(t *testing.T) {
-	// AUTH-1-005: 缺少 is_admin
+func TestCreateUser_Default_IsAdminFalse(t *testing.T) {
+	// AUTH-1-005: 未传 is_admin 时，默认创建非管理员用户
 	client := testutil.GetClient()
 	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
 		"user_name": "test_user_003",
@@ -86,7 +86,7 @@ func TestCreateUser_Required_MissingIsAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	testutil.AssertErrCode(t, resp, 422)
+	testutil.AssertSuccess(t, resp)
 }
 
 func TestCreateUser_Business_DuplicateUser(t *testing.T) {

@@ -54,7 +54,7 @@ func ProductProbeAction(req *http.Request) (*http.Request, error) {
 	}
 
 	if len(products) != 1 {
-		return nil, xerror.WrapParamErrorWithMsg("Product Not Exist")
+		return nil, xerror.WrapRecordNotExist("Product")
 	}
 
 	return req.WithContext(ibasic.NewProductContext(req.Context(), products[0])), nil

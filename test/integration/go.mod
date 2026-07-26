@@ -3,7 +3,6 @@ module github.com/yf-networks/ai-gateway-api/integration
 go 1.22
 
 require (
-	github.com/bfenetworks/bfe v1.8.1-0.20260427052401-8d3a8cd44d98
 	github.com/glebarez/go-sqlite v1.21.2
 	github.com/stretchr/testify v1.10.0
 	github.com/yf-networks/ai-gateway-api v0.0.0
@@ -13,6 +12,7 @@ require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/baidu/go-lib v0.0.0-20210316014414-55daa983069e // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/bfenetworks/bfe v1.8.1-0.20260427052401-8d3a8cd44d98 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -51,5 +51,3 @@ require (
 )
 
 replace github.com/yf-networks/ai-gateway-api => ../../
-
-replace github.com/bfenetworks/bfe => ../../../bfe

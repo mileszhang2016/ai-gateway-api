@@ -65,6 +65,11 @@ func StartServer() (*ServerManager, error) {
 		return nil, fmt.Errorf("init test db: %w", err)
 	}
 
+	// 3.5 插入默认测试数据
+	if err := SeedTestData(dbPath); err != nil {
+		return nil, fmt.Errorf("seed test data: %w", err)
+	}
+
 	// 4. 查找真实 ai-gateway-api.exe 二进制
 	binSrc := filepath.Join(projectRoot, "ai-gateway-api.exe")
 	if _, err := os.Stat(binSrc); os.IsNotExist(err) {

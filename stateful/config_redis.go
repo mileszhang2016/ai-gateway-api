@@ -47,6 +47,16 @@ func (r *Redis) Init() error {
 	// new Redis Client
 	AccessLogger.Info("redis conf:%v", *r)
 
+	if DefaultClientSet == nil {
+		DefaultClientSet = new(ClientSet)
+	}
+
+	// mock 模式：测试环境使用内存 Redis，避免依赖外部 Redis 服务
+	if r.Bns == "mock" || r.ClusterMode == "mock" {
+		DefaultClientSet.RedisClient = NewMockRedisClient()
+		return nil
+	}
+
 	options := &redis_client.Options{
 		ServiceConf:    r.Bns,
 		MaxIdle:        r.MaxIdle,
@@ -64,12 +74,7 @@ func (r *Redis) Init() error {
 		return err
 	}
 
-	client := redis_client.NewRedisClient(options)
-	if DefaultClientSet == nil {
-		DefaultClientSet = new(ClientSet)
-	}
-
-	DefaultClientSet.RedisClient = client
+	DefaultClientSet.RedisClient = redis_client.NewRedisClient(options)
 
 	return nil
 }

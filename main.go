@@ -121,7 +121,11 @@ func serverStartUp() {
 	n.UseHandler(router)
 
 	timeout := time.Duration(serverConfig.GracefulTimeOutInMs) * time.Millisecond
-	address := fmt.Sprintf("0.0.0.0:%d", serverConfig.ServerPort)
+	serverAddr := serverConfig.ServerAddr
+	if serverAddr == "" {
+		serverAddr = "0.0.0.0"
+	}
+	address := fmt.Sprintf("%s:%d", serverAddr, serverConfig.ServerPort)
 	fmt.Println("Run Server At:", address)
 	graceful.Run(address, timeout, n)
 }

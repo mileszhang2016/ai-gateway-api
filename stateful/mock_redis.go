@@ -1,20 +1,32 @@
-package testutil
+// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package stateful
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/bfenetworks/bfe/bfe_util/redis_client"
 )
 
 // MockRedisClient 内存 Redis Mock 实现
-// 实现 redis_client.Client 接口，用于测试环境替代真实 Redis
+// 用于测试环境替代真实 Redis，避免依赖外部 Redis 服务
 type MockRedisClient struct {
 	mu   sync.Mutex
 	data map[string]int64
 }
 
-// 确保 MockRedisClient 实现了 redis_client.Client 接口
 var _ redis_client.Client = (*MockRedisClient)(nil)
 
 // NewMockRedisClient 创建新的 Mock Redis 客户端
@@ -90,39 +102,9 @@ func (m *MockRedisClient) IncrBy(key string, delta int64) (int64, error) {
 	return m.data[key], nil
 }
 
-// NewScript 创建新的 RedisScript（mock 实现）
-func (m *MockRedisClient) NewScript(src string) redis_client.RedisScript {
-	return &MockRedisScript{src: src, client: m}
-}
-
 // Reset 清空所有数据
 func (m *MockRedisClient) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.data = make(map[string]int64)
-}
-
-// MockRedisScript Redis Script mock 实现
-type MockRedisScript struct {
-	src    string
-	client *MockRedisClient
-}
-
-// 确保 MockRedisScript 实现了 redis_client.RedisScript 接口
-var _ redis_client.RedisScript = (*MockRedisScript)(nil)
-
-// Run 执行脚本（mock 实现：模拟 Lua 配额检查脚本）
-func (s *MockRedisScript) Run(key string, args ...interface{}) (interface{}, error) {
-	if len(args) > 0 {
-		quota, ok := args[0].(int64)
-		if !ok {
-			return nil, fmt.Errorf("mock script: invalid quota argument type")
-		}
-		balance, _ := s.client.GetInt64(key)
-		if balance >= quota {
-			return s.client.IncrBy(key, quota)
-		}
-		return nil, nil
-	}
-	return nil, fmt.Errorf("mock script: no arguments provided")
 }

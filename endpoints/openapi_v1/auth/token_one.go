@@ -17,6 +17,7 @@ package auth
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
@@ -42,6 +43,10 @@ func tokenOneActionProcess(req *http.Request) (*TokenData, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	if len(list) == 0 {
+		return nil, xerror.WrapRecordNotExist("Token")
 	}
 
 	return newTokenData(list[0], true), nil

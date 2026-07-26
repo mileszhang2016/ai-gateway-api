@@ -33,3 +33,6 @@ conf/wasm_plugin
 
 # Compiled binary
 ai-gateway-api.exe
+
+# Integration test generated data
+test/integration/data/
