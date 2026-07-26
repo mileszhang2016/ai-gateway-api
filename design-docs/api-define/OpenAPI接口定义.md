@@ -1,7 +1,5 @@
 # OpenAPI接口定义
 
-**版本号**：v0.3.0
-
 ---
 
 - [1. 通用说明](#1-通用说明)
@@ -14,9 +12,14 @@
 - [8. /auth](#8-auth)
 - [9. /certificates](#9-certificates)
 - [10. /clusters](#10-clusters)
-- [11. 关键业务流程](#11-关键业务流程)
-- [12. 对象关系图](#12-对象关系图)
-- [13. 版本修改记录](#13-版本修改记录)
+- [11. /ai-route-rules](#11-ai-route-rules)
+- [12. /global-models](#12-global-models)
+- [13. /products/{product_name}/models](#13-productsproduct_namemodels)
+- [14. /general/actions/exec-api](#14-generalactionsexec-api)
+- [15. /expression/verify](#15-expressionverify)
+- [16. 关键业务流程](#16-关键业务流程)
+- [17. 对象关系图](#17-对象关系图)
+- [18. 版本修改记录](#18-版本修改记录)
 
 ---
 
@@ -84,7 +87,7 @@
 
 ```json
 {
-  "id": "apikey-001",
+  "id": "api-key-1",
   "key": "ak-2v8x9k3m7p",
   "description": "BFE项目测试Key",
   "enabled": true,
@@ -117,9 +120,9 @@
     "enabled": false,
     "rules": []
   },
-  "entity_id": "ent-zhangsan-001",
+  "entity_id": "entity-3",
   "entity": {
-    "id": "ent-zhangsan-001",
+    "id": "entity-3",
     "name": "zhangsan",
     "type": "person"
   }
@@ -130,7 +133,7 @@
 
 | 字段 | 类型 | 说明 | 可能取值 |
 |------|------|------|----------|
-| `id` | string | API-Key唯一标识（内部使用） | 系统生成，如`apikey-001` |
+| `id` | string | API-Key唯一标识（内部使用） | 系统生成，如`api-key-1` |
 | `key` | string | API-Key值（用于请求头鉴权） | 系统生成，如`ak-2v8x9k3m7p` |
 | `description` | string | 描述 | 自定义 |
 | `enabled` | bool | 是否启用 | `true`（启用）、`false`（禁用） |
@@ -284,7 +287,7 @@
             }
         ]
     },
-    "entity_id": "ent-zhangsan-001"
+    "entity_id": "entity-3"
 }
 ```
 
@@ -311,7 +314,7 @@
     "ErrNum": 200,
     "ErrMsg": "success",
     "Data": {
-        "id": "apikey-001",
+        "id": "api-key-1",
         "key": "ak-2v8x9k3m7p",
         "description": "BFE项目测试Key",
         "enabled": true,
@@ -353,9 +356,9 @@
                 }
             ]
         },
-        "entity_id": "ent-zhangsan-001",
+        "entity_id": "entity-3",
         "entity": {
-            "id": "ent-zhangsan-001",
+            "id": "entity-3",
             "name": "zhangsan",
             "type": "person"
         }
@@ -390,7 +393,12 @@
 
 **返回数据（Data内容）**
 
-Data为数组，元素字段同2.1数据模型，但`quota_plan`中的`balance`字段不返回（仅查询单个API-Key或调用独立quota-plan查询接口时返回）。
+返回分页结构：
+
+| 参数名 | 类型 | 参数含义 | 补充描述 |
+| - | - | - | - |
+| list | []APIKey | API-Key列表 | 元素字段同2.1数据模型，但`quota_plan`中的`balance`字段不返回 |
+| pagination | object | 分页信息 | 包含`page`、`page_size`、`total` |
 
 ---
 
@@ -534,7 +542,7 @@ Data为null。
 | 项目 | 值 | 说明 |
 | - | - | - |
 | 含义 | 查询API-Key的配额计划（含实时余额） | - |
-| 端点 | /api-keys/{key}/quota-plan | - |
+| 端点 | /api-keys/{id}/quota-plan | - |
 | 版本 | v1 | - |
 | method | GET | - |
 
@@ -643,7 +651,7 @@ Data为null。
     "ErrNum": 200,
     "ErrMsg": "success",
     "Data": {
-        "id": "apikey-001",
+        "id": "api-key-1",
         "previous_quota": 100000000,
         "new_quota": 100000000,
         "balance": {
@@ -655,6 +663,29 @@ Data为null。
     "WorkMode": "ModeNormal"
 }
 ```
+
+---
+
+#### 2.2.9 生成API-Key
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 生成API-Key字符串 | 用于创建前预览或生成Key值 |
+| 端点 | /api-keys/actions/generate | - |
+| 版本 | v1 | - |
+| method | GET | - |
+
+**输入参数**
+
+无。
+
+**返回数据（Data内容）**
+
+| 参数名 | 类型 | 参数含义 | 补充描述 |
+| - | - | - | - |
+| key | string | 生成的API-Key值 | 格式为`{product}-{uuid}-{nanosecond}-{db_id}` |
 
 ---
 
@@ -735,9 +766,24 @@ Data为null。
 | 版本 | v1 | - |
 | method | GET | - |
 
+**输入参数（Query）**
+
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
+| - | - | - | - | - |
+| page | int | 页码 | N | 默认1 |
+| page_size | int | 每页条数 | N | 默认20，最大100 |
+| id | int64 | 按Entity-Type内部ID过滤 | N | - |
+| type_name | string | 按类型名过滤 | N | - |
+| level | int | 按层级级别过滤 | N | - |
+
 **返回数据（Data内容）**
 
-Data为数组，元素字段同3.2.1创建Entity-Type返回数据。
+返回分页结构：
+
+| 参数名 | 类型 | 参数含义 | 补充描述 |
+| - | - | - | - |
+| list | []EntityType | Entity-Type列表 | 元素字段同3.2.1创建Entity-Type返回数据 |
+| pagination | object | 分页信息 | 包含`page`、`page_size`、`total` |
 
 ---
 
@@ -824,7 +870,7 @@ Data为null。
 
 ```json
 {
-  "id": "ent-001",
+  "id": "entity-1",
   "name": "op",
   "type": "dep",
   "parent_id": null,
@@ -862,7 +908,7 @@ Data为null。
 
 | 字段 | 类型 | 说明 | 可能取值 |
 |------|------|------|----------|
-| `id` | string | Entity唯一标识 | 系统生成，如`ent-001` |
+| `id` | string | Entity唯一标识 | 系统生成，如`entity-1` |
 | `name` | string | Entity名称 | 在全局范围内唯一 |
 | `type` | string | Entity类型 | 必须引用已定义的Entity-Type |
 | `parent_id` | string | 父Entity ID | 为空表示根节点 |
@@ -980,7 +1026,7 @@ Data为null。
     "ErrNum": 200,
     "ErrMsg": "success",
     "Data": {
-        "id": "ent-001",
+        "id": "entity-1",
         "name": "op",
         "type": "dep",
         "parent_id": null,
@@ -1044,20 +1090,22 @@ Data为null。
 | - | - | - | - | - |
 | page | int | 页码 | N | 默认1 |
 | page_size | int | 每页条数 | N | 默认20，最大100 |
+| id | string | 按Entity ID过滤 | N | - |
+| name | string | 按Entity名称过滤 | N | - |
 | type | string | 按类型过滤 | N | - |
 | parent_id | string | 按父Entity过滤 | N | - |
+| quota_plan_id | int64 | 按配额计划ID过滤 | N | - |
+| route_rules_id | int64 | 按路由规则ID过滤 | N | - |
 
 
 **返回数据（Data内容）**
 
-Data为数组，元素仅包含以下字段：
+返回分页结构：
 
 | 参数名 | 类型 | 参数含义 | 补充描述 |
 | - | - | - | - |
-| id | string | Entity唯一标识 | - |
-| name | string | Entity名称 | - |
-| type | string | Entity类型 | - |
-| parent_id | string | 父Entity ID | - |
+| list | []Entity | Entity列表 | 元素字段同4.1数据模型，但`quota_plan`中的`balance`字段不返回 |
+| pagination | object | 分页信息 | 包含`page`、`page_size`、`total` |
 
 **成功返回示例**
 
@@ -1068,22 +1116,39 @@ Data为数组，元素仅包含以下字段：
     "Data": {
         "list": [
             {
-                "id": "ent-001",
+                "id": "entity-1",
                 "name": "op",
                 "type": "dep",
-                "parent_id": null
-            },
-            {
-                "id": "ent-bfe-001",
-                "name": "bfe",
-                "type": "team",
-                "parent_id": "ent-001"
+                "parent_id": null,
+                "allow_models": ["*"],
+                "block_models": [],
+                "quota_plan": {
+                    "unlimited": true,
+                    "pass_when_no_enough_quota": false,
+                    "quota": 0,
+                    "unit": "total_token",
+                    "reset_period": "never"
+                },
+                "rate_limit_policy": {
+                    "enabled": false,
+                    "rules": {
+                        "tpm": [],
+                        "rpm": [],
+                        "max_concurrency": -1
+                    }
+                },
+                "route_rules": {
+                    "enabled": false,
+                    "rules": []
+                },
+                "create_time": 1716883200,
+                "update_time": 1716883200
             }
         ],
         "pagination": {
             "page": 1,
             "page_size": 20,
-            "total": 2
+            "total": 1
         }
     },
     "WorkMode": "ModeNormal"
@@ -1584,12 +1649,12 @@ Data为数组，元素字段同6.1数据模型。
             },
             {
                 "type": "entity",
-                "owner": "ent-001",
+                "owner": "entity-1",
                 "enabled": false
             },
             {
                 "type": "api_key",
-                "owner": "apikey-001",
+                "owner": "api-key-1",
                 "enabled": true
             }
         ],
@@ -1847,8 +1912,9 @@ API 请求时需在 Header 的 `Authorization` 中携带凭证：
 | 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
 | - | - | - | - | - |
 | user_name | string | 用户名 | Y | - |
-| password | string | 用户密码 | Y | - |
-| is_admin | bool | 是否为系统管理员 | Y | `true`：System 权限；`false`：Product 权限 |
+| password | string | 用户密码 | 条件必填 | `type=normal`时必填 |
+| is_admin | bool | 是否为系统管理员 | N | `true`：System 权限；`false`：Product 权限，默认`false` |
+| type | string | 用户类型 | N | 枚举`jwt`、`normal`，默认`normal` |
 
 **HTTP BODY参数示例**
 
@@ -1856,7 +1922,8 @@ API 请求时需在 Header 的 `Authorization` 中携带凭证：
 {
     "user_name": "user_demo",
     "password": "password@baidu.com",
-    "is_admin": true
+    "is_admin": true,
+    "type": "normal"
 }
 ```
 
@@ -1966,6 +2033,7 @@ Data为数组，每个元素为一个用户。
 | - | - | - | - |
 | user_name | string | 用户名 | - |
 | is_admin | bool | 是否为系统管理员 | `true`：System 权限；`false`：Product 权限 |
+| products | []string | 已绑定产品线列表 | - |
 
 **成功返回示例**
 
@@ -1976,11 +2044,13 @@ Data为数组，每个元素为一个用户。
     "Data": [
         {
             "user_name": "user_demo1",
-            "is_admin": true
+            "is_admin": true,
+            "products": []
         },
         {
             "user_name": "user_demo",
-            "is_admin": false
+            "is_admin": false,
+            "products": []
         }
     ],
     "WorkMode": "ModeNormal"
@@ -2102,6 +2172,12 @@ Data为数组，每个元素为一个用户。
 | - | - | - | - | - |
 | product_name | string | 产品线名 | Y | - |
 
+**输入参数（Query）**
+
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
+| - | - | - | - | - |
+| type | string | 按用户类型过滤 | N | 枚举`jwt`、`normal` |
+
 **返回数据（Data内容）**
 
 Data为数组，每个元素为一个用户。
@@ -2110,6 +2186,7 @@ Data为数组，每个元素为一个用户。
 | - | - | - | - |
 | user_name | string | 用户名 | - |
 | is_admin | bool | 是否为系统管理员 | `true`：System 权限；`false`：Product 权限 |
+| products | []string | 已绑定产品线列表 | - |
 
 **成功返回示例**
 
@@ -2120,7 +2197,8 @@ Data为数组，每个元素为一个用户。
     "Data": [
         {
             "user_name": "user_demo",
-            "is_admin": false
+            "is_admin": false,
+            "products": []
         }
     ],
     "WorkMode": "ModeNormal"
@@ -2167,6 +2245,7 @@ Data为数组，每个元素为一个用户。
 | session_key | string | 会话密钥 | 在后续请求中需要在Header中带上该值，格式为 "Authorization: Session iMQW0z5ZwK_6FnPPT7Xj" |
 | user_name | string | 用户名 | - |
 | is_admin | bool | 是否是系统管理员 | 如果是，就是有 System 的权限 |
+| products | []string | 已绑定产品线列表 | - |
 
 **成功返回示例**
 
@@ -2177,7 +2256,8 @@ Data为数组，每个元素为一个用户。
     "Data": {
         "user_name": "user_demo",
         "session_key": "iMQW0z5ZwK_6FnPPT7Xj",
-        "is_admin": false
+        "is_admin": false,
+        "products": []
     },
     "WorkMode": "ModeNormal"
 }
@@ -2412,6 +2492,58 @@ Data为数组，每个元素为一个token对象（详见“查看Token详情”
 
 ---
 
+#### 8.2.16 查询单个用户
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 查询单个用户详情 | - |
+| 端点 | /auth/users/{user_name} | - |
+| 版本 | v1 | - |
+| method | GET | - |
+
+**输入参数（URI）**
+
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
+| - | - | - | - | - |
+| user_name | string | 用户名 | Y | - |
+
+**返回数据（Data内容）**
+
+| 参数名 | 类型 | 参数含义 | 补充描述 |
+| - | - | - | - |
+| user_name | string | 用户名 | - |
+| is_admin | bool | 是否为系统管理员 | - |
+| products | []string | 已绑定产品线列表 | - |
+
+---
+
+#### 8.2.17 获取系统导航配置
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 获取系统导航/图标/Logo配置 | 无需鉴权 |
+| 端点 | /meta | - |
+| 版本 | v1 | - |
+| method | GET | - |
+
+**输入参数**
+
+无。
+
+**返回数据（Data内容）**
+
+| 参数名 | 类型 | 参数含义 | 补充描述 |
+| - | - | - | - |
+| nav | object | 导航配置 | - |
+| icon | object | 图标配置 | - |
+| logo | object | Logo配置 | - |
+
+---
+
 ## 9. /certificates
 
 ### 9.1 数据模型
@@ -2577,37 +2709,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 }
 ```
 
-#### 9.2.3 证书详情
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 获取单个证书信息 | - |
-| 端点 | /certificates/{cert_name} | - |
-| 版本 | v1 | - |
-| method | GET | - |
-
-**输入参数（URI）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| cert_name | string | 证书名称 | Y | - |
-
-**执行逻辑**
-
-1. 根据 `cert_name` 查找证书。
-2. 返回证书元数据（不包含 `cert_file_content` 和 `key_file_content`）。
-
-**返回数据（Data内容）**
-
-同 9.2.1 创建证书返回数据。
-
-**成功返回示例**
-
-同 9.2.1 创建证书成功返回示例。
-
-#### 9.2.4 更新证书为默认证书
+#### 9.2.3 更新证书为默认证书
 
 **基本信息**
 
@@ -2643,7 +2745,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 同 9.2.1 创建证书成功返回示例。
 
-#### 9.2.5 删除证书
+#### 9.2.4 删除证书
 
 **基本信息**
 
@@ -2670,11 +2772,11 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 1. 根据 `cert_name` 查找证书。
 2. 校验该证书不是默认证书。
 3. 删除证书记录及证书文件内容。
-4. 返回成功状态（Data 为 null）。
+4. 返回被删除的证书元数据。
 
 **返回数据（Data内容）**
 
-无。
+返回被删除的证书元数据，字段同 9.2.1 创建证书返回数据。
 
 ---
 
@@ -3334,11 +3436,272 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 }
 ```
 
-## 11. 关键业务流程
+---
+
+## 11. /ai-route-rules
+
+### 11.1 数据模型
+
+```json
+{
+  "basic_forward_rules": [
+    {
+      "host_names": ["example.com"],
+      "paths": ["/v1"],
+      "cluster_name": "cluster_basic",
+      "description": "基础路由规则"
+    }
+  ],
+  "forward_rules": [
+    {
+      "name": "rule-1",
+      "description": "高级路由规则",
+      "expression": "req_host_in(\"example.com\")",
+      "cluster_name": "cluster_advanced"
+    }
+  ],
+  "forward_cases_code": 0
+}
+```
+
+**字段说明**
+
+| 字段 | 类型 | 说明 | 可能取值 |
+|------|------|------|----------|
+| `basic_forward_rules` | []BasicRouteRule | 基础转发规则列表 | - |
+| `forward_rules` | []AdvanceRouteRule | 高级转发规则列表 | - |
+| `forward_cases_code` | int | 路由场景码（只读） | - |
+
+**BasicRouteRule结构**
+
+| 字段 | 类型 | 说明 | 必填 |
+|------|------|------|------|
+| `host_names` | []string | 匹配的Host列表 | N |
+| `paths` | []string | 匹配的Path列表 | N |
+| `cluster_name` | string | 转发目标集群名 | Y |
+| `description` | string | 规则描述 | N |
+
+**AdvanceRouteRule结构**
+
+| 字段 | 类型 | 说明 | 必填 |
+|------|------|------|------|
+| `name` | string | 规则名称 | N |
+| `description` | string | 规则描述 | N |
+| `expression` | string | BFE条件表达式 | Y |
+| `cluster_name` | string | 转发目标集群名 | Y |
+
+### 11.2 接口清单
+
+#### 11.2.1 查询AI路由规则
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 查询默认产品的AI路由规则 | - |
+| 端点 | /ai-route-rules | - |
+| 版本 | v1 | - |
+| method | GET | - |
+
+**输入参数**
+
+无。
+
+**返回数据（Data内容）**
+
+字段同11.1数据模型。不存在时返回空数组。
+
+---
+
+#### 11.2.2 更新AI路由规则
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 更新默认产品的AI路由规则 | - |
+| 端点 | /ai-route-rules | - |
+| 版本 | v1 | - |
+| method | PATCH | - |
+
+**输入参数（Body）**
+
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
+| - | - | - | - | - |
+| basic_forward_rules | []BasicRouteRule | 基础转发规则列表 | N | 规则元素不能为nil |
+| forward_rules | []AdvanceRouteRule | 高级转发规则列表 | N | 规则元素不能为nil |
+
+**约束**
+
+- 若最后一条高级规则的`expression`不是`default_t()`，系统会自动追加一条默认兜底规则；
+- `basic_forward_rules`或`forward_rules`可单独更新，未传字段保持原值。
+
+**返回数据（Data内容）**
+
+字段同11.1数据模型。
+
+---
+
+## 12. /global-models
+
+### 12.1 数据模型
+
+```json
+{
+  "services": [
+    {
+      "name": "deepseek-service",
+      "display_name": "Deepseek Service",
+      "cluster_name": "cluster_deepseek",
+      "models": ["deepseek-chat", "deepseek-coder"],
+      "model_mappings": [
+        {"key": "gpt-4", "value": "deepseek-chat"}
+      ]
+    }
+  ]
+}
+```
+
+**字段说明**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `services` | []ServiceModel | 全局LLM服务列表 |
+| `services[].name` | string | 服务名 |
+| `services[].display_name` | string | 展示名 |
+| `services[].cluster_name` | string | 所属集群名 |
+| `services[].models` | []string | 模型列表 |
+| `services[].model_mappings` | []ModelMapping | 模型映射 |
+
+### 12.2 接口清单
+
+#### 12.2.1 查询全局模型列表
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 查询全局LLM服务及模型映射 | - |
+| 端点 | /global-models | - |
+| 版本 | v1 | - |
+| method | GET | - |
+
+**输入参数（Query）**
+
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
+| - | - | - | - | - |
+| service | string | 按服务名过滤 | N | - |
+
+**返回数据（Data内容）**
+
+字段同12.1数据模型。仅聚合`llm_config.enable=true`的集群。
+
+---
+
+## 13. /products/{product_name}/models
+
+### 13.1 接口清单
+
+#### 13.1.1 查询产品可用模型别名列表
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 获取指定产品下可用的模型别名列表 | - |
+| 端点 | /products/{product_name}/models | - |
+| 版本 | v1 | - |
+| method | GET | - |
+
+**输入参数（URI）**
+
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
+| - | - | - | - | - |
+| product_name | string | 产品线名 | Y | 实际从请求上下文获取 |
+
+**返回数据（Data内容）**
+
+字符串数组，元素为模型别名。
+
+---
+
+## 14. /general/actions/exec-api
+
+### 14.1 接口清单
+
+#### 14.1.1 代理执行外部API
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 代理执行第三方HTTP/HTTPS API | - |
+| 端点 | /general/actions/exec-api | - |
+| 版本 | v1 | - |
+| method | POST | - |
+
+**输入参数（Body）**
+
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
+| - | - | - | - | - |
+| schema | string | 请求协议 | Y | 枚举`http`、`https` |
+| uri | string | 请求URI | Y | - |
+| hosts | []string | 目标主机列表 | Y | 至少1个，依次尝试 |
+| headers | map[string]string | 请求头 | N | - |
+
+**执行逻辑**
+
+1. 依次向`hosts`发送请求；
+2. 单个请求超时10s，重试1次；
+3. 首个成功请求的响应体作为`result`返回；
+4. 全部失败返回参数错误。
+
+**返回数据（Data内容）**
+
+| 参数名 | 类型 | 参数含义 |
+| - | - | - |
+| result | string | 首个成功请求的响应体字符串 |
+
+---
+
+## 15. /expression/verify
+
+### 15.1 接口清单
+
+#### 15.1.1 校验路由表达式（已废弃）
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 校验BFE路由表达式合法性 | 已废弃，无需鉴权 |
+| 端点 | /expression/verify | - |
+| 版本 | v1 | - |
+| method | PATCH | - |
+
+**输入参数（Body）**
+
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
+| - | - | - | - | - |
+| expression | string | 待校验的表达式 | Y | - |
+
+**返回数据（Data内容）**
+
+- 校验成功：返回`null`；
+- 校验失败：返回`VerifyResult`。
+
+| 参数名 | 类型 | 参数含义 |
+| - | - | - |
+| code | int | 错误码，固定500 |
+| message | string | 错误信息 |
+
+---
+
+## 16. 关键业务流程
 
 **运行时执行顺序**：网关先执行模型访问控制检查流程，如果通过，再执行限流检查流程，如果通过，再执行配额扣减流程。
 
-### 11.1 创建API-Key的完整流程
+### 16.1 创建API-Key的完整流程
 ```text
 1. 调用 POST /api-keys
    └─ 校验quota_plan合法性（若传入）
@@ -3355,7 +3718,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 7. 返回结果，含完整的嵌套结构（不含balance）
 ```
 
-### 11.2 创建Entity的完整流程
+### 16.2 创建Entity的完整流程
 ```text
 1. 调用 POST /entities
    └─ 校验type合法性（必须已定义）
@@ -3373,7 +3736,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 7. 返回结果，含完整的嵌套结构（不含balance）
 ```
 
-### 11.3 运行时网关模型访问控制检查流程（数据面）
+### 16.3 运行时网关模型访问控制检查流程（数据面）
 ```text
 1. 网关收到请求，解析API-Key和请求模型（如gpt-4）
 2. 查询API-Key元数据（缓存），获取models字段
@@ -3393,7 +3756,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
         - 若请求模型不在allow_models中，拒绝请求（403）
         - 若请求模型在allow_models中，通过该Entity检查
    c. 检查链中任一Entity触发拒绝，请求立即拒绝（403）
-5. 模型访问控制检查通过后，进入限流检查流程（7.4）
+5. 模型访问控制检查通过后，进入限流检查流程（16.4）
 ```
 
 **说明**：
@@ -3404,7 +3767,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 ---
 
-### 11.4 运行时网关限流检查流程（数据面）
+### 16.4 运行时网关限流检查流程（数据面）
 ```text
 1. 网关收到请求，解析API-Key和请求模型（如gpt-4）
 2. 查询API-Key元数据（缓存），获取rate_limit_policy和entity_id
@@ -3426,13 +3789,13 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
         - 若max_concurrency=-1，跳过并发检查
         - 若当前并发 >= max_concurrency，限流失败（429）
    b. 若当前Policy任一规则触发限流，标记失败，立即拒绝请求
-6. 所有适用的Rate-Limit Policy必须全部通过，请求才进入配额扣减阶段（7.5）
+6. 所有适用的Rate-Limit Policy必须全部通过，请求才进入配额扣减阶段（16.5）
    └─ 任一Policy触发限流，请求拒绝（429），不再执行配额扣减
 ```
 
-### 11.5 运行时网关配额扣减流程（数据面）
+### 16.5 运行时网关配额扣减流程（数据面）
 ```text
-1. 限流检查（7.4）通过后，进入配额扣减阶段
+1. 限流检查（16.4）通过后，进入配额扣减阶段
 2. 查询API-Key元数据（缓存），获取quota_plan、entity_id、unlimited_quota
 3. 若unlimited_quota=true，直接放行
 4. 构建Quota Plan扣减列表（使用Set去重，相同plan_id只扣减一次）：
@@ -3460,7 +3823,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
    └─ 任一实际执行扣减的Plan失败，触发所有已扣减balance的原子回滚（包含其他成功Plan的扣减），请求拒绝（429002）
 ```
 
-### 11.6 配置变更的级联与隔离
+### 16.6 配置变更的级联与隔离
 | 变更操作 | 级联影响 | 隔离机制 |
 |----------|----------|----------|
 | 修改API-Key的quota_plan | 实时生效，影响后续请求；更新底层资源 | 旧资源若不被其他API-Key/Entity引用则级联删除 |
@@ -3479,7 +3842,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 | 修改quota_plan.quota | 同步更新balance.remaining和used | 视为重置配额 |
 
 ---
-## 12. 对象关系图
+## 17. 对象关系图
 
 ```mermaid
 classDiagram
@@ -3620,8 +3983,16 @@ classDiagram
 - **Entity → RouteRules**：一个Entity必须拥有1个RouteRules（嵌套）。若创建时未设置，使用默认值（enabled=false, rules为空）。生命周期与Entity绑定。
 - **Entity模型访问控制**：`allow_models`和`block_models`共同决定该Entity及其挂载的API-Key可访问的模型范围。`block_models`优先级高于`allow_models`。
 - **QuotaPlan → QuotaBalance**：一个QuotaPlan对应唯一的QuotaBalance（一一对应）。QuotaPlan为静态配置（unlimited、quota、unit、reset_period等），QuotaBalance为动态运行态（used、remaining）。运行时网关扣减操作直接作用于QuotaBalance的remaining。
-- **QuotaPlan的balance字段**：为只读字段，实时反映对应QuotaBalance的used和remaining。仅在独立查询接口（/api-keys/{key}/quota-plan、/entities/{id}/quota-plan）中返回。
+- **QuotaPlan的balance字段**：为只读字段，实时反映对应QuotaBalance的used和remaining。仅在独立查询接口（/api-keys/{id}/quota-plan、/entities/{id}/quota-plan）中返回。
 - **RateLimitPolicy → Rules**：一个RateLimitPolicy包含一组Rules，Rules中可配置tpm（最多3个）、rpm（最多3个）和max_concurrency（默认-1，表示不限制）。
 - **运行时层级生效逻辑**：API-Key挂载到Entity后，运行时生效的QuotaPlan和RateLimitPolicy为该API-Key自身直接拥有的 + 该Entity直接拥有的 + 该Entity所有祖先Entity直接拥有的（去重）。
 - **GlobalRouteTable → RouteRules → AiRouteRule → AiRouteTarget/AiRouteFallback**：Global路由表通过嵌套的 RouteRules 管理规则，每条规则包含转发目标（targets）和降级目标（fallbacks）。
+
+---
+
+## 18. 版本修改记录
+
+| 版本 | 日期 | 修改内容 |
+| - | - | - |
+| v0.4.0 | 2026-07-26 | 全量同步代码中实际注册的`/open-api/v1`接口：<br>1. 新增章节：/ai-route-rules、/global-models、/products/{product_name}/models、/general/actions/exec-api、/expression/verify；<br>2. Auth章节补充：GET /auth/users/{user_name}、GET /meta；<br>3. API-Key章节补充：GET /api-keys/actions/generate；修正配额计划路径为`/api-keys/{id}/quota-plan`；修正列表返回为分页结构；<br>4. Entity章节修正列表返回为分页结构，补充Query参数；<br>5. Entity-Type章节修正列表返回为分页结构；<br>6. Certificate章节删除未注册的GET /certificates/{cert_name}，修正DELETE返回数据；<br>7. 修正User创建接口参数（增加`type`，`is_admin`改为可选，`password`条件必填）。 |
 

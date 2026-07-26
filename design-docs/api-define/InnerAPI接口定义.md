@@ -1,6 +1,6 @@
 # InnerAPI 接口定义
 
-**版本号**：v0.3.0  
+
 
 ---
 
@@ -81,16 +81,21 @@
 
 ### 3.1 接口总览
 
-| 序号 | 接口路径 | 功能描述 | 状态 |
-|------|----------|----------|------|
-| 1 | `/configs/tls_conf/server_data_conf` | 导出 TLS/Server 配置 | 现有 |
-| 2 | `/configs/gslb_data/gslb` | 导出 GSLB 配置 | 现有 |
-| 3 | `/configs/gslb_data/cluster_table` | 导出集群表配置 | 现有 |
-| 4 | `/configs/protocol/server_cert_conf` | 导出证书配置 | 现有 |
-| 5 | `/configs/extra_files/{filename}` | 导出额外文件 | 现有 |
-| 6 | `/configs/mod-api-key` | 导出 API-Key 配置 | **需扩充** |
-| 7 | `/configs/rate-limit-policy` | 导出限流策略配置 | **新增** |
-| 8 | `/configs/ai-route` | 导出 AI 路由配置 | **新增** |
+| 序号 | 接口路径 | 功能描述 | 特殊参数 |
+|------|----------|----------|----------|
+| 1 | `/configs/tls_conf/server_data_conf` | 导出 TLS/Server 配置 | `version` |
+| 2 | `/configs/gslb_data/gslb` | 导出 GSLB 配置 | `version`、`bfe_cluster`(必填) |
+| 3 | `/configs/gslb_data/cluster_table` | 导出集群表配置 | `version` |
+| 4 | `/configs/protocol/server_cert_conf` | 导出证书配置 | `version` |
+| 5 | `/configs/extra_files/{filename}` | 导出额外文件 | - |
+| 6 | `/configs/mod-api-key` | 导出 API-Key 配置 | `version` |
+| 7 | `/configs/mod-body-process` | 导出请求体处理配置 | `version` |
+| 8 | `/configs/rate-limit-policy` | 导出限流策略配置 | `version` |
+| 9 | `/configs/ai-route` | 导出 AI 路由配置 | `version` |
+
+### 3.2 特殊参数说明
+
+- **`bfe_cluster`**：调用 `/configs/gslb_data/gslb` 时为必填参数，用于指定 BFE 集群名称，返回该集群对应的 GSLB 调度配置。
 
 ---
 
@@ -116,7 +121,7 @@
 **请求示例**
 
 ```shell
-curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=v1.0.1" \
+curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=00010101000000" \
   -H "Authorization:Token TOKEN_STRING"
 ```
 
@@ -129,7 +134,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=v1.
     "ErrNum": 200,
     "ErrMsg": "success",
     "Data": {
-        "version": "v1.0.2",
+        "version": "00010101000000",
         "config": {
             "product_name": [/* API-Key 路由规则 */]
         },
@@ -161,8 +166,8 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=v1.
         "ai_product": [
             {
                 "Cond": "req_host_in(\"api.example.com\")",
-                "action": {
-                    "cmd": "CHECK_TOKEN"
+                "Action": {
+                    "Cmd": "CHECK_TOKEN"
                 }
             }
         ]
@@ -173,8 +178,8 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=v1.
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | Cond | string | 路由匹配条件表达式 |
-| action | object | 匹配后执行的动作 |
-| action.cmd | string | 动作命令，固定为 `CHECK_TOKEN` |
+| Action | object | 匹配后执行的动作 |
+| Action.Cmd | string | 动作命令，固定为 `CHECK_TOKEN` |
 
 #### 4.3.3 tokens 结构（Token 配置）
 
@@ -285,7 +290,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=v1.
     "ErrNum": 200,
     "ErrMsg": "success",
     "Data": {
-        "version": "v1.0.2",
+        "version": "00010101000000",
         "config": {
             "ai_product": [
                 {
@@ -378,16 +383,16 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=v1.
 
 ---
 
-## 五、rate-limit-policy 接口
+## 五、mod-body-process 接口
 
 ### 5.1 接口信息
 
 | 项目 | 值 | 说明 |
 |------|------|------|
-| 含义 | 导出限流策略配置 | 供 BFE 执行 TPM/RPM/并发限制检查 |
-| 端点 | `/configs/rate-limit-policy` | - |
+| 含义 | 导出请求体处理模块配置 | 供 BFE `mod_body_process` 模块使用 |
+| 端点 | `/configs/mod-body-process` | - |
 | Method | GET | - |
-| 鉴权 | `FeatureRateLimit + ActionExport` | **新增权限** |
+| 鉴权 | `FeatureAPIKey + ActionExport` | - |
 
 ### 5.2 请求参数
 
@@ -400,13 +405,75 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=v1.
 **请求示例**
 
 ```shell
-curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?version=v1.0.1" \
+curl -X GET "http://api-server:port/inner-api/v1/configs/mod-body-process?version=00010101000000" \
   -H "Authorization:Token TOKEN_STRING"
 ```
 
 ### 5.3 返回数据结构
 
 #### 5.3.1 顶层结构
+
+```json
+{
+    "ErrNum": 200,
+    "ErrMsg": "success",
+    "Data": {
+        "Version": "00010101000000",
+        "Config": {
+            "AI_product": []
+        }
+    },
+    "WorkMode": "ModeNormal"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| Version | string | 配置版本号 |
+| Config | object | 按产品线组织的请求体处理配置，当前导出一个空数组占位 |
+
+### 5.4 配置未变化返回示例
+
+```json
+{
+    "ErrNum": 200,
+    "ErrMsg": "success",
+    "Data": null,
+    "WorkMode": "ModeNormal"
+}
+```
+
+---
+
+## 六、rate-limit-policy 接口
+
+### 6.1 接口信息
+
+| 项目 | 值 | 说明 |
+|------|------|------|
+| 含义 | 导出限流策略配置 | 供 BFE 执行 TPM/RPM/并发限制检查 |
+| 端点 | `/configs/rate-limit-policy` | - |
+| Method | GET | - |
+| 鉴权 | `FeatureRateLimitPolicy + ActionExport` | - |
+
+### 6.2 请求参数
+
+**Query 参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| version | string | 否 | 上次返回的版本号，用于增量同步 |
+
+**请求示例**
+
+```shell
+curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?version=00010101000000" \
+  -H "Authorization:Token TOKEN_STRING"
+```
+
+### 6.3 返回数据结构
+
+#### 6.3.1 顶层结构
 
 与 BFE 动态配置文件 `ai_rate_limit.data` 格式保持一致：
 
@@ -424,7 +491,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
         "ApikeyRateLimitPolicyBindings": {
             "ak-2v8x9k3m7p": ["rlp-0001", "rlp-0002"]
         },
-        "Version": "v1.0.2"
+        "Version": "00010101000000"
     },
     "WorkMode": "ModeNormal"
 }
@@ -437,7 +504,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
 | ApikeyRateLimitPolicyBindings | object | API-Key 到策略 ID 列表的绑定关系 |
 | Version | string | 配置版本号 |
 
-#### 5.3.2 Config 结构（路由规则）
+#### 6.3.2 Config 结构（路由规则）
 
 ```json
 {
@@ -464,7 +531,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
 
 **说明**：命中 cond 后，模块自动执行限流检查流程（提取 API-Key → 查找策略 → 执行限流），`hit_action.cmd` 用于指定被限流规则拒绝后的行为。
 
-#### 5.3.3 RateLimitPolicies 结构（限流策略）
+#### 6.3.3 RateLimitPolicies 结构（限流策略）
 
 ```json
 {
@@ -541,7 +608,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
 | max_requests | int | 最大请求数 | >=1: 有限制；0: 封禁；<0: 不限制 |
 | burst | int | 突发请求数 | 最小值 1，默认 1 |
 
-#### 5.3.4 ApikeyRateLimitPolicyBindings 结构（绑定关系）
+#### 6.3.4 ApikeyRateLimitPolicyBindings 结构（绑定关系）
 
 ```json
 {
@@ -557,7 +624,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
 | key | string | API-Key 字符串 |
 | value | []string | 绑定的策略 ID 列表，绑定多个策略时必须全部满足才通过 |
 
-### 5.4 成功返回示例
+### 6.4 成功返回示例
 
 ```json
 {
@@ -639,13 +706,13 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
             "ak-3w9y0k4n8q": ["rlp-0002"],
             "ak-9z8y7x6w5v": ["rlp-0001"]
         },
-        "Version": "v1.0.2"
+        "Version": "00010101000000"
     },
     "WorkMode": "ModeNormal"
 }
 ```
 
-### 5.5 配置未变化返回示例
+### 6.5 配置未变化返回示例
 
 ```json
 {
@@ -658,18 +725,18 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
 
 ---
 
-## 六、ai-route 接口
+## 七、ai-route 接口
 
-### 6.1 接口信息
+### 7.1 接口信息
 
 | 项目 | 值 | 说明 |
 |------|------|------|
 | 含义 | 导出 AI 网关路由配置 | 供 BFE 的 `mod_ai_route` 模块执行 apikey → entity → global 三级路由查找 |
 | 端点 | `/configs/ai-route` | - |
 | Method | GET | - |
-| 鉴权 | `FeatureRoute + ActionExport` | 复用或新增路由导出权限 |
+| 鉴权 | `FeatureRoute + ActionExport` | - |
 
-### 6.2 请求参数
+### 7.2 请求参数
 
 **Query 参数**
 
@@ -680,13 +747,13 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
 **请求示例**
 
 ```shell
-curl -X GET "http://api-server:port/inner-api/v1/configs/ai-route?version=20260718131505" \
+curl -X GET "http://api-server:port/inner-api/v1/configs/ai-route?version=00010101000000" \
   -H "Authorization:Token TOKEN_STRING"
 ```
 
-### 6.3 返回数据结构
+### 7.3 返回数据结构
 
-#### 6.3.1 顶层结构
+#### 7.3.1 顶层结构
 
 与 BFE 动态配置文件 `ai_route.data` 格式保持一致：
 
@@ -695,7 +762,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-route?version=202607
     "ErrNum": 200,
     "ErrMsg": "success",
     "Data": {
-        "Version": "20260718131505",
+        "Version": "00010101000000",
         "RouteRules": {
             "apikey_ak_user_a": {/* API-Key 路由表 */},
             "entity_dept_ai": {/* Entity 路由表 */},
@@ -711,13 +778,13 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-route?version=202607
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| Version | string | 配置版本号，建议使用时间戳格式（如 `YYYYMMDDHHMMSS`） |
+| Version | string | 配置版本号，由版本控制机制生成 |
 | RouteRules | object | 所有路由表的集合，key 为 `<type>_<owner>`，保证全局唯一 |
 | ApikeyRouteTableBindings | object | API-Key 到路由表查找顺序的映射 |
 
 **说明**：仅导出 `route_rules.enabled = true` 的路由表。若 Global、API-Key 或 Entity 路由表的 `enabled = false`，则不生成该路由表，也不会加入 `ApikeyRouteTableBindings`。
 
-#### 6.3.2 RouteRules 结构（路由表集合）
+#### 7.3.2 RouteRules 结构（路由表集合）
 
 ```json
 {
@@ -822,7 +889,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-route?version=202607
 | ClusterName | string | 后端集群名称 |
 | Model | string | 模型名称，空字符串表示透传请求原始模型 |
 
-#### 6.3.3 ApikeyRouteTableBindings 结构（绑定关系）
+#### 7.3.3 ApikeyRouteTableBindings 结构（绑定关系）
 
 ```json
 {
@@ -838,14 +905,14 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-route?version=202607
 | key | string | API-Key 字符串 |
 | value | []string | 该 API-Key 对应的路由表查找顺序，典型顺序为 `apikey → entity → global` |
 
-### 6.4 成功返回示例
+### 7.4 成功返回示例
 
 ```json
 {
     "ErrNum": 200,
     "ErrMsg": "success",
     "Data": {
-        "Version": "20260718131505",
+        "Version": "00010101000000",
         "RouteRules": {
             "apikey_ak_user_a": {
                 "type": "apikey",
@@ -933,7 +1000,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-route?version=202607
 }
 ```
 
-### 6.5 配置未变化返回示例
+### 7.5 配置未变化返回示例
 
 ```json
 {
@@ -946,9 +1013,9 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-route?version=202607
 
 ---
 
-## 七、数据模型定义
+## 八、数据模型定义
 
-### 7.1 ModAPIKeyRuleConf（实际实现）
+### 8.1 ModAPIKeyRuleConf（实际实现）
 
 ```go
 // ModAPIKeyRuleConf 定义 API-Key 规则配置结构
@@ -960,7 +1027,7 @@ type ModAPIKeyRuleConf struct {
 }
 ```
 
-### 7.2 TokenFile（实际实现）
+### 8.2 TokenFile（实际实现）
 
 ```go
 // TokenFile 定义导出到 BFE 的 API-Key 信息结构
@@ -985,7 +1052,7 @@ type ApikeyTag struct {
 }
 ```
 
-### 7.3 QuotaPlan（实际实现）
+### 8.3 QuotaPlan（实际实现）
 
 ```go
 // QuotaPlan 定义配额计划结构
@@ -1001,63 +1068,63 @@ type QuotaPlan struct {
 }
 ```
 
-### 7.4 RateLimitPolicyExport
+### 8.4 ExportRateLimitPolicyConfig
 
 ```go
-// RateLimitPolicyExport 定义限流策略导出结构（与 BFE 动态配置格式一致）
-type RateLimitPolicyExport struct {
-    Config                        map[string][]*ExportRouteRule              `json:"Config"`
-    RateLimitPolicies             map[string]*RateLimitPolicyConfig          `json:"RateLimitPolicies"`
-    ApikeyRateLimitPolicyBindings map[string][]string                        `json:"ApikeyRateLimitPolicyBindings"`
-    Version                       string                                     `json:"Version"`
+// ExportRateLimitPolicyConfig 定义限流策略导出结构（与 BFE 动态配置格式一致）
+type ExportRateLimitPolicyConfig struct {
+    Config                        map[string][]*ExportRouteRule     `json:"Config"`
+    RateLimitPolicies             map[string]*ExportRateLimitPolicy `json:"RateLimitPolicies"`
+    ApikeyRateLimitPolicyBindings map[string][]string               `json:"ApikeyRateLimitPolicyBindings"`
+    Version                       string                            `json:"Version"`
 }
 
-// ExportRouteRule 定义路由规则
+// ExportRouteRule 定义导出的路由规则
 type ExportRouteRule struct {
-    Cond       string            `json:"cond"`
-    HitAction  *ExportHitAction  `json:"hit_action"`
+    Cond      string           `json:"cond"`
+    HitAction *ExportHitAction `json:"hit_action"`
 }
 
-// ExportHitAction 定义命中动作
+// ExportHitAction 定义导出的命中动作
 type ExportHitAction struct {
     Cmd    string   `json:"cmd"`
     Params []string `json:"params"`
 }
 
-// RateLimitPolicyConfig 定义单个限流策略配置
-type RateLimitPolicyConfig struct {
-    Name    string           `json:"name"`
-    Enabled bool             `json:"enabled"`
-    Rules   *RateLimitRules  `json:"rules"`
+// ExportRateLimitPolicy 定义导出的单个限流策略配置
+type ExportRateLimitPolicy struct {
+    Name    string               `json:"name"`
+    Enabled bool                 `json:"enabled"`
+    Rules   *ExportRateLimitRules `json:"rules"`
 }
 
-// RateLimitRules 定义限流规则集合
-type RateLimitRules struct {
-    TPM             []*TPMConfigExport  `json:"tpm"`
-    RPM             []*RPMConfigExport  `json:"rpm"`
-    MaxConcurrency  int                 `json:"max_concurrency"`
+// ExportRateLimitRules 定义导出的限流规则集合
+type ExportRateLimitRules struct {
+    TPM            []ExportTPMConfig `json:"tpm"`
+    RPM            []ExportRPMConfig `json:"rpm"`
+    MaxConcurrency int               `json:"max_concurrency"`
 }
 
-// TPMConfigExport 定义 TPM 限制配置
-type TPMConfigExport struct {
-    Name            string   `json:"name"`
-    Models          []string `json:"models"`
-    WindowMinutes   int      `json:"window_minutes"`
-    MaxTokens       int      `json:"max_tokens"`
-    StepMinutes     int      `json:"step_minutes"`
+// ExportTPMConfig 定义导出的 TPM 限制配置
+type ExportTPMConfig struct {
+    Name          string   `json:"name"`
+    Models        []string `json:"models"`
+    WindowMinutes int      `json:"window_minutes"`
+    MaxTokens     int      `json:"max_tokens"`
+    StepMinutes   int      `json:"step_minutes"`
 }
 
-// RPMConfigExport 定义 RPM 限制配置
-type RPMConfigExport struct {
-    Name            string   `json:"name"`
-    Models          []string `json:"models"`
-    WindowMinutes   int      `json:"window_minutes"`
-    MaxRequests     int      `json:"max_requests"`
-    Burst           int      `json:"burst"`
+// ExportRPMConfig 定义导出的 RPM 限制配置
+type ExportRPMConfig struct {
+    Name          string   `json:"name"`
+    Models        []string `json:"models"`
+    WindowMinutes int      `json:"window_minutes"`
+    MaxRequests   int      `json:"max_requests"`
+    Burst         int      `json:"burst"`
 }
 ```
 
-### 7.5 AiRouteDataExport
+### 8.5 AiRouteDataExport
 
 ```go
 // AiRouteDataExport 定义 AI 路由配置导出结构（与 BFE ai_route.data 格式一致）
@@ -1096,23 +1163,34 @@ type AiRouteFallbackExport struct {
 }
 ```
 
+### 8.6 ModBodyProcessConf（实际实现）
+
+```go
+// ModBodyProcessConf 定义 mod_body_process 配置导出结构
+type ModBodyProcessConf struct {
+    Version *string             `json:"Version"`
+    Config  map[string][]string `json:"Config"`
+}
+```
+
 ---
 
-## 八、附录
+## 九、附录
 
-### 8.1 与 OpenAPI 数据对应关系
+### 9.1 与 OpenAPI 数据对应关系
 
 | Inner-API 字段 | OpenAPI 字段 | 数据来源 |
 |----------------|--------------|----------|
-| `tokens.{key}.quota_plan.unlimited` | `quota_plan.unlimited` | `quota_plans` 表 |
-| `tokens.{key}.quota_plan.pass_when_no_enough_quota` | `quota_plan.pass_when_no_enough_quota` | `quota_plans` 表 |
-| `tokens.{key}.quota_plan.quota` | `quota_plan.quota` | `quota_plans` 表 |
-| `tokens.{key}.quota_plan.unit` | `quota_plan.unit` | `quota_plans` 表 |
-| `tokens.{key}.quota_plan.reset_period` | `quota_plan.reset_period` | `quota_plans` 表 |
-| `api_key_policies.{id}.enabled` | `rate_limit_policy.enabled` | `rate_limit_policies` 表 |
-| `api_key_policies.{id}.rules.tpm` | `rate_limit_policy.rules.tpm` | `rate_limit_policies` 表 |
-| `api_key_policies.{id}.rules.rpm` | `rate_limit_policy.rules.rpm` | `rate_limit_policies` 表 |
-| `api_key_policies.{id}.rules.max_concurrency` | `rate_limit_policy.rules.max_concurrency` | `rate_limit_policies` 表 |
+| `QuotaPlans.{product}.{id}.Unlimited` | `quota_plan.unlimited` | `quota_plans` 表 |
+| `QuotaPlans.{product}.{id}.PassNoQuota` | `quota_plan.pass_when_no_enough_quota` | `quota_plans` 表 |
+| `QuotaPlans.{product}.{id}.Quota` | `quota_plan.quota` | `quota_plans` 表 |
+| `QuotaPlans.{product}.{id}.ResetMode` | `quota_plan.reset_period` | `quota_plans` 表 |
+| `tokens.{key}.quota_plans` | API-Key / Entity 关联的配额计划 ID 列表 | `api_keys.quota_plan_id`、`entities.quota_plan_id` |
+| `RateLimitPolicies.{id}.enabled` | `rate_limit_policy.enabled` | `rate_limit_policies` 表 |
+| `RateLimitPolicies.{id}.rules.tpm` | `rate_limit_policy.rules.tpm_configs` | `rate_limit_policies` 表 |
+| `RateLimitPolicies.{id}.rules.rpm` | `rate_limit_policy.rules.rpm_configs` | `rate_limit_policies` 表 |
+| `RateLimitPolicies.{id}.rules.max_concurrency` | `rate_limit_policy.rules.max_concurrency` | `rate_limit_policies` 表 |
+| `ApikeyRateLimitPolicyBindings.{api_key}` | API-Key / Entity 关联的限流策略 ID 列表 | `api_keys.rate_limit_policy_id`、`entities.rate_limit_policy_id` |
 | `RouteRules.{key}.rules` | `api_keys.route_rules` / `entities.route_rules` / `global-route-rules` | `route_rules` 表 |
 | `ApikeyRouteTableBindings.{api_key}` | API-Key 与 Entity 的挂载关系 | `api_keys.entity_id`、`entities.parent_id` |
 
