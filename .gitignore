@@ -30,3 +30,6 @@ dist/*
 conf/wasm_plugin
 
 .DS_Store
+
+# Compiled binary
+ai-gateway-api.exe
