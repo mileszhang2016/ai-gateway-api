@@ -257,3 +257,17 @@ func TestDelete_BusinessRule_DeleteThenGet(t *testing.T) {
 	getResp := getAPIKey(t, id)
 	testutil.AssertErrCode(t, getResp, 404)
 }
+
+// AK-6-010：空 id 路径应返回 JSON 404，而非静态文件 HTML
+func TestDelete_Abnormal_EmptyID(t *testing.T) {
+	resp, err := testutil.GetClient().Delete("/open-api/v1/api-keys/")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	testutil.AssertErrCode(t, resp, 404)
+
+	// 确保返回的是 JSON，不是 HTML
+	if strings.HasPrefix(string(resp.Data), "<") {
+		t.Errorf("expected JSON error, got HTML: %s", string(resp.Data))
+	}
+}

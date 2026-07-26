@@ -357,3 +357,17 @@ func TestDetail_ReturnData_BalanceStructure(t *testing.T) {
 		t.Error("balance.remaining should be a number")
 	}
 }
+
+// AK-3-008：空 id 路径应返回 JSON 404，而非静态文件 HTML
+func TestDetail_Abnormal_EmptyID(t *testing.T) {
+	resp, err := testutil.GetClient().Get("/open-api/v1/api-keys/")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	testutil.AssertErrCode(t, resp, 404)
+
+	// 确保返回的是 JSON，不是 HTML
+	if strings.HasPrefix(string(resp.Data), "<") {
+		t.Errorf("expected JSON error, got HTML: %s", string(resp.Data))
+	}
+}

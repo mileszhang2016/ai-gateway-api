@@ -50,12 +50,10 @@
 
 ```
 ai-gateway-api/test/
-├── README.md                              # 测试总体说明（可选）
-│
 ├── docs/
 │   └── README.md                          # 测试设计方案（本文档）
 │
-├── scripts/
+├── scripts/                               # 测试辅助脚本
 │   ├── run_all_tests.sh                   # 一键运行全部测试
 │   ├── run_module_tests.sh                # 运行指定模块测试
 │   └── clean.sh                           # 清理运行时数据
@@ -65,7 +63,7 @@ ai-gateway-api/test/
     ├── README.md                          # 集成测试使用说明
     │
     ├── conf/                              # 测试专用配置
-    │   ├── ai_gateway_api.toml            # SQLite + SkipTokenValidate
+    │   ├── ai_gateway_api.toml            # SQLite + SkipTokenValidate + MockRedis
     │   ├── nav_tree.toml
     │   └── i18n/
     │       └── zh.toml
@@ -78,39 +76,28 @@ ai-gateway-api/test/
     │   ├── client.go                      # HTTP 客户端封装
     │   ├── assert.go                      # 断言函数
     │   ├── fixture.go                     # 测试数据工厂
-    │   └── db.go                          # SQLite 数据库初始化/清理
+    │   └── db.go                          # SQLite 数据库初始化/清理/种子数据
     │
     └── tests/                             # 测试用例代码 + 设计文档
         ├── api_key/
         │   ├── design.md                  # API-Key 模块用例设计
-        │   └── api_key_test.go            # API-Key 模块测试代码
+        │   ├── create/
+        │   │   └── create_test.go
+        │   ├── delete/
+        │   │   └── delete_test.go
+        │   └── ...                        # 其他接口测试子目录
         ├── ai_route/
         │   ├── design.md
-        │   └── ai_route_test.go
+        │   ├── get_rules/
+        │   │   └── get_rules_test.go
+        │   └── set_rules/
+        │       └── set_rules_test.go
         ├── auth/
         │   ├── design.md
-        │   └── auth_test.go
-        ├── entity/
-        │   ├── design.md
-        │   └── entity_test.go
-        ├── entity_type/
-        │   ├── design.md
-        │   └── entity_type_test.go
-        ├── alb_pool/
-        │   ├── design.md
-        │   └── alb_pool_test.go
-        ├── clusters/
-        │   ├── design.md
-        │   └── clusters_test.go
-        ├── certificate/
-        │   ├── design.md
-        │   └── certificate_test.go
-        ├── model_provider/
-        │   ├── design.md
-        │   └── model_provider_test.go
-        └── innerapi/
-            ├── design.md
-            └── innerapi_test.go
+        │   ├── create_user/
+        │   │   └── create_user_test.go
+        │   └── ...                        # 其他接口测试子目录
+        └── ...                            # 其他业务模块
 ```
 
 ### 2.1 目录设计说明
@@ -132,9 +119,9 @@ ai-gateway-api/test/
 每个模块一个目录，包含：
 
 - **`design.md`**：该模块的测试用例设计文档，包含接口列表、参数说明、场景设计
-- **`{module}_test.go`**：该模块的所有 Go 测试代码
+- **`{case}/`**：每个接口一个子目录，内含 `{case}_test.go`
 
-设计文档和测试代码放在一起，方便同步维护。
+同一接口的正常、异常、边界用例放在同一个测试包中，避免不同接口的 helper 函数命名冲突；设计文档和测试代码放在一起，方便同步维护。
 
 ---
 
@@ -150,7 +137,6 @@ module github.com/yf-networks/ai-gateway-api/integration
 go 1.22
 
 require (
-    github.com/bfenetworks/bfe v1.8.1-0.20260427052401-8d3a8cd44d98
     github.com/glebarez/go-sqlite v1.21.2        // 纯 Go SQLite 驱动，无 CGO
     github.com/gorilla/mux v1.8.0                 // HTTP 路由
     github.com/stretchr/testify v1.10.0           // 测试断言库
@@ -159,11 +145,10 @@ require (
 )
 
 replace github.com/yf-networks/ai-gateway-api => ../../
-replace github.com/bfenetworks/bfe => ../../../bfe_ai
 ```
 
 **说明**：
-- `integration` 作为独立 Go module，通过 `replace` 指令指向主项目源码和 bfe 依赖
+- `integration` 作为独立 Go module，通过 `replace` 指令引用主项目源码
 - 必须引入 `github.com/yf-networks/ai-gateway-api` 以触发 `stateful` 包的 `init()` 注册 `sqlite-strip` 驱动
 - 测试用例代码通过 `import "github.com/yf-networks/ai-gateway-api/integration/testutil"` 使用测试工具包
 
@@ -173,6 +158,7 @@ replace github.com/bfenetworks/bfe => ../../../bfe_ai
 
 ```toml
 [Server]
+ServerAddr = "127.0.0.1"       # 仅监听回环地址，避免 Windows 防火墙弹窗
 ServerPort = 8199              # 测试端口（实际运行时会被替换为随机端口）
 GracefulTimeOutInMs = 5000
 MonitorPort = -1               # 禁用监控端口
@@ -213,6 +199,10 @@ ConnMaxLifetimeInMs = 5000000
 NavTreeFile = "${conf_dir}/nav_tree.toml"
 I18nDir     = "${conf_dir}/i18n"
 
+[RedisConf]
+Bns = "mock"                           # 测试环境使用内存 Redis Mock
+ClusterMode = "mock"
+
 [RunTime]
 SkipTokenValidate = true               # 跳过 Token 验证，方便测试
 RecordSQL = false                      # 关闭 SQL 日志
@@ -229,6 +219,8 @@ DefaultAIClusterName = "BFE-AI_product.szyf"
 - `StdOut = false`（所有日志器）：关闭 stdout 输出，避免干扰子进程管理
 - `SkipTokenValidate = true`：跳过认证，所有请求直接放行
 - `RecordSQL = false`：关闭 SQL 记录，减少日志噪音
+- `ServerAddr = "127.0.0.1"`：测试服务器仅监听回环地址，避免 Windows 防火墙对子进程监听端口的拦截弹窗
+- `RedisConf.ClusterMode = "mock"`：使用内存 Redis 替代真实 Redis，使配额相关接口可在本地离线运行
 
 ### 3.3 测试服务器设计
 
@@ -718,6 +710,17 @@ integration/tests/{module}/
 - 同一模块内的测试共享同一个服务器和数据库实例
 - 每个测试函数应尽量清理自己产生的数据，避免相互影响
 - 对于列表查询等依赖前置数据的测试，可在测试函数内准备数据并清理
+
+### 7.7 Windows 防火墙
+
+- 测试子进程会启动 `ai-gateway-api.exe` 并监听随机端口
+- 测试配置已设置 `ServerAddr = "127.0.0.1"`，仅监听回环地址，可避免 Windows 防火墙弹窗
+- 如果仍然收到防火墙提示，可手动放行 `ai-gateway-api.exe`，或将测试监听端口范围加入防火墙白名单
+
+### 7.8 API 路径未匹配
+
+- `/open-api/v1/*` 和 `/inner-api/v1/*` 路径未匹配到任何路由时，统一返回 JSON 格式的 `404 Not Found`
+- 避免返回静态文件 HTML，方便测试断言
 
 ---
 

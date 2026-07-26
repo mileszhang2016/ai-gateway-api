@@ -63,6 +63,13 @@ func RegisterRouters(router *mux.Router) {
 	fh := fileHandler(root, fs)
 
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// API 路径未匹配时返回 JSON 404，避免返回静态文件 HTML
+		if strings.HasPrefix(r.URL.Path, "/open-api/v1") || strings.HasPrefix(r.URL.Path, "/inner-api/v1") {
+			res := &xreq.Result{Code: 404, ErrMsg: "Not Found"}
+			xreq.Render(w, r, res)
+			return
+		}
+
 		middleware.MCRecovery.Middleware(http.HandlerFunc(fh)).ServeHTTP(w, r)
 	})
 
