@@ -62,7 +62,7 @@ API-Key 通过 `api_keys.entity_id` 字段与 Entity 关联；Entity 通过 `ent
 
 ### 4.1 关联方式
 
-API-Key 创建或更新时，可通过 `entity_id` 字段挂载到某个 Entity：
+API-Key 创建或更新时，可通过 `entity_id` 字段挂载到某个 Entity。创建时还可传入 `key` 字段导入外部 API-Key（全局唯一，更新时忽略）：
 
 ```go
 if param.EntityID != nil && *param.EntityID != "" {
@@ -216,14 +216,14 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(
 
 ```go
 type QuotaPlan struct {
-    Id          string
-    Unlimited   bool
+    Id string
+    Unlimited bool
     PassNoQuota bool
-    RedisKey    string
-    CreateTime  int64
+    RedisKey string
+    CreateTime int64
     ExpiredTime int64 // -1 表示永不过期
-    Quota       int64
-    ResetMode   int   // 0 非周期，1 周期
+    Quota int64
+    ResetMode int // 0 非周期，1 周期
 }
 ```
 
@@ -238,7 +238,7 @@ type QuotaPlan struct {
 
 ```go
 type ApikeyTag struct {
-    TagName  string // 如 entity.type
+    TagName string // 如 entity.type
     TagValue string // 如 entity.name
 }
 ```
@@ -327,10 +327,10 @@ for _, apiKey := range apiKeys {
 
 ### 9.3 查询配额计划
 
-- `/api-keys/{id}/quota-plan`：返回 API-Key 自身配额计划；
-- `/entities/{id}/quota-plan`：返回 Entity 自身配额计划。
+- `/api-keys/{id}/quota-plan`：返回 API-Key 自身配额计划（含 `balance`）；
+- `/entities/{id}/quota-plan`：返回 Entity 自身配额计划（含 `balance`）。
 
-当前 `/api-keys/{id}/quota-plan` 的余额字段为硬编码占位（TODO），未真正读取 `quota_balances`。
+`GET /api-keys` 与 `GET /api-keys/{id}` 的返回中，`quota_plan` 同样包含 `balance`，由 `populateAssociatedData` 从 `quota_balances` 表填充。
 
 ---
 

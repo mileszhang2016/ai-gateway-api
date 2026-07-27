@@ -21,7 +21,7 @@
 ```go
 type VersionControlManager struct {
     storager VersionControlStorager
-    txn      itxn.TxnStorager
+    txn itxn.TxnStorager
 }
 
 func (vcm *VersionControlManager) ExportConfig(
@@ -41,10 +41,10 @@ type ConfigGenerator func(ctx context.Context) (*ExportData, error)
 
 ```go
 type ExportData struct {
-    Topic              string
+    Topic string
     DataWithoutVersion VersionValuable
 
-    version                string
+    version string
     DataSignWithoutVersion string
 }
 ```
@@ -111,9 +111,9 @@ var ZeroVersion = Version(time.Time{})
 
 ```go
 type RouteRuleExportData struct {
-    Version     string
-    HostTable   *host_rule_conf.HostTableConf
-    RouteTable  *route_rule_conf.RouteTableFile
+    Version string
+    HostTable *host_rule_conf.HostTableConf
+    RouteTable *route_rule_conf.RouteTableFile
     ClusterConf *cluster_conf.BfeClusterConf
 }
 ```
@@ -165,6 +165,8 @@ type ClusterTableConf struct {
 4. IPv6 地址自动加 `[]` 包裹；
 5. 输出 BFE 标准的 `cluster_table_conf`。
 
+> 说明：管理面 Cluster 对外模型精简（隐藏 `ready`、`sub_clusters`、`scheduler`）不影响 InnerAPI 导出。数据面仍从 `clusters`、`sub_clusters`、`pools`、`lb_matrices` 等存储模型生成 `cluster_table` 与 `gslb` 配置。
+
 ### 4.4 Server Cert（`/configs/protocol/server_cert_conf`）
 
 由 `model/iprotocol/exporter.go` 实现：
@@ -203,10 +205,10 @@ var ExportExtraFileEndpoint = &xreq.Endpoint{
 
 ```go
 type ModAPIKeyRuleConf struct {
-    Version    *string                          `json:"version"`
-    Config     map[string][]*TokenRuleFile      `json:"config"`
-    QuotaPlans map[string][]*QuotaPlan          `json:"QuotaPlans"`
-    Tokens     map[string]map[string]*TokenFile `json:"tokens"`
+    Version *string `json:"version"`
+    Config map[string][]*TokenRuleFile `json:"config"`
+    QuotaPlans map[string][]*QuotaPlan `json:"QuotaPlans"`
+    Tokens map[string]map[string]*TokenFile `json:"tokens"`
 }
 ```
 
@@ -227,8 +229,8 @@ type ModAPIKeyRuleConf struct {
 
 ```go
 type ModBodyProcessConf struct {
-    Version *string             `json:"Version"`
-    Config  map[string][]string `json:"Config"`
+    Version *string `json:"Version"`
+    Config map[string][]string `json:"Config"`
 }
 ```
 
@@ -240,10 +242,10 @@ type ModBodyProcessConf struct {
 
 ```go
 type ExportRateLimitPolicyConfig struct {
-    Config                        map[string][]*ExportRouteRule     `json:"Config"`
-    RateLimitPolicies             map[string]*ExportRateLimitPolicy `json:"RateLimitPolicies"`
-    ApikeyRateLimitPolicyBindings map[string][]string               `json:"ApikeyRateLimitPolicyBindings"`
-    Version                       string                            `json:"Version"`
+    Config map[string][]*ExportRouteRule `json:"Config"`
+    RateLimitPolicies map[string]*ExportRateLimitPolicy `json:"RateLimitPolicies"`
+    ApikeyRateLimitPolicyBindings map[string][]string `json:"ApikeyRateLimitPolicyBindings"`
+    Version string `json:"Version"`
 }
 ```
 
@@ -262,9 +264,9 @@ type ExportRateLimitPolicyConfig struct {
 
 ```go
 type AiRouteDataExport struct {
-    Version                  string                         `json:"Version"`
-    RouteRules               map[string]*RouteTableExport   `json:"RouteRules"`
-    ApikeyRouteTableBindings map[string][]string            `json:"ApikeyRouteTableBindings"`
+    Version string `json:"Version"`
+    RouteRules map[string]*RouteTableExport `json:"RouteRules"`
+    ApikeyRouteTableBindings map[string][]string `json:"ApikeyRouteTableBindings"`
 }
 ```
 
