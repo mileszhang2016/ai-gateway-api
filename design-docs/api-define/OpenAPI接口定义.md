@@ -1,4 +1,4 @@
-# OpenAPI接口定义
+# 瑛菲AI网关 - OpenAPI接口定义
 
 ---
 
@@ -12,14 +12,11 @@
 - [8. /auth](#8-auth)
 - [9. /certificates](#9-certificates)
 - [10. /clusters](#10-clusters)
-- [11. /ai-route-rules](#11-ai-route-rules)
-- [12. /global-models](#12-global-models)
-- [13. /products/{product_name}/models](#13-productsproduct_namemodels)
-- [14. /general/actions/exec-api](#14-generalactionsexec-api)
-- [15. /expression/verify](#15-expressionverify)
-- [16. 关键业务流程](#16-关键业务流程)
-- [17. 对象关系图](#17-对象关系图)
-- [18. 版本修改记录](#18-版本修改记录)
+- [11. /model-provider-types](#11-model-provider-types)
+- [12. /tools](#12-tools)
+- [13. /expression/verify](#13-expressionverify)
+- [14. 关键业务流程](#14-关键业务流程)
+- [15. 对象关系图](#15-对象关系图)
 
 ---
 
@@ -41,23 +38,22 @@
 {
     "ErrNum": 200,
     "Data": json_object,
-    "ErrMsg": "string message",
-    "WorkMode": "current mode"
+    "ErrMsg": "string message"
 }
 ```
 
 - **ErrNum**: 返回码
   - 200：调用成功
-  - 402：没有调用权限
-  - 404：查询/修改/删除不存在的对象
-  - 409：资源冲突（如存在依赖关系、循环引用等）
-  - 422：参数不合法
-  - 500：其他业务逻辑错误
-  - 555：产品线内重复（如API-Key描述重复）
-  - 556：全局重复（如entity-type或entity-name重复）
+  - 401：鉴权失败
+  - 402：没有调用权限造成的失败
+  - 404：查询/修改/删除不存在的对象时
+  - 409：资源依赖冲突时
+  - 422：参数不合法造成的失败
+  - 500：其他业务逻辑错误，一律返回500
+  - 555：创建重复对象时
+  - 556：数据重复时
 - **Data**: 返回的数据结构，调用成功时返回json格式数据，失败时返回null
 - **ErrMsg**: 文本消息，成功时为"success"或空串，失败时为错误信息
-- **WorkMode**: 控制台工作模式
 
 ### Method约定
 
@@ -87,7 +83,7 @@
 
 ```json
 {
-  "id": "api-key-1",
+  "id": "apikey-001",
   "key": "ak-2v8x9k3m7p",
   "description": "BFE项目测试Key",
   "enabled": true,
@@ -102,7 +98,11 @@
     "pass_when_no_enough_quota": false,
     "quota": 100000000,
     "unit": "total_token",
-    "reset_period": "monthly"
+    "reset_period": "monthly",
+    "balance": {
+      "used": 50000000,
+      "remaining": 50000000
+    }
   },
   "rate_limit_policy": {
     "enabled": false,
@@ -120,9 +120,9 @@
     "enabled": false,
     "rules": []
   },
-  "entity_id": "entity-3",
+  "entity_id": "ent-zhangsan-001",
   "entity": {
-    "id": "entity-3",
+    "id": "ent-zhangsan-001",
     "name": "zhangsan",
     "type": "person"
   }
@@ -133,7 +133,7 @@
 
 | 字段 | 类型 | 说明 | 可能取值 |
 |------|------|------|----------|
-| `id` | string | API-Key唯一标识（内部使用） | 系统生成，如`api-key-1` |
+| `id` | string | API-Key唯一标识（内部使用） | 系统生成，如`apikey-001` |
 | `key` | string | API-Key值（用于请求头鉴权） | 系统生成，如`ak-2v8x9k3m7p` |
 | `description` | string | 描述 | 自定义 |
 | `enabled` | bool | 是否启用 | `true`（启用）、`false`（禁用） |
@@ -226,6 +226,7 @@
 
 | 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
 | - | - | - | - | - |
+| key | string | API-Key值 | N | 可选。若传入则使用该值作为API-Key；若不传则由后台生成。用于从其他系统导入API-Key |
 | description | string | API-Key描述 | Y | - |
 | expired_time | int64 | 过期时间 | N | -1表示永不过期；其他为Unix时间戳（秒） |
 | enabled | bool | 是否启用 | N | 默认true |
@@ -241,6 +242,7 @@
 
 - 若传入 `rate_limit_policy` 且 `enabled` 为 `true`，则 `rules` 中 `tpm`、`rpm`、`max_concurrency` 三者至少配置其一
 - 若 `entity_id` 不为空，该Entity必须存在
+- 若传入 `key`，其值需在系统中全局唯一；若与已有API-Key的`key`重复，返回422
 
 **HTTP BODY参数示例**
 
@@ -287,7 +289,7 @@
             }
         ]
     },
-    "entity_id": "entity-3"
+    "entity_id": "ent-zhangsan-001"
 }
 ```
 
@@ -300,7 +302,7 @@
 5. 若传入 `quota_plan`，创建对应的QuotaBalance（remaining = quota，used = 0）
 6. 若传入 `rate_limit_policy`，创建RateLimitPolicy
 7. 若传入 `route_rules`，创建路由规则配置
-8. 生成API-Key，绑定上述资源
+8. 若传入 `key`，使用输入的 `key` 作为API-Key；否则在后台生成新的API-Key，并绑定上述资源
 9. 返回结果，含完整的嵌套结构（不含balance）
 
 **返回数据（Data内容）**
@@ -314,7 +316,7 @@
     "ErrNum": 200,
     "ErrMsg": "success",
     "Data": {
-        "id": "api-key-1",
+        "id": "apikey-001",
         "key": "ak-2v8x9k3m7p",
         "description": "BFE项目测试Key",
         "enabled": true,
@@ -356,14 +358,13 @@
                 }
             ]
         },
-        "entity_id": "entity-3",
+        "entity_id": "ent-zhangsan-001",
         "entity": {
-            "id": "entity-3",
+            "id": "ent-zhangsan-001",
             "name": "zhangsan",
             "type": "person"
         }
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
 
@@ -397,7 +398,7 @@
 
 | 参数名 | 类型 | 参数含义 | 补充描述 |
 | - | - | - | - |
-| list | []APIKey | API-Key列表 | 元素字段同2.1数据模型，但`quota_plan`中的`balance`字段不返回 |
+| list | []APIKey | API-Key列表 | 元素字段同2.1数据模型，`quota_plan`中包含`balance`字段（含`used`和`remaining`） |
 | pagination | object | 分页信息 | 包含`page`、`page_size`、`total` |
 
 ---
@@ -421,7 +422,7 @@
 
 **返回数据（Data内容）**
 
-字段同2.1数据模型，但`quota_plan`中的`balance`字段不返回（仅调用独立quota-plan查询接口时返回）。
+字段同2.1数据模型，`quota_plan`中包含`balance`字段（含`used`和`remaining`）。
 
 ---
 
@@ -445,6 +446,8 @@
 **输入参数（Body）**
 
 同2.2.1创建API-Key的Body参数。
+
+注：`key` 字段仅在创建时生效，更新时会被忽略。
 
 **约束**
 
@@ -493,6 +496,8 @@
 **输入参数（Body）**
 
 同2.2.1创建API-Key的Body参数，仅传需修改字段。
+
+注：`key` 字段仅在创建时生效，更新时会被忽略。
 
 **约束**
 
@@ -550,7 +555,7 @@ Data为null。
 
 | 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
 | - | - | - | - | - |
-| key | string | API-Key标识 | Y | - |
+| id | string | API-Key标识 | Y | - |
 
 **返回数据（Data内容）**
 
@@ -588,8 +593,7 @@ Data为null。
             "used": 12345679,
             "remaining": 87654321
         }
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
 
@@ -651,7 +655,7 @@ Data为null。
     "ErrNum": 200,
     "ErrMsg": "success",
     "Data": {
-        "id": "api-key-1",
+        "id": "apikey-001",
         "previous_quota": 100000000,
         "new_quota": 100000000,
         "balance": {
@@ -659,33 +663,9 @@ Data为null。
             "new_remaining": 100000000,
             "used": 0
         }
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
-
----
-
-#### 2.2.9 生成API-Key
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 生成API-Key字符串 | 用于创建前预览或生成Key值 |
-| 端点 | /api-keys/actions/generate | - |
-| 版本 | v1 | - |
-| method | GET | - |
-
-**输入参数**
-
-无。
-
-**返回数据（Data内容）**
-
-| 参数名 | 类型 | 参数含义 | 补充描述 |
-| - | - | - | - |
-| key | string | 生成的API-Key值 | 格式为`{product}-{uuid}-{nanosecond}-{db_id}` |
 
 ---
 
@@ -863,14 +843,13 @@ Data为null。
 **约束**：若该Entity-Type已被任何Entity引用，返回ErrNum=409。
 
 ---
-
 ## 4. /entities
 
 ### 4.1 数据模型
 
 ```json
 {
-  "id": "entity-1",
+  "id": "ent-001",
   "name": "op",
   "type": "dep",
   "parent_id": null,
@@ -908,7 +887,7 @@ Data为null。
 
 | 字段 | 类型 | 说明 | 可能取值 |
 |------|------|------|----------|
-| `id` | string | Entity唯一标识 | 系统生成，如`entity-1` |
+| `id` | string | Entity唯一标识 | 系统生成，如`ent-001` |
 | `name` | string | Entity名称 | 在全局范围内唯一 |
 | `type` | string | Entity类型 | 必须引用已定义的Entity-Type |
 | `parent_id` | string | 父Entity ID | 为空表示根节点 |
@@ -1026,7 +1005,7 @@ Data为null。
     "ErrNum": 200,
     "ErrMsg": "success",
     "Data": {
-        "id": "entity-1",
+        "id": "ent-001",
         "name": "op",
         "type": "dep",
         "parent_id": null,
@@ -1066,8 +1045,7 @@ Data为null。
         },
         "create_time": 1716883200,
         "update_time": 1716883200
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
 
@@ -1100,12 +1078,28 @@ Data为null。
 
 **返回数据（Data内容）**
 
-返回分页结构：
+| 参数名 | 类型 | 参数含义 | 补充描述 |
+| - | - | - | - |
+| list | []object | Entity列表 | 包含完整Entity字段 |
+| pagination | object | 分页信息 | - |
+| pagination.page | int | 当前页码 | - |
+| pagination.page_size | int | 每页条数 | - |
+| pagination.total | int | 总条数 | - |
+
+**list 对象字段说明**
 
 | 参数名 | 类型 | 参数含义 | 补充描述 |
 | - | - | - | - |
-| list | []Entity | Entity列表 | 元素字段同4.1数据模型，但`quota_plan`中的`balance`字段不返回 |
-| pagination | object | 分页信息 | 包含`page`、`page_size`、`total` |
+| id | string | Entity唯一标识 | - |
+| name | string | Entity名称 | - |
+| type | string | Entity类型 | - |
+| parent_id | string | 父Entity ID | - |
+| allow_models | []string | 允许访问的模型白名单 | - |
+| block_models | []string | 禁止访问的模型黑名单 | - |
+| quota_plan | object | 配额计划 | 不含balance字段 |
+| rate_limit_policy | object | 限流策略 | - |
+| create_time | int64 | 创建时间 | Unix时间戳（秒） |
+| update_time | int64 | 更新时间 | Unix时间戳（秒） |
 
 **成功返回示例**
 
@@ -1116,30 +1110,42 @@ Data为null。
     "Data": {
         "list": [
             {
-                "id": "entity-1",
+                "id": "ent-001",
                 "name": "op",
                 "type": "dep",
                 "parent_id": null,
                 "allow_models": ["*"],
                 "block_models": [],
                 "quota_plan": {
-                    "unlimited": true,
+                    "unlimited": false,
                     "pass_when_no_enough_quota": false,
-                    "quota": 0,
+                    "quota": 100000000,
                     "unit": "total_token",
-                    "reset_period": "never"
+                    "reset_period": "monthly"
                 },
                 "rate_limit_policy": {
-                    "enabled": false,
+                    "enabled": true,
                     "rules": {
-                        "tpm": [],
-                        "rpm": [],
-                        "max_concurrency": -1
+                        "tpm": [{"name": "1分钟窗口", "model": "*", "window_minutes": 1, "max_tokens": 10000, "step_minutes": 1}],
+                        "rpm": [{"name": "1分钟请求", "model": "*", "window_minutes": 1, "max_requests": 100}],
+                        "max_concurrency": 50
                     }
                 },
-                "route_rules": {
-                    "enabled": false,
-                    "rules": []
+                "create_time": 1716883200,
+                "update_time": 1716883200
+            },
+            {
+                "id": "ent-bfe-001",
+                "name": "bfe",
+                "type": "team",
+                "parent_id": "ent-001",
+                "allow_models": ["*"],
+                "block_models": [],
+                "quota_plan": {
+                    "unlimited": true
+                },
+                "rate_limit_policy": {
+                    "enabled": false
                 },
                 "create_time": 1716883200,
                 "update_time": 1716883200
@@ -1148,10 +1154,9 @@ Data为null。
         "pagination": {
             "page": 1,
             "page_size": 20,
-            "total": 1
+            "total": 2
         }
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
 
@@ -1559,8 +1564,7 @@ Data为null。
                 ]
             }
         ]
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
 
@@ -1649,12 +1653,12 @@ Data为数组，元素字段同6.1数据模型。
             },
             {
                 "type": "entity",
-                "owner": "entity-1",
+                "owner": "ent-001",
                 "enabled": false
             },
             {
                 "type": "api_key",
-                "owner": "api-key-1",
+                "owner": "apikey-001",
                 "enabled": true
             }
         ],
@@ -1663,8 +1667,7 @@ Data为数组，元素字段同6.1数据模型。
             "page_size": 20,
             "total": 3
         }
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
 
@@ -1687,9 +1690,6 @@ Data为数组，元素字段同6.1数据模型。
       "weight": 1,
       "ports": {
         "Default": 8080
-      },
-      "tags": {
-        "key": "value"
       }
     }
   ]
@@ -1711,7 +1711,6 @@ Data为数组，元素字段同6.1数据模型。
 | `ip` | string | 实例 IP 地址 | - |
 | `weight` | int | 实例权重 | 范围 [0,100] |
 | `ports` | map[string]int | 实例端口 | 至少包含 `Default` 端口 |
-| `tags` | map[string]string | 实例标签 | - |
 
 **约束**
 
@@ -1760,14 +1759,10 @@ Data为数组，元素字段同6.1数据模型。
                 "weight": 1,
                 "ports": {
                     "Default": 8080
-                },
-                "tags": {
-                    "key": "value"
                 }
             }
         ]
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
 
@@ -1791,7 +1786,6 @@ Data为数组，元素字段同6.1数据模型。
 | instances[].ip | string | 实例 IP 地址 | Y | - |
 | instances[].weight | int | 实例权重 | Y | 范围 [0,100] |
 | instances[].ports | map[string]int | 实例端口 | Y | 至少包含 `Default` 端口 |
-| instances[].tags | map[string]string | 实例标签 | N | - |
 
 **约束**
 
@@ -1809,9 +1803,6 @@ Data为数组，元素字段同6.1数据模型。
             "weight": 1,
             "ports": {
                 "Default": 8080
-            },
-            "tags": {
-                "key": "value"
             }
         }
     ]
@@ -1834,7 +1825,6 @@ Data为数组，元素字段同6.1数据模型。
 同 [7.2.1 获取默认 AI 网关实例池详情](#721-获取默认-ai-网关实例池详情)。
 
 ---
-
 ## 8. /auth
 
 ### 8.1 数据模型
@@ -1844,7 +1834,7 @@ Data为数组，元素字段同6.1数据模型。
 ```json
 {
   "user_name": "user_demo",
-  "is_admin": false
+  "is_admin": true
 }
 ```
 
@@ -1853,16 +1843,15 @@ Data为数组，元素字段同6.1数据模型。
 | 字段 | 类型 | 说明 | 可能取值 |
 |------|------|------|----------|
 | `user_name` | string | 用户名 | - |
-| `is_admin` | bool | 是否为系统管理员 | `true`：System 权限；`false`：Product 权限 |
+| `is_admin` | bool | 是否为系统管理员 | `true`：System 权限；`false` 暂不支持 |
 
 **Token**
 
 ```json
 {
   "name": "token_demo",
-  "product_name": "product_demo",
   "token": "Xim4h3tR_Gp7o4h",
-  "scope": "Product"
+  "scope": "System"
 }
 ```
 
@@ -1871,9 +1860,8 @@ Data为数组，元素字段同6.1数据模型。
 | 字段 | 类型 | 说明 | 可能取值 |
 |------|------|------|----------|
 | `name` | string | Token 名称 | 全局唯一 |
-| `product_name` | string | 产品线名 | Scope 为 Product 时必填 |
 | `token` | string | Token 值 | 用于请求头鉴权 |
-| `scope` | string | 权限范围 | `System` / `Product` / `Support` |
+| `scope` | string | 权限范围 | `System` / `Support` |
 
 **认证方式**
 
@@ -1886,13 +1874,11 @@ API 请求时需在 Header 的 `Authorization` 中携带凭证：
 | Scope | 说明 |
 |------|------|
 | `System` | 全部权限，包括全局配置、产品线资源和导出资源 |
-| `Product` | 仅产品线资源；需进一步校验是否具备某个产品线权限 |
 | `Support` | 仅导出类资源，供 BFE 数据面模块导出配置 |
 
 **约束**
 
 - 普通用户和 Token 都会设定可访问资源的 Scope，只能访问 Scope 内资源。
-- Scope 为 `Product` 时，需进一步校验是否具备某个产品线的权限。
 
 ### 8.2 接口清单
 
@@ -1912,9 +1898,8 @@ API 请求时需在 Header 的 `Authorization` 中携带凭证：
 | 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
 | - | - | - | - | - |
 | user_name | string | 用户名 | Y | - |
-| password | string | 用户密码 | 条件必填 | `type=normal`时必填 |
-| is_admin | bool | 是否为系统管理员 | N | `true`：System 权限；`false`：Product 权限，默认`false` |
-| type | string | 用户类型 | N | 枚举`jwt`、`normal`，默认`normal` |
+| password | string | 用户密码 | Y | - |
+| is_admin | bool | 是否为系统管理员 | N | 固定为 `true`，暂不支持 `false`；若未传则默认填充为 `true` |
 
 **HTTP BODY参数示例**
 
@@ -1922,15 +1907,14 @@ API 请求时需在 Header 的 `Authorization` 中携带凭证：
 {
     "user_name": "user_demo",
     "password": "password@baidu.com",
-    "is_admin": true,
-    "type": "normal"
+    "is_admin": true
 }
 ```
 
 **执行逻辑**
 
 1. 校验参数合法性。
-2. 创建用户记录，`is_admin` 决定其 Scope。
+2. 创建用户记录，`is_admin` 固定为 `true`（System 权限），暂不支持其他 Scope。
 3. 返回成功状态（Data 为 null）。
 
 **返回数据（Data内容）**
@@ -1957,7 +1941,7 @@ API 请求时需在 Header 的 `Authorization` 中携带凭证：
 **执行逻辑**
 
 1. 根据 `user_name` 查找用户。
-2. 删除用户记录及其产品线授权关系。
+2. 删除用户记录。
 3. 返回成功状态（Data 为 null）。
 
 **返回数据（Data内容）**
@@ -2032,8 +2016,7 @@ Data为数组，每个元素为一个用户。
 | 参数名 | 类型 | 参数含义 | 补充描述 |
 | - | - | - | - |
 | user_name | string | 用户名 | - |
-| is_admin | bool | 是否为系统管理员 | `true`：System 权限；`false`：Product 权限 |
-| products | []string | 已绑定产品线列表 | - |
+| is_admin | bool | 是否为系统管理员 | 固定返回 `true`，暂不支持 `false` |
 
 **成功返回示例**
 
@@ -2043,17 +2026,10 @@ Data为数组，每个元素为一个用户。
     "ErrMsg": "success",
     "Data": [
         {
-            "user_name": "user_demo1",
-            "is_admin": true,
-            "products": []
-        },
-        {
             "user_name": "user_demo",
-            "is_admin": false,
-            "products": []
+            "is_admin": true
         }
-    ],
-    "WorkMode": "ModeNormal"
+    ]
 }
 ```
 
@@ -2078,7 +2054,7 @@ Data为数组，每个元素为一个用户。
 
 | 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
 | - | - | - | - | - |
-| is_admin | bool | 是否为系统管理员 | Y | 系统管理员有 System（所有）的权限 |
+| is_admin | bool | 是否为系统管理员 | Y | 固定为 `true`，暂不支持设置为 `false` |
 
 **HTTP BODY参数示例**
 
@@ -2092,120 +2068,14 @@ Data为数组，每个元素为一个用户。
 
 1. 校验参数合法性
 2. 根据 `user_name` 查找用户
-3. 更新用户 `is_admin` 字段，决定其 Scope
+3. 更新用户 `is_admin` 字段，固定为 `true`（System 权限），暂不支持其他 Scope
 4. 返回成功状态（Data 为 null）
 
 **返回数据（Data内容）**
 
 无
 
-#### 8.2.6 为用户增加某个产品线的授权
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 为用户增加某个产品线的授权 | - |
-| 端点 | /auth/users/{user_name}/products/{product_name} | - |
-| 版本 | v1 | - |
-| method | POST | - |
-
-**输入参数（URI）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| user_name | string | 用户名 | Y | - |
-| product_name | string | 产品线名 | Y | - |
-
-**执行逻辑**
-
-1. 校验用户与产品线存在性
-2. 为用户增加该产品线授权
-3. 返回成功状态（Data 为 null）
-
-**返回数据（Data内容）**
-
-无
-
-#### 8.2.7 对用户取消某个产品线的授权
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 对用户取消某个产品线的授权 | - |
-| 端点 | /auth/users/{user_name}/products/{product_name} | - |
-| 版本 | v1 | - |
-| method | DELETE | - |
-
-**输入参数（URI）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| user_name | string | 用户名 | Y | - |
-| product_name | string | 产品线名 | Y | - |
-
-**执行逻辑**
-
-1. 校验用户与产品线存在性
-2. 取消用户对该产品线的授权
-3. 返回成功状态（Data 为 null）
-
-**返回数据（Data内容）**
-
-无
-
-#### 8.2.8 获取对指定产品线有权限的用户列表
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 获取对指定产品线有权限的用户列表 | - |
-| 端点 | /auth/users/actions/search-by-product/{product_name} | - |
-| 版本 | v1 | - |
-| method | GET | - |
-
-**输入参数（URI）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| product_name | string | 产品线名 | Y | - |
-
-**输入参数（Query）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| type | string | 按用户类型过滤 | N | 枚举`jwt`、`normal` |
-
-**返回数据（Data内容）**
-
-Data为数组，每个元素为一个用户。
-
-| 参数名 | 类型 | 参数含义 | 补充描述 |
-| - | - | - | - |
-| user_name | string | 用户名 | - |
-| is_admin | bool | 是否为系统管理员 | `true`：System 权限；`false`：Product 权限 |
-| products | []string | 已绑定产品线列表 | - |
-
-**成功返回示例**
-
-```json
-{
-    "ErrNum": 200,
-    "ErrMsg": "success",
-    "Data": [
-        {
-            "user_name": "user_demo",
-            "is_admin": false,
-            "products": []
-        }
-    ],
-    "WorkMode": "ModeNormal"
-}
-```
-
-#### 8.2.9 使用账号名密码创建session key
+#### 8.2.6 使用账号名密码创建session key
 
 **基本信息**
 
@@ -2244,8 +2114,7 @@ Data为数组，每个元素为一个用户。
 | - | - | - | - |
 | session_key | string | 会话密钥 | 在后续请求中需要在Header中带上该值，格式为 "Authorization: Session iMQW0z5ZwK_6FnPPT7Xj" |
 | user_name | string | 用户名 | - |
-| is_admin | bool | 是否是系统管理员 | 如果是，就是有 System 的权限 |
-| products | []string | 已绑定产品线列表 | - |
+| is_admin | bool | 是否是系统管理员 | 固定返回 `true`（暂不支持非管理员用户） |
 
 **成功返回示例**
 
@@ -2256,14 +2125,12 @@ Data为数组，每个元素为一个用户。
     "Data": {
         "user_name": "user_demo",
         "session_key": "iMQW0z5ZwK_6FnPPT7Xj",
-        "is_admin": false,
-        "products": []
-    },
-    "WorkMode": "ModeNormal"
+        "is_admin": true
+    }
 }
 ```
 
-#### 8.2.10 删除 session key
+#### 8.2.7 删除 session key
 
 **基本信息**
 
@@ -2290,13 +2157,13 @@ Data为数组，每个元素为一个用户。
 
 无
 
-#### 8.2.11 创建Token
+#### 8.2.8 创建Token
 
 **基本信息**
 
 | 项目 | 值 | 说明 |
 | - | - | - |
-| 含义 | 创建Token（同时完成产品线绑定） | - |
+| 含义 | 创建Token | - |
 | 端点 | /auth/tokens | - |
 | 版本 | v1 | - |
 | method | POST | - |
@@ -2306,16 +2173,14 @@ Data为数组，每个元素为一个用户。
 | 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
 | - | - | - | - | - |
 | name | string | token名字 | Y | name必须全局唯一 |
-| scope | string | scope | Y | 只能指定一个scope |
-| product_name | string | 产品线名 | Y | 如果scope 为 Product，必须且只能绑定一个产品线 |
+| scope | string | scope | Y | 只能指定一个scope；取值 `System` / `Support` |
 
 **HTTP BODY参数示例**
 
 ```json
 {
     "name": "token_demo",
-    "scope": "Product",
-    "product_name": "product_demo"
+    "scope": "System"
 }
 ```
 
@@ -2323,9 +2188,8 @@ Data为数组，每个元素为一个用户。
 
 1. 校验参数合法性
 2. 校验 `name` 全局唯一性
-3. 若 `scope` 为 `Product`，校验 `product_name` 有效性
-4. 生成 Token 值并完成产品线绑定
-5. 返回 Token 值
+3. 生成 Token 值
+4. 返回 Token 值
 
 **返回数据（Data内容）**
 
@@ -2341,12 +2205,11 @@ Data为数组，每个元素为一个用户。
     "ErrMsg": "success",
     "Data": {
         "token": "Px2szn6R1HQo-WRSIJyt"
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
 
-#### 8.2.12 删除Token
+#### 8.2.9 删除Token
 
 **基本信息**
 
@@ -2366,14 +2229,14 @@ Data为数组，每个元素为一个用户。
 **执行逻辑**
 
 1. 根据 `token_name` 查找 Token
-2. 删除 Token 记录及其产品线绑定关系
+2. 删除 Token 记录
 3. 返回成功状态（Data 为 null）
 
 **返回数据（Data内容）**
 
 无
 
-#### 8.2.13 查看Token详情
+#### 8.2.10 查看Token详情
 
 **基本信息**
 
@@ -2395,7 +2258,6 @@ Data为数组，每个元素为一个用户。
 | 参数名 | 类型 | 参数含义 | 补充描述 |
 | - | - | - | - |
 | name | string | token名字 | - |
-| product_name | string | 产品线名 | - |
 | token | string | token的值 | - |
 | scope | string | scope | - |
 
@@ -2407,15 +2269,13 @@ Data为数组，每个元素为一个用户。
     "ErrMsg": "success",
     "Data": {
         "name": "token_demo",
-        "product_name": "product_demo",
         "token": "Xim4h3tR_Gp7o4h",
-        "scope": "Product"
-    },
-    "WorkMode": "ModeNormal"
+        "scope": "System"
+    }
 }
 ```
 
-#### 8.2.14 查看Token列表
+#### 8.2.11 查看Token列表
 
 **基本信息**
 
@@ -2443,56 +2303,14 @@ Data为数组，每个元素为Token（详见“查看Token详情”）。
     "Data": [
         {
             "name": "token_demo",
-            "product_name": "product_demo",
             "token": "Xim4h3tR_Gp7o4h",
-            "scope": "Product"
+            "scope": "System"
         }
-    ],
-    "WorkMode": "ModeNormal"
+    ]
 }
 ```
 
-#### 8.2.15 获取对指定产品线有权限的Token列表
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 获取对指定产品线有权限的Token列表 | - |
-| 端点 | /auth/tokens/actions/search-by-product/{product_name} | - |
-| 版本 | v1 | - |
-| method | GET | - |
-
-**输入参数（URI）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| product_name | string | 产品线名 | Y | - |
-
-**返回数据（Data内容）**
-
-Data为数组，每个元素为一个token对象（详见“查看Token详情”）。
-
-**成功返回示例**
-
-```json
-{
-    "ErrNum": 200,
-    "ErrMsg": "success",
-    "Data": [
-        {
-            "name": "token_demo",
-            "token": "Xim4h3tR_Gp7o4h",
-            "scope": "Proudct"
-        }
-    ],
-    "WorkMode": "ModeNormal"
-}
-```
-
----
-
-#### 8.2.16 查询单个用户
+#### 8.2.12 查询单个用户
 
 **基本信息**
 
@@ -2514,12 +2332,11 @@ Data为数组，每个元素为一个token对象（详见“查看Token详情”
 | 参数名 | 类型 | 参数含义 | 补充描述 |
 | - | - | - | - |
 | user_name | string | 用户名 | - |
-| is_admin | bool | 是否为系统管理员 | - |
-| products | []string | 已绑定产品线列表 | - |
+| is_admin | bool | 是否为系统管理员 | 固定返回 `true` |
 
 ---
 
-#### 8.2.17 获取系统导航配置
+#### 8.2.13 获取系统导航配置
 
 **基本信息**
 
@@ -2543,7 +2360,6 @@ Data为数组，每个元素为一个token对象（详见“查看Token详情”
 | logo | object | Logo配置 | - |
 
 ---
-
 ## 9. /certificates
 
 ### 9.1 数据模型
@@ -2660,8 +2476,7 @@ Data为数组，每个元素为一个token对象（详见“查看Token详情”
         "cert_file_name": "demo_cert_file_name",
         "key_file_name": "demo_key_file_name",
         "expired_date": "2021-08-23 16:02:31"
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
 
@@ -2704,12 +2519,41 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
             "key_file_name": "demo_key_file_name",
             "expired_date": "2021-08-23 16:02:31"
         }
-    ],
-    "WorkMode": "ModeNormal"
+    ]
 }
 ```
 
-#### 9.2.3 更新证书为默认证书
+#### 9.2.3 证书详情
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 获取单个证书信息 | - |
+| 端点 | /certificates/{cert_name} | - |
+| 版本 | v1 | - |
+| method | GET | - |
+
+**输入参数（URI）**
+
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
+| - | - | - | - | - |
+| cert_name | string | 证书名称 | Y | - |
+
+**执行逻辑**
+
+1. 根据 `cert_name` 查找证书。
+2. 返回证书元数据（不包含 `cert_file_content` 和 `key_file_content`）。
+
+**返回数据（Data内容）**
+
+同 9.2.1 创建证书返回数据。
+
+**成功返回示例**
+
+同 9.2.1 创建证书成功返回示例。
+
+#### 9.2.4 更新证书为默认证书
 
 **基本信息**
 
@@ -2745,7 +2589,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 同 9.2.1 创建证书成功返回示例。
 
-#### 9.2.4 删除证书
+#### 9.2.5 删除证书
 
 **基本信息**
 
@@ -2772,14 +2616,13 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 1. 根据 `cert_name` 查找证书。
 2. 校验该证书不是默认证书。
 3. 删除证书记录及证书文件内容。
-4. 返回被删除的证书元数据。
+4. 返回成功状态（Data 为 null）。
 
 **返回数据（Data内容）**
 
-返回被删除的证书元数据，字段同 9.2.1 创建证书返回数据。
+无。
 
 ---
-
 ## 10. /clusters
 
 ### 10.1 数据模型
@@ -2788,23 +2631,14 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 {
     "name": "my-cluster",
     "description": "示例集群",
-    "ready": false,
     "instance_pool": [
         {
             "hostname": "backend-1",
             "ip": "10.0.0.1",
             "weight": 50,
-            "ports": {"Default": 8080},
-            "tags": {"region": "bj"}
+            "ports": {"Default": 8080}
         }
     ],
-    "sub_clusters": ["my-cluster"],
-    "scheduler": {
-        "BFE-AI_product.szyf": {
-            "my-cluster": 100,
-            "GSLB_BLACKHOLE": 0
-        }
-    },
     "basic": {
         "protocol": "http",
         "connection": {
@@ -2812,8 +2646,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
             "cancel_on_client_close": false
         },
         "retries": {
-            "max_retry_in_subcluster": 2,
-            "max_retry_cross_subcluster": 0
+            "max_retry_in_cluster": 2
         },
         "buffers": {
             "req_write_buffer_size": 512
@@ -2827,20 +2660,18 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
         }
     },
     "sticky_sessions": {
-        "session_sticky_type": "INSTANCE",
+        "enabled": false,
         "hash_strategy": "CLIENT_ID_ONLY",
         "hash_header": "Cookie:USERID"
     },
     "passive_health_check": {
         "interval": 1000,
-        "failnum": 10,
-        "host": "health.example.com",
-        "uri": "/health",
-        "statuscode": 200
+        "failnum": 3,
+        "host": "",
+        "uri": "/",
+        "statuscode": 0
     },
     "llm_config": {
-        "service_name": "deepseek-service",
-        "group": "llm-group",
         "model_endpoint": {
             "schema": "https",
             "uri": "/v1/models",
@@ -2864,10 +2695,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 |------|------|------|----------|
 | `name` | string | 集群名 | 全局唯一 |
 | `description` | string | 集群描述信息 | - |
-| `ready` | bool | 集群是否就绪 | - |
 | `instance_pool` | []Instance | 实例列表 | 系统自动据此创建实例池和子集群 |
-| `sub_clusters` | []string | 子集群列表 | 系统自动创建 |
-| `scheduler` | object | 自动生成的调度配置 | - |
 | `basic` | object | 基本参数 | 见下方 表：连接设置、表：重试设置、表：超时设置 |
 | `sticky_sessions` | object | 会话保持 | 见下方 表：会话保持 |
 | `passive_health_check` | object | 被动健康检查 | 见下方 表：被动健康检查 |
@@ -2881,27 +2709,25 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 | `ip` | string | 实例 IP 地址 | - |
 | `weight` | int | 实例权重 | 范围 [0,100] |
 | `ports` | map[string]int | 实例端口 | 至少包含 `Default` 端口 |
-| `tags` | map[string]string | 实例标签 | - |
 
 **表：连接设置**
 
 | 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
 | - | -  | - | - | - |
-| max_idle_conn_per_rs| int | 连接池| Y | 每个BFE实例，为集群中每个RS维持的空闲长连接数。一般情况下，无需特别维持，设置为0 。<br/>设置为非0时，可以提升转发性能 |
-| cancel_on_client_close| bool |  连接是否级联关闭 | Y | 设置为true时，当客户端关闭连接后，BFE同时关闭对应RS的连接 <br/>设置为false时，当客户端关闭连接后，BFE按默认策略关闭对应RS的连接 |
+| max_idle_conn_per_rs| int | 连接池| N | 每个BFE实例，为集群中每个RS维持的空闲长连接数。一般情况下，无需特别维持，设置为0 。<br/>设置为非0时，可以提升转发性能 |
+| cancel_on_client_close| bool |  连接是否级联关闭 | N | 设置为true时，当客户端关闭连接后，BFE同时关闭对应RS的连接 <br/>设置为false时，当客户端关闭连接后，BFE按默认策略关闭对应RS的连接 |
 
 **表：重试设置**
 
 | 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
 | - | -  | - | - | - |
-| max_retry_in_subcluster| int |  同一个子集群内重试次数| Y |  |
-| max_retry_cross_subcluster| int |  跨子集群重试次数| Y | - |
+| max_retry_in_cluster| int |  同一个集群内重试次数 | N | 底层对应 `max_retry_in_subcluster`，**默认值为2** |
 
 **表：会话保持**
 
 | 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
 | - | -  | - | - | - |
-| session_sticky_type| string |  会话保持的粒度 | Y | INSTANCE，实例级会话保持 <br/>	SUB_CLUSTER，子集群级别会话保持|
+| enabled| bool |  是否开启会话保持 | N | **默认false**。为true时开启会话保持；为false时关闭 |
 | hash_strategy| string |  会话保持策略  | N | CLIENT_IP_ONLY，根据client ip做会话保持 <br/>	CLIENT_ID_ONLY，根据请求中header做会话保持(默认值) <br>	CLIENT_ID_PERFERED，优先基于特定header，如果请求中没有对应header，则使用client ip|
 | hash_header| string |  指定CLIENT_ID使用的header | N | 当使用cookie作为会话保持的哈希key时，数据格式为Cookie:${key} |
 
@@ -2909,33 +2735,31 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 | 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
 | - | -  | - | - | - |
-| timeout_conn_serv| int |  连接后端超时(ms)| Y |  |
-| timeout_response_header| int |  读后端响应头部超时(ms)| Y |  |
-| timeout_readbody_client| int |  读请求body超时(ms)| Y |  |
-| timeout_read_client_again| int |  与用户的长连接超时(ms) | Y |  |
-| timeout_write_client| int |  写响应超时(ms)| Y | - |
+| timeout_conn_serv| int |  连接后端超时(ms)| N |  |
+| timeout_response_header| int |  读后端响应头部超时(ms)| N |  |
+| timeout_readbody_client| int |  读请求body超时(ms)| N |  |
+| timeout_read_client_again| int |  与用户的长连接超时(ms) | N |  |
+| timeout_write_client| int |  写响应超时(ms)| N | - |
 
 **表：被动健康检查**
 
 | 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
 | - | -  | - | - | - |
-| failnum| int |  进入健康检查的失败次数阈值 | Y | 连续转发失败多次后，BFE进入健康检查状态，对下游RS发起探活 |
-| interval| int |  连续健康检查的时间间隔 | Y | 单位ms |
-| host| string |  健康检查请求的域名| Y | 域名后的部分 |
-| uri| string |  健康检查请求的URI  | Y |  |
-| statuscode| int |  期望的健康检查返回码 | Y | 如果需要忽略返回码，此处可以填0 |
+| failnum| int |  进入健康检查的失败次数阈值 | N | 连续转发失败多次后，BFE进入健康检查状态，对下游RS发起探活；**默认值为3** |
+| interval| int |  连续健康检查的时间间隔 | N | 单位ms；**默认值为1000** |
+| host| string |  健康检查请求的域名| N | 域名后的部分；为空时使用 `instance_pool` 中第一个实例的 `hostname` |
+| uri| string |  健康检查请求的URI  | N | **默认值为 `/`** |
+| statuscode| int |  期望的健康检查返回码 | N | 如果需要忽略返回码，此处可以填0；**默认值为0** |
 
 **表：LLM配置**
 
 | 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
 | - | -  | - | - | - |
-| service_name| string |  服务名称 | Y | 最长255字符 |
-| group| string |  分组名称 | N | 最长255字符 |
-| model_endpoint| object |  模型列表端点配置 | Y | 用于调用第三方AI模型提供商的模型列表接口，具体字段见下方 表：Endpoint |
+| model_endpoint| object |  模型列表端点配置 | N | 用于调用第三方AI模型提供商的模型列表接口，具体字段见下方 表：Endpoint；未设置时使用默认值 |
 | models| []string |  支持的模型名称列表 | Y | 指定该集群支持的AI模型名称 |
 | model_mappings| []object |  模型名称映射 | N | 用于将用户请求的模型名映射为后端实际使用的模型名，具体字段见下方 表：模型映射 |
 | key| string |  服务认证密钥 | N | 用于后端AI服务的认证 |
-| provider_type| string |  AI模型提供商类型 | N | 取值如：deepseek、openai、qwen 等 |
+| provider_type| string |  AI模型提供商类型 | N | 取值如：deepseek、openai、qwen 等。数据来自 `/model-provider-types` |
 
 > **注意：** `enable` 字段已移除，设置 `llm_config` 时默认开启 AI 网关能力。
 
@@ -2943,8 +2767,8 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 | 参数名 | 类型 |参数含义 | 必填 | 补充描述 |
 | - | -  | - | - | - |
-| schema| string |  请求协议 | Y |  取值为 http、https |
-| uri| string |  请求URI | Y |  例如：/v1/models |
+| schema| string |  请求协议 | N |  取值为 http、https；**默认值为 https** |
+| uri| string |  请求URI | N |  **默认值为 `/v1/models`** |
 | headers| map[string]string |  请求头参数 | N | 自定义请求头 |
 
 **表：模型映射**
@@ -2956,11 +2780,9 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 **约束**
 
-- `sub_clusters` 字段已替换为 `instance_pool`，系统自动创建实例池和子集群。
-- `scheduler` 字段已移除，系统自动生成（默认子集群权重=100，`GSLB_BLACKHOLE`=0）。
+- `sub_clusters` 与 `scheduler` 为系统内部自动生成数据，不再对外暴露；每个集群只包含一个子集群，调度设置固定为 `GSLB_BLACKHOLE=0`。
 - `llm_config.enable` 字段已移除，设置 `llm_config` 时默认开启 AI 网关能力。
 - 删除集群时自动级联清理关联的实例池和子集群。
-- `/clusters/{cluster_name}/sub-clusters` 接口已废弃，子集群绑定由系统自动处理。
 
 ### 10.2 接口清单
 
@@ -2970,7 +2792,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 | 项目 | 值 | 说明 |
 | - | - | - |
-| 含义 | 创建集群（一键创建实例池 + 子集群 + 绑定 + 自动调度） | - |
+| 含义 | 创建集群（一键创建实例池 + 子集群 + 绑定） | - |
 | 端点 | /clusters | - |
 | 版本 | v1 | - |
 | method | POST | - |
@@ -2986,11 +2808,10 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 | instance_pool[].ip| string | 实例 IP 地址 | Y | |
 | instance_pool[].weight| int | 实例权重，范围 [0,100] | Y | |
 | instance_pool[].ports| map[string]int | 实例端口 | Y | 至少包含 Default 端口 |
-| instance_pool[].tags| map[string]string | 实例标签 | N | |
-| basic| object |  基本参数| Y | 见 10.1 数据模型中表：连接设置、表：重试设置、表：超时设置 |
-| sticky_sessions| object |  会话保持| Y | 见 10.1 数据模型中表：会话保持 |
-| passive_health_check| object |  被动健康检查| Y | 见 10.1 数据模型中表：被动健康检查 |
-| llm_config| object |  AI LLM服务配置| N | 开启AI网关能力时必填，见 10.1 数据模型中表：LLM配置 |
+| basic| object |  基本参数| N | AI网关场景默认推荐值：connection.max_idle_conn_per_rs=0、cancel_on_client_close=false；retries.max_retry_in_cluster=2；timeouts.timeout_conn_serv=50000、timeout_response_header=50000、timeout_readbody_client=30000、timeout_read_client_again=30000、timeout_write_client=60000 |
+| sticky_sessions| object |  会话保持| N | AI网关场景默认推荐值：enabled=false；若开启，hash_strategy=CLIENT_ID_ONLY、hash_header为空 |
+| passive_health_check| object |  被动健康检查| N | AI网关场景默认推荐值：failnum=3、interval=1000ms、host为空（使用instance_pool首个实例hostname）、uri="/"、statuscode=0 |
+| llm_config| object |  AI LLM服务配置| Y | 见 10.1 数据模型中表：LLM配置 |
 
 **HTTP BODY参数示例**
 
@@ -3005,9 +2826,6 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
             "weight": 50,
             "ports": {
                 "Default": 8080
-            },
-            "tags": {
-                "region": "bj"
             }
         },
         {
@@ -3016,9 +2834,6 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
             "weight": 50,
             "ports": {
                 "Default": 8080
-            },
-            "tags": {
-                "region": "sh"
             }
         }
     ],
@@ -3029,8 +2844,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
             "cancel_on_client_close": false
         },
         "retries": {
-            "max_retry_in_subcluster": 2,
-            "max_retry_cross_subcluster": 0
+            "max_retry_in_cluster": 2
         },
         "buffers": {
             "req_write_buffer_size": 512
@@ -3044,20 +2858,18 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
         }
     },
     "sticky_sessions": {
-        "session_sticky_type": "INSTANCE",
+        "enabled": false,
         "hash_strategy": "CLIENT_ID_ONLY",
         "hash_header": "Cookie:USERID"
     },
     "passive_health_check": {
         "interval": 1000,
-        "failnum": 10,
-        "host": "health.example.com",
-        "uri": "/health",
-        "statuscode": 200
+        "failnum": 3,
+        "host": "",
+        "uri": "/",
+        "statuscode": 0
     },
     "llm_config": {
-        "service_name": "deepseek-service",
-        "group": "llm-group",
         "model_endpoint": {
             "schema": "https",
             "uri": "/v1/models",
@@ -3085,15 +2897,12 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 创建集群时，系统自动执行以下步骤：
 
-1. 校验请求参数（instance_pool、basic 等必填项）
-2. 若 llm_config 不为 nil，内部自动设置 `enable = true`
-3. 自动生成 scheduler：
-   - 从配置读取 `DefaultAIClusterName`（如 `BFE-AI_product.szyf`）
-   - 设置 `{cluster_name}: 100`，`GSLB_BLACKHOLE: 0`
-4. 创建集群
-5. 自动创建实例池（名称格式：`{product_name}.{cluster_name}`）
-6. 自动创建子集群（名称：`{cluster_name}`，绑定实例池）
-7. 自动绑定子集群到集群
+1. 校验请求参数（`name`、`instance_pool`、`llm_config` 等必填项；`basic`、`sticky_sessions`、`passive_health_check` 若未传则使用 AI 网关场景默认推荐值）
+2. 若 `llm_config` 不为 nil，内部自动设置 `enable = true`
+3. 创建集群
+4. 自动创建实例池（名称格式：`{product_name}.{cluster_name}`）
+5. 自动创建子集群（名称：`{cluster_name}`，绑定实例池）
+6. 自动绑定子集群到集群
 
 **返回数据（Data内容）**
 
@@ -3101,10 +2910,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 | - | -  | - |
 | name | string | 集群名 |
 | description | string | 集群描述信息 |
-| ready | bool | 集群是否就绪 |
 | instance_pool | []Instance | 实例列表 |
-| sub_clusters | []string | 子集群列表 |
-| scheduler | object | 自动生成的调度配置 |
 | llm_config | object | LLM 配置 |
 | basic | object | 基本参数 |
 | sticky_sessions | object | 会话保持 |
@@ -3118,29 +2924,19 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
     "Data": {
         "name": "my-cluster",
         "description": "示例集群",
-        "ready": false,
         "instance_pool": [
             {
                 "hostname": "backend-1",
                 "ip": "10.0.0.1",
                 "weight": 50,
-                "ports": {"Default": 8080},
-                "tags": {"region": "bj"}
+                "ports": {"Default": 8080}
             }
         ],
-        "sub_clusters": ["my-cluster"],
-        "scheduler": {
-            "BFE-AI_product.szyf": {
-                "my-cluster": 100,
-                "GSLB_BLACKHOLE": 0
-            }
-        },
         "llm_config": { "...": "..." },
         "basic": { "...": "..." },
         "sticky_sessions": { "...": "..." },
         "passive_health_check": { "...": "..." }
-    },
-    "WorkMode": "ModeNormal"
+    }
 }
 ```
 
@@ -3182,7 +2978,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 **返回数据（Data内容）**
 
-同创建接口（含 `instance_pool` 和 `scheduler` 字段）。
+同创建接口。
 
 #### 10.2.4 更新集群基本配置
 
@@ -3204,7 +3000,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 **输入参数（Body）**
 可修改字段含义同创建接口。若传入 `instance_pool` 字段，系统会自动同步更新对应的实例池。
 
-> **注意：** `scheduler` 由系统自动管理，更新时不支持手动修改。`sub_clusters` 字段已不再支持，请使用 `instance_pool`。
+> **注意：** `sub_clusters` 与 `scheduler` 为系统内部自动生成，更新时不支持手动修改，请通过 `instance_pool` 调整实例。
 
 **HTTP BODY参数示例**
 
@@ -3212,7 +3008,6 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 {
     "name": "my-cluster",
     "description": "更新后的集群描述",
-    "ready": false,
     "instance_pool": [
         {
             "hostname": "backend-1",
@@ -3220,9 +3015,6 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
             "weight": 100,
             "ports": {
                 "Default": 8080
-            },
-            "tags": {
-                "region": "bj"
             }
         }
     ],
@@ -3233,8 +3025,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
             "cancel_on_client_close": false
         },
         "retries": {
-            "max_retry_in_subcluster": 2,
-            "max_retry_cross_subcluster": 0
+            "max_retry_in_cluster": 2
         },
         "buffers": {
             "req_write_buffer_size": 512
@@ -3248,19 +3039,18 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
         }
     },
     "sticky_sessions": {
-        "session_sticky_type": "INSTANCE",
+        "enabled": false,
         "hash_strategy": "CLIENT_ID_ONLY",
         "hash_header": "Cookie:USERID"
     },
     "passive_health_check": {
         "interval": 1000,
-        "failnum": 10,
-        "host": "health.example.com",
-        "uri": "/health",
-        "statuscode": 200
+        "failnum": 3,
+        "host": "",
+        "uri": "/",
+        "statuscode": 0
     },
     "llm_config": {
-        "service_name": "deepseek-service",
         "model_endpoint": {
             "schema": "https",
             "uri": "/v1/models"
@@ -3303,66 +3093,33 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 同创建接口。
 
-#### 10.2.6 集群就绪状态获取
+---
+
+## 11. /model-provider-types
+
+### 11.1 接口清单
+
+#### 11.1.1 获取AI模型提供商类型列表
 
 **基本信息**
 
 | 项目 | 值 | 说明 |
 | - | - | - |
-| 含义 | 获取集群是否就绪的状态（可以承接线上流量） | 当前，集群默认是就绪的 |
-| 端点 | /clusters/{cluster_name}/ready | - |
+| 含义 | 获取系统支持的AI模型提供商类型列表 | - |
+| 端点 | /model-provider-types | - |
 | 版本 | v1 | - |
 | method | GET | - |
-
-**输入参数（URI）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| cluster_name | string | 集群名字 | Y | - |
-
-**返回数据（Data内容）**
-
-| 参数名 | 类型 | 参数含义 |
-| - | - | - |
-| name | string | 集群名 |
-| ready | bool | 集群是否就绪 |
-
-**成功返回示例**
-
-```json
-{
-    "ErrNum": 200,
-    "ErrMsg": "success",
-    "Data": {
-        "name": "my-cluster",
-        "ready": false
-    },
-    "WorkMode": "ModeNormal"
-}
-```
-
-#### 10.2.7 获取AI模型提供商列表
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 获取 AI 模型提供商列表 | - |
-| 端点 | /model-providers | - |
-| 版本 | v1 | - |
-| method | GET | - |
-| Content-Type | application/x-www-form-urlencoded | - |
 
 **输入参数（Query）**
-无
 
-**HTTP BODY参数示例**
-无
+无。
 
 **返回数据（Data内容）**
-字符串数组，元素为模型提供商标识。
+
+字符串数组，元素为AI模型提供商标识。
 
 **成功返回示例**
+
 ```json
 {
     "ErrNum": 200,
@@ -3371,57 +3128,62 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
         "deepseek",
         "qwen",
         "openai"
-    ],
-    "WorkMode": "ModeNormal"
+    ]
 }
 ```
 
-#### 10.2.8 获取AI模型列表
+---
+
+## 12. /tools
+
+### 12.1 接口清单
+
+#### 12.1.1 从指定提供商获取AI模型列表
 
 **基本信息**
 
 | 项目 | 值 | 说明 |
 | - | - | - |
-| 含义 | 获取 AI 模型列表 | - |
-| 端点 | /models | - |
+| 含义 | 根据提供商信息代理拉取AI模型列表 | 用于集群创建前预览可用模型 |
+| 端点 | /tools/get-models-from-provider | - |
 | 版本 | v1 | - |
 | method | POST | - |
-| Content-Type | application/json | - |
 
 **输入参数（Body）**
 
 | 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
 | - | - | - | - | - |
-| schema | string | http、https | Y | - |
-| uri | string | 请求的uri | N | 路径前面可以有/，也可以无/。例如：/models 或者 models |
-| hosts | []string | 请求的 ip、port 组合或者域名 | Y | 支持 ipv4、ipv6。ipv4："1.1.1.1:8080" ipv6："[2001:db8::1]:8080" |
-| headers | map[string]string | 请求的 header 参数列表 | N | - |
-| provider_type | string | AI 模型提供商类型 | N | 取值为：deepseek，openai，qwen |
+| schema | string | 请求协议 | Y | 取值为 http、https |
+| uri | string | 请求URI | N | 路径前面可以有/，也可以无/。例如：/models 或者 models |
+| hosts | []string | 请求的IP、Port组合或域名 | Y | 支持ipv4、ipv6。ipv4："1.1.1.1:8080"；ipv6："[2001:db8::1]:8080" |
+| headers | map[string]string | 请求的Header参数列表 | N | - |
+| provider_type | string | AI模型提供商类型 | N | 取值如：deepseek、openai、qwen |
 
 **HTTP BODY参数示例**
 
 ```json
 {
-    "schema":"http",
-    "uri":"/models",
-    "hosts":["1.1.1.1:8080", "[2001:db8::1]:8080","www.a.com","www.b.com:8080"],
-    "headers":{
-        "Content-type":"application/json"
+    "schema": "http",
+    "uri": "/models",
+    "hosts": ["1.1.1.1:8080", "[2001:db8::1]:8080", "www.a.com", "www.b.com:8080"],
+    "headers": {
+        "Content-type": "application/json"
     },
-    "provider_type":"deepseek"
+    "provider_type": "deepseek"
 }
 ```
 
 **返回数据（Data内容）**
 
-状态码 200 为成功。返回数据为列表结构。
+Data为数组，每个元素包含模型ID和名称。
 
 | 参数名 | 类型 | 参数含义 |
 | - | - | - |
 | id | string | 模型ID |
-| name | string | 名称 |
+| name | string | 模型名称 |
 
 **成功返回示例**
+
 ```json
 {
     "ErrNum": 200,
@@ -3431,244 +3193,17 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
             "id": "model1",
             "name": "Model 1"
         }
-    ],
-    "WorkMode": "ModeNormal"
+    ]
 }
 ```
 
 ---
 
-## 11. /ai-route-rules
-
-### 11.1 数据模型
-
-```json
-{
-  "basic_forward_rules": [
-    {
-      "host_names": ["example.com"],
-      "paths": ["/v1"],
-      "cluster_name": "cluster_basic",
-      "description": "基础路由规则"
-    }
-  ],
-  "forward_rules": [
-    {
-      "name": "rule-1",
-      "description": "高级路由规则",
-      "expression": "req_host_in(\"example.com\")",
-      "cluster_name": "cluster_advanced"
-    }
-  ],
-  "forward_cases_code": 0
-}
-```
-
-**字段说明**
-
-| 字段 | 类型 | 说明 | 可能取值 |
-|------|------|------|----------|
-| `basic_forward_rules` | []BasicRouteRule | 基础转发规则列表 | - |
-| `forward_rules` | []AdvanceRouteRule | 高级转发规则列表 | - |
-| `forward_cases_code` | int | 路由场景码（只读） | - |
-
-**BasicRouteRule结构**
-
-| 字段 | 类型 | 说明 | 必填 |
-|------|------|------|------|
-| `host_names` | []string | 匹配的Host列表 | N |
-| `paths` | []string | 匹配的Path列表 | N |
-| `cluster_name` | string | 转发目标集群名 | Y |
-| `description` | string | 规则描述 | N |
-
-**AdvanceRouteRule结构**
-
-| 字段 | 类型 | 说明 | 必填 |
-|------|------|------|------|
-| `name` | string | 规则名称 | N |
-| `description` | string | 规则描述 | N |
-| `expression` | string | BFE条件表达式 | Y |
-| `cluster_name` | string | 转发目标集群名 | Y |
-
-### 11.2 接口清单
-
-#### 11.2.1 查询AI路由规则
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 查询默认产品的AI路由规则 | - |
-| 端点 | /ai-route-rules | - |
-| 版本 | v1 | - |
-| method | GET | - |
-
-**输入参数**
-
-无。
-
-**返回数据（Data内容）**
-
-字段同11.1数据模型。不存在时返回空数组。
-
----
-
-#### 11.2.2 更新AI路由规则
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 更新默认产品的AI路由规则 | - |
-| 端点 | /ai-route-rules | - |
-| 版本 | v1 | - |
-| method | PATCH | - |
-
-**输入参数（Body）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| basic_forward_rules | []BasicRouteRule | 基础转发规则列表 | N | 规则元素不能为nil |
-| forward_rules | []AdvanceRouteRule | 高级转发规则列表 | N | 规则元素不能为nil |
-
-**约束**
-
-- 若最后一条高级规则的`expression`不是`default_t()`，系统会自动追加一条默认兜底规则；
-- `basic_forward_rules`或`forward_rules`可单独更新，未传字段保持原值。
-
-**返回数据（Data内容）**
-
-字段同11.1数据模型。
-
----
-
-## 12. /global-models
-
-### 12.1 数据模型
-
-```json
-{
-  "services": [
-    {
-      "name": "deepseek-service",
-      "display_name": "Deepseek Service",
-      "cluster_name": "cluster_deepseek",
-      "models": ["deepseek-chat", "deepseek-coder"],
-      "model_mappings": [
-        {"key": "gpt-4", "value": "deepseek-chat"}
-      ]
-    }
-  ]
-}
-```
-
-**字段说明**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `services` | []ServiceModel | 全局LLM服务列表 |
-| `services[].name` | string | 服务名 |
-| `services[].display_name` | string | 展示名 |
-| `services[].cluster_name` | string | 所属集群名 |
-| `services[].models` | []string | 模型列表 |
-| `services[].model_mappings` | []ModelMapping | 模型映射 |
-
-### 12.2 接口清单
-
-#### 12.2.1 查询全局模型列表
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 查询全局LLM服务及模型映射 | - |
-| 端点 | /global-models | - |
-| 版本 | v1 | - |
-| method | GET | - |
-
-**输入参数（Query）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| service | string | 按服务名过滤 | N | - |
-
-**返回数据（Data内容）**
-
-字段同12.1数据模型。仅聚合`llm_config.enable=true`的集群。
-
----
-
-## 13. /products/{product_name}/models
+## 13. /expression/verify
 
 ### 13.1 接口清单
 
-#### 13.1.1 查询产品可用模型别名列表
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 获取指定产品下可用的模型别名列表 | - |
-| 端点 | /products/{product_name}/models | - |
-| 版本 | v1 | - |
-| method | GET | - |
-
-**输入参数（URI）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| product_name | string | 产品线名 | Y | 实际从请求上下文获取 |
-
-**返回数据（Data内容）**
-
-字符串数组，元素为模型别名。
-
----
-
-## 14. /general/actions/exec-api
-
-### 14.1 接口清单
-
-#### 14.1.1 代理执行外部API
-
-**基本信息**
-
-| 项目 | 值 | 说明 |
-| - | - | - |
-| 含义 | 代理执行第三方HTTP/HTTPS API | - |
-| 端点 | /general/actions/exec-api | - |
-| 版本 | v1 | - |
-| method | POST | - |
-
-**输入参数（Body）**
-
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| schema | string | 请求协议 | Y | 枚举`http`、`https` |
-| uri | string | 请求URI | Y | - |
-| hosts | []string | 目标主机列表 | Y | 至少1个，依次尝试 |
-| headers | map[string]string | 请求头 | N | - |
-
-**执行逻辑**
-
-1. 依次向`hosts`发送请求；
-2. 单个请求超时10s，重试1次；
-3. 首个成功请求的响应体作为`result`返回；
-4. 全部失败返回参数错误。
-
-**返回数据（Data内容）**
-
-| 参数名 | 类型 | 参数含义 |
-| - | - | - |
-| result | string | 首个成功请求的响应体字符串 |
-
----
-
-## 15. /expression/verify
-
-### 15.1 接口清单
-
-#### 15.1.1 校验路由表达式（已废弃）
+#### 13.1.1 校验路由表达式
 
 **基本信息**
 
@@ -3697,28 +3232,29 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 ---
 
-## 16. 关键业务流程
+## 14. 关键业务流程
 
 **运行时执行顺序**：网关先执行模型访问控制检查流程，如果通过，再执行限流检查流程，如果通过，再执行配额扣减流程。
 
-### 16.1 创建API-Key的完整流程
+### 14.1 创建API-Key的完整流程
 ```text
 1. 调用 POST /api-keys
    └─ 校验quota_plan合法性（若传入）
    └─ 校验rate_limit_policy合法性（若传入且enabled=true，rules至少配置一项）
    └─ 校验entity_id合法性（若不为空，entity存在）
    └─ 校验models/subnet格式
+   └─ 校验key全局唯一性（若传入）
 2. 若未传入quota_plan，使用默认值（unlimited=true, pass_when_no_enough_quota=false, quota=0, unit=total_token, reset_period=never）
 3. 若未传入rate_limit_policy，使用默认值（enabled=false, rules为空）
 4. 若传入quota_plan且unlimited=false：
    └─ 创建QuotaBalance（remaining = quota，used = 0）
 5. 若传入rate_limit_policy：
    └─ 创建RateLimitPolicy
-6. 生成key，写入持久化存储，绑定上述资源
+6. 若未传入key则后台生成，否则使用传入的key，写入持久化存储，绑定上述资源
 7. 返回结果，含完整的嵌套结构（不含balance）
 ```
 
-### 16.2 创建Entity的完整流程
+### 14.2 创建Entity的完整流程
 ```text
 1. 调用 POST /entities
    └─ 校验type合法性（必须已定义）
@@ -3736,7 +3272,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 7. 返回结果，含完整的嵌套结构（不含balance）
 ```
 
-### 16.3 运行时网关模型访问控制检查流程（数据面）
+### 14.3 运行时网关模型访问控制检查流程（数据面）
 ```text
 1. 网关收到请求，解析API-Key和请求模型（如gpt-4）
 2. 查询API-Key元数据（缓存），获取models字段
@@ -3756,7 +3292,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
         - 若请求模型不在allow_models中，拒绝请求（403）
         - 若请求模型在allow_models中，通过该Entity检查
    c. 检查链中任一Entity触发拒绝，请求立即拒绝（403）
-5. 模型访问控制检查通过后，进入限流检查流程（16.4）
+5. 模型访问控制检查通过后，进入限流检查流程（14.4）
 ```
 
 **说明**：
@@ -3767,7 +3303,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 
 ---
 
-### 16.4 运行时网关限流检查流程（数据面）
+### 14.4 运行时网关限流检查流程（数据面）
 ```text
 1. 网关收到请求，解析API-Key和请求模型（如gpt-4）
 2. 查询API-Key元数据（缓存），获取rate_limit_policy和entity_id
@@ -3789,13 +3325,13 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
         - 若max_concurrency=-1，跳过并发检查
         - 若当前并发 >= max_concurrency，限流失败（429）
    b. 若当前Policy任一规则触发限流，标记失败，立即拒绝请求
-6. 所有适用的Rate-Limit Policy必须全部通过，请求才进入配额扣减阶段（16.5）
+6. 所有适用的Rate-Limit Policy必须全部通过，请求才进入配额扣减阶段（14.5）
    └─ 任一Policy触发限流，请求拒绝（429），不再执行配额扣减
 ```
 
-### 16.5 运行时网关配额扣减流程（数据面）
+### 14.5 运行时网关配额扣减流程（数据面）
 ```text
-1. 限流检查（16.4）通过后，进入配额扣减阶段
+1. 限流检查（14.4）通过后，进入配额扣减阶段
 2. 查询API-Key元数据（缓存），获取quota_plan、entity_id、unlimited_quota
 3. 若unlimited_quota=true，直接放行
 4. 构建Quota Plan扣减列表（使用Set去重，相同plan_id只扣减一次）：
@@ -3823,7 +3359,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
    └─ 任一实际执行扣减的Plan失败，触发所有已扣减balance的原子回滚（包含其他成功Plan的扣减），请求拒绝（429002）
 ```
 
-### 16.6 配置变更的级联与隔离
+### 14.6 配置变更的级联与隔离
 | 变更操作 | 级联影响 | 隔离机制 |
 |----------|----------|----------|
 | 修改API-Key的quota_plan | 实时生效，影响后续请求；更新底层资源 | 旧资源若不被其他API-Key/Entity引用则级联删除 |
@@ -3842,7 +3378,7 @@ Data 为数组，元素字段同 9.2.1 创建证书返回数据。
 | 修改quota_plan.quota | 同步更新balance.remaining和used | 视为重置配额 |
 
 ---
-## 17. 对象关系图
+## 15. 对象关系图
 
 ```mermaid
 classDiagram
@@ -3881,6 +3417,24 @@ classDiagram
         +string description
         +int level
         +int64 create_time
+    }
+
+    class Cluster {
+        +string name
+        +string description
+        +[]Instance instance_pool
+        +BasicConfig basic
+        +StickySessions sticky_sessions
+        +PassiveHealthCheck passive_health_check
+        +LLMConfig llm_config
+    }
+
+    class LLMConfig {
+        +Endpoint model_endpoint
+        +[]string models
+        +[]ModelMapping model_mappings
+        +string key
+        +string provider_type
     }
 
     class QuotaPlan {
@@ -3968,6 +3522,7 @@ classDiagram
     RateLimitPolicy "1" --> "1" Rules : rules
     Rules "1" --> "0..3" TPMConfig : tpm
     Rules "1" --> "0..3" RPMConfig : rpm
+    Cluster "1" --> "1" LLMConfig : llm_config
 ```
 
 **关系说明**
@@ -3983,16 +3538,10 @@ classDiagram
 - **Entity → RouteRules**：一个Entity必须拥有1个RouteRules（嵌套）。若创建时未设置，使用默认值（enabled=false, rules为空）。生命周期与Entity绑定。
 - **Entity模型访问控制**：`allow_models`和`block_models`共同决定该Entity及其挂载的API-Key可访问的模型范围。`block_models`优先级高于`allow_models`。
 - **QuotaPlan → QuotaBalance**：一个QuotaPlan对应唯一的QuotaBalance（一一对应）。QuotaPlan为静态配置（unlimited、quota、unit、reset_period等），QuotaBalance为动态运行态（used、remaining）。运行时网关扣减操作直接作用于QuotaBalance的remaining。
-- **QuotaPlan的balance字段**：为只读字段，实时反映对应QuotaBalance的used和remaining。仅在独立查询接口（/api-keys/{id}/quota-plan、/entities/{id}/quota-plan）中返回。
+- **QuotaPlan的balance字段**：为只读字段，反映对应QuotaBalance的used和remaining。`GET /api-keys` 和 `GET /api-keys/{id}` 的返回中 `quota_plan` 已包含 `balance`；独立查询接口（`/api-keys/{id}/quota-plan`、`/entities/{id}/quota-plan`）也返回完整balance。
 - **RateLimitPolicy → Rules**：一个RateLimitPolicy包含一组Rules，Rules中可配置tpm（最多3个）、rpm（最多3个）和max_concurrency（默认-1，表示不限制）。
 - **运行时层级生效逻辑**：API-Key挂载到Entity后，运行时生效的QuotaPlan和RateLimitPolicy为该API-Key自身直接拥有的 + 该Entity直接拥有的 + 该Entity所有祖先Entity直接拥有的（去重）。
 - **GlobalRouteTable → RouteRules → AiRouteRule → AiRouteTarget/AiRouteFallback**：Global路由表通过嵌套的 RouteRules 管理规则，每条规则包含转发目标（targets）和降级目标（fallbacks）。
+- **Cluster → LLMConfig**：一个Cluster包含1个LLMConfig，用于描述AI服务接入信息（provider_type、models、key、model_endpoint、model_mappings）。设置LLMConfig即开启AI网关能力。
 
----
-
-## 18. 版本修改记录
-
-| 版本 | 日期 | 修改内容 |
-| - | - | - |
-| v0.4.0 | 2026-07-26 | 全量同步代码中实际注册的`/open-api/v1`接口：<br>1. 新增章节：/ai-route-rules、/global-models、/products/{product_name}/models、/general/actions/exec-api、/expression/verify；<br>2. Auth章节补充：GET /auth/users/{user_name}、GET /meta；<br>3. API-Key章节补充：GET /api-keys/actions/generate；修正配额计划路径为`/api-keys/{id}/quota-plan`；修正列表返回为分页结构；<br>4. Entity章节修正列表返回为分页结构，补充Query参数；<br>5. Entity-Type章节修正列表返回为分页结构；<br>6. Certificate章节删除未注册的GET /certificates/{cert_name}，修正DELETE返回数据；<br>7. 修正User创建接口参数（增加`type`，`is_admin`改为可选，`password`条件必填）。 |
 
