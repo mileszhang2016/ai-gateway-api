@@ -288,6 +288,7 @@ CREATE TABLE api_keys (
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  comment "更新时间",
   PRIMARY KEY (`inner_id`),
   UNIQUE KEY `uk_id` (`id`),
+  UNIQUE KEY `uk_api_key` (`api_key`),
   INDEX idx_product_name (product_name),
   INDEX idx_entity_id (entity_id),
   INDEX idx_quota_plan_id (quota_plan_id),

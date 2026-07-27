@@ -43,19 +43,7 @@ func userOneActionProcess(req *http.Request, param *UserNameParam) (*UserData, e
 		return nil, xerror.WrapRecordNotExist("User")
 	}
 
-	ups, err := container.AuthorizeManager.FetchVisitorProductList(req.Context(), &iauth.Visitor{
-		User: user,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	userData := newUserData(user)
-	for _, one := range ups {
-		userData.Products = append(userData.Products, one.Name)
-	}
-
-	return userData, nil
+	return newUserData(user), nil
 }
 
 var _ xreq.Handler = UserOneAction
@@ -77,15 +65,12 @@ type UserData struct {
 	UserName string `json:"user_name,omitempty"`
 	IsAdmin  bool   `json:"is_admin"`
 
-	SessionKey string   `json:"session_key,omitempty"`
-	Products   []string `json:"products,omitempty"`
+	SessionKey string `json:"session_key,omitempty"`
 }
 
 func newUserData(user *iauth.User) *UserData {
-	data := &UserData{
+	return &UserData{
 		UserName: user.Name,
-		IsAdmin:  user.Admin,
+		IsAdmin:  true,
 	}
-
-	return data
 }

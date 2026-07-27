@@ -83,6 +83,7 @@ type APIKeyFilter struct {
 	ProductNames    []string
 	ALBGroupName    *string
 	ID              *string
+	Key             *string
 	InnerID         *int64
 	QuotaPlanID     *int64
 	RouteRulesID    *int64
@@ -335,6 +336,9 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 
 		one := list[0]
 
+		// key is immutable through update endpoints
+		param.Key = nil
+
 		if param.QuotaPlan != nil && rppm.quotaPlanStorager != nil {
 			if one.QuotaPlanID != nil {
 				_, err = rppm.quotaPlanStorager.UpdateQuotaPlan(ctx, *one.QuotaPlanID, param.QuotaPlan)
@@ -423,22 +427,32 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 			}
 		}
 
-		// Check for existing API key tokens
-		tokens, err := rppm.storager.FetchAPIKeyTokenList(ctx, &APIKeyTokenFilter{Key: param.Key})
-		if err != nil {
-			return err
-		}
-		if len(tokens) > 1 {
-			return xerror.WrapDirtyDataErrorWithMsg(fmt.Sprintf("API-Key-Token:%s", *param.Key))
-		}
+		updatedTime := time.Now().Unix()
+		param.UpdatedTime = &updatedTime
 
-		// Set updated time based on existing token or current time
-		if len(tokens) > 0 {
-			updatedTime := tokens[0].CreatedAt.Unix()
-			param.UpdatedTime = &updatedTime
-		} else {
-			updatedTime := time.Now().Unix()
-			param.UpdatedTime = &updatedTime
+		// Check global uniqueness of the API key value
+		if param.Key != nil && *param.Key != "" {
+			tokens, err := rppm.storager.FetchAPIKeyTokenList(ctx, &APIKeyTokenFilter{Key: param.Key})
+			if err != nil {
+				return err
+			}
+			if len(tokens) > 1 {
+				return xerror.WrapDirtyDataErrorWithMsg(fmt.Sprintf("API-Key-Token:%s", *param.Key))
+			}
+
+			existingKeys, err := rppm.storager.FetchAPIKeyList(ctx, &APIKeyFilter{Key: param.Key})
+			if err != nil {
+				return err
+			}
+			if len(existingKeys) > 0 {
+				return xerror.WrapParamErrorWithMsg("API-Key value %s already exists", *param.Key)
+			}
+
+			// Set updated time based on existing token if reused
+			if len(tokens) > 0 {
+				updatedTime := tokens[0].CreatedAt.Unix()
+				param.UpdatedTime = &updatedTime
+			}
 		}
 
 		// Create QuotaPlan if provided

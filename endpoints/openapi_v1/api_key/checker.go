@@ -91,12 +91,8 @@ func checkUpdateAPIKey(param *icluster_conf.APIKeyParam, productName string) err
 	}
 
 	if param.Key != nil {
-		if !strings.HasPrefix(*param.Key, fmt.Sprintf("%s-", productName)) {
-			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("key must begin with prefix %s-", productName))
-		}
-
 		if !ValidateString(*param.Key) {
-			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Allowed Characters: Uppercase/Lowercase Letters, Numbers, and Hyphen (-)"))
+			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Allowed Characters: Uppercase/Lowercase Letters, Numbers, Hyphen (-) and Underscore (_)"))
 		}
 	}
 
@@ -121,12 +117,8 @@ func checkKey(key *string, productName string) error {
 		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set key"))
 	}
 
-	if !strings.HasPrefix(*key, fmt.Sprintf("%s-", productName)) {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("key must begin with prefix %s-", productName))
-	}
-
 	if !ValidateString(*key) {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Allowed Characters: Uppercase/Lowercase Letters, Numbers, and Hyphen (-)"))
+		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Allowed Characters: Uppercase/Lowercase Letters, Numbers, Hyphen (-) and Underscore (_)"))
 	}
 
 	return nil

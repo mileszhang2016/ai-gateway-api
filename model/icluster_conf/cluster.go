@@ -184,9 +184,6 @@ type ClusterStickySessions struct {
 }
 
 type LLMConfig struct {
-	Enable        *bool      `json:"enable"`         // service switch
-	ServiceName   *string    `json:"service_name"`   //
-	Group         *string    `json:"group"`          // group name
 	ModelEndpoint *Endpoint  `json:"model_endpoint"` // model list endpoints
 	Models        []string   `json:"models"`         // model name list
 	ModelMappings []*Mapping `json:"model_mappings"` // model mapping

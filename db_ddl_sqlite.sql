@@ -293,7 +293,8 @@ CREATE TABLE api_keys (
   route_rules_id INTEGER DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT '0000-01-01 00:00:00',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (id)
+  UNIQUE (id),
+  UNIQUE (api_key)
 );
 CREATE INDEX api_keys_product_name ON api_keys (product_name);
 CREATE INDEX api_keys_entity_id ON api_keys (entity_id);

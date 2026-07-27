@@ -17,10 +17,8 @@ package auth
 import (
 	"net/http"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
@@ -34,9 +32,8 @@ var TokenCreateEndpoint = &xreq.Endpoint{
 }
 
 type TokenCreateParam struct {
-	Name        *string `json:"name" uri:"name" validate:"required,min=1"`
-	Scope       *string `json:"scope" validate:"oneof=System Product Support"`
-	ProductName *string `json:"product_name" validate:""`
+	Name  *string `json:"name" validate:"required,min=1"`
+	Scope *string `json:"scope" validate:"required,oneof=System Support"`
 }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
@@ -45,10 +42,6 @@ func newTokenCreateParam(req *http.Request) (*TokenCreateParam, error) {
 	err := xreq.BindJSON(req, param)
 	if err != nil {
 		return param, err
-	}
-
-	if *param.Scope == iauth.ScopeProduct && param.ProductName == nil {
-		return nil, xerror.WrapParamErrorWithMsg("ProductName Required When Scope Is Product")
 	}
 
 	return param, err
@@ -64,25 +57,10 @@ func TokenCreateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	var product *ibasic.Product
-	if param.ProductName != nil {
-		products, err := container.ProductManager.FetchProducts(req.Context(), &ibasic.ProductFilter{
-			Name: param.ProductName,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		if len(products) == 0 {
-			return nil, xerror.WrapParamErrorWithMsg("Product Not Exist")
-		}
-		product = products[0]
-	}
-
 	token, err := container.AuthenticateManager.CreateToken(req.Context(), &iauth.TokenParam{
 		Name:  param.Name,
 		Scope: param.Scope,
-	}, product)
+	}, nil)
 	if err != nil {
 		return nil, err
 	}

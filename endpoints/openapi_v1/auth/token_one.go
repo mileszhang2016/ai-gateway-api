@@ -61,10 +61,9 @@ func TokenOneAction(req *http.Request) (interface{}, error) {
 }
 
 type TokenData struct {
-	Name        string `json:"name"`
-	ProductName string `json:"product_name,omitempty"`
-	Token       string `json:"token,omitempty"`
-	Scope       string `json:"scope"`
+	Name  string `json:"name"`
+	Token string `json:"token,omitempty"`
+	Scope string `json:"scope"`
 }
 
 func newTokenData(token *iauth.Token, withToken bool) *TokenData {
@@ -73,16 +72,9 @@ func newTokenData(token *iauth.Token, withToken bool) *TokenData {
 		t = ""
 	}
 
-	productName := ""
-	if token.Product != nil {
-		productName = token.Product.Name
-	}
-
 	return &TokenData{
 		Name:  token.Name,
 		Token: t,
 		Scope: token.Scope,
-
-		ProductName: productName,
 	}
 }

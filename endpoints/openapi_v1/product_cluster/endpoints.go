@@ -24,7 +24,4 @@ var Endpoints = []*xreq.Endpoint{
 	CreateEndpoint,
 	UpdateBasicEndpoint,
 	DeleteEndpoint,
-	ReadyEndpoint,
-	ListModelProvidersRoute,
-	ListModelsRoute,
 }

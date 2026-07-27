@@ -88,6 +88,7 @@ func newAPIKeyFilterToParam(filter *icluster_conf.APIKeyFilter) *dao.TAPIKeyPara
 	param := &dao.TAPIKeyParam{
 		ProductName:     filter.ProductName,
 		ID:              filter.ID,
+		Key:             filter.Key,
 		InnerID:         filter.InnerID,
 		QuotaPlanID:     filter.QuotaPlanID,
 		RouteRulesID:    filter.RouteRulesID,

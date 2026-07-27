@@ -24,16 +24,13 @@ import (
 )
 
 // UserCreateParam Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type UserCreateParam struct {
-	UserName *string `json:"user_name" uri:"user_name" validate:"required,min=1"`
-	Password *string `json:"password" uri:"password"`
-	IsAdmin  bool    `json:"is_admin" uri:"is_admin"`
-	Type     string  `json:"type" uri:"password" validate:"required,oneof=jwt normal"`
+	UserName *string `json:"user_name" validate:"required,min=1"`
+	Password *string `json:"password" validate:"required,min=1"`
+	IsAdmin  bool    `json:"is_admin"`
 }
 
 // UserCreateRoute route
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 var UserCreateEndpoint = &xreq.Endpoint{
 	Path:       "/auth/users",
 	Method:     http.MethodPost,
@@ -44,39 +41,31 @@ var UserCreateEndpoint = &xreq.Endpoint{
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func newUserCreateParam(req *http.Request) (*UserCreateParam, error) {
 	param := &UserCreateParam{
-		Type: "normal",
+		IsAdmin: true,
 	}
 	err := xreq.BindJSON(req, param)
 	return param, err
 }
 
 func userCreateActionProcess(req *http.Request, param *UserCreateParam) error {
-	scope := iauth.ScopeSystem
-	if !param.IsAdmin {
-		scope = iauth.ScopeProduct
-	}
-
 	return container.AuthenticateManager.CreateUser(req.Context(), &iauth.UserParam{
 		Name:     param.UserName,
 		Password: param.Password,
-		Scopes:   []string{scope},
+		Scopes:   []string{iauth.ScopeSystem},
 	})
 }
 
 var _ xreq.Handler = UserCreateAction
 
 // UserCreateAction action
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 func UserCreateAction(req *http.Request) (interface{}, error) {
 	param, err := newUserCreateParam(req)
 	if err != nil {
 		return nil, err
 	}
 
-	if param.Type == "normal" {
-		if param.Password == nil {
-			return nil, xerror.WrapParamErrorWithMsg("Password Must Set When Type Is normal")
-		}
+	if param.Password == nil || *param.Password == "" {
+		return nil, xerror.WrapParamErrorWithMsg("password is required")
 	}
 
 	return nil, userCreateActionProcess(req, param)

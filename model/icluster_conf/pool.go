@@ -73,13 +73,12 @@ type Pool struct {
 }
 
 type Instance struct {
-	HostName string            `json:"Name"`
-	IP       string            `json:"Addr"`
-	Port     int               `json:"Port"`
-	Ports    map[string]int    `json:"Ports,omitempty"`
-	Tags     map[string]string `json:"tags,omitempty"`
-	Weight   int64             `json:"Weight"`
-	Disable  bool              `json:"Disable"`
+	HostName string         `json:"Name"`
+	IP       string         `json:"Addr"`
+	Port     int            `json:"Port"`
+	Ports    map[string]int `json:"Ports,omitempty"`
+	Weight   int64          `json:"Weight"`
+	Disable  bool           `json:"Disable"`
 }
 
 const (

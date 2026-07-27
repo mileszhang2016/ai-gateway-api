@@ -12,37 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package middleware
+package certificate
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
+	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
+	"github.com/yf-networks/ai-gateway-api/model/iprotocol"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
-func UserProbeAction(req *http.Request) (*http.Request, error) {
-	authHeader := req.Header.Get("Authorization")
-	if authHeader == "" {
-		return req, nil
-	}
+// OneEndpoint route
+var OneEndpoint = &xreq.Endpoint{
+	Path:       "/certificates/{cert_name}",
+	Method:     http.MethodGet,
+	Handler:    xreq.Convert(OneAction),
+	Authorizer: iauth.FA(iauth.FeatureCert, iauth.ActionRead),
+}
 
-	ss := strings.SplitN(authHeader, " ", 2)
-	if len(ss) != 2 {
-		return nil, xerror.WrapAuthenticateFailErrorWithMsg("Bad Format Header Authorization")
-	}
+var _ xreq.Handler = OneAction
 
-	param := &iauth.AuthenticateParam{
-		Type:     ss[0],
-		Identify: ss[1],
-	}
-
-	visitor, err := container.AuthenticateManager.Authenticate(req.Context(), param)
+// OneAction action
+func OneAction(req *http.Request) (interface{}, error) {
+	param, err := newOneParamFromReq(req)
 	if err != nil {
 		return nil, err
 	}
 
-	return req.WithContext(iauth.NewVisitorContext(req.Context(), visitor)), nil
+	list, err := container.CertificateManager.FetchCertificates(req.Context(), &iprotocol.CertificateFilter{
+		CertName: param.CertName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(list) == 0 {
+		return nil, xerror.WrapRecordNotExist()
+	}
+
+	return newOneData(list[0]), nil
 }
