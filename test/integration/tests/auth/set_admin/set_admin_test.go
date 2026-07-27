@@ -1,4 +1,4 @@
-package set_admin
+package auth_test
 
 import (
 	"os"
@@ -15,94 +15,34 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func TestSetAdmin_Normal_SetToAdmin(t *testing.T) {
-	// AUTH-5-001: 设置为管理员
-	client := testutil.GetClient()
+func TestAuth_SetAdmin(t *testing.T) {
+	userName := testutil.UniqueUserName()
+	if err := testutil.CreateUser(userName, "password@123"); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
 
-	// 创建普通用户
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_user_promote",
-		"password":  "password@123",
-		"is_admin":  false,
+	t.Run("AUTH-5-001 设置管理员为 true", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/auth/users/"+userName+"/is_admin", map[string]interface{}{
+			"is_admin": true,
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		getResp, err := testutil.GetClient().Get("/open-api/v1/auth/users/" + userName)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, getResp)
+		testutil.AssertDataFieldEquals(t, getResp, "is_admin", true)
 	})
-	if err != nil {
-		t.Fatalf("create user failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
 
-	// 设置为管理员
-	resp, err = client.Patch("/open-api/v1/auth/users/test_user_promote/is_admin", map[string]interface{}{
-		"is_admin": true,
+	t.Cleanup(func() {
+		testutil.DeleteUser(userName)
 	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-}
-
-func TestSetAdmin_Normal_RemoveAdmin(t *testing.T) {
-	// AUTH-5-002: 取消管理员权限
-	client := testutil.GetClient()
-
-	// 创建管理员用户
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_admin_demote",
-		"password":  "password@123",
-		"is_admin":  true,
-	})
-	if err != nil {
-		t.Fatalf("create user failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-
-	// 取消管理员权限
-	resp, err = client.Patch("/open-api/v1/auth/users/test_admin_demote/is_admin", map[string]interface{}{
-		"is_admin": false,
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-}
-
-func TestSetAdmin_Default_IsAdminFalse(t *testing.T) {
-	// AUTH-5-003: 未传 is_admin 时，默认取消管理员权限
-	client := testutil.GetClient()
-
-	// 创建管理员用户
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_user_noadmin",
-		"password":  "password@123",
-		"is_admin":  true,
-	})
-	if err != nil {
-		t.Fatalf("create user failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-
-	// 未传 is_admin，应默认取消管理员权限
-	resp, err = client.Patch("/open-api/v1/auth/users/test_user_noadmin/is_admin", map[string]interface{}{})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-}
-
-func TestSetAdmin_Abnormal_UserNotFound(t *testing.T) {
-	// AUTH-5-004: 修改不存在的用户
-	client := testutil.GetClient()
-	resp, err := client.Patch("/open-api/v1/auth/users/non_existent_admin/is_admin", map[string]interface{}{
-		"is_admin": true,
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 404)
 }

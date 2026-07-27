@@ -1,234 +1,241 @@
-# Entity 模块测试用例设计文档
+# Entity 测试用例设计文档
 
-## 模块概述
+## 1. 模块概述
 
-Entity 模块负责实体的管理，包括创建、查询、更新、删除实体，以及配额计划的查询和重置。
+Entity 模块用于管理组织架构实体（部门、团队、项目、个人等），支持层级关系、模型黑白名单、配额计划、限流策略、路由规则。v0.3.0 列表接口明确为分页结构 `{list, pagination}`，详情/创建/更新返回不含 `balance`。
 
-## 接口列表
+## 2. 接口列表
 
 | 编号 | 接口名称 | 方法 | 路径 | 说明 |
 |------|----------|------|------|------|
-| ENT-1 | 创建Entity | POST | `/open-api/v1/entities` | 创建新实体 |
-| ENT-2 | 查询Entity列表 | GET | `/open-api/v1/entities` | 获取实体列表 |
-| ENT-3 | 查询单个Entity | GET | `/open-api/v1/entities/{id}` | 查询指定实体详情 |
-| ENT-4 | 全量更新Entity | PUT | `/open-api/v1/entities/{id}` | 全量更新实体 |
-| ENT-5 | 部分更新Entity | PATCH | `/open-api/v1/entities/{id}` | 部分更新实体 |
-| ENT-6 | 删除Entity | DELETE | `/open-api/v1/entities/{id}` | 删除指定实体 |
-| ENT-7 | 查询配额计划 | GET | `/open-api/v1/entities/{id}/quota-plan` | 查询实体配额计划（含余额） |
-| ENT-8 | 重置配额余额 | POST | `/open-api/v1/entities/{id}/quota-plan/reset` | 重置实体配额余额 |
+| E-1 | 创建 Entity | POST | `/open-api/v1/entities` | - |
+| E-2 | 查询 Entity 列表 | GET | `/open-api/v1/entities` | 分页 |
+| E-3 | 查询单个 Entity | GET | `/open-api/v1/entities/{id}` | - |
+| E-4 | 全量更新 Entity | PUT | `/open-api/v1/entities/{id}` | type 不可改 |
+| E-5 | 部分更新 Entity | PATCH | `/open-api/v1/entities/{id}` | - |
+| E-6 | 删除 Entity | DELETE | `/open-api/v1/entities/{id}` | 有子节点或被挂载时禁止删除 |
+| E-7 | 查询配额计划 | GET | `/open-api/v1/entities/{id}/quota-plan` | 含 balance |
+| E-8 | 重置配额余额 | POST | `/open-api/v1/entities/{id}/quota-plan/reset` | - |
 
-## 测试用例统计
+## 3. 测试用例统计
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建Entity | 5 |
-| 查询Entity列表 | 2 |
-| 查询单个Entity | 2 |
-| 全量更新Entity | 3 |
-| 部分更新Entity | 3 |
-| 删除Entity | 2 |
-| 查询配额计划 | 2 |
+| 创建 Entity | 8 |
+| 查询 Entity 列表 | 3 |
+| 查询单个 Entity | 2 |
+| 全量更新 Entity | 4 |
+| 部分更新 Entity | 2 |
+| 删除 Entity | 3 |
+| 查询配额计划 | 1 |
 | 重置配额余额 | 2 |
-| **合计** | **21** |
+| **合计** | **25** |
 
-## 认证方式
+## 4. 认证方式
 
 测试环境配置 `SkipTokenValidate=true`，所有请求无需携带认证头。
 
-## 目录结构
+## 5. 目录结构
 
 ```
-
-├── README.md
-├── create/design.md
-├── list/design.md
-├── detail/design.md
-├── full_update/design.md
-├── partial_update/design.md
-├── delete/design.md
-├── quota_plan/design.md
-└── quota_reset/design.md
+entity/
+├── design.md
+├── create/
+│   └── create_test.go
+├── list/
+│   └── list_test.go
+├── detail/
+│   └── detail_test.go
+├── full_update/
+│   └── full_update_test.go
+├── partial_update/
+│   └── partial_update_test.go
+├── delete/
+│   └── delete_test.go
+├── quota_plan/
+│   └── quota_plan_test.go
+└── quota_reset/
+    └── quota_reset_test.go
 ```
 
----
+## 6. 创建 Entity
 
-# 创建Entity - 测试用例设计
-
-## 一、接口信息
+### 6.1 接口信息
 
 | 项目 | 值 |
 |------|-----|
 | 模块 | Entity |
-| 接口名称 | 创建Entity |
+| 接口名称 | 创建 Entity |
 | 方法 | POST |
-| 路径 | /open-api/v1/entities |
-| 说明 | 创建新实体，需要提供名称和类型 |
+| 路径 | `/open-api/v1/entities` |
+| 说明 | 创建组织架构实体 |
 
----
+### 6.2 接口参数说明
 
-## 二、接口参数说明
+#### 6.2.1 请求参数
 
-### 请求参数
-
-#### Body 参数
+##### Body 参数
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| name | string | Y | Entity名称，全局唯一 |
-| type | string | Y | Entity类型，必须引用已定义的Entity-Type |
-| parent_id | string | N | 父Entity ID，为空表示根节点 |
-| allow_models | []string | N | 允许访问的模型白名单，默认["*"] |
-| block_models | []string | N | 禁止访问的模型黑名单，默认[] |
-| quota_plan | object | N | 配额计划，未设置则使用默认值 |
-| rate_limit_policy | object | N | 限流策略，未设置则使用默认值(enabled=false) |
+| name | string | Y | Entity 名称，全局唯一 |
+| type | string | Y | Entity 类型，必须引用已定义的 Entity-Type |
+| parent_id | string | N | 父 Entity ID，为空表示根节点 |
+| allow_models | []string | N | 允许访问的模型白名单，默认 ["*"] |
+| block_models | []string | N | 禁止访问的模型黑名单，默认 [] |
+| quota_plan | object | N | 配额计划，同 API-Key quota_plan 结构（不含 balance） |
+| rate_limit_policy | object | N | 限流策略 |
+| route_rules | object | N | 路由规则 |
 
-### 返回数据字段
+#### 6.2.2 返回数据字段
 
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| id | string | Entity唯一标识，系统生成 |
-| name | string | Entity名称 |
-| type | string | Entity类型 |
-| parent_id | string | 父Entity ID |
+| id | string | Entity 唯一标识 |
+| name | string | Entity 名称 |
+| type | string | Entity 类型 |
+| parent_id | string | 父 Entity ID |
 | allow_models | []string | 允许访问的模型白名单 |
 | block_models | []string | 禁止访问的模型黑名单 |
-| quota_plan | object | 配额计划，不含balance字段 |
+| quota_plan | object | 配额计划（不含 balance） |
 | rate_limit_policy | object | 限流策略 |
-| create_time | int64 | 创建时间，Unix时间戳 |
-| update_time | int64 | 更新时间，Unix时间戳 |
+| route_rules | object | 路由规则 |
+| create_time | int64 | 创建时间 |
+| update_time | int64 | 更新时间 |
 
----
-
-## 三、测试场景总览
+### 6.3 测试场景总览
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| ENT-1-001 | 创建Entity（仅必填字段） | 正常参数 | name+type |
-| ENT-1-002 | 创建Entity（含配额计划） | 正常参数 | 包含quota_plan |
-| ENT-1-003 | 缺少 name | 必填校验 | 验证 ErrNum=422 |
-| ENT-1-004 | 缺少 type | 必填校验 | 验证 ErrNum=422 |
-| ENT-1-005 | 重复创建同名Entity | 业务规则 | 验证 ErrNum=555 |
+| E-1-001 | 创建 Entity（仅必填） | 正常参数 | 验证默认值 |
+| E-1-002 | 创建 Entity（含 quota_plan） | 正常参数 | 验证嵌套结构 |
+| E-1-003 | 缺少 name | 必填校验 | 验证 ErrNum=422 |
+| E-1-004 | 缺少 type | 必填校验 | 验证 ErrNum=422 |
+| E-1-005 | type 不存在 | 异常参数 | 验证 ErrNum=404 或 422 |
+| E-1-006 | 重复 name | 业务规则 | 验证 ErrNum=555/556 |
+| E-1-007 | 创建层级 Entity（合法 parent） | 正常参数 | 父 level 小于子 |
+| E-1-008 | 创建层级 Entity（非法 parent level） | 异常参数 | 父 level 必须小于子 |
 
----
+### 6.4 测试场景详细设计
 
-## 四、测试场景详细设计
+#### 6.4.1 E-1-001：创建 Entity（仅必填）
 
----
+##### 设计思路
 
-### ENT-1-001：创建Entity（仅必填字段）
+验证仅传必填字段时，默认值正确填充，并返回系统生成的 id。
 
-#### 设计思路
+##### 前提数据准备
 
-验证创建Entity接口的基本功能：传入必填字段name和type，确认接口返回成功并返回完整的Entity信息。
+已创建 Entity-Type `department`。
 
-#### 前提数据准备
+##### 执行步骤
 
-- 确保Entity-Type "dep" 已存在
+1. 发送 POST 请求到 `/open-api/v1/entities`。
+2. 验证返回结构和默认值。
 
-#### 执行步骤
-
-1. 构造请求 Body：包含 name 和 type
-2. 发送 POST 请求到 `/open-api/v1/entities`
-3. 验证响应状态码和返回结构
-
-#### 请求参数
+##### 请求参数
 
 ```json
 {
-    "name": "test_entity_001",
-    "type": "dep"
+    "name": "ent_root",
+    "type": "department"
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| id | 非空字符串，格式如 ent-xxx | NotEmpty |
-| name | "test_entity_001" | Equals |
-| type | "dep" | Equals |
-| parent_id | null | IsNull |
+| id | 非空字符串 | NotEmpty |
+| name | "ent_root" | Equals |
+| type | "department" | Equals |
+| parent_id | null 或空字符串 | IsNullOrEmpty |
+| allow_models | ["*"] | Equals |
+| block_models | [] | IsEmpty |
+| quota_plan | 非空对象 | IsObject |
+| rate_limit_policy | 非空对象 | IsObject |
+| route_rules | 非空对象 | IsObject |
+| quota_plan.balance | 不存在 | NotExists |
 
 ---
 
-### ENT-1-002：创建Entity（含配额计划）
+#### 6.4.2 E-1-002：创建 Entity（含 quota_plan）
 
-#### 设计思路
+##### 设计思路
 
-验证创建Entity时传入配额计划的场景，确认接口返回成功并正确保存配额计划信息。
+验证传入完整嵌套结构时，返回的 `quota_plan` 与输入一致且不含 `balance`。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 确保Entity-Type "dep" 已存在
+已创建 Entity-Type `department`。
 
-#### 执行步骤
+##### 执行步骤
 
-1. 构造请求 Body：包含 name、type 和 quota_plan
-2. 发送 POST 请求到 `/open-api/v1/entities`
-3. 验证响应状态码和返回结构
+1. 发送 POST 请求，传入完整参数。
+2. 验证返回结构和字段。
 
-#### 请求参数
+##### 请求参数
 
 ```json
 {
-    "name": "test_entity_quota",
-    "type": "dep",
+    "name": "ent_quota",
+    "type": "department",
     "quota_plan": {
         "unlimited": false,
-        "pass_when_no_enough_quota": false,
-        "quota": 100000000,
+        "quota": 1000000,
         "unit": "total_token",
         "reset_period": "monthly"
     }
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| name | "test_entity_quota" | Equals |
-| type | "dep" | Equals |
-
-> 注：创建接口返回数据中不包含 quota_plan 字段，配额计划需通过查询配额计划接口验证
+| name | "ent_quota" | Equals |
+| quota_plan.unlimited | false | Equals |
+| quota_plan.quota | 1000000 | Equals |
+| quota_plan.unit | "total_token" | Equals |
+| quota_plan.reset_period | "monthly" | Equals |
+| quota_plan.balance | 不存在 | NotExists |
 
 ---
 
-### ENT-1-003：缺少 name（必填校验）
+#### 6.4.3 E-1-003：缺少 name（必填校验）
 
-#### 设计思路
+##### 设计思路
 
-验证 `name` 为必填字段，当请求 Body 中不传该字段时，接口应返回参数校验错误。
+验证 `name` 为必填字段。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 无需预先创建任何数据
+无
 
-#### 执行步骤
+##### 执行步骤
 
-1. 构造请求 Body：缺少 name 字段
-2. 发送 POST 请求到 `/open-api/v1/entities`
-3. 验证返回错误码
+1. 发送 POST 请求，Body 中缺少 `name`。
+2. 验证返回错误码。
 
-#### 请求参数
+##### 请求参数
 
 ```json
 {
-    "type": "dep"
+    "type": "department"
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：422  
 **ErrMsg**：包含 "name" 的错误信息  
@@ -236,31 +243,30 @@ Entity 模块负责实体的管理，包括创建、查询、更新、删除实�
 
 ---
 
-### ENT-1-004：缺少 type（必填校验）
+#### 6.4.4 E-1-004：缺少 type（必填校验）
 
-#### 设计思路
+##### 设计思路
 
-验证 `type` 为必填字段，当请求 Body 中不传该字段时，接口应返回参数校验错误。
+验证 `type` 为必填字段。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 无需预先创建任何数据
+无
 
-#### 执行步骤
+##### 执行步骤
 
-1. 构造请求 Body：缺少 type 字段
-2. 发送 POST 请求到 `/open-api/v1/entities`
-3. 验证返回错误码
+1. 发送 POST 请求，Body 中缺少 `type`。
+2. 验证返回错误码。
 
-#### 请求参数
+##### 请求参数
 
 ```json
 {
-    "name": "test_entity_notype"
+    "name": "ent_notype"
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：422  
 **ErrMsg**：包含 "type" 的错误信息  
@@ -268,778 +274,907 @@ Entity 模块负责实体的管理，包括创建、查询、更新、删除实�
 
 ---
 
-### ENT-1-005：重复创建同名Entity（业务规则）
+#### 6.4.5 E-1-005：type 不存在（异常参数）
 
-#### 设计思路
+##### 设计思路
 
-验证 name 必须全局唯一，当尝试创建已存在的 name 时，接口应返回业务错误。
+验证 `type` 必须引用已定义的 Entity-Type。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 预先创建Entity：name="test_entity_dup", type="dep"
+无
 
-#### 执行步骤
+##### 执行步骤
 
-1. 先创建Entity
-2. 使用相同 name 再次发送 POST 请求到 `/open-api/v1/entities`
-3. 验证返回错误码
+1. 发送 POST 请求，`type` 为不存在的类型。
+2. 验证返回错误码。
 
-#### 请求参数
+##### 请求参数
 
 ```json
 {
-    "name": "test_entity_dup",
-    "type": "team"
+    "name": "ent_bad_type",
+    "type": "not_exist"
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
-**ErrNum**：555  
-**ErrMsg**：包含重复名称的错误信息  
+**ErrNum**：404 或 422  
+**ErrMsg**：类型不存在的错误信息  
 **Data**：null
 
 ---
 
-# 删除Entity - 测试用例设计
+#### 6.4.6 E-1-006：重复 name（业务规则）
 
-## 一、接口信息
+##### 设计思路
 
-| 项目 | 值 |
-|------|-----|
-| 模块 | Entity |
-| 接口名称 | 删除Entity |
-| 方法 | DELETE |
-| 路径 | /open-api/v1/entities/{id} |
-| 说明 | 删除指定Entity |
+验证 `name` 全局唯一。
 
----
+##### 前提数据准备
 
-## 二、接口参数说明
+已创建 `ent_dup`。
 
-### 请求参数
+##### 执行步骤
 
-#### URI 参数
+1. 发送 POST 请求，使用重复的 `name`。
+2. 验证返回错误码。
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| id | string | Y | Entity标识 |
+##### 请求参数
 
-### 返回数据字段
+```json
+{
+    "name": "ent_dup",
+    "type": "department"
+}
+```
 
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| - | - | Data为null |
+##### 预期返回结果
 
----
-
-## 三、测试场景总览
-
-| 编号 | 场景 | 测试类型 | 简要说明 |
-|------|------|---------|---------|
-| ENT-6-001 | 正常删除Entity | 正常参数 | 验证 ErrNum=200 |
-| ENT-6-002 | 删除不存在的Entity | 异常参数 | 验证 ErrNum=404 |
+**ErrNum**：555 或 556  
+**ErrMsg**：名称已存在的错误信息  
+**Data**：null
 
 ---
 
-## 四、测试场景详细设计
+#### 6.4.7 E-1-007：创建层级 Entity（合法 parent）
 
----
+##### 设计思路
 
-### ENT-6-001：正常删除Entity（正常参数）
+验证父 Entity 的 Entity-Type level 小于子 Entity 的 level 时，创建成功。
 
-#### 设计思路
+##### 前提数据准备
 
-验证删除Entity接口的基本功能：删除已存在的Entity，确认接口返回成功。
+已创建 Entity-Type `department`(level=1)、`team`(level=2)，以及父 Entity。
 
-#### 前提数据准备
+##### 执行步骤
 
-- 预先创建Entity：name="test_entity_del", type="dep"
+1. 发送 POST 请求，传入合法的 `parent_id`。
+2. 验证返回的 `parent_id` 与输入一致。
 
-#### 执行步骤
+##### 请求参数
 
-1. 先创建Entity
-2. 提取返回的id
-3. 发送 DELETE 请求到 `/open-api/v1/entities/{id}`
-4. 验证响应状态码和返回结构
+```json
+{
+    "name": "ent_team",
+    "type": "team",
+    "parent_id": "<parent_id>"
+}
+```
 
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | 创建Entity时返回的id |
-
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
-**Data**：null
-
----
-
-### ENT-6-002：删除不存在的Entity（异常参数）
-
-#### 设计思路
-
-验证删除不存在的Entity时，接口应返回资源不存在错误。
-
-#### 前提数据准备
-
-- 确保Entity "non_existent_del" 不存在
-
-#### 执行步骤
-
-1. 发送 DELETE 请求到 `/open-api/v1/entities/non_existent_del`
-2. 验证返回错误码
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | non_existent_del |
-
-#### 预期返回结果
-
-**ErrNum**：404  
-**ErrMsg**：包含Entity不存在的错误信息  
-**Data**：null
-
----
-
-# 查询单个Entity - 测试用例设计
-
-## 一、接口信息
-
-| 项目 | 值 |
-|------|-----|
-| 模块 | Entity |
-| 接口名称 | 查询单个Entity |
-| 方法 | GET |
-| 路径 | /open-api/v1/entities/{id} |
-| 说明 | 查询指定Entity的详细信息 |
-
----
-
-## 二、接口参数说明
-
-### 请求参数
-
-#### URI 参数
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| id | string | Y | Entity标识 |
-
-### 返回数据字段
-
-同创建接口返回（不含balance字段）。
-
----
-
-## 三、测试场景总览
-
-| 编号 | 场景 | 测试类型 | 简要说明 |
-|------|------|---------|---------|
-| ENT-3-001 | 查询已存在的Entity | 正常参数 | 返回完整Entity信息 |
-| ENT-3-002 | 查询不存在的Entity | 异常参数 | 验证 ErrNum=404 |
-
----
-
-## 四、测试场景详细设计
-
----
-
-### ENT-3-001：查询已存在的Entity（正常参数）
-
-#### 设计思路
-
-验证查询Entity详情接口的基本功能：查询已存在的Entity，确认返回完整的Entity信息。
-
-#### 前提数据准备
-
-- 预先创建Entity：name="test_entity_detail", type="dep"
-
-#### 执行步骤
-
-1. 先创建Entity
-2. 提取返回的id
-3. 发送 GET 请求到 `/open-api/v1/entities/{id}`
-4. 验证响应状态码和返回结构
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | 创建Entity时返回的id |
-
-#### 预期返回结果
-
-**ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| id | 创建时返回的id | Equals |
-| name | "test_entity_detail" | Equals |
-| type | "dep" | Equals |
+| name | "ent_team" | Equals |
+| type | "team" | Equals |
+| parent_id | "<parent_id>" | Equals |
 
 ---
 
-### ENT-3-002：查询不存在的Entity（异常参数）
+#### 6.4.8 E-1-008：创建层级 Entity（非法 parent level）
 
-#### 设计思路
+##### 设计思路
 
-验证查询不存在的Entity时，接口应返回资源不存在错误。
+验证父 Entity 的 Entity-Type level 不满足约束时返回错误。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 确保Entity "non_existent_entity" 不存在
+已创建 level 较高子类型与 level 较低父类型（如 `department` level=1 的父 Entity 与 `team` level=2 的父 Entity）。
 
-#### 执行步骤
+##### 执行步骤
 
-1. 发送 GET 请求到 `/open-api/v1/entities/non_existent_entity`
-2. 验证返回错误码
+1. 发送 POST 请求，将 `department` 类型 Entity 的 `parent_id` 指向 `team` 类型 Entity。
+2. 验证返回错误码。
 
-#### 请求参数
+##### 请求参数
 
-**URL 参数**：
+```json
+{
+    "name": "ent_bad_parent",
+    "type": "department",
+    "parent_id": "<team_entity_id>"
+}
+```
 
-| 参数名 | 值 |
-|--------|-----|
-| id | non_existent_entity |
+##### 预期返回结果
 
-#### 预期返回结果
-
-**ErrNum**：404  
-**ErrMsg**：包含Entity不存在的错误信息  
+**ErrNum**：422  
+**ErrMsg**：父节点层级非法的错误信息  
 **Data**：null
 
 ---
 
-# 全量更新Entity - 测试用例设计
+## 7. 查询 Entity 列表
 
-## 一、接口信息
+### 7.1 接口信息
 
 | 项目 | 值 |
 |------|-----|
 | 模块 | Entity |
-| 接口名称 | 全量更新Entity |
-| 方法 | PUT |
-| 路径 | /open-api/v1/entities/{id} |
-| 说明 | 全量更新Entity，同创建接口Body参数 |
-
----
-
-## 二、接口参数说明
-
-### 请求参数
-
-#### URI 参数
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| id | string | Y | Entity标识 |
-
-#### Body 参数
-
-同创建Entity的Body参数。
-
-**约束**：
-- `type` 不可修改（创建后固定）
-- `name` 全局唯一，不可与其他Entity冲突
-
-### 返回数据字段
-
-同创建接口返回（不含balance）。
-
----
-
-## 三、测试场景总览
-
-| 编号 | 场景 | 测试类型 | 简要说明 |
-|------|------|---------|---------|
-| ENT-4-001 | 全量更新Entity名称 | 正常参数 | 修改name |
-| ENT-4-002 | 更新不存在的Entity | 异常参数 | 验证 ErrNum=404 |
-| ENT-4-003 | 更新后名称与其他Entity冲突 | 业务规则 | 验证 ErrNum=555 |
-
----
-
-## 四、测试场景详细设计
-
----
-
-### ENT-4-001：全量更新Entity名称（正常参数）
-
-#### 设计思路
-
-验证全量更新Entity接口的基本功能：更新已存在的Entity名称，确认接口返回成功。
-
-#### 前提数据准备
-
-- 预先创建Entity：name="test_entity_put", type="dep"
-
-#### 执行步骤
-
-1. 先创建Entity
-2. 提取返回的id
-3. 发送 PUT 请求到 `/open-api/v1/entities/{id}`，修改name
-4. 验证响应状态码和返回结构
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | 创建Entity时返回的id |
-
-**Body 参数**：
-
-```json
-{
-    "name": "test_entity_put_updated",
-    "type": "dep"
-}
-```
-
-#### 预期返回结果
-
-**ErrNum**：200  
-**ErrMsg**：success  
-
-**Data 字段校验**：
-
-| 字段 | 预期值 | 校验方式 |
-|------|--------|---------|
-| name | "test_entity_put_updated" | Equals |
-| type | "dep" | Equals |
-
----
-
-### ENT-4-002：更新不存在的Entity（异常参数）
-
-#### 设计思路
-
-验证更新不存在的Entity时，接口应返回资源不存在错误。
-
-#### 前提数据准备
-
-- 确保Entity "non_existent_put" 不存在
-
-#### 执行步骤
-
-1. 发送 PUT 请求到 `/open-api/v1/entities/non_existent_put`
-2. 验证返回错误码
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | non_existent_put |
-
-**Body 参数**：
-
-```json
-{
-    "name": "test_entity_update",
-    "type": "dep"
-}
-```
-
-#### 预期返回结果
-
-**ErrNum**：404  
-**ErrMsg**：包含Entity不存在的错误信息  
-**Data**：null
-
----
-
-### ENT-4-003：更新后名称与其他Entity冲突（业务规则）
-
-#### 设计思路
-
-验证更新后名称与其他Entity冲突时，接口应返回业务错误。
-
-#### 前提数据准备
-
-- 预先创建Entity1：name="test_entity_conflict1", type="dep"
-- 预先创建Entity2：name="test_entity_conflict2", type="dep"
-
-#### 执行步骤
-
-1. 创建两个Entity
-2. 用Entity1的id发送 PUT 请求，将name改为Entity2的name
-3. 验证返回错误码
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | Entity1的id |
-
-**Body 参数**：
-
-```json
-{
-    "name": "test_entity_conflict2",
-    "type": "dep"
-}
-```
-
-#### 预期返回结果
-
-**ErrNum**：500  
-**ErrMsg**：包含数据库约束异常的错误信息（UNIQUE constraint failed）  
-**Data**：null
-
----
-
-# 查询Entity列表 - 测试用例设计
-
-## 一、接口信息
-
-| 项目 | 值 |
-|------|-----|
-| 模块 | Entity |
-| 接口名称 | 查询Entity列表 |
+| 接口名称 | 查询 Entity 列表 |
 | 方法 | GET |
-| 路径 | /open-api/v1/entities |
-| 说明 | 获取实体列表，支持分页和过滤 |
+| 路径 | `/open-api/v1/entities` |
+| 说明 | 分页查询 Entity 列表 |
 
----
+### 7.2 接口参数说明
 
-## 二、接口参数说明
+#### 7.2.1 请求参数
 
-### 请求参数
-
-#### Query 参数
+##### Query 参数
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| page | int | N | 页码，默认1 |
-| page_size | int | N | 每页条数，默认20，最大100 |
+| page | int | N | 页码，默认 1 |
+| page_size | int | N | 每页条数，默认 20，最大 100 |
+| id | string | N | 按 Entity ID 过滤 |
+| name | string | N | 按 Entity 名称过滤 |
 | type | string | N | 按类型过滤 |
-| parent_id | string | N | 按父Entity过滤 |
+| parent_id | string | N | 按父 Entity 过滤 |
+| quota_plan_id | int64 | N | 按配额计划 ID 过滤 |
+| route_rules_id | int64 | N | 按路由规则 ID 过滤 |
 
-### 返回数据字段
+#### 7.2.2 返回数据字段
 
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| list | []object | Entity列表 |
-| list[].id | string | Entity唯一标识 |
-| list[].name | string | Entity名称 |
-| list[].type | string | Entity类型 |
+| list | []Entity | Entity 列表 |
 | pagination | object | 分页信息 |
 | pagination.page | int | 当前页码 |
 | pagination.page_size | int | 每页条数 |
 | pagination.total | int | 总条数 |
 
----
+**list 对象字段说明**
 
-## 三、测试场景总览
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| id | string | Entity 唯一标识 |
+| name | string | Entity 名称 |
+| type | string | Entity 类型 |
+| parent_id | string | 父 Entity ID |
+| allow_models | []string | 允许访问的模型白名单 |
+| block_models | []string | 禁止访问的模型黑名单 |
+| quota_plan | object | 配额计划（不含 balance） |
+| rate_limit_policy | object | 限流策略 |
+| create_time | int64 | 创建时间 |
+| update_time | int64 | 更新时间 |
+
+### 7.3 测试场景总览
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| ENT-2-001 | 获取Entity列表 | 正常参数 | 返回 list 和 pagination |
-| ENT-2-002 | 验证返回字段完整性 | 返回数据 | 验证每个元素包含 id、name、type |
+| E-2-001 | Entity 列表分页 | 正常参数 | 返回 {list, pagination} |
+| E-2-002 | 按 type 过滤 | 正常参数 | 仅返回指定类型 |
+| E-2-003 | 分页参数边界 | 边界值 | page=1&page_size=1 |
 
----
+### 7.4 测试场景详细设计
 
-## 四、测试场景详细设计
+#### 7.4.1 E-2-001：Entity 列表分页（正常参数）
 
----
+##### 设计思路
 
-### ENT-2-001：获取Entity列表（正常参数）
+验证列表接口返回分页结构，元素字段完整。
 
-#### 设计思路
+##### 前提数据准备
 
-验证获取Entity列表接口的基本功能：确认接口返回Entity数组和分页信息。
+已创建 Entity。
 
-#### 前提数据准备
+##### 执行步骤
 
-- 预先创建至少一个Entity：name="test_entity_list", type="dep"
+1. 发送 GET 请求到 `/open-api/v1/entities`。
+2. 验证返回结构和字段。
 
-#### 执行步骤
+##### 请求参数
 
-1. 先创建Entity
-2. 发送 GET 请求到 `/open-api/v1/entities`
-3. 验证响应状态码和返回结构
+```
+page=1&page_size=10
+```
 
-#### 请求参数
-
-无
-
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| list | 非空数组 | IsArray, NotEmpty |
-| pagination | 非空对象 | NotEmpty |
-| pagination.page | 默认值 | NotEmpty |
-| pagination.page_size | 默认值 | NotEmpty |
-| pagination.total | >= 1 | GreaterThanOrEqual(1) |
+| list | 数组 | IsArray |
+| list[0].id | 非空字符串 | NotEmpty |
+| list[0].quota_plan | 非空对象 | IsObject |
+| list[0].quota_plan.balance | 不存在 | NotExists |
+| pagination.page | 1 | Equals |
+| pagination.page_size | 10 | Equals |
+| pagination.total | ≥ 1 | Gte |
 
 ---
 
-### ENT-2-002：验证返回字段完整性（返回数据）
+#### 7.4.2 E-2-002：按 type 过滤（正常参数）
 
-#### 设计思路
+##### 设计思路
 
-验证返回的Entity列表中每个元素包含完整的字段信息。
+验证按 `type` 过滤后，列表中仅返回指定类型的 Entity。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 预先创建Entity：name="test_entity_check", type="dep"
+已创建不同类型的 Entity。
 
-#### 执行步骤
+##### 执行步骤
 
-1. 先创建Entity
-2. 发送 GET 请求到 `/open-api/v1/entities`
-3. 验证返回列表中每个元素包含 id、name、type 字段
+1. 发送 GET 请求，`type=department`。
+2. 验证列表中所有元素的 `type` 均为 `department`。
 
-#### 请求参数
+##### 请求参数
 
-无
+```
+type=department
+```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| list[].id | 非空字符串 | NotEmpty |
-| list[].name | 非空字符串 | NotEmpty |
-| list[].type | 非空字符串 | NotEmpty |
+| list | 数组 | IsArray |
+| list[*].type | 全部为 "department" | Equals |
 
 ---
 
-# 部分更新Entity - 测试用例设计
+#### 7.4.3 E-2-003：分页参数边界（边界值）
 
-## 一、接口信息
+##### 设计思路
+
+验证分页参数边界，`page_size=1` 时返回单条记录。
+
+##### 前提数据准备
+
+已创建至少 2 个 Entity。
+
+##### 执行步骤
+
+1. 发送 GET 请求，`page=1&page_size=1`。
+2. 验证 `list` 长度为 1，`pagination.total ≥ 2`。
+
+##### 请求参数
+
+```
+page=1&page_size=1
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| list | 长度为 1 | Len=1 |
+| pagination.page | 1 | Equals |
+| pagination.page_size | 1 | Equals |
+| pagination.total | ≥ 2 | Gte |
+
+---
+
+## 8. 查询单个 Entity
+
+### 8.1 接口信息
 
 | 项目 | 值 |
 |------|-----|
 | 模块 | Entity |
-| 接口名称 | 部分更新Entity |
-| 方法 | PATCH |
-| 路径 | /open-api/v1/entities/{id} |
-| 说明 | 部分更新Entity，仅传需修改字段 |
+| 接口名称 | 查询单个 Entity |
+| 方法 | GET |
+| 路径 | `/open-api/v1/entities/{id}` |
+| 说明 | 按 Entity ID 查询单个 Entity |
 
----
+### 8.2 接口参数说明
 
-## 二、接口参数说明
+#### 8.2.1 请求参数
 
-### 请求参数
-
-#### URI 参数
+##### URI 参数
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| id | string | Y | Entity标识 |
+| id | string | Y | Entity 标识 |
 
-#### Body 参数
+#### 8.2.2 返回数据字段
 
-同创建Entity的Body参数，仅传需修改字段。
+同 6.2.2，`quota_plan` 不含 `balance`。
 
-### 返回数据字段
-
-同创建接口返回（不含balance）。
-
----
-
-## 三、测试场景总览
+### 8.3 测试场景总览
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| ENT-5-001 | 部分更新Entity名称 | 正常参数 | 仅传name字段 |
-| ENT-5-002 | 更新不存在的Entity | 异常参数 | 验证 ErrNum=404 |
-| ENT-5-003 | 更新配额计划 | 正常参数 | 修改quota_plan |
+| E-3-001 | 查询单个 Entity | 正常参数 | 字段完整，不含 balance |
+| E-3-002 | 查询不存在的 Entity | 异常参数 | 验证 ErrNum=404 |
 
----
+### 8.4 测试场景详细设计
 
-## 四、测试场景详细设计
+#### 8.4.1 E-3-001：查询单个 Entity（正常参数）
 
----
+##### 设计思路
 
-### ENT-5-001：部分更新Entity名称（正常参数）
+验证按 ID 查询 Entity 的基本功能。
 
-#### 设计思路
+##### 前提数据准备
 
-验证部分更新Entity接口的基本功能：仅传入name字段进行更新，确认接口返回成功。
+已创建 Entity。
 
-#### 前提数据准备
+##### 执行步骤
 
-- 预先创建Entity：name="test_entity_patch", type="dep"
+1. 发送 GET 请求到 `/open-api/v1/entities/{id}`。
+2. 验证返回字段完整且 `quota_plan` 不含 `balance`。
 
-#### 执行步骤
+##### 请求参数
 
-1. 先创建Entity
-2. 提取返回的id
-3. 发送 PATCH 请求到 `/open-api/v1/entities/{id}`，仅传name字段
-4. 验证响应状态码和返回结构
+URI：`id`
 
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | 创建Entity时返回的id |
-
-**Body 参数**：
-
-```json
-{
-    "name": "test_entity_patch_updated"
-}
-```
-
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| name | "test_entity_patch_updated" | Equals |
-| type | "dep" | Equals（保持不变） |
+| id | 非空字符串 | NotEmpty |
+| name | 非空字符串 | NotEmpty |
+| quota_plan | 非空对象 | IsObject |
+| quota_plan.balance | 不存在 | NotExists |
 
 ---
 
-### ENT-5-002：更新不存在的Entity（异常参数）
+#### 8.4.2 E-3-002：查询不存在的 Entity（异常参数）
 
-#### 设计思路
+##### 设计思路
 
-验证部分更新不存在的Entity时，接口应返回资源不存在错误。
+验证查询不存在的 ID 时返回 404。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 确保Entity "non_existent_patch" 不存在
+无
 
-#### 执行步骤
+##### 执行步骤
 
-1. 发送 PATCH 请求到 `/open-api/v1/entities/non_existent_patch`
-2. 验证返回错误码
+1. 发送 GET 请求到 `/open-api/v1/entities/non_existent_id`。
+2. 验证返回错误码。
 
-#### 请求参数
+##### 请求参数
 
-**URL 参数**：
+URI：`non_existent_id`
 
-| 参数名 | 值 |
-|--------|-----|
-| id | non_existent_patch |
-
-**Body 参数**：
-
-```json
-{
-    "name": "test_entity_patch_update"
-}
-```
-
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：404  
-**ErrMsg**：包含Entity不存在的错误信息  
+**ErrMsg**：Entity 不存在的错误信息  
 **Data**：null
 
 ---
 
-### ENT-5-003：更新配额计划（正常参数）
+## 9. 全量更新 Entity
 
-#### 设计思路
+### 9.1 接口信息
 
-验证部分更新Entity时修改配额计划的场景，确认接口返回成功。
+| 项目 | 值 |
+|------|-----|
+| 模块 | Entity |
+| 接口名称 | 全量更新 Entity |
+| 方法 | PUT |
+| 路径 | `/open-api/v1/entities/{id}` |
+| 说明 | 全量更新 Entity，`type` 不可修改 |
 
-#### 前提数据准备
+### 9.2 接口参数说明
 
-- 预先创建Entity：name="test_entity_quota_patch", type="dep"
+#### 9.2.1 请求参数
 
-#### 执行步骤
+##### URI 参数
 
-1. 先创建Entity
-2. 提取返回的id
-3. 发送 PATCH 请求到 `/open-api/v1/entities/{id}`，更新quota_plan
-4. 验证响应状态码和返回结构
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| id | string | Y | Entity 标识 |
 
-#### 请求参数
+##### Body 参数
 
-**URL 参数**：
+同创建接口。
 
-| 参数名 | 值 |
-|--------|-----|
-| id | 创建Entity时返回的id |
+#### 9.2.2 返回数据字段
 
-**Body 参数**：
+同创建接口。
+
+### 9.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| E-4-001 | 全量更新 Entity name | 正常参数 | name 更新，其余不变 |
+| E-4-002 | 全量更新后查询一致性 | 返回数据 | PUT 后立即 GET，验证数据一致 |
+| E-4-003 | 全量更新冲突 name | 业务规则 | 验证名称唯一约束 |
+| E-4-004 | 全量更新修改 type | 业务规则 | type 不可修改 |
+
+### 9.4 测试场景详细设计
+
+#### 9.4.1 E-4-001：全量更新 Entity name（正常参数）
+
+##### 设计思路
+
+验证全量更新 `name` 成功，其余字段保持不变。
+
+##### 前提数据准备
+
+已创建 Entity。
+
+##### 执行步骤
+
+1. 发送 PUT 请求到 `/open-api/v1/entities/{id}`，传入完整 Body，`name` 改为新值。
+2. 验证返回的 `name` 已更新，其余字段不变。
+
+##### 请求参数
 
 ```json
 {
+    "name": "ent_updated",
+    "type": "department",
+    "allow_models": ["*"],
+    "block_models": [],
     "quota_plan": {
-        "unlimited": false,
-        "quota": 50000000,
-        "unit": "total_token",
-        "reset_period": "weekly"
+        "unlimited": true
+    },
+    "rate_limit_policy": {
+        "enabled": false
+    },
+    "route_rules": {
+        "enabled": false,
+        "rules": []
     }
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
-**ErrNum**：500  
-**ErrMsg**：system error  
-**Data**：null
+**ErrNum**：200  
+**ErrMsg**：success
 
-> 注：当前部分更新 quota_plan 功能存在系统错误，无法正常更新
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| name | "ent_updated" | Equals |
+| type | 与原 Entity 一致 | Equals |
+| quota_plan.unlimited | true | Equals |
 
 ---
 
-# 查询配额计划 - 测试用例设计
+#### 9.4.2 E-4-002：全量更新后查询一致性（返回数据）
 
-## 一、接口信息
+##### 设计思路
+
+验证 PUT 更新成功后，立即通过 GET 查询，返回数据与更新请求一致。
+
+##### 前提数据准备
+
+已创建 Entity。
+
+##### 执行步骤
+
+1. 发送 PUT 请求更新 Entity。
+2. 发送 GET 请求查询该 Entity。
+3. 对比两次返回的数据是否一致。
+
+##### 请求参数
+
+```json
+{
+    "name": "ent_consistency",
+    "type": "department",
+    "allow_models": ["gpt-4"],
+    "block_models": [],
+    "quota_plan": {
+        "unlimited": true
+    },
+    "rate_limit_policy": {
+        "enabled": false
+    },
+    "route_rules": {
+        "enabled": false,
+        "rules": []
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| name | "ent_consistency" | Equals |
+| allow_models | ["gpt-4"] | Equals |
+
+---
+
+#### 9.4.3 E-4-003：全量更新冲突 name（业务规则）
+
+##### 设计思路
+
+验证 `name` 全局唯一，更新为已存在的 name 时返回错误。
+
+##### 前提数据准备
+
+已创建两个 Entity：Entity1 和 Entity2。
+
+##### 执行步骤
+
+1. 发送 PUT 请求，用 Entity1 的 id 更新 name 为 Entity2 的 name。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": "<entity2_name>",
+    "type": "<entity1_type>",
+    "quota_plan": {
+        "unlimited": true
+    },
+    "rate_limit_policy": {
+        "enabled": false
+    },
+    "route_rules": {
+        "enabled": false,
+        "rules": []
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：555、556 或 500  
+**ErrMsg**：名称冲突的错误信息  
+**Data**：null
+
+---
+
+#### 9.4.4 E-4-004：全量更新修改 type（业务规则）
+
+##### 设计思路
+
+验证 `type` 字段不可修改。
+
+##### 前提数据准备
+
+已创建 Entity，类型为 `department`。
+
+##### 执行步骤
+
+1. 发送 PUT 请求，尝试将 `type` 修改为其他类型。
+2. 验证返回 `type` 保持原值或返回错误。
+
+##### 请求参数
+
+```json
+{
+    "name": "<entity_name>",
+    "type": "team",
+    "quota_plan": {
+        "unlimited": true
+    },
+    "rate_limit_policy": {
+        "enabled": false
+    },
+    "route_rules": {
+        "enabled": false,
+        "rules": []
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200（type 保持不变）或 422  
+**ErrMsg**：success 或 type 不可修改的错误信息
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| type | 原类型 | Equals |
+
+---
+
+## 10. 部分更新 Entity
+
+### 10.1 接口信息
+
+| 项目 | 值 |
+|------|-----|
+| 模块 | Entity |
+| 接口名称 | 部分更新 Entity |
+| 方法 | PATCH |
+| 路径 | `/open-api/v1/entities/{id}` |
+| 说明 | 部分更新 Entity 字段 |
+
+### 10.2 接口参数说明
+
+#### 10.2.1 请求参数
+
+##### URI 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| id | string | Y | Entity 标识 |
+
+##### Body 参数
+
+同创建接口，仅传需修改字段。
+
+#### 10.2.2 返回数据字段
+
+同创建接口。
+
+### 10.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| E-5-001 | 部分更新 allow_models | 正常参数 | allow_models 更新 |
+| E-5-002 | 部分更新后查询一致性 | 返回数据 | PATCH 后立即 GET，验证数据一致 |
+
+### 10.4 测试场景详细设计
+
+#### 10.4.1 E-5-001：部分更新 allow_models（正常参数）
+
+##### 设计思路
+
+验证部分更新 `allow_models` 成功，其余字段保持不变。
+
+##### 前提数据准备
+
+已创建 Entity。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求到 `/open-api/v1/entities/{id}`。
+2. 验证返回的 `allow_models` 已更新。
+
+##### 请求参数
+
+```json
+{
+    "allow_models": ["gpt-4"]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| allow_models | ["gpt-4"] | Equals |
+| type | 与原 Entity 一致 | Equals |
+
+---
+
+#### 10.4.2 E-5-002：部分更新后查询一致性（返回数据）
+
+##### 设计思路
+
+验证 PATCH 更新成功后，立即通过 GET 查询，返回数据与更新请求一致。
+
+##### 前提数据准备
+
+已创建 Entity。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求更新 `block_models`。
+2. 发送 GET 请求查询该 Entity。
+3. 对比两次返回的 `block_models`。
+
+##### 请求参数
+
+```json
+{
+    "block_models": ["gpt-4-32k"]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| block_models | ["gpt-4-32k"] | Equals |
+
+---
+
+## 11. 删除 Entity
+
+### 11.1 接口信息
+
+| 项目 | 值 |
+|------|-----|
+| 模块 | Entity |
+| 接口名称 | 删除 Entity |
+| 方法 | DELETE |
+| 路径 | `/open-api/v1/entities/{id}` |
+| 说明 | 删除 Entity，有子节点或被挂载时禁止删除 |
+
+### 11.2 接口参数说明
+
+#### 11.2.1 请求参数
+
+##### URI 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| id | string | Y | Entity 标识 |
+
+#### 11.2.2 返回数据字段
+
+Data 为 null。
+
+### 11.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| E-6-001 | 删除 Entity | 正常参数 | 删除成功，再次查询返回 404 |
+| E-6-002 | 删除存在子节点的 Entity | 业务规则 | 验证 ErrNum=409 |
+| E-6-003 | 删除被 API-Key 挂载的 Entity | 业务规则 | 验证 ErrNum=409 |
+
+### 11.4 测试场景详细设计
+
+#### 11.4.1 E-6-001：删除 Entity（正常参数）
+
+##### 设计思路
+
+验证删除无子节点、未被挂载的 Entity 成功。
+
+##### 前提数据准备
+
+已创建无子节点、未被挂载的 Entity。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求到 `/open-api/v1/entities/{id}`。
+2. 验证返回成功。
+3. 再次查询，验证返回 404。
+
+##### 请求参数
+
+URI：`id`
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| Data | null | IsNull |
+
+---
+
+#### 11.4.2 E-6-002：删除存在子节点的 Entity（业务规则）
+
+##### 设计思路
+
+验证存在子 Entity 的节点不可删除。
+
+##### 前提数据准备
+
+已创建父 Entity 及子 Entity。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求到父 Entity id。
+2. 验证返回错误码。
+
+##### 请求参数
+
+URI：父 Entity id
+
+##### 预期返回结果
+
+**ErrNum**：409  
+**ErrMsg**：存在子节点无法删除的错误信息  
+**Data**：null
+
+---
+
+#### 11.4.3 E-6-003：删除被 API-Key 挂载的 Entity（业务规则）
+
+##### 设计思路
+
+验证被 API-Key 挂载的 Entity 不可删除。
+
+##### 前提数据准备
+
+已创建 Entity 并被 API-Key 挂载。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求到该 Entity id。
+2. 验证返回错误码。
+
+##### 请求参数
+
+URI：Entity id
+
+##### 预期返回结果
+
+**ErrNum**：409  
+**ErrMsg**：Entity 被挂载无法删除的错误信息  
+**Data**：null
+
+---
+
+## 12. 查询配额计划
+
+### 12.1 接口信息
 
 | 项目 | 值 |
 |------|-----|
 | 模块 | Entity |
 | 接口名称 | 查询配额计划 |
 | 方法 | GET |
-| 路径 | /open-api/v1/entities/{id}/quota-plan |
-| 说明 | 查询Entity的配额计划（含实时余额） |
+| 路径 | `/open-api/v1/entities/{id}/quota-plan` |
+| 说明 | 查询 Entity 的配额计划，含实时余额 |
 
----
+### 12.2 接口参数说明
 
-## 二、接口参数说明
+#### 12.2.1 请求参数
 
-### 请求参数
-
-#### URI 参数
+##### URI 参数
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| id | string | Y | Entity标识 |
+| id | string | Y | Entity 标识 |
 
-### 返回数据字段
+#### 12.2.2 返回数据字段
 
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
@@ -1048,250 +1183,190 @@ Entity 模块负责实体的管理，包括创建、查询、更新、删除实�
 | quota | int64 | 配额总量 |
 | unit | string | 配额单位 |
 | reset_period | string | 配额重置周期 |
-| balance | object | 余额状态（只读，当前未返回） |
+| balance | object | 余额状态，包含 used 和 remaining |
 
----
-
-## 三、测试场景总览
+### 12.3 测试场景总览
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| ENT-7-001 | 查询存在的Entity配额计划 | 正常参数 | 返回完整配额信息 |
-| ENT-7-002 | 查询不存在的Entity配额计划 | 异常参数 | 验证 ErrNum=404 |
+| E-7-001 | 查询 Entity 配额计划 | 正常参数 | 返回完整 quota_plan 含 balance |
 
----
+### 12.4 测试场景详细设计
 
-## 四、测试场景详细设计
+#### 12.4.1 E-7-001：查询 Entity 配额计划（正常参数）
 
----
+##### 设计思路
 
-### ENT-7-001：查询存在的Entity配额计划（正常参数）
+验证独立 quota-plan 接口返回完整配额计划与余额。
 
-#### 设计思路
+##### 前提数据准备
 
-验证查询Entity配额计划接口的基本功能：查询已存在的Entity的配额计划，确认返回完整的配额信息和余额。
+已创建非无限配额 Entity。
 
-#### 前提数据准备
+##### 执行步骤
 
-- 预先创建Entity：name="test_entity_qp", type="dep"
+1. 发送 GET 请求到 `/open-api/v1/entities/{id}/quota-plan`。
+2. 验证返回包含 `balance`。
 
-#### 执行步骤
+##### 请求参数
 
-1. 先创建Entity
-2. 提取返回的id
-3. 发送 GET 请求到 `/open-api/v1/entities/{id}/quota-plan`
-4. 验证响应状态码和返回结构
+URI：`id`
 
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | 创建Entity时返回的id |
-
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| unlimited | bool 类型 | NotEmpty |
-| quota | int64 类型 | NotEmpty |
-| unit | 非空字符串 | NotEmpty |
-
-> 注：当前查询配额计划接口不返回 balance 字段
-
----
-
-### ENT-7-002：查询不存在的Entity配额计划（异常参数）
-
-#### 设计思路
-
-验证查询不存在的Entity配额计划时，接口应返回资源不存在错误。
-
-#### 前提数据准备
-
-- 确保Entity "non_existent_qp" 不存在
-
-#### 执行步骤
-
-1. 发送 GET 请求到 `/open-api/v1/entities/non_existent_qp/quota-plan`
-2. 验证返回错误码
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | non_existent_qp |
-
-#### 预期返回结果
-
-**ErrNum**：404  
-**ErrMsg**：包含Entity不存在的错误信息  
-**Data**：null
+| unlimited | false | Equals |
+| quota | 与创建时一致 | Equals |
+| balance | 非空对象 | IsObject |
+| balance.used | 大于等于 0 | Gte(0) |
+| balance.remaining | 大于等于 0 | Gte(0) |
 
 ---
 
-# 重置配额余额 - 测试用例设计
+## 13. 重置配额余额
 
-## 一、接口信息
+### 13.1 接口信息
 
 | 项目 | 值 |
 |------|-----|
 | 模块 | Entity |
 | 接口名称 | 重置配额余额 |
 | 方法 | POST |
-| 路径 | /open-api/v1/entities/{id}/quota-plan/reset |
-| 说明 | 重置Entity的配额余额 |
+| 路径 | `/open-api/v1/entities/{id}/quota-plan/reset` |
+| 说明 | 重置 Entity 的配额余额 |
 
----
+### 13.2 接口参数说明
 
-## 二、接口参数说明
+#### 13.2.1 请求参数
 
-### 请求参数
-
-#### URI 参数
+##### URI 参数
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| id | string | Y | Entity标识 |
+| id | string | Y | Entity 标识 |
 
-#### Body 参数
+##### Body 参数
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| quota | int64 | N | 重置后的配额总量，不传则按当前quota重置 |
-| reason | string | N | 重置原因，用于审计 |
+| quota | int64 | N | 重置后的配额总量 |
+| reason | string | N | 重置原因 |
 
-### 返回数据字段
+#### 13.2.2 返回数据字段
 
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| id | string | Entity标识 |
+| id | string | Entity 标识 |
 | previous_quota | int64 | 重置前配额 |
 | new_quota | int64 | 重置后配额 |
 | balance | object | 余额变更详情 |
 | balance.previous_remaining | int64 | 重置前剩余量 |
 | balance.new_remaining | int64 | 重置后剩余量 |
-| balance.used | int64 | 当前已用量，重置后为0 |
+| balance.used | int64 | 当前已用量 |
 
----
-
-## 三、测试场景总览
+### 13.3 测试场景总览
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| ENT-8-001 | 重置配额余额（不传新配额） | 正常参数 | 按当前quota重置 |
-| ENT-8-002 | 重置配额余额（传新配额） | 正常参数 | 更新quota并重置 |
+| E-8-001 | 重置配额余额 | 正常参数 | used=0，new_remaining=previous_quota |
+| E-8-002 | 重置并修改 quota | 正常参数 | new_quota 和 new_remaining 同步更新 |
 
----
+### 13.4 测试场景详细设计
 
-## 四、测试场景详细设计
+#### 13.4.1 E-8-001：重置配额余额（正常参数）
 
----
+##### 设计思路
 
-### ENT-8-001：重置配额余额（不传新配额）
+验证不传 quota 时按当前 quota 重置余额。
 
-#### 设计思路
+##### 前提数据准备
 
-验证重置配额余额接口的基本功能：不传新配额，按当前quota重置余额，确认接口返回成功并返回余额变更详情。
+已创建非无限配额 Entity。
 
-#### 前提数据准备
+##### 执行步骤
 
-- 预先创建Entity：name="test_entity_reset1", type="dep"，且配置非无限配额
+1. 发送 POST 请求到 `/open-api/v1/entities/{id}/quota-plan/reset`。
+2. 验证返回的 `balance.used=0`，`new_remaining=previous_quota`。
 
-#### 执行步骤
-
-1. 先创建Entity
-2. 提取返回的id
-3. 发送 POST 请求到 `/open-api/v1/entities/{id}/quota-plan/reset`，不传quota
-4. 验证响应状态码和返回结构
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | 创建Entity时返回的id |
-
-**Body 参数**：
+##### 请求参数
 
 ```json
 {
-    "reason": "月度重置"
+    "reason": "test reset"
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| id | 创建时返回的id | Equals |
-| previous_quota | > 0 | GreaterThan(0) |
-| new_quota | == previous_quota | Equals |
+| id | 与 URI 一致 | Equals |
+| previous_quota | 与当前 quota 一致 | Equals |
+| new_quota | 与 previous_quota 一致 | Equals |
 | balance.used | 0 | Equals |
+| balance.new_remaining | 与 new_quota 一致 | Equals |
 
 ---
 
-### ENT-8-002：重置配额余额（传新配额）
+#### 13.4.2 E-8-002：重置并修改 quota（正常参数）
 
-#### 设计思路
+##### 设计思路
 
-验证重置配额余额时传入新配额的场景：更新quota并同步重置余额，确认接口返回成功。
+验证传入 quota 时同步更新 quota 并重置余额。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 预先创建Entity：name="test_entity_reset2", type="dep"，且配置非无限配额
+已创建非无限配额 Entity。
 
-#### 执行步骤
+##### 执行步骤
 
-1. 先创建Entity
-2. 提取返回的id
-3. 发送 POST 请求到 `/open-api/v1/entities/{id}/quota-plan/reset`，传入新quota
-4. 验证响应状态码和返回结构
+1. 发送 POST 请求，传入新的 `quota`。
+2. 验证返回的 `new_quota` 和 `new_remaining` 均为新值，`used=0`。
 
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| id | 创建Entity时返回的id |
-
-**Body 参数**：
+##### 请求参数
 
 ```json
 {
-    "quota": 50000000,
-    "reason": "调整配额"
+    "quota": 200000,
+    "reason": "reset"
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| id | 创建时返回的id | Equals |
-| new_quota | 50000000 | Equals |
-| balance.new_remaining | 50000000 | Equals |
+| new_quota | 200000 | Equals |
+| balance.new_remaining | 200000 | Equals |
 | balance.used | 0 | Equals |
 
 ---
 
+## 14. 依赖与数据准备
+
+1. 必须预先创建至少两种不同 `level` 的 Entity-Type 以验证层级约束。
+2. 配额/余额用例依赖 Redis Mock。
+3. 删除约束用例需要预先准备子 Entity 或挂载的 API-Key。
+
+## 15. 注意事项
+
+1. Entity 详情、创建、更新返回的 `quota_plan` 不含 `balance`，需通过独立 quota-plan 接口验证余额。
+2. `name` 全局唯一，测试用例间注意清理。
+3. 层级修改必须保证父节点 Entity-Type 的 `level` 小于当前节点。
+4. 测试环境 `SkipTokenValidate=true`，无需认证头。

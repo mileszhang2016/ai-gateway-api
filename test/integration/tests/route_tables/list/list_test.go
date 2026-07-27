@@ -1,0 +1,188 @@
+package route_tables_test
+
+import (
+	"encoding/json"
+	"os"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/yf-networks/ai-gateway-api/integration/testutil"
+)
+
+var sm *testutil.ServerManager
+
+func TestMain(m *testing.M) {
+	var err error
+	sm, err = testutil.StartServer()
+	if err != nil {
+		panic("failed to start server: " + err.Error())
+	}
+	code := m.Run()
+	sm.Shutdown()
+	os.Exit(code)
+}
+
+func hasType(list []interface{}, typ string) bool {
+	for _, item := range list {
+		if m, ok := item.(map[string]interface{}); ok && m["type"] == typ {
+			return true
+		}
+	}
+	return false
+}
+
+func TestRouteTables_List(t *testing.T) {
+	// 准备数据
+	if _, err := testutil.GetClient().Put("/open-api/v1/global-route-rules", map[string]interface{}{
+		"rules": []interface{}{
+			map[string]interface{}{
+				"name":      "global-default",
+				"Cond":      "default_t()",
+				"targets":   []interface{}{map[string]interface{}{"ClusterName": "cluster_global", "Weight": 100}},
+				"fallbacks": []interface{}{},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("setup global route failed: %v", err)
+	}
+
+	typeName := testutil.UniqueEntityTypeName()
+	if _, err := testutil.CreateEntityType(typeName, 1); err != nil {
+		t.Fatalf("setup entity type failed: %v", err)
+	}
+	entityName := testutil.UniqueEntityName()
+	entityID, err := testutil.CreateEntity(entityName, typeName, "")
+	if err != nil {
+		t.Fatalf("setup entity failed: %v", err)
+	}
+	apiKeyID, err := testutil.CreateAPIKey(testutil.UniqueAPIKeyDesc(), "")
+	if err != nil {
+		t.Fatalf("setup api-key failed: %v", err)
+	}
+
+	t.Run("RT-1-001 无参数查询路由表列表", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal failed: %v", err)
+		}
+		list := data["list"].([]interface{})
+		assert.GreaterOrEqual(t, len(list), 3)
+		assert.True(t, hasType(list, "global"))
+		assert.True(t, hasType(list, "entity"))
+		assert.True(t, hasType(list, "api_key"))
+	})
+
+	t.Run("RT-1-002 按 type=global 过滤", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"type": "global"})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		json.Unmarshal(resp.Data, &data)
+		for _, item := range data["list"].([]interface{}) {
+			assert.Equal(t, "global", item.(map[string]interface{})["type"])
+		}
+	})
+
+	t.Run("RT-1-003 按 type=entity 过滤", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"type": "entity"})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		json.Unmarshal(resp.Data, &data)
+		for _, item := range data["list"].([]interface{}) {
+			assert.Equal(t, "entity", item.(map[string]interface{})["type"])
+		}
+	})
+
+	t.Run("RT-1-004 按 type=api_key 过滤", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"type": "api_key"})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		json.Unmarshal(resp.Data, &data)
+		for _, item := range data["list"].([]interface{}) {
+			assert.Equal(t, "api_key", item.(map[string]interface{})["type"])
+		}
+	})
+
+	t.Run("RT-1-005 按 owner 精确匹配过滤", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"owner": apiKeyID})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		json.Unmarshal(resp.Data, &data)
+		for _, item := range data["list"].([]interface{}) {
+			assert.Equal(t, apiKeyID, item.(map[string]interface{})["owner"])
+		}
+	})
+
+	t.Run("RT-1-006 按 enabled 过滤", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"enabled": "true"})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		json.Unmarshal(resp.Data, &data)
+		for _, item := range data["list"].([]interface{}) {
+			assert.Equal(t, true, item.(map[string]interface{})["enabled"])
+		}
+	})
+
+	t.Run("RT-1-007 分页参数边界", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{
+			"page":      "1",
+			"page_size": "1",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertListFieldLen(t, resp, "list", 1)
+		testutil.AssertPagination(t, resp, 1, 1, 3)
+	})
+
+	t.Run("RT-1-008 page_size 超过最大值", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"page_size": "101"})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 200 && resp.ErrNum != 422 {
+			t.Errorf("expected ErrNum=200 or 422, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+	})
+
+	t.Run("RT-1-009 非法 type 值", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"type": "unknown"})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 200 && resp.ErrNum != 422 {
+			t.Errorf("expected ErrNum=200 or 422, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+	})
+
+	t.Run("RT-1-010 空列表返回", func(t *testing.T) {
+		// 需要全新数据库，跳过
+		t.Skip("requires fresh database to verify empty list")
+	})
+
+	t.Cleanup(func() {
+		testutil.DeleteAPIKey(apiKeyID)
+		testutil.DeleteEntity(entityID)
+		testutil.DeleteEntityType(typeName)
+	})
+}

@@ -1,4 +1,4 @@
-package delete
+package entity_test
 
 import (
 	"os"
@@ -15,66 +15,85 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
-	// 预先创建 Entity-Type
-	createEntityType("dep", "一级部门", 1)
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func createEntityType(typeName, description string, level int) {
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"type_name":   typeName,
-		"description": description,
-		"level":       level,
+func TestEntity_Delete(t *testing.T) {
+	typeName := testutil.UniqueEntityTypeName()
+	childTypeName := testutil.UniqueEntityTypeName()
+	if _, err := testutil.CreateEntityType(typeName, 1); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	if _, err := testutil.CreateEntityType(childTypeName, 2); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	t.Run("E-6-001 删除 Entity", func(t *testing.T) {
+		entityName := testutil.UniqueEntityName()
+		entityID, err := testutil.CreateEntity(entityName, typeName, "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		resp, err := testutil.GetClient().Delete("/open-api/v1/entities/" + entityID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		resp, _ = testutil.GetClient().Get("/open-api/v1/entities/" + entityID)
+		testutil.AssertErrCode(t, resp, 404)
 	})
-	if err != nil {
-		panic("failed to create entity-type " + typeName + ": " + err.Error())
-	}
-	// 忽略重复创建错误（555），只处理其他错误
-	if resp.ErrNum != 200 && resp.ErrNum != 555 {
-		panic("failed to create entity-type " + typeName + ": " + resp.ErrMsg)
-	}
-}
 
-func TestDeleteEntity_Normal_Success(t *testing.T) {
-	// ENT-6-001: 正常删除Entity
-	client := testutil.GetClient()
-
-	// 创建Entity
-	resp, err := client.Post("/open-api/v1/entities", map[string]interface{}{
-		"name": "test_entity_del",
-		"type": "dep",
+	t.Run("E-6-002 删除存在子节点的 Entity", func(t *testing.T) {
+		parentName := testutil.UniqueEntityName()
+		parentID, err := testutil.CreateEntity(parentName, typeName, "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		childName := testutil.UniqueEntityName()
+		childID, err := testutil.CreateEntity(childName, childTypeName, parentID)
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		resp, err := testutil.GetClient().Delete("/open-api/v1/entities/" + parentID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 409 && resp.ErrNum != 422 {
+			t.Errorf("expected ErrNum=409 or 422, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+		t.Cleanup(func() {
+			testutil.DeleteEntity(childID)
+			testutil.DeleteEntity(parentID)
+		})
 	})
-	if err != nil {
-		t.Fatalf("create entity failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
 
-	// 提取id
-	entityID, err := testutil.GetDataField(resp, "id")
-	if err != nil {
-		t.Fatalf("get id failed: %v", err)
-	}
+	t.Run("E-6-003 删除被 API-Key 挂载的 Entity", func(t *testing.T) {
+		entityName := testutil.UniqueEntityName()
+		entityID, err := testutil.CreateEntity(entityName, typeName, "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		apiKeyID, err := testutil.CreateAPIKey(testutil.UniqueAPIKeyDesc(), entityID)
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		resp, err := testutil.GetClient().Delete("/open-api/v1/entities/" + entityID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 409 && resp.ErrNum != 422 {
+			t.Errorf("expected ErrNum=409 or 422, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+		t.Cleanup(func() {
+			testutil.DeleteAPIKey(apiKeyID)
+			testutil.DeleteEntity(entityID)
+		})
+	})
 
-	// 删除Entity
-	resp, err = client.Delete("/open-api/v1/entities/" + entityID.(string))
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-}
-
-func TestDeleteEntity_Abnormal_NotFound(t *testing.T) {
-	// ENT-6-002: 删除不存在的Entity
-	client := testutil.GetClient()
-	resp, err := client.Delete("/open-api/v1/entities/non_existent_del")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 404)
+	t.Cleanup(func() {
+		testutil.DeleteEntityType(typeName)
+		testutil.DeleteEntityType(childTypeName)
+	})
 }

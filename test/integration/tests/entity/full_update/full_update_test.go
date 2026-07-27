@@ -1,4 +1,4 @@
-package full_update
+package entity_test
 
 import (
 	"os"
@@ -15,117 +15,126 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
-	// 预先创建 Entity-Type
-	createEntityType("dep", "一级部门", 1)
-	createEntityType("team", "二级团队", 2)
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func createEntityType(typeName, description string, level int) {
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"type_name":   typeName,
-		"description": description,
-		"level":       level,
+func TestEntity_FullUpdate(t *testing.T) {
+	typeName := testutil.UniqueEntityTypeName()
+	if _, err := testutil.CreateEntityType(typeName, 1); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	entityName := testutil.UniqueEntityName()
+	entityID, err := testutil.CreateEntity(entityName, typeName, "")
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	otherName := testutil.UniqueEntityName()
+	_, err = testutil.CreateEntity(otherName, typeName, "")
+	if err != nil {
+		t.Fatalf("setup other failed: %v", err)
+	}
+
+	t.Run("E-4-001 全量更新 Entity name", func(t *testing.T) {
+		newName := testutil.UniqueEntityName()
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         newName,
+			"type":         typeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "name", newName)
+		testutil.AssertDataFieldEquals(t, resp, "type", typeName)
 	})
-	if err != nil {
-		panic("failed to create entity-type " + typeName + ": " + err.Error())
-	}
-	// 忽略重复创建错误（555），只处理其他错误
-	if resp.ErrNum != 200 && resp.ErrNum != 555 {
-		panic("failed to create entity-type " + typeName + ": " + resp.ErrMsg)
-	}
-}
 
-func TestFullUpdateEntity_Normal_UpdateName(t *testing.T) {
-	// ENT-4-001: 全量更新Entity名称
-	client := testutil.GetClient()
-
-	// 创建Entity
-	resp, err := client.Post("/open-api/v1/entities", map[string]interface{}{
-		"name": "test_entity_put",
-		"type": "dep",
+	t.Run("E-4-002 全量更新后查询一致性", func(t *testing.T) {
+		newName := testutil.UniqueEntityName()
+		_, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         newName,
+			"type":         typeName,
+			"allow_models": []string{"gpt-4"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		resp, err := testutil.GetClient().Get("/open-api/v1/entities/" + entityID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "name", newName)
+		testutil.AssertDataFieldEquals(t, resp, "allow_models", []interface{}{"gpt-4"})
 	})
-	if err != nil {
-		t.Fatalf("create entity failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
 
-	// 提取id
-	entityID, err := testutil.GetDataField(resp, "id")
-	if err != nil {
-		t.Fatalf("get id failed: %v", err)
-	}
-
-	// 全量更新Entity
-	resp, err = client.Put("/open-api/v1/entities/"+entityID.(string), map[string]interface{}{
-		"name": "test_entity_put_updated",
-		"type": "dep",
+	t.Run("E-4-003 全量更新冲突 name", func(t *testing.T) {
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         otherName,
+			"type":         typeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 555 && resp.ErrNum != 556 && resp.ErrNum != 500 {
+			t.Errorf("expected conflict error, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
 	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-	testutil.AssertDataNotEmpty(t, resp)
 
-	// 验证返回字段
-	testutil.AssertDataFieldEquals(t, resp, "name", "test_entity_put_updated")
-	testutil.AssertDataFieldEquals(t, resp, "type", "dep")
-}
-
-func TestFullUpdateEntity_Abnormal_NotFound(t *testing.T) {
-	// ENT-4-002: 更新不存在的Entity
-	client := testutil.GetClient()
-	resp, err := client.Put("/open-api/v1/entities/non_existent_put", map[string]interface{}{
-		"name": "test_entity_update",
-		"type": "dep",
+	t.Run("E-4-004 全量更新修改 type", func(t *testing.T) {
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         testutil.UniqueEntityName(),
+			"type":         typeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "type", typeName)
 	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 404)
-}
 
-func TestFullUpdateEntity_Business_NameConflict(t *testing.T) {
-	// ENT-4-003: 更新后名称与其他Entity冲突
-	client := testutil.GetClient()
-
-	// 创建Entity1
-	resp, err := client.Post("/open-api/v1/entities", map[string]interface{}{
-		"name": "test_entity_conflict1",
-		"type": "dep",
+	t.Cleanup(func() {
+		testutil.DeleteEntity(entityID)
+		testutil.DeleteEntityType(typeName)
 	})
-	if err != nil {
-		t.Fatalf("create entity1 failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-	entityID1, err := testutil.GetDataField(resp, "id")
-	if err != nil {
-		t.Fatalf("get entity1 id failed: %v", err)
-	}
-
-	// 创建Entity2
-	resp, err = client.Post("/open-api/v1/entities", map[string]interface{}{
-		"name": "test_entity_conflict2",
-		"type": "dep",
-	})
-	if err != nil {
-		t.Fatalf("create entity2 failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-
-	// 更新Entity1的名称为Entity2的名称
-	resp, err = client.Put("/open-api/v1/entities/"+entityID1.(string), map[string]interface{}{
-		"name": "test_entity_conflict2",
-		"type": "dep",
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 500)
 }

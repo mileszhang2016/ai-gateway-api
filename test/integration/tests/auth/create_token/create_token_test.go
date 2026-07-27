@@ -1,4 +1,4 @@
-package create_token
+package auth_test
 
 import (
 	"os"
@@ -15,93 +15,62 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func TestCreateToken_Normal_ProductScope(t *testing.T) {
-	// AUTH-11-001: 创建 Product scope Token
-	client := testutil.GetClient()
-
-	// 创建 Token
-	resp, err := client.Post("/open-api/v1/auth/tokens", map[string]interface{}{
-		"name":         "test_token_001",
-		"scope":        "Product",
-		"product_name": "product_token",
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+func TestAuth_CreateToken(t *testing.T) {
+	tokenDup := testutil.UniqueTokenName()
+	if _, err := testutil.CreateToken(tokenDup, "System"); err != nil {
+		t.Fatalf("setup failed: %v", err)
 	}
-	testutil.AssertSuccess(t, resp)
-	testutil.AssertDataNotEmpty(t, resp)
-	testutil.AssertDataFieldNotEmpty(t, resp, "token")
-}
 
-func TestCreateToken_Required_MissingName(t *testing.T) {
-	// AUTH-11-002: 缺少 name
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/auth/tokens", map[string]interface{}{
-		"scope":        "Product",
-		"product_name": "product_token",
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+	tests := []struct {
+		name     string
+		body     map[string]interface{}
+		wantCode int
+	}{
+		{
+			name:     "AUTH-9-001 创建 System Token",
+			body:     map[string]interface{}{"name": testutil.UniqueTokenName(), "scope": "System"},
+			wantCode: 200,
+		},
+		{
+			name:     "AUTH-9-002 创建 Support Token",
+			body:     map[string]interface{}{"name": testutil.UniqueTokenName(), "scope": "Support"},
+			wantCode: 200,
+		},
+		{
+			name:     "AUTH-9-003 创建 Token 缺少 name",
+			body:     map[string]interface{}{"scope": "System"},
+			wantCode: 422,
+		},
+		{
+			name:     "AUTH-9-004 创建 Token 非法 scope",
+			body:     map[string]interface{}{"name": testutil.UniqueTokenName(), "scope": "Product"},
+			wantCode: 422,
+		},
+		{
+			name:     "AUTH-9-005 重复创建 Token",
+			body:     map[string]interface{}{"name": tokenDup, "scope": "System"},
+			wantCode: 555,
+		},
 	}
-	testutil.AssertErrCode(t, resp, 422)
-}
 
-func TestCreateToken_Required_MissingScope(t *testing.T) {
-	// AUTH-11-003: 缺少 scope
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/auth/tokens", map[string]interface{}{
-		"name":         "test_token_002",
-		"product_name": "product_token",
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := testutil.GetClient().Post("/open-api/v1/auth/tokens", tt.body)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			if resp.ErrNum != tt.wantCode {
+				t.Errorf("expected ErrNum=%d, got ErrNum=%d, ErrMsg=%s", tt.wantCode, resp.ErrNum, resp.ErrMsg)
+			}
+		})
 	}
-	testutil.AssertErrCode(t, resp, 422)
-}
 
-func TestCreateToken_Required_MissingProductName(t *testing.T) {
-	// AUTH-11-004: scope=Product 缺少 product_name
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/auth/tokens", map[string]interface{}{
-		"name":  "test_token_003",
-		"scope": "Product",
+	t.Cleanup(func() {
+		testutil.DeleteToken(tokenDup)
 	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 422)
-}
-
-func TestCreateToken_Business_DuplicateToken(t *testing.T) {
-	// AUTH-11-005: 重复创建同名 Token
-	client := testutil.GetClient()
-
-	// 创建 Token
-	resp, err := client.Post("/open-api/v1/auth/tokens", map[string]interface{}{
-		"name":         "test_token_dup",
-		"scope":        "Product",
-		"product_name": "product_token",
-	})
-	if err != nil {
-		t.Fatalf("create token failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-
-	// 再次创建同名 Token
-	resp, err = client.Post("/open-api/v1/auth/tokens", map[string]interface{}{
-		"name":         "test_token_dup",
-		"scope":        "Product",
-		"product_name": "product_token",
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 555)
 }

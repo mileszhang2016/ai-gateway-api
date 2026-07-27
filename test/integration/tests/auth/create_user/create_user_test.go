@@ -1,4 +1,4 @@
-package create_user
+package auth_test
 
 import (
 	"os"
@@ -15,117 +15,62 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func TestCreateUser_Normal_RegularUser(t *testing.T) {
-	// AUTH-1-001: 创建普通用户
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_user_001",
-		"password":  "password@123",
-		"is_admin":  false,
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+func TestAuth_CreateUser(t *testing.T) {
+	userDup := testutil.UniqueUserName()
+	if err := testutil.CreateUser(userDup, "password@123"); err != nil {
+		t.Fatalf("setup failed: %v", err)
 	}
-	testutil.AssertSuccess(t, resp)
-}
 
-func TestCreateUser_Normal_AdminUser(t *testing.T) {
-	// AUTH-1-002: 创建管理员用户
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_admin_001",
-		"password":  "password@123",
-		"is_admin":  true,
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+	tests := []struct {
+		name     string
+		body     map[string]interface{}
+		wantCode int
+	}{
+		{
+			name:     "AUTH-1-001 创建用户（完整参数）",
+			body:     map[string]interface{}{"user_name": testutil.UniqueUserName(), "password": "password@123", "is_admin": true},
+			wantCode: 200,
+		},
+		{
+			name:     "AUTH-1-002 创建用户（省略 is_admin）",
+			body:     map[string]interface{}{"user_name": testutil.UniqueUserName(), "password": "password@123"},
+			wantCode: 200,
+		},
+		{
+			name:     "AUTH-1-003 创建用户缺少 user_name",
+			body:     map[string]interface{}{"password": "password@123"},
+			wantCode: 422,
+		},
+		{
+			name:     "AUTH-1-004 创建用户缺少 password",
+			body:     map[string]interface{}{"user_name": testutil.UniqueUserName()},
+			wantCode: 422,
+		},
+		{
+			name:     "AUTH-1-005 重复创建用户",
+			body:     map[string]interface{}{"user_name": userDup, "password": "password@123"},
+			wantCode: 555,
+		},
 	}
-	testutil.AssertSuccess(t, resp)
-}
 
-func TestCreateUser_Required_MissingUserName(t *testing.T) {
-	// AUTH-1-003: 缺少 user_name
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"password": "password@123",
-		"is_admin": false,
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := testutil.GetClient().Post("/open-api/v1/auth/users", tt.body)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			if resp.ErrNum != tt.wantCode {
+				t.Errorf("expected ErrNum=%d, got ErrNum=%d, ErrMsg=%s", tt.wantCode, resp.ErrNum, resp.ErrMsg)
+			}
+		})
 	}
-	testutil.AssertErrCode(t, resp, 422)
-}
 
-func TestCreateUser_Required_MissingPassword(t *testing.T) {
-	// AUTH-1-004: 缺少 password
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_user_002",
-		"is_admin":  false,
+	t.Cleanup(func() {
+		testutil.DeleteUser(userDup)
 	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 422)
-}
-
-func TestCreateUser_Default_IsAdminFalse(t *testing.T) {
-	// AUTH-1-005: 未传 is_admin 时，默认创建非管理员用户
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_user_003",
-		"password":  "password@123",
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-}
-
-func TestCreateUser_Business_DuplicateUser(t *testing.T) {
-	// AUTH-1-006: 重复创建同名用户
-	client := testutil.GetClient()
-
-	// 先创建用户
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_user_dup",
-		"password":  "password@123",
-		"is_admin":  false,
-	})
-	if err != nil {
-		t.Fatalf("create user failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-
-	// 再次创建同名用户
-	resp, err = client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_user_dup",
-		"password":  "password@456",
-		"is_admin":  true,
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 555)
-}
-
-func TestCreateUser_Boundary_EmptyUserName(t *testing.T) {
-	// AUTH-1-007: user_name 为空字符串
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "",
-		"password":  "password@123",
-		"is_admin":  false,
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 422)
 }

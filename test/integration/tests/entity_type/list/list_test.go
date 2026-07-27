@@ -1,4 +1,4 @@
-package list
+package entity_type_test
 
 import (
 	"os"
@@ -15,57 +15,49 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
-	// 预先创建几个Entity-Type用于测试列表查询
-	createEntityType("test_type_list1", "列表测试类型1", 1)
-	createEntityType("test_type_list2", "列表测试类型2", 2)
-	createEntityType("test_type_list3", "列表测试类型3", 3)
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func createEntityType(typeName, description string, level int) {
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"type_name":   typeName,
-		"description": description,
-		"level":       level,
+func TestEntityType_List(t *testing.T) {
+	typeName1 := testutil.UniqueEntityTypeName()
+	typeName2 := testutil.UniqueEntityTypeName()
+	if _, err := testutil.CreateEntityType(typeName1, 1); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	if _, err := testutil.CreateEntityType(typeName2, 2); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	t.Run("ET-2-001 查询 Entity-Type 列表", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/entity-types", map[string]string{
+			"page":      "1",
+			"page_size": "20",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertListFieldLen(t, resp, "list", 2)
+		testutil.AssertPagination(t, resp, 1, 20, 2)
 	})
-	if err != nil {
-		panic("failed to create entity-type " + typeName + ": " + err.Error())
-	}
-	if resp.ErrNum != 200 && resp.ErrNum != 555 {
-		panic("failed to create entity-type " + typeName + ": " + resp.ErrMsg)
-	}
-}
 
-func TestListEntityType_Normal_DefaultParams(t *testing.T) {
-	// ET-2-001: 获取Entity-Type列表（默认参数）
-	client := testutil.GetClient()
-	resp, err := client.Get("/open-api/v1/entity-types")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-	testutil.AssertDataNotEmpty(t, resp)
+	t.Run("ET-2-002 分页参数边界", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/entity-types", map[string]string{
+			"page":      "1",
+			"page_size": "1",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertListFieldLen(t, resp, "list", 1)
+		testutil.AssertPagination(t, resp, 1, 1, 2)
+	})
 
-	testutil.AssertDataFieldNotEmpty(t, resp, "list")
-	// 当前列表接口不返回 pagination 字段
-}
-
-func TestListEntityType_Normal_CustomPagination(t *testing.T) {
-	// ET-2-002: 获取Entity-Type列表（自定义分页）
-	client := testutil.GetClient()
-	resp, err := client.Get("/open-api/v1/entity-types?page=1&page_size=2")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-	testutil.AssertDataNotEmpty(t, resp)
-
-	testutil.AssertDataFieldNotEmpty(t, resp, "list")
-	// 当前列表接口不返回 pagination 字段
+	t.Cleanup(func() {
+		testutil.DeleteEntityType(typeName1)
+		testutil.DeleteEntityType(typeName2)
+	})
 }

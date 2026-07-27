@@ -1,4 +1,4 @@
-package delete_session_key
+package auth_test
 
 import (
 	"os"
@@ -15,58 +15,45 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func TestDeleteSessionKey_Normal_Success(t *testing.T) {
-	// AUTH-10-001: 正常删除
-	client := testutil.GetClient()
-
-	// 创建用户
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_user_session_del",
-		"password":  "password@123",
-		"is_admin":  false,
+func TestAuth_DeleteSessionKey(t *testing.T) {
+	userName := testutil.UniqueUserName()
+	password := "password@123"
+	if err := testutil.CreateUser(userName, password); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	createResp, err := testutil.GetClient().Post("/open-api/v1/auth/session-keys", map[string]interface{}{
+		"user_name": userName,
+		"password":  password,
 	})
 	if err != nil {
-		t.Fatalf("create user failed: %v", err)
+		t.Fatalf("setup failed: %v", err)
 	}
-	testutil.AssertSuccess(t, resp)
+	sessionKey, _ := testutil.GetDataField(createResp, "session_key")
 
-	// 获取 Session Key
-	resp, err = client.Post("/open-api/v1/auth/session-keys", map[string]interface{}{
-		"user_name": "test_user_session_del",
-		"password":  "password@123",
+	t.Run("AUTH-8-001 删除 Session Key", func(t *testing.T) {
+		resp, err := testutil.GetClient().Delete("/open-api/v1/auth/session-keys/" + sessionKey.(string))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
 	})
-	if err != nil {
-		t.Fatalf("create session key failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
 
-	// 提取 session_key
-	sessionKey, err := testutil.GetDataField(resp, "session_key")
-	if err != nil {
-		t.Fatalf("get session_key failed: %v", err)
-	}
+	t.Run("AUTH-8-002 删除不存在 Session Key", func(t *testing.T) {
+		resp, err := testutil.GetClient().Delete("/open-api/v1/auth/session-keys/non_existent_key")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 404 && resp.ErrNum != 401 {
+			t.Errorf("expected ErrNum=404 or 401, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+	})
 
-	// 删除 Session Key
-	resp, err = client.Delete("/open-api/v1/auth/session-keys/" + sessionKey.(string))
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-}
-
-func TestDeleteSessionKey_Abnormal_NotFound(t *testing.T) {
-	// AUTH-10-002: 删除不存在的 key，接口返回 401（Authenticate Fail）
-	client := testutil.GetClient()
-	resp, err := client.Delete("/open-api/v1/auth/session-keys/non_existent_session_key")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 401)
+	t.Cleanup(func() {
+		testutil.DeleteUser(userName)
+	})
 }

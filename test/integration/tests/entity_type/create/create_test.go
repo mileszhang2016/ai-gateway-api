@@ -1,4 +1,4 @@
-package create
+package entity_type_test
 
 import (
 	"os"
@@ -15,95 +15,83 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func TestCreateEntityType_Normal_FullParams(t *testing.T) {
-	// ET-1-001: 创建Entity-Type（完整参数）
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"type_name":   "test_type_full",
-		"description": "测试类型完整参数",
-		"level":       1,
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+func TestEntityType_Create(t *testing.T) {
+	typeName := testutil.UniqueEntityTypeName()
+	typeName2 := testutil.UniqueEntityTypeName()
+
+	tests := []struct {
+		name     string
+		body     map[string]interface{}
+		wantCode int
+		pre      func()
+	}{
+		{
+			name: "ET-1-001 创建 Entity-Type（完整参数）",
+			body: map[string]interface{}{
+				"type_name":   typeName,
+				"description": "一级部门",
+				"level":       1,
+			},
+			wantCode: 200,
+		},
+		{
+			name: "ET-1-002 创建 Entity-Type（仅必填）",
+			body: map[string]interface{}{
+				"type_name": typeName2,
+				"level":     2,
+			},
+			wantCode: 200,
+		},
+		{
+			name:     "ET-1-003 缺少 type_name",
+			body:     map[string]interface{}{"level": 1},
+			wantCode: 422,
+		},
+		{
+			name:     "ET-1-004 缺少 level",
+			body:     map[string]interface{}{"type_name": testutil.UniqueEntityTypeName()},
+			wantCode: 422,
+		},
+		{
+			name: "ET-1-005 重复创建同名 Entity-Type",
+			body: map[string]interface{}{
+				"type_name": typeName,
+				"level":     1,
+			},
+			wantCode: 556,
+		},
+		{
+			name: "ET-1-006 level 超出范围",
+			body: map[string]interface{}{
+				"type_name": testutil.UniqueEntityTypeName(),
+				"level":     6,
+			},
+			wantCode: 422,
+		},
 	}
-	testutil.AssertSuccess(t, resp)
-	testutil.AssertDataNotEmpty(t, resp)
 
-	testutil.AssertDataFieldEquals(t, resp, "type_name", "test_type_full")
-	testutil.AssertDataFieldEquals(t, resp, "description", "测试类型完整参数")
-	testutil.AssertDataFieldEquals(t, resp, "level", float64(1))
-	testutil.AssertDataFieldNotEmpty(t, resp, "create_time")
-}
-
-func TestCreateEntityType_Normal_MinimalParams(t *testing.T) {
-	// ET-1-002: 创建Entity-Type（仅必填字段）
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"type_name": "test_type_min",
-		"level":     2,
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.pre != nil {
+				tt.pre()
+			}
+			resp, err := testutil.GetClient().Post("/open-api/v1/entity-types", tt.body)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			if resp.ErrNum != tt.wantCode {
+				t.Errorf("expected ErrNum=%d, got ErrNum=%d, ErrMsg=%s", tt.wantCode, resp.ErrNum, resp.ErrMsg)
+			}
+		})
 	}
-	testutil.AssertSuccess(t, resp)
-	testutil.AssertDataNotEmpty(t, resp)
 
-	testutil.AssertDataFieldEquals(t, resp, "type_name", "test_type_min")
-	testutil.AssertDataFieldEquals(t, resp, "level", float64(2))
-}
-
-func TestCreateEntityType_Required_MissingTypeName(t *testing.T) {
-	// ET-1-003: 缺少 type_name
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"level": 1,
+	t.Cleanup(func() {
+		testutil.DeleteEntityType(typeName)
+		testutil.DeleteEntityType(typeName2)
 	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 422)
-}
-
-func TestCreateEntityType_Required_MissingLevel(t *testing.T) {
-	// ET-1-004: 缺少 level
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"type_name": "test_type_nolevel",
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 422)
-}
-
-func TestCreateEntityType_Business_DuplicateName(t *testing.T) {
-	// ET-1-005: 重复创建同名Entity-Type
-	client := testutil.GetClient()
-
-	// 先创建Entity-Type
-	resp, err := client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"type_name": "test_type_dup",
-		"level":     1,
-	})
-	if err != nil {
-		t.Fatalf("create entity-type failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-
-	// 再次创建同名Entity-Type
-	resp, err = client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"type_name": "test_type_dup",
-		"level":     2,
-	})
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 556)
 }

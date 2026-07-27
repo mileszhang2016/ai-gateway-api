@@ -1,4 +1,4 @@
-package delete_user
+package auth_test
 
 import (
 	"os"
@@ -15,42 +15,31 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func TestDeleteUser_Normal_Success(t *testing.T) {
-	// AUTH-2-001: 正常删除用户
-	client := testutil.GetClient()
-
-	// 先创建用户
-	resp, err := client.Post("/open-api/v1/auth/users", map[string]interface{}{
-		"user_name": "test_user_del",
-		"password":  "password@123",
-		"is_admin":  false,
+func TestAuth_DeleteUser(t *testing.T) {
+	t.Run("AUTH-2-001 删除用户", func(t *testing.T) {
+		userName := testutil.UniqueUserName()
+		if err := testutil.CreateUser(userName, "password@123"); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		resp, err := testutil.GetClient().Delete("/open-api/v1/auth/users/" + userName)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		resp, _ = testutil.GetClient().Get("/open-api/v1/auth/users/" + userName)
+		testutil.AssertErrCode(t, resp, 404)
 	})
-	if err != nil {
-		t.Fatalf("create user failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
 
-	// 删除用户
-	resp, err = client.Delete("/open-api/v1/auth/users/test_user_del")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-}
-
-func TestDeleteUser_Abnormal_NotFound(t *testing.T) {
-	// AUTH-2-002: 删除不存在的用户
-	client := testutil.GetClient()
-	resp, err := client.Delete("/open-api/v1/auth/users/non_existent_user")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 404)
+	t.Run("AUTH-2-002 删除不存在的用户", func(t *testing.T) {
+		resp, err := testutil.GetClient().Delete("/open-api/v1/auth/users/non_existent_user")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 404)
+	})
 }

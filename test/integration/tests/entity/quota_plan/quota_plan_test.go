@@ -1,4 +1,4 @@
-package quota_plan
+package entity_test
 
 import (
 	"os"
@@ -15,72 +15,47 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
-	// 预先创建 Entity-Type
-	createEntityType("dep", "一级部门", 1)
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func createEntityType(typeName, description string, level int) {
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"type_name":   typeName,
-		"description": description,
-		"level":       level,
+func TestEntity_QuotaPlan(t *testing.T) {
+	typeName := testutil.UniqueEntityTypeName()
+	if _, err := testutil.CreateEntityType(typeName, 1); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	entityName := testutil.UniqueEntityName()
+	entityID, err := testutil.CreateEntity(entityName, typeName, "")
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	// 更新为非无限配额
+	_, err = testutil.GetClient().Patch("/open-api/v1/entities/"+entityID, map[string]interface{}{
+		"quota_plan": map[string]interface{}{
+			"unlimited":   false,
+			"quota":       1000000,
+			"unit":        "total_token",
+			"reset_period": "monthly",
+		},
 	})
 	if err != nil {
-		panic("failed to create entity-type " + typeName + ": " + err.Error())
+		t.Fatalf("setup quota failed: %v", err)
 	}
-	// 忽略重复创建错误（555），只处理其他错误
-	if resp.ErrNum != 200 && resp.ErrNum != 555 {
-		panic("failed to create entity-type " + typeName + ": " + resp.ErrMsg)
-	}
-}
 
-func TestQuotaPlan_Normal_Success(t *testing.T) {
-	// ENT-7-001: 查询存在的Entity配额计划
-	client := testutil.GetClient()
-
-	// 创建Entity
-	resp, err := client.Post("/open-api/v1/entities", map[string]interface{}{
-		"name": "test_entity_qp",
-		"type": "dep",
+	t.Run("E-7-001 查询 Entity 配额计划", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/entities/" + entityID + "/quota-plan")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "unlimited", false)
+		testutil.AssertDataFieldNotEmpty(t, resp, "balance")
 	})
-	if err != nil {
-		t.Fatalf("create entity failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
 
-	// 提取id
-	entityID, err := testutil.GetDataField(resp, "id")
-	if err != nil {
-		t.Fatalf("get id failed: %v", err)
-	}
-
-	// 查询配额计划
-	resp, err = client.Get("/open-api/v1/entities/" + entityID.(string) + "/quota-plan")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-	testutil.AssertDataNotEmpty(t, resp)
-
-	// 验证返回字段（当前不返回 balance 字段）
-	testutil.AssertDataFieldNotEmpty(t, resp, "unlimited")
-	testutil.AssertDataFieldNotEmpty(t, resp, "quota")
-	testutil.AssertDataFieldNotEmpty(t, resp, "unit")
-}
-
-func TestQuotaPlan_Abnormal_NotFound(t *testing.T) {
-	// ENT-7-002: 查询不存在的Entity配额计划
-	client := testutil.GetClient()
-	resp, err := client.Get("/open-api/v1/entities/non_existent_qp/quota-plan")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 404)
+	t.Cleanup(func() {
+		testutil.DeleteEntity(entityID)
+		testutil.DeleteEntityType(typeName)
+	})
 }

@@ -1,4 +1,4 @@
-package detail
+package entity_test
 
 import (
 	"os"
@@ -15,72 +15,43 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to start server: " + err.Error())
 	}
-
-	// 预先创建 Entity-Type
-	createEntityType("dep", "一级部门", 1)
-
 	code := m.Run()
-
 	sm.Shutdown()
 	os.Exit(code)
 }
 
-func createEntityType(typeName, description string, level int) {
-	client := testutil.GetClient()
-	resp, err := client.Post("/open-api/v1/entity-types", map[string]interface{}{
-		"type_name":   typeName,
-		"description": description,
-		"level":       level,
+func TestEntity_Detail(t *testing.T) {
+	typeName := testutil.UniqueEntityTypeName()
+	if _, err := testutil.CreateEntityType(typeName, 1); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	entityName := testutil.UniqueEntityName()
+	entityID, err := testutil.CreateEntity(entityName, typeName, "")
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	t.Run("E-3-001 查询单个 Entity", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/entities/" + entityID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "id", entityID)
+		testutil.AssertDataFieldEquals(t, resp, "name", entityName)
+		testutil.AssertDataFieldNotEmpty(t, resp, "quota_plan")
 	})
-	if err != nil {
-		panic("failed to create entity-type " + typeName + ": " + err.Error())
-	}
-	// 忽略重复创建错误（555），只处理其他错误
-	if resp.ErrNum != 200 && resp.ErrNum != 555 {
-		panic("failed to create entity-type " + typeName + ": " + resp.ErrMsg)
-	}
-}
 
-func TestDetailEntity_Normal_Success(t *testing.T) {
-	// ENT-3-001: 查询已存在的Entity
-	client := testutil.GetClient()
-
-	// 创建Entity
-	resp, err := client.Post("/open-api/v1/entities", map[string]interface{}{
-		"name": "test_entity_detail",
-		"type": "dep",
+	t.Run("E-3-002 查询不存在的 Entity", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/entities/non_existent_id")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 404)
 	})
-	if err != nil {
-		t.Fatalf("create entity failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
 
-	// 提取id
-	entityID, err := testutil.GetDataField(resp, "id")
-	if err != nil {
-		t.Fatalf("get id failed: %v", err)
-	}
-
-	// 查询Entity详情
-	resp, err = client.Get("/open-api/v1/entities/" + entityID.(string))
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertSuccess(t, resp)
-	testutil.AssertDataNotEmpty(t, resp)
-
-	// 验证返回字段
-	testutil.AssertDataFieldEquals(t, resp, "id", entityID.(string))
-	testutil.AssertDataFieldEquals(t, resp, "name", "test_entity_detail")
-	testutil.AssertDataFieldEquals(t, resp, "type", "dep")
-}
-
-func TestDetailEntity_Abnormal_NotFound(t *testing.T) {
-	// ENT-3-002: 查询不存在的Entity
-	client := testutil.GetClient()
-	resp, err := client.Get("/open-api/v1/entities/non_existent_entity")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	testutil.AssertErrCode(t, resp, 404)
+	t.Cleanup(func() {
+		testutil.DeleteEntity(entityID)
+		testutil.DeleteEntityType(typeName)
+	})
 }

@@ -1,7 +1,6 @@
 # AI Gateway API 集成测试设计方案
 
-**版本号**：v3.0
-**更新日期**：2026-07-26
+**更新日期**：2026-07-27
 **文档类型**：测试设计方案
 **目标读者**：后端开发工程师、测试工程师
 
@@ -26,11 +25,14 @@
 | OpenAPI - API-Key | `/open-api/v1/api-keys` | API-Key 管理 |
 | OpenAPI - Entity-Type | `/open-api/v1/entity-types` | 实体类型管理 |
 | OpenAPI - Entity | `/open-api/v1/entities` | 实体管理 |
+| OpenAPI - Global Route Rules | `/open-api/v1/global-route-rules` | 全局路由规则 |
+| OpenAPI - Route Tables | `/open-api/v1/route-tables` | 路由表 |
 | OpenAPI - ALB Pool | `/open-api/v1/alb-pool` | 实例池管理 |
 | OpenAPI - Clusters | `/open-api/v1/clusters` | 集群管理 |
-| OpenAPI - AI Route Rule | `/open-api/v1/ai-route-rules` | 路由规则管理 |
 | OpenAPI - Certificate | `/open-api/v1/certificates` | 证书管理 |
-| OpenAPI - Model Provider | `/open-api/v1/models` | 模型管理 |
+| OpenAPI - Model Provider Types | `/open-api/v1/model-provider-types` | 模型提供商类型 |
+| OpenAPI - Tools | `/open-api/v1/tools` | 工具接口（如从提供商拉取模型列表） |
+| OpenAPI - Expression Verify | `/open-api/v1/expression/verify` | 路由表达式校验 |
 | InnerAPI | `/inner-api/v1/configs` | 配置导出接口 |
 
 ### 1.3 设计原则
@@ -86,17 +88,23 @@ ai-gateway-api/test/
         │   ├── delete/
         │   │   └── delete_test.go
         │   └── ...                        # 其他接口测试子目录
-        ├── ai_route/
-        │   ├── design.md
-        │   ├── get_rules/
-        │   │   └── get_rules_test.go
-        │   └── set_rules/
-        │       └── set_rules_test.go
         ├── auth/
         │   ├── design.md
         │   ├── create_user/
         │   │   └── create_user_test.go
         │   └── ...                        # 其他接口测试子目录
+        ├── global_route_rules/
+        │   ├── design.md
+        │   └── update/
+        │       └── update_test.go
+        ├── route_tables/
+        │   ├── design.md
+        │   └── list/
+        │       └── list_test.go
+        ├── expression_verify/
+        │   ├── design.md
+        │   └── verify/
+        │       └── verify_test.go
         └── ...                            # 其他业务模块
 ```
 
@@ -521,11 +529,14 @@ func GenerateCert() (string, string)   // 生成自签名证书（用于测试�
 - `AK` - API-Key 模块
 - `ET` - Entity-Type 模块
 - `E` - Entity 模块
+- `GRR` - Global Route Rules 模块
+- `RT` - Route Tables 模块
 - `BP` - 实例池模块
 - `CL` - 集群模块
-- `AR` - AI 路由模块
 - `CERT` - 证书模块
-- `MP` - 模型提供商模块
+- `MPT` - 模型提供商类型模块
+- `TOOL` - 工具模块
+- `EV` - 表达式校验模块
 - InnerAPI 各子模块
 
 ### 6.2 白盒测试覆盖维度
@@ -662,16 +673,20 @@ integration/tests/{module}/
 
 | 模块 | 接口数 | 测试用例数 |
 |------|--------|-----------|
-| AUTH 认证 | 15 | 43 |
-| AK API-Key | 8 | 33 |
-| ET Entity-Type | 5 | 14 |
-| E Entity | 7 | 22 |
-| BP 实例池 | 2 | 5 |
-| CL 集群 | 7 | 13 |
-| AR AI 路由 | 2 | 24 |
-| CERT 证书 | 5 | 12 |
-| InnerAPI | 7 | 9 |
-| **总计** | **58** | **175** |
+| AUTH 认证 | 13 | 29 |
+| AK API-Key | 8 | 22 |
+| ET Entity-Type | 5 | 15 |
+| E Entity | 8 | 25 |
+| GRR Global Route Rules | 2 | 9 |
+| RT Route Tables | 1 | 10 |
+| BP 实例池 | 2 | 8 |
+| CL 集群 | 5 | 15 |
+| CERT 证书 | 6 | 11 |
+| MPT 模型提供商类型 | 1 | 3 |
+| TOOL 工具 | 1 | 6 |
+| EV 表达式校验 | 1 | 8 |
+| InnerAPI | 9 | 13 |
+| **总计** | **62** | **174** |
 
 ---
 
@@ -731,8 +746,9 @@ integration/tests/{module}/
 | 文档 | 路径 | 说明 |
 |------|------|------|
 | 测试使用说明 | `test/integration/README.md` | 集成测试详细使用说明 |
-| OpenAPI 接口文档 | `ai-gateway-api/docs/zh_cn/open_api/` | 各模块接口定义 |
-| InnerAPI 接口设计 | `docs/瑛菲AI网关配额控制与限流-InnerAPI接口设计.md` | InnerAPI 接口详细设计 |
+| OpenAPI 接口文档 | `design-docs/api-define/OpenAPI接口定义.md` | 各模块接口定义 |
+| InnerAPI 接口文档 | `design-docs/api-define/InnerAPI接口定义.md` | InnerAPI 接口详细设计 |
+| 系统设计文档 | `design-docs/sys-design/` | 系统总体与详细设计 |
 
 ---
 

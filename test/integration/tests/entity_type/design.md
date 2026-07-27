@@ -1,214 +1,193 @@
-# Entity-Type 模块测试用例设计文档
+# Entity-Type 测试用例设计文档
 
-## 一、模块概述
+## 1. 模块概述
 
-Entity-Type 模块负责管理 Entity 的类型定义，包括类型的创建、查询、更新和删除操作。Entity-Type 定义了 Entity 的层级结构和属性约束，是创建 Entity 的前提条件。
+Entity-Type 模块用于定义 Entity 的类型及层级级别，是创建 Entity 的前置条件。v0.3.0 无结构性变更。
 
-## 二、接口列表
+## 2. 接口列表
 
-| 序号 | 接口名称 | 方法 | 路径 | 说明 | 用例数 |
-|------|---------|------|------|------|--------|
-| 1 | 创建Entity-Type | POST | /open-api/v1/entity-types | 创建新的实体类型定义 | 5 |
-| 2 | 查询Entity-Type列表 | GET | /open-api/v1/entity-types | 获取实体类型列表 | 2 |
-| 3 | 查询单个Entity-Type | GET | /open-api/v1/entity-types/{type_name} | 获取单个实体类型详情 | 2 |
-| 4 | 更新Entity-Type | PATCH | /open-api/v1/entity-types/{type_name} | 更新实体类型描述 | 3 |
-| 5 | 删除Entity-Type | DELETE | /open-api/v1/entity-types/{type_name} | 删除实体类型 | 3 |
+| 编号 | 接口名称 | 方法 | 路径 | 说明 |
+|------|----------|------|------|------|
+| ET-1 | 创建 Entity-Type | POST | `/open-api/v1/entity-types` | - |
+| ET-2 | 查询 Entity-Type 列表 | GET | `/open-api/v1/entity-types` | 分页 |
+| ET-3 | 查询单个 Entity-Type | GET | `/open-api/v1/entity-types/{type_name}` | - |
+| ET-4 | 更新 Entity-Type | PATCH | `/open-api/v1/entity-types/{type_name}` | 仅更新描述 |
+| ET-5 | 删除 Entity-Type | DELETE | `/open-api/v1/entity-types/{type_name}` | 被引用时禁止删除 |
 
-## 三、测试用例统计
+## 3. 测试用例统计
 
-| 测试类型 | 用例数 | 说明 |
-|---------|--------|------|
-| 正常参数 | 5 | 正常场景下的接口调用 |
-| 必填校验 | 2 | 验证必填字段缺失时的处理 |
-| 边界值 | 2 | 参数边界值测试 |
-| 异常参数 | 5 | 异常场景测试（如不存在的资源） |
-| 业务规则 | 1 | 业务逻辑约束测试（删除时存在Entity） |
-| **合计** | **15** | - |
+| 接口 | 测试用例数 |
+|------|-----------|
+| 创建 Entity-Type | 6 |
+| 查询 Entity-Type 列表 | 2 |
+| 查询单个 Entity-Type | 2 |
+| 更新 Entity-Type | 3 |
+| 删除 Entity-Type | 2 |
+| **合计** | **15** |
 
-## 四、认证方式
+## 4. 认证方式
 
-所有接口均使用 Token 认证，通过 `Authorization: Token TOKEN_STRING` 请求头传递。
+测试环境配置 `SkipTokenValidate=true`，所有请求无需携带认证头。
 
-## 五、目录结构
+## 5. 目录结构
 
 ```
-
-├── README.md              # 模块概述和接口列表
+entity_type/
+├── design.md
 ├── create/
-│   └── design.md          # 创建Entity-Type接口测试用例设计
+│   └── create_test.go
 ├── list/
-│   └── design.md          # 查询Entity-Type列表接口测试用例设计
+│   └── list_test.go
 ├── detail/
-│   └── design.md          # 查询单个Entity-Type接口测试用例设计
+│   └── detail_test.go
 ├── update/
-│   └── design.md          # 更新Entity-Type接口测试用例设计
+│   └── update_test.go
 └── delete/
-    └── design.md          # 删除Entity-Type接口测试用例设计
+    └── delete_test.go
 ```
 
-## 六、测试用例编号规则
+## 6. 创建 Entity-Type
 
-测试用例编号格式：`ET-{接口序号}-{用例序号}`
-
-示例：
-- ET-1-001：创建Entity-Type接口的第1个测试用例
-- ET-2-002：查询Entity-Type列表接口的第2个测试用例
-
----
-
-# 创建Entity-Type - 测试用例设计
-
-## 一、接口信息
+### 6.1 接口信息
 
 | 项目 | 值 |
 |------|-----|
 | 模块 | Entity-Type |
-| 接口名称 | 创建Entity-Type |
+| 接口名称 | 创建 Entity-Type |
 | 方法 | POST |
-| 路径 | /open-api/v1/entity-types |
-| 说明 | 创建新的实体类型定义 |
+| 路径 | `/open-api/v1/entity-types` |
+| 说明 | 创建 Entity 类型定义 |
 
----
+### 6.2 接口参数说明
 
-## 二、接口参数说明
+#### 6.2.1 请求参数
 
-### 请求参数
-
-#### Body 参数
+##### Body 参数
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| type_name | string | Y | 类型名，全局唯一，1-32字符，仅含小写字母、数字、下划线、连字符 |
+| type_name | string | Y | 类型名，全局唯一，1-32 字符，仅含小写字母、数字、下划线、连字符 |
 | description | string | N | 类型描述 |
-| level | int | Y | 层级级别，取值范围1-5，数字越小级别越高 |
+| level | int | Y | 层级级别，取值范围 1-5 |
 
-### 返回数据字段
+#### 6.2.2 返回数据字段
 
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | type_name | string | 类型名 |
 | description | string | 描述 |
 | level | int | 层级级别 |
-| create_time | int64 | 创建时间，Unix时间戳（秒） |
+| create_time | int64 | 创建时间 |
 
----
-
-## 三、测试场景总览
+### 6.3 测试场景总览
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| ET-1-001 | 创建Entity-Type（完整参数） | 正常参数 | type_name+level+description |
-| ET-1-002 | 创建Entity-Type（仅必填字段） | 正常参数 | type_name+level |
+| ET-1-001 | 创建 Entity-Type（完整参数） | 正常参数 | 返回完整字段 |
+| ET-1-002 | 创建 Entity-Type（仅必填） | 正常参数 | description 为空 |
 | ET-1-003 | 缺少 type_name | 必填校验 | 验证 ErrNum=422 |
 | ET-1-004 | 缺少 level | 必填校验 | 验证 ErrNum=422 |
-| ET-1-005 | 重复创建同名Entity-Type | 业务规则 | 验证 ErrNum=555 |
+| ET-1-005 | 重复创建同名 Entity-Type | 业务规则 | 验证 ErrNum=555/556 |
+| ET-1-006 | level 超出范围 | 边界值 | 验证 ErrNum=422 |
 
----
+### 6.4 测试场景详细设计
 
-## 四、测试场景详细设计
+#### 6.4.1 ET-1-001：创建 Entity-Type（完整参数）
 
----
+##### 设计思路
 
-### ET-1-001：创建Entity-Type（完整参数）
+验证传入完整参数时成功创建 Entity-Type。
 
-#### 设计思路
+##### 前提数据准备
 
-验证创建Entity-Type接口的基本功能：传入完整参数（type_name、level、description），确认接口返回成功并返回完整的Entity-Type信息。
+无
 
-#### 前提数据准备
+##### 执行步骤
 
-- 确保Entity-Type "test_type_full" 不存在
+1. 发送 POST 请求到 `/open-api/v1/entity-types`。
+2. 验证响应状态码和返回结构。
 
-#### 执行步骤
-
-1. 构造请求 Body：包含 type_name、level、description
-2. 发送 POST 请求到 `/open-api/v1/entity-types`
-3. 验证响应状态码和返回结构
-
-#### 请求参数
+##### 请求参数
 
 ```json
 {
-    "type_name": "test_type_full",
-    "description": "测试类型完整参数",
+    "type_name": "department",
+    "description": "一级部门",
     "level": 1
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| type_name | "test_type_full" | Equals |
-| description | "测试类型完整参数" | Equals |
+| type_name | "department" | Equals |
+| description | "一级部门" | Equals |
 | level | 1 | Equals |
-| create_time | 非空int64 | NotEmpty |
+| create_time | 大于 0 的整数 | Gt(0) |
 
 ---
 
-### ET-1-002：创建Entity-Type（仅必填字段）
+#### 6.4.2 ET-1-002：创建 Entity-Type（仅必填）
 
-#### 设计思路
+##### 设计思路
 
-验证创建Entity-Type接口仅传入必填字段时的功能，确认接口返回成功并返回完整的Entity-Type信息。
+验证仅传必填字段时，`description` 为空或 null，其他字段正确。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 确保Entity-Type "test_type_min" 不存在
+无
 
-#### 执行步骤
+##### 执行步骤
 
-1. 构造请求 Body：仅包含 type_name、level
-2. 发送 POST 请求到 `/open-api/v1/entity-types`
-3. 验证响应状态码和返回结构
+1. 发送 POST 请求，仅传 `type_name` 和 `level`。
+2. 验证返回字段。
 
-#### 请求参数
+##### 请求参数
 
 ```json
 {
-    "type_name": "test_type_min",
+    "type_name": "team",
     "level": 2
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| type_name | "test_type_min" | Equals |
-| description | null | IsNull |
+| type_name | "team" | Equals |
+| description | 空字符串或 null | EmptyOrNull |
 | level | 2 | Equals |
-| create_time | 非空int64 | NotEmpty |
 
 ---
 
-### ET-1-003：缺少 type_name（必填校验）
+#### 6.4.3 ET-1-003：缺少 type_name（必填校验）
 
-#### 设计思路
+##### 设计思路
 
-验证 `type_name` 为必填字段，当请求 Body 中不传该字段时，接口应返回参数校验错误。
+验证 `type_name` 为必填字段。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 无需预先创建任何数据
+无
 
-#### 执行步骤
+##### 执行步骤
 
-1. 构造请求 Body：缺少 type_name 字段
-2. 发送 POST 请求到 `/open-api/v1/entity-types`
-3. 验证返回错误码
+1. 发送 POST 请求，Body 中缺少 `type_name`。
+2. 验证返回错误码。
 
-#### 请求参数
+##### 请求参数
 
 ```json
 {
@@ -216,7 +195,7 @@ Entity-Type 模块负责管理 Entity 的类型定义，包括类型的创建、
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：422  
 **ErrMsg**：包含 "type_name" 的错误信息  
@@ -224,31 +203,30 @@ Entity-Type 模块负责管理 Entity 的类型定义，包括类型的创建、
 
 ---
 
-### ET-1-004：缺少 level（必填校验）
+#### 6.4.4 ET-1-004：缺少 level（必填校验）
 
-#### 设计思路
+##### 设计思路
 
-验证 `level` 为必填字段，当请求 Body 中不传该字段时，接口应返回参数校验错误。
+验证 `level` 为必填字段。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 无需预先创建任何数据
+无
 
-#### 执行步骤
+##### 执行步骤
 
-1. 构造请求 Body：缺少 level 字段
-2. 发送 POST 请求到 `/open-api/v1/entity-types`
-3. 验证返回错误码
+1. 发送 POST 请求，Body 中缺少 `level`。
+2. 验证返回错误码。
 
-#### 请求参数
+##### 请求参数
 
 ```json
 {
-    "type_name": "test_type_nolevel"
+    "type_name": "project"
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：422  
 **ErrMsg**：包含 "level" 的错误信息  
@@ -256,513 +234,346 @@ Entity-Type 模块负责管理 Entity 的类型定义，包括类型的创建、
 
 ---
 
-### ET-1-005：重复创建同名Entity-Type（业务规则）
+#### 6.4.5 ET-1-005：重复创建同名 Entity-Type（业务规则）
 
-#### 设计思路
+##### 设计思路
 
-验证 type_name 必须全局唯一，当尝试创建已存在的 type_name 时，接口应返回业务错误。
+验证 `type_name` 全局唯一，重复创建时返回错误。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 预先创建Entity-Type：type_name="test_type_dup", level=1
+已创建 `department`。
 
-#### 执行步骤
+##### 执行步骤
 
-1. 先创建Entity-Type
-2. 使用相同 type_name 再次发送 POST 请求到 `/open-api/v1/entity-types`
-3. 验证返回错误码
+1. 发送 POST 请求，使用重复的 `type_name`。
+2. 验证返回错误码。
 
-#### 请求参数
+##### 请求参数
 
 ```json
 {
-    "type_name": "test_type_dup",
-    "level": 2
+    "type_name": "department",
+    "level": 1
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
-**ErrNum**：556  
-**ErrMsg**：Duplicate Data: entity type Duplicate Data  
+**ErrNum**：555 或 556  
+**ErrMsg**：类型名已存在的错误信息  
 **Data**：null
 
 ---
 
-# 删除Entity-Type - 测试用例设计
+#### 6.4.6 ET-1-006：level 超出范围（边界值）
 
-## 一、接口信息
+##### 设计思路
 
-| 项目 | 值 |
-|------|-----|
-| 模块 | Entity-Type |
-| 接口名称 | 删除Entity-Type |
-| 方法 | DELETE |
-| 路径 | /open-api/v1/entity-types/{type_name} |
-| 说明 | 删除实体类型 |
+验证 `level` 取值范围为 1-5，超出时返回参数校验错误。
 
----
+##### 前提数据准备
 
-## 二、接口参数说明
+无
 
-### 请求参数
+##### 执行步骤
 
-#### URI 参数
+1. 发送 POST 请求，`level=6`。
+2. 验证返回错误码。
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| type_name | string | Y | 类型名 |
+##### 请求参数
 
-### 返回数据字段
+```json
+{
+    "type_name": "bad_level",
+    "level": 6
+}
+```
 
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| Data | null | 删除成功后返回null |
-
----
-
-## 三、测试场景总览
-
-| 编号 | 场景 | 测试类型 | 简要说明 |
-|------|------|---------|---------|
-| ET-5-001 | 正常删除Entity-Type | 正常参数 | 删除成功 |
-| ET-5-002 | 删除不存在的Entity-Type | 异常参数 | 验证 ErrNum=404 |
-| ET-5-003 | 删除存在Entity的Entity-Type | 业务规则 | 验证 ErrNum=409 |
-
----
-
-## 四、测试场景详细设计
-
----
-
-### ET-5-001：正常删除Entity-Type（正常参数）
-
-#### 设计思路
-
-验证删除Entity-Type接口的基本功能：删除已存在的Entity-Type，确认接口返回成功。
-
-#### 前提数据准备
-
-- 预先创建Entity-Type：type_name="test_type_delete", level=1
-
-#### 执行步骤
-
-1. 先创建Entity-Type
-2. 提取返回的type_name
-3. 发送 DELETE 请求到 `/open-api/v1/entity-types/{type_name}`
-4. 验证响应状态码
-5. 查询该Entity-Type确认已删除
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| type_name | 创建时返回的type_name |
-
-#### 预期返回结果
-
-**ErrNum**：200  
-**ErrMsg**：success  
-**Data**：null
-
----
-
-### ET-5-002：删除不存在的Entity-Type（异常参数）
-
-#### 设计思路
-
-验证删除不存在的Entity-Type时，接口应返回资源不存在错误。
-
-#### 前提数据准备
-
-- 确保Entity-Type "non_existent_delete" 不存在
-
-#### 执行步骤
-
-1. 发送 DELETE 请求到 `/open-api/v1/entity-types/non_existent_delete`
-2. 验证返回错误码
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| type_name | non_existent_delete |
-
-#### 预期返回结果
-
-**ErrNum**：404  
-**ErrMsg**：包含Entity-Type不存在的错误信息  
-**Data**：null
-
----
-
-### ET-5-003：删除存在Entity的Entity-Type（业务规则）
-
-#### 设计思路
-
-验证删除Entity-Type时，如果该类型下存在Entity，接口应返回冲突错误。
-
-#### 前提数据准备
-
-- 预先创建Entity-Type：type_name="test_type_has_entity", level=1
-- 预先创建Entity：name="test_entity_has_type", type="test_type_has_entity"
-
-#### 执行步骤
-
-1. 创建Entity-Type
-2. 创建使用该类型的Entity
-3. 发送 DELETE 请求到 `/open-api/v1/entity-types/{type_name}`
-4. 验证返回错误码
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| type_name | test_type_has_entity |
-
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：422  
-**ErrMsg**：Param Illegal: cannot delete entity type with associated entities  
+**ErrMsg**：包含 "level" 非法的错误信息  
 **Data**：null
 
 ---
 
-# 查询单个Entity-Type - 测试用例设计
+## 7. 查询 Entity-Type 列表
 
-## 一、接口信息
-
-| 项目 | 值 |
-|------|-----|
-| 模块 | Entity-Type |
-| 接口名称 | 查询单个Entity-Type |
-| 方法 | GET |
-| 路径 | /open-api/v1/entity-types/{type_name} |
-| 说明 | 获取单个实体类型详情 |
-
----
-
-## 二、接口参数说明
-
-### 请求参数
-
-#### URI 参数
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| type_name | string | Y | 类型名 |
-
-### 返回数据字段
-
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| type_name | string | 类型名 |
-| description | string | 描述 |
-| level | int | 层级级别 |
-| create_time | int64 | 创建时间，Unix时间戳（秒） |
-
----
-
-## 三、测试场景总览
-
-| 编号 | 场景 | 测试类型 | 简要说明 |
-|------|------|---------|---------|
-| ET-3-001 | 查询已存在的Entity-Type | 正常参数 | 返回完整信息 |
-| ET-3-002 | 查询不存在的Entity-Type | 异常参数 | 验证 ErrNum=404 |
-
----
-
-## 四、测试场景详细设计
-
----
-
-### ET-3-001：查询已存在的Entity-Type（正常参数）
-
-#### 设计思路
-
-验证查询单个Entity-Type接口的基本功能：查询已存在的Entity-Type，确认返回完整的类型信息。
-
-#### 前提数据准备
-
-- 预先创建Entity-Type：type_name="test_type_detail", level=1
-
-#### 执行步骤
-
-1. 先创建Entity-Type
-2. 提取返回的type_name
-3. 发送 GET 请求到 `/open-api/v1/entity-types/{type_name}`
-4. 验证响应状态码和返回结构
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| type_name | 创建时返回的type_name |
-
-#### 预期返回结果
-
-**ErrNum**：200  
-**ErrMsg**：success  
-
-**Data 字段校验**：
-
-| 字段 | 预期值 | 校验方式 |
-|------|--------|---------|
-| type_name | "test_type_detail" | Equals |
-| level | 1 | Equals |
-| create_time | 非空int64 | NotEmpty |
-
----
-
-### ET-3-002：查询不存在的Entity-Type（异常参数）
-
-#### 设计思路
-
-验证查询不存在的Entity-Type时，接口应返回资源不存在错误。
-
-#### 前提数据准备
-
-- 确保Entity-Type "non_existent_type" 不存在
-
-#### 执行步骤
-
-1. 发送 GET 请求到 `/open-api/v1/entity-types/non_existent_type`
-2. 验证返回错误码
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| type_name | non_existent_type |
-
-#### 预期返回结果
-
-**ErrNum**：404  
-**ErrMsg**：包含Entity-Type不存在的错误信息  
-**Data**：null
-
----
-
-# 查询Entity-Type列表 - 测试用例设计
-
-## 一、接口信息
+### 7.1 接口信息
 
 | 项目 | 值 |
 |------|-----|
 | 模块 | Entity-Type |
-| 接口名称 | 查询Entity-Type列表 |
+| 接口名称 | 查询 Entity-Type 列表 |
 | 方法 | GET |
-| 路径 | /open-api/v1/entity-types |
-| 说明 | 获取实体类型列表 |
+| 路径 | `/open-api/v1/entity-types` |
+| 说明 | 分页查询 Entity-Type 列表 |
 
----
+### 7.2 接口参数说明
 
-## 二、接口参数说明
+#### 7.2.1 请求参数
 
-### 请求参数
-
-#### Query 参数
+##### Query 参数
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| page | int | N | 页码，默认1 |
-| page_size | int | N | 每页条数，默认20，最大100 |
+| page | int | N | 页码，默认 1 |
+| page_size | int | N | 每页条数，默认 20，最大 100 |
+| id | int64 | N | 按内部 ID 过滤 |
+| type_name | string | N | 按类型名过滤 |
+| level | int | N | 按层级级别过滤 |
 
-### 返回数据字段
+#### 7.2.2 返回数据字段
 
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| list | []object | Entity-Type列表 |
-| list[].type_name | string | 类型名 |
-| list[].description | string | 描述 |
-| list[].level | int | 层级级别 |
-| list[].create_time | int64 | 创建时间 |
+| list | []EntityType | Entity-Type 列表 |
 | pagination | object | 分页信息 |
 | pagination.page | int | 当前页码 |
 | pagination.page_size | int | 每页条数 |
 | pagination.total | int | 总条数 |
 
----
-
-## 三、测试场景总览
+### 7.3 测试场景总览
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| ET-2-001 | 获取Entity-Type列表（默认参数） | 正常参数 | 默认分页参数 |
-| ET-2-002 | 获取Entity-Type列表（自定义分页） | 正常参数 | 指定page和page_size |
+| ET-2-001 | 查询 Entity-Type 列表 | 正常参数 | 返回分页结构 |
+| ET-2-002 | 分页参数边界 | 边界值 | page=1&page_size=1 |
 
----
+### 7.4 测试场景详细设计
 
-## 四、测试场景详细设计
+#### 7.4.1 ET-2-001：查询 Entity-Type 列表（正常参数）
 
----
+##### 设计思路
 
-### ET-2-001：获取Entity-Type列表（默认参数）
+验证列表接口返回分页结构，元素字段完整。
 
-#### 设计思路
+##### 前提数据准备
 
-验证查询Entity-Type列表接口的基本功能：使用默认分页参数获取列表，确认接口返回成功并返回列表数据。
+已创建至少 1 个 Entity-Type。
 
-#### 前提数据准备
+##### 执行步骤
 
-- 确保存在至少一个Entity-Type
+1. 发送 GET 请求到 `/open-api/v1/entity-types`。
+2. 验证返回结构和字段。
 
-#### 执行步骤
+##### 请求参数
 
-1. 发送 GET 请求到 `/open-api/v1/entity-types`
-2. 验证响应状态码和返回结构
+```
+page=1&page_size=20
+```
 
-#### 请求参数
-
-无
-
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| list | 非空数组 | NotEmpty |
+| list | 数组 | IsArray |
 | list[0].type_name | 非空字符串 | NotEmpty |
-| list[0].level | int类型 | NotEmpty |
-
-> 注：当前列表接口不返回 pagination 字段
+| list[0].level | 1-5 的整数 | Range[1,5] |
+| pagination.page | 1 | Equals |
+| pagination.page_size | 20 | Equals |
+| pagination.total | ≥ 1 | Gte |
 
 ---
 
-### ET-2-002：获取Entity-Type列表（自定义分页）
+#### 7.4.2 ET-2-002：分页参数边界（边界值）
 
-#### 设计思路
+##### 设计思路
 
-验证查询Entity-Type列表接口支持自定义分页参数：指定page和page_size，确认返回正确的数据范围。
+验证分页参数边界，`page_size=1` 时返回单条记录。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 确保存在至少3个Entity-Type
+已创建至少 2 个 Entity-Type。
 
-#### 执行步骤
+##### 执行步骤
 
-1. 发送 GET 请求到 `/open-api/v1/entity-types?page=1&page_size=2`
-2. 验证响应状态码和返回结构
+1. 发送 GET 请求，`page=1&page_size=1`。
+2. 验证 `list` 长度为 1，`pagination.total ≥ 2`。
 
-#### 请求参数
+##### 请求参数
 
-**URL 参数**：
+```
+page=1&page_size=1
+```
 
-| 参数名 | 值 |
-|--------|-----|
-| page | 1 |
-| page_size | 2 |
-
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| list | 数组长度<=2 | LengthLessThanOrEqual(2) |
-
-> 注：当前列表接口不返回 pagination 字段
+| list | 长度为 1 | Len=1 |
+| pagination.page | 1 | Equals |
+| pagination.page_size | 1 | Equals |
+| pagination.total | ≥ 2 | Gte |
 
 ---
 
-# 更新Entity-Type - 测试用例设计
+## 8. 查询单个 Entity-Type
 
-## 一、接口信息
+### 8.1 接口信息
 
 | 项目 | 值 |
 |------|-----|
 | 模块 | Entity-Type |
-| 接口名称 | 更新Entity-Type |
-| 方法 | PATCH |
-| 路径 | /open-api/v1/entity-types/{type_name} |
-| 说明 | 更新实体类型描述 |
+| 接口名称 | 查询单个 Entity-Type |
+| 方法 | GET |
+| 路径 | `/open-api/v1/entity-types/{type_name}` |
+| 说明 | 按类型名查询单个 Entity-Type |
 
----
+### 8.2 接口参数说明
 
-## 二、接口参数说明
+#### 8.2.1 请求参数
 
-### 请求参数
-
-#### URI 参数
+##### URI 参数
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
 | type_name | string | Y | 类型名 |
 
-#### Body 参数
+#### 8.2.2 返回数据字段
+
+同 6.2.2。
+
+### 8.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| ET-3-001 | 查询单个 Entity-Type | 正常参数 | 返回字段完整 |
+| ET-3-002 | 查询不存在的 Entity-Type | 异常参数 | 验证 ErrNum=404 |
+
+### 8.4 测试场景详细设计
+
+#### 8.4.1 ET-3-001：查询单个 Entity-Type（正常参数）
+
+##### 设计思路
+
+验证按类型名查询 Entity-Type 的基本功能。
+
+##### 前提数据准备
+
+已创建 `department`。
+
+##### 执行步骤
+
+1. 发送 GET 请求到 `/open-api/v1/entity-types/department`。
+2. 验证返回字段完整。
+
+##### 请求参数
+
+URI：`department`
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| type_name | "department" | Equals |
+| description | 与创建时一致 | Equals |
+| level | 与创建时一致 | Equals |
+| create_time | 大于 0 | Gt(0) |
+
+---
+
+#### 8.4.2 ET-3-002：查询不存在的 Entity-Type（异常参数）
+
+##### 设计思路
+
+验证查询不存在的类型名时返回 404。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 GET 请求到 `/open-api/v1/entity-types/non_existent`。
+2. 验证返回错误码。
+
+##### 请求参数
+
+URI：`non_existent`
+
+##### 预期返回结果
+
+**ErrNum**：404  
+**ErrMsg**：类型不存在的错误信息  
+**Data**：null
+
+---
+
+## 9. 更新 Entity-Type
+
+### 9.1 接口信息
+
+| 项目 | 值 |
+|------|-----|
+| 模块 | Entity-Type |
+| 接口名称 | 更新 Entity-Type |
+| 方法 | PATCH |
+| 路径 | `/open-api/v1/entity-types/{type_name}` |
+| 说明 | 仅更新 Entity-Type 描述 |
+
+### 9.2 接口参数说明
+
+#### 9.2.1 请求参数
+
+##### URI 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| type_name | string | Y | 类型名 |
+
+##### Body 参数
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
 | description | string | N | 类型描述 |
 
-### 返回数据字段
+#### 9.2.2 返回数据字段
 
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| type_name | string | 类型名 |
-| description | string | 描述 |
-| level | int | 层级级别 |
-| create_time | int64 | 创建时间，Unix时间戳（秒） |
+同 6.2.2。
 
----
-
-## 三、测试场景总览
+### 9.3 测试场景总览
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| ET-4-001 | 更新Entity-Type描述 | 正常参数 | 更新description |
-| ET-4-002 | 更新不存在的Entity-Type | 异常参数 | 验证 ErrNum=404 |
-| ET-4-003 | 更新空描述 | 边界值 | description为空字符串 |
+| ET-4-001 | 更新 Entity-Type 描述 | 正常参数 | description 更新，其余不变 |
+| ET-4-002 | 更新后查询一致性 | 返回数据 | PATCH 后立即 GET，验证数据一致 |
+| ET-4-003 | 更新不存在的 Entity-Type | 异常参数 | 验证 ErrNum=404 |
 
----
+### 9.4 测试场景详细设计
 
-## 四、测试场景详细设计
+#### 9.4.1 ET-4-001：更新 Entity-Type 描述（正常参数）
 
----
+##### 设计思路
 
-### ET-4-001：更新Entity-Type描述（正常参数）
+验证部分更新 `description` 成功，其余字段保持不变。
 
-#### 设计思路
+##### 前提数据准备
 
-验证更新Entity-Type接口的基本功能：更新已存在的Entity-Type的描述，确认接口返回成功并返回更新后的信息。
+已创建 `department`。
 
-#### 前提数据准备
+##### 执行步骤
 
-- 预先创建Entity-Type：type_name="test_type_update", level=1
+1. 发送 PATCH 请求到 `/open-api/v1/entity-types/department`。
+2. 验证返回的 `description` 已更新，`level` 保持不变。
 
-#### 执行步骤
-
-1. 先创建Entity-Type
-2. 提取返回的type_name
-3. 发送 PATCH 请求到 `/open-api/v1/entity-types/{type_name}`，更新description
-4. 验证响应状态码和返回结构
-
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| type_name | 创建时返回的type_name |
-
-**Body 参数**：
+##### 请求参数
 
 ```json
 {
@@ -770,104 +581,193 @@ Entity-Type 模块负责管理 Entity 的类型定义，包括类型的创建、
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| type_name | "test_type_update" | Equals |
+| type_name | "department" | Equals |
 | description | "更新后的描述" | Equals |
-| level | 1 | Equals（保持不变） |
+| level | 与创建时一致 | Equals |
 
 ---
 
-### ET-4-002：更新不存在的Entity-Type（异常参数）
+#### 9.4.2 ET-4-002：更新后查询一致性（返回数据）
 
-#### 设计思路
+##### 设计思路
 
-验证更新不存在的Entity-Type时，接口应返回资源不存在错误。
+验证 PATCH 更新成功后，立即通过 GET 查询，返回的描述与更新请求一致。
 
-#### 前提数据准备
+##### 前提数据准备
 
-- 确保Entity-Type "non_existent_update" 不存在
+已创建 `department`。
 
-#### 执行步骤
+##### 执行步骤
 
-1. 发送 PATCH 请求到 `/open-api/v1/entity-types/non_existent_update`
-2. 验证返回错误码
+1. 发送 PATCH 请求更新描述。
+2. 发送 GET 请求查询该 Entity-Type。
+3. 对比两次返回的 `description`。
 
-#### 请求参数
-
-**URL 参数**：
-
-| 参数名 | 值 |
-|--------|-----|
-| type_name | non_existent_update |
-
-**Body 参数**：
+##### 请求参数
 
 ```json
 {
-    "description": "更新描述"
+    "description": "一致性校验描述"
 }
 ```
 
-#### 预期返回结果
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| description | "一致性校验描述" | Equals |
+
+---
+
+#### 9.4.3 ET-4-003：更新不存在的 Entity-Type（异常参数）
+
+##### 设计思路
+
+验证更新不存在的类型名时返回 404。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 PATCH 请求到 `/open-api/v1/entity-types/non_existent`。
+2. 验证返回错误码。
+
+##### 请求参数
+
+URI：`non_existent`  
+Body：
+```json
+{
+    "description": "x"
+}
+```
+
+##### 预期返回结果
 
 **ErrNum**：404  
-**ErrMsg**：包含Entity-Type不存在的错误信息  
+**ErrMsg**：类型不存在的错误信息  
 **Data**：null
 
 ---
 
-### ET-4-003：更新空描述（边界值）
+## 10. 删除 Entity-Type
 
-#### 设计思路
+### 10.1 接口信息
 
-验证更新Entity-Type时传入空描述的场景，确认接口能正确处理空字符串。
+| 项目 | 值 |
+|------|-----|
+| 模块 | Entity-Type |
+| 接口名称 | 删除 Entity-Type |
+| 方法 | DELETE |
+| 路径 | `/open-api/v1/entity-types/{type_name}` |
+| 说明 | 删除 Entity-Type，被引用时禁止删除 |
 
-#### 前提数据准备
+### 10.2 接口参数说明
 
-- 预先创建Entity-Type：type_name="test_type_empty_desc", level=1
+#### 10.2.1 请求参数
 
-#### 执行步骤
+##### URI 参数
 
-1. 先创建Entity-Type
-2. 提取返回的type_name
-3. 发送 PATCH 请求到 `/open-api/v1/entity-types/{type_name}`，传入空description
-4. 验证响应状态码和返回结构
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| type_name | string | Y | 类型名 |
 
-#### 请求参数
+#### 10.2.2 返回数据字段
 
-**URL 参数**：
+Data 为 null。
 
-| 参数名 | 值 |
-|--------|-----|
-| type_name | 创建时返回的type_name |
+### 10.3 测试场景总览
 
-**Body 参数**：
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| ET-5-001 | 删除 Entity-Type | 正常参数 | 删除成功，再次查询返回 404 |
+| ET-5-002 | 删除被 Entity 引用的 Entity-Type | 业务规则 | 验证 ErrNum=409 |
 
-```json
-{
-    "description": ""
-}
-```
+### 10.4 测试场景详细设计
 
-#### 预期返回结果
+#### 10.4.1 ET-5-001：删除 Entity-Type（正常参数）
+
+##### 设计思路
+
+验证删除未被引用的 Entity-Type 成功。
+
+##### 前提数据准备
+
+已创建未被引用的 Entity-Type `to_delete`。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求到 `/open-api/v1/entity-types/to_delete`。
+2. 验证返回成功。
+3. 再次查询，验证返回 404。
+
+##### 请求参数
+
+URI：`to_delete`
+
+##### 预期返回结果
 
 **ErrNum**：200  
-**ErrMsg**：success  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| type_name | "test_type_empty_desc" | Equals |
-| description | "" | Equals |
+| Data | null | IsNull |
 
 ---
 
+#### 10.4.2 ET-5-002：删除被 Entity 引用的 Entity-Type（业务规则）
+
+##### 设计思路
+
+验证被 Entity 引用的 Entity-Type 不可删除。
+
+##### 前提数据准备
+
+已创建 Entity-Type `referenced_type`，并被某个 Entity 引用。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求到 `/open-api/v1/entity-types/referenced_type`。
+2. 验证返回错误码。
+
+##### 请求参数
+
+URI：`referenced_type`
+
+##### 预期返回结果
+
+**ErrNum**：409  
+**ErrMsg**：类型被引用无法删除的错误信息  
+**Data**：null
+
+---
+
+## 11. 依赖与数据准备
+
+1. 删除被引用用例需要预先创建对应 Entity。
+2. Entity-Type 名称全局唯一，测试间注意清理。
+
+## 12. 注意事项
+
+1. v0.3.0 接口定义与基线一致，重点验证层级约束与删除依赖。
+2. `level` 数字越小级别越高，后续 Entity 父子关系校验依赖此规则。
+3. 测试环境 `SkipTokenValidate=true`，无需认证头。
