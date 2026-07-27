@@ -31,16 +31,6 @@
 | 12 | `/global-models` | 全局模型模块整体移除 |
 | 13 | `/products/{product_name}/models` | 产品可用模型别名查询模块整体移除 |
 | 14 | `/general/actions/exec-api` | 代理执行外部 API 模块整体移除 |
-| 15 | `/expression/verify` | 路由表达式校验模块整体移除 |
-
-### 1.3 章节编号重排
-
-新增 `/alb-pool`、`/auth`、`/certificates`、`/clusters` 后，目录编号已重新编排：
-
-- 关键业务流程：由 `16` 调整为 `13`
-- 对象关系图：由 `17` 调整为 `14`
-- 版本修改记录：由 `18` 调整为 `15`
-- `/clusters` 下的接口编号同步重新编排（原 `10.2.6/10.2.7/10.2.8` 移除或迁移）
 
 ---
 
@@ -81,11 +71,10 @@
 | 409 | 资源冲突 | 资源依赖冲突时 | 语义细化 |
 | 422 | 参数不合法 | 参数不合法造成的失败 | 语义细化 |
 | 500 | 其他业务逻辑错误 | 其他业务逻辑错误，一律返回 500 | 语义细化 |
-| 510 | 未定义 | 集群/分流规则创建时实例池未 ready | **新增** |
 | 555 | 产品线内重复 | 创建重复对象时 | 语义泛化 |
 | 556 | 全局重复 | 数据重复时 | 语义泛化 |
 
-> **影响：** 调用方需新增对 `401`（鉴权失败）和 `510`（实例池未就绪）的处理逻辑，并注意错误码描述文本的调整。
+> **影响：** 调用方需新增对 `401`（鉴权失败）的处理逻辑，并注意错误码描述文本的调整。
 
 ### 2.3 Method 约定与通用 Query 参数
 
@@ -108,22 +97,18 @@
 
 > 更新接口（`PUT /api-keys/{id}`、`PATCH /api-keys/{id}`）中传入 `key` 不生效，API-Key 值不可通过更新接口修改。
 
-#### 3.1.2 列表/详情返回包含 balance
+#### 3.1.2 列表/详情返回中 quota_plan 包含 balance
 
-- `GET /api-keys`：返回由分页结构改为**数组**，且数组元素中 `quota_plan` 包含 `balance` 字段
-- `GET /api-keys/{id}`：返回中 `quota_plan` 包含 `balance` 字段
+根据 `ai-gateway-api` 代码实现（`endpoints/openapi_v1/api_key/list.go`、`model/icluster_conf/api_key.go`）：
 
-### 3.2 /entities 数据模型
+- `GET /api-keys`：返回**分页结构** `{list, pagination}`，列表元素中 `quota_plan` 在非 `unlimited` 情况下会包含 `balance` 字段（`used`、`remaining`）。
+- `GET /api-keys/{id}`：返回中 `quota_plan` 同样包含 `balance` 字段。
 
-`GET /entities` 查询参数精简：
+> **说明**：旧版接口定义中“列表接口 `quota_plan` 不含 `balance`”的描述与代码实现不符；新版接口定义已修正为明确声明列表返回包含 `balance`。
 
-- **移除过滤参数**：`id`、`name`、`quota_plan_id`、`route_rules_id`
-- **保留过滤参数**：`type`、`parent_id`
-- 返回仍为分页结构，列表元素字段不变（仍不含 `balance`）
+### 3.2 /clusters 数据模型（重大变更）
 
-### 3.3 /clusters 数据模型（重大变更）
-
-#### 3.3.1 顶层字段调整
+#### 3.2.1 顶层字段调整
 
 | 字段 | 变更 | 说明 |
 |------|------|------|
@@ -131,27 +116,27 @@
 | `sub_clusters` | **删除** | 子集群为系统内部概念，不再对外暴露；每个集群只包含一个子集群 |
 | `scheduler` | **删除** | 调度为系统内部概念，不再对外暴露；固定 `GSLB_BLACKHOLE=0` |
 
-#### 3.3.2 Instance 结构
+#### 3.2.2 Instance 结构
 
 | 字段 | 变更 | 说明 |
 |------|------|------|
 | `tags` | **删除** | 实例标签不再对外暴露 |
 
-#### 3.3.3 basic / retries 调整
+#### 3.2.3 basic / retries 调整
 
 | 字段 | 变更 | 说明 |
 |------|------|------|
 | `basic.retries.max_retry_in_subcluster` | **重命名** | 改为 `max_retry_in_cluster`（底层仍对应原字段） |
 | `basic.retries.max_retry_cross_subcluster` | **删除** | 跨子集群重试字段移除 |
 
-#### 3.3.4 sticky_sessions 调整
+#### 3.2.4 sticky_sessions 调整
 
 | 字段 | 变更 | 说明 |
 |------|------|------|
 | `sticky_sessions.session_sticky_type` | **删除** | 默认且仅支持实例级会话保持 |
 | `sticky_sessions.enabled` | **新增** | bool，默认 `false`，用于控制会话保持开关 |
 
-#### 3.3.5 passive_health_check 调整
+#### 3.2.5 passive_health_check 调整
 
 所有字段由**必填改为选填**，并补充默认值：
 
@@ -163,7 +148,7 @@
 | `uri` | `/` |
 | `statuscode` | 0 |
 
-#### 3.3.6 llm_config 调整
+#### 3.2.6 llm_config 调整
 
 | 字段 | 变更 | 说明 |
 |------|------|------|
@@ -174,15 +159,15 @@
 
 > `llm_config.enable` 字段继续保持已移除状态；设置 `llm_config` 即默认开启 AI 网关能力。
 
-### 3.4 /auth 数据模型（重大变更）
+### 3.3 /auth 数据模型（重大变更）
 
-#### 3.4.1 User 模型
+#### 3.3.1 User 模型
 
 | 字段 | 旧版 | 新版 |
 |------|------|------|
 | `is_admin` | `true`：System 权限；`false`：Product 权限 | **仅支持 `true`（System 权限）**，`false` 暂不支持 |
 
-#### 3.4.2 Token 模型
+#### 3.3.2 Token 模型
 
 | 字段 | 旧版 | 新版 |
 |------|------|------|
@@ -191,9 +176,9 @@
 
 > 鉴权方式（Session Key / Token）和 Scope 的通用说明同步精简，不再涉及产品线权限校验。
 
-### 3.5 /certificates 数据模型
+### 3.4 /certificates 数据模型
 
-数据模型本身无字段变化，但新增 **证书详情查询接口** `GET /certificates/{cert_name}`，且 **删除证书接口** 的返回由“被删除的证书元数据”改为 `Data 为 null`。
+数据模型本身无字段变化，但新增 **证书详情查询接口** `GET /certificates/{cert_name}`。
 
 ---
 
@@ -217,7 +202,6 @@
 | `/global-models` | `GET /global-models` | 模块整体移除 |
 | `/products/{product_name}/models` | `GET /products/{product_name}/models` | 模块整体移除 |
 | `/general/actions/exec-api` | `POST /general/actions/exec-api` | 模块整体移除 |
-| `/expression/verify` | `PATCH /expression/verify` | 模块整体移除 |
 
 #### 4.2.2 /api-keys 删除
 
@@ -241,8 +225,6 @@
 | 对用户取消某个产品线的授权 | `DELETE /auth/users/{user_name}/products/{product_name}` | 删除 |
 | 获取对指定产品线有权限的用户列表 | `GET /auth/users/actions/search-by-product/{product_name}` | 删除 |
 | 获取对指定产品线有权限的Token列表 | `GET /auth/tokens/actions/search-by-product/{product_name}` | 删除 |
-| 查询单个用户 | `GET /auth/users/{user_name}` | 删除 |
-| 获取系统导航配置 | `GET /meta` | 删除 |
 
 ### 4.3 参数/返回调整的接口
 
@@ -251,9 +233,9 @@
 | 接口 | 变更项 | 旧版 | 新版 |
 |------|--------|------|------|
 | `POST /api-keys` | Body 参数 | 无 `key` | 新增可选 `key` |
-| `GET /api-keys` | 返回结构 | 分页结构，`quota_plan` 不含 `balance` | **数组结构**，元素中 `quota_plan` 含 `balance` |
-| `GET /api-keys/{id}` | 返回结构 | `quota_plan` 不含 `balance` | `quota_plan` 含 `balance` |
-| `GET /api-keys/{id}/quota-plan` | 端点 | `/api-keys/{id}/quota-plan`（URI 参数名为 `key`） | `/api-keys/{key}/quota-plan`（URI 参数名为 `key`） |
+| `GET /api-keys` | 返回结构 | 分页结构；误写 `quota_plan` 不含 `balance` | 分页结构；明确声明 `quota_plan` 含 `balance` |
+| `GET /api-keys/{id}` | 返回结构 | `quota_plan` 不含 `balance`（文档描述，与代码不符） | 明确声明 `quota_plan` 含 `balance` |
+| `GET /api-keys/{id}/quota-plan` | 端点 | `/api-keys/{id}/quota-plan`（URI 参数名为 `key`） | 接口定义正文为 `/api-keys/{id}/quota-plan`；历史版本记录中残留 `/api-keys/{key}/quota-plan` 为笔误 |
 
 #### 4.3.2 /clusters
 
@@ -269,7 +251,7 @@
 
 | 接口 | 变更项 | 旧版 | 新版 |
 |------|--------|------|------|
-| `POST /auth/users` | Body 参数 | `password` 条件必填；`is_admin` 可选；有 `type` 字段 | `password` **必填**；`is_admin` **必填且固定为 `true`**；**删除 `type` 字段** |
+| `POST /auth/users` | Body 参数 | `password` 条件必填；`is_admin` 可选；有 `type` 字段 | `password` **必填**；`is_admin` **选填且固定为 `true`**；**删除 `type` 字段** |
 | `GET /auth/users` | 返回字段 | 含 `user_name`、`is_admin`、`products` | 仅含 `user_name`、`is_admin`（固定 `true`） |
 | `PATCH /auth/users/{user_name}/is_admin` | Body 参数 | `is_admin` 可设置为 `true`/`false` | `is_admin` **固定为 `true`** |
 | `POST /auth/session-keys` | 返回字段 | 含 `is_admin`、`products` | `is_admin` 固定返回 `true`，**删除 `products`** |
@@ -277,22 +259,16 @@
 | `GET /auth/tokens/{token_name}` | 返回字段 | 含 `name`、`product_name`、`token`、`scope` | **删除 `product_name`** |
 | `GET /auth/tokens` | 返回字段 | 元素含 `product_name` | **删除 `product_name`** |
 
-#### 4.3.4 /certificates
-
-| 接口 | 变更项 | 旧版 | 新版 |
-|------|--------|------|------|
-| `DELETE /certificates/{cert_name}` | 返回数据 | 返回被删除的证书元数据 | **返回 `Data` 为 `null`** |
-
 ---
 
 ## 五、关键业务流程变更
 
-由于章节编号调整，关键业务流程的引用编号由旧版的 `16.x` 更新为新版的 `13.x`，核心逻辑保持不变：
+关键业务流程的核心逻辑保持不变：
 
 1. **运行时执行顺序**仍为：模型访问控制检查 → 限流检查 → 配额扣减。
-2. **创建 API-Key 流程**（13.1）和 **创建 Entity 流程**（13.2）步骤不变，但章节号从 `16.1/16.2` 调整为 `13.1/13.2`。
-3. **运行时模型访问控制**（13.3）、**限流检查**（13.4）、**配额扣减**（13.5）逻辑不变。
-4. **配置变更的级联与隔离**表（13.6）内容不变，仅章节号调整。
+2. **创建 API-Key 流程**和 **创建 Entity 流程**步骤不变。
+3. **运行时模型访问控制**、**限流检查**、**配额扣减**逻辑不变。
+4. **配置变更的级联与隔离**内容不变。
 5. 对象关系图同步更新：删除 `/ai-route-rules`、`/global-models` 相关对象，新增 `RouteRules` 统一结构以反映 API-Key、Entity、Global 路由表均通过 `RouteRules` 管理规则。
 
 ---
@@ -304,12 +280,12 @@
 - **新增**：`/model-provider-types`、`/tools`
   - `/model-provider-types`：从 `/clusters` 中独立出来，提供 AI 模型提供商类型列表查询
   - `/tools`：新增工具接口，提供“从指定提供商获取 AI 模型列表”能力
-- **删除**：`/ai-route-rules`、`/global-models`、`/products/{product_name}/models`、`/general/actions/exec-api`、`/expression/verify`
+- **删除**：`/ai-route-rules`、`/global-models`、`/products/{product_name}/models`、`/general/actions/exec-api`
 
 ### 6.2 通用规范
 
 - 返回值中**移除 `WorkMode` 字段**
-- **新增错误码 401、510**，并细化既有错误码描述
+- **新增错误码 401**，并细化既有错误码描述
 
 ### 6.3 API-Key
 
@@ -320,7 +296,7 @@
 
 - 用户 `is_admin` **仅支持 `true`（System 权限）**
 - Token **删除 `product_name`**，`scope` 仅保留 `System`/`Support`
-- 删除产品线授权相关接口及单个用户查询、系统导航配置接口
+- 删除产品线授权相关接口
 
 ### 6.5 Clusters
 
@@ -336,11 +312,9 @@
 ### 6.6 Certificates
 
 - 新增 **证书详情查询接口** `GET /certificates/{cert_name}`
-- 删除证书接口返回调整为 `Data 为 null`
 
-### 6.7 章节与流程
+### 6.7 对象关系图
 
-- 章节编号重新编排：关键业务流程 `16→13`、对象关系图 `17→14`、版本修改记录 `18→15`
 - 对象关系图同步重构，反映模块精简后的对象关系
 
 ---
