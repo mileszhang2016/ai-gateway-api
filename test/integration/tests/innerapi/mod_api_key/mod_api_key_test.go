@@ -21,10 +21,21 @@ func TestMain(m *testing.M) {
 }
 
 func TestInnerAPI_ModApiKey(t *testing.T) {
-	apiKeyID, err := testutil.CreateAPIKey("inner-api-key", "")
+	// 创建带有限配额计划的 API-Key，确保 QuotaPlans 非空
+	resp, err := testutil.GetClient().Post("/open-api/v1/api-keys", map[string]interface{}{
+		"description": "inner-api-key",
+		"quota_plan": map[string]interface{}{
+			"unlimited": false,
+			"quota":     1000,
+		},
+	})
 	if err != nil {
 		t.Fatalf("setup failed: %v", err)
 	}
+	if resp.ErrNum != 200 {
+		t.Fatalf("create api-key failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	apiKeyID, _ := testutil.GetDataField(resp, "id")
 
 	t.Run("IN-6-001 首次导出 mod-api-key", func(t *testing.T) {
 		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/mod-api-key")
@@ -58,6 +69,6 @@ func TestInnerAPI_ModApiKey(t *testing.T) {
 	})
 
 	t.Cleanup(func() {
-		testutil.DeleteAPIKey(apiKeyID)
+		testutil.DeleteAPIKey(apiKeyID.(string))
 	})
 }

@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	RouteRulesTypeAPIKey = "api_key"
+	RouteRulesTypeAPIKey = "apikey"
 	RouteRulesTypeEntity = "entity"
 	RouteRulesTypeGlobal = "global"
 )

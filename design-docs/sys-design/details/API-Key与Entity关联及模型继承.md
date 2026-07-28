@@ -79,9 +79,9 @@ if param.EntityID != nil && *param.EntityID != "" {
 
 1. 合并 API-Key 自身与 Entity 层级的模型白名单；
 2. 合并 Entity 层级的模型黑名单；
-3. 收集 API-Key 自身及 Entity 层级向上的所有配额计划；
-4. 收集 API-Key 自身及 Entity 层级向上的所有限流策略；
-5. 按优先级绑定 API-Key 级、Entity 级、Global 级路由规则。
+3. 收集 API-Key 自身及 Entity 层级向上的所有**非无限**配额计划；
+4. 收集 API-Key 自身及 Entity 层级向上的所有**启用**限流策略；
+5. 按优先级绑定 API-Key 级、**Entity 层级向上**、Global 级路由规则。
 
 ---
 
@@ -162,7 +162,7 @@ if len(finalAllowModels) == 0 {
 
 ### 6.1 收集逻辑
 
-API-Key 导出到 BFE 时，会收集 API-Key 自身及 Entity 层级向上的所有配额计划：
+API-Key 导出到 BFE 时，会收集 API-Key 自身及 Entity 层级向上的所有配额计划，**`unlimited=true` 的计划不会加入导出结果**：
 
 ```go
 func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(
@@ -170,10 +170,10 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(
     apiKey *icluster_conf.APIKeyParam,
     productName string,
 ) ([]string, []ApikeyTag, error) {
-    // 1. API-Key 自身配额计划
+    // 1. API-Key 自身配额计划（跳过 unlimited）
     if apiKey.QuotaPlanID != nil { ... }
 
-    // 2. Entity 层级向上的配额计划
+    // 2. Entity 层级向上的配额计划（跳过 unlimited）
     if apiKey.EntityID != nil && *apiKey.EntityID != "" {
         entity, err := rlm.entityStorager.FetchEntity(...)
         if entity != nil {
@@ -194,7 +194,7 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(
     entity *quota.EntityParam,
     productName string,
 ) ([]string, []ApikeyTag, error) {
-    // 当前 Entity 的 QuotaPlan
+    // 当前 Entity 的 QuotaPlan（跳过 unlimited）
     if entity.QuotaPlanID != nil { ... }
 
     // 递归父 Entity
@@ -209,6 +209,8 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(
     return quotaPlanIDs, tags, nil
 }
 ```
+
+无限配额计划虽然不参与导出，但仍会影响 Entity 层级的标签收集。
 
 ### 6.3 导出格式
 
@@ -292,9 +294,17 @@ for _, apiKey := range apiKeys {
     // 1. API-Key 级路由规则
     if apiKey.RouteRulesID != nil { ... }
 
-    // 2. Entity 级路由规则
-    if apiKey.EntityID != nil && *apiKey.EntityID != "" {
-        // entity level
+    // 2. Entity 层级路由规则（自底向上遍历）
+    currentEntityID := apiKey.EntityID
+    for currentEntityID != nil && *currentEntityID != "" {
+        entity, exists := entityMap[*currentEntityID]
+        if !exists {
+            break
+        }
+        if entity.RouteRulesID != nil {
+            // 绑定 entity_<name>
+        }
+        currentEntityID = entity.ParentID
     }
 
     // 3. Global 级路由规则
@@ -302,7 +312,7 @@ for _, apiKey := range apiKeys {
 }
 ```
 
-绑定顺序为：`apikey_xxx` → `entity_xxx` → `global_default`。BFE 按此顺序匹配时，通常先命中 API-Key 级规则。
+绑定顺序为：`apikey_xxx` → `entity_xxx`（直接 Entity）→ `entity_<parent>` → …… → `global_default`。BFE 按此顺序匹配时，通常先命中 API-Key 级规则，再依次命中各级 Entity 规则，最后命中 Global 兜底规则。
 
 ---
 

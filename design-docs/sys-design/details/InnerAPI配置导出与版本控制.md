@@ -216,10 +216,11 @@ type ModAPIKeyRuleConf struct {
 
 1. 构造 AI 路由对应的 API-Key 规则（`buildAIRouteAPIKeyRules`）；
 2. 遍历所有 `api_keys`，为每个 key 生成 `TokenFile`；
-3. 计算 token 状态（`enabled/disabled/expired/exhausted`）；
-4. 合并 Entity 层级的 `allow_models`（交集）与 `block_models`（并集）；
-5. 收集 API-Key 自身及 Entity 层级向上的配额计划；
-6. 输出 `QuotaPlans`、`Tokens`、`Config`。
+3. **预加载每个 API-Key 关联的 `QuotaPlan`**（raw storager 不会自动填充关联对象，而 `GetRemainingQuota` 需要 `QuotaPlan.Quota` 判断 token 是否耗尽）；
+4. 计算 token 状态（`enabled/disabled/expired/exhausted`）；
+5. 合并 Entity 层级的 `allow_models`（交集）与 `block_models`（并集）；
+6. 收集 API-Key 自身及 Entity 层级向上的配额计划，**跳过 `unlimited=true` 的配额计划**；
+7. 输出 `QuotaPlans`、`Tokens`、`Config`。
 
 > 详见《API-Key 与 Entity 关联及模型继承.md》。
 
@@ -254,7 +255,8 @@ type ExportRateLimitPolicyConfig struct {
 1. 查询所有 `rate_limit_policies`；
 2. 遍历所有 `api_keys`；
 3. 收集每个 API-Key 自身及其 Entity 层级向上的限流策略 ID；
-4. 将策略转换为 BFE 格式并输出绑定关系。
+4. **跳过 `enabled=false` 的策略**，不导出也不生成绑定；
+5. 将启用的策略转换为 BFE 格式并输出绑定关系。
 
 > 详见《限流策略与导出.md》。
 
@@ -274,7 +276,7 @@ type AiRouteDataExport struct {
 
 1. 查询所有 `api_keys` 和 `entities`；
 2. 查询 Global 路由规则；
-3. 对每个 API-Key，依次检查其 API-Key 级、Entity 级、Global 级路由规则；
+3. 对每个 API-Key，依次检查其 API-Key 级、**Entity 层级向上（沿 `parent_id` 遍历）**、Global 级路由规则；
 4. 若规则启用，则生成对应 `RouteTable` 并建立绑定关系。
 
 > AI 路由条件表达式的构造详见《AI 路由规则与条件表达式.md》（待补充）。

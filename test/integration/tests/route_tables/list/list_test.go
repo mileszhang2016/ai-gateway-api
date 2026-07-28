@@ -74,7 +74,7 @@ func TestRouteTables_List(t *testing.T) {
 		assert.GreaterOrEqual(t, len(list), 3)
 		assert.True(t, hasType(list, "global"))
 		assert.True(t, hasType(list, "entity"))
-		assert.True(t, hasType(list, "api_key"))
+		assert.True(t, hasType(list, "apikey"))
 	})
 
 	t.Run("RT-1-002 按 type=global 过滤", func(t *testing.T) {
@@ -103,8 +103,8 @@ func TestRouteTables_List(t *testing.T) {
 		}
 	})
 
-	t.Run("RT-1-004 按 type=api_key 过滤", func(t *testing.T) {
-		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"type": "api_key"})
+	t.Run("RT-1-004 按 type=apikey 过滤", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"type": "apikey"})
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
 		}
@@ -112,7 +112,7 @@ func TestRouteTables_List(t *testing.T) {
 		var data map[string]interface{}
 		json.Unmarshal(resp.Data, &data)
 		for _, item := range data["list"].([]interface{}) {
-			assert.Equal(t, "api_key", item.(map[string]interface{})["type"])
+			assert.Equal(t, "apikey", item.(map[string]interface{})["type"])
 		}
 	})
 

@@ -157,10 +157,14 @@ func (e *AIRouteExporter) AIRouteGenerator(ctx context.Context) (*iversion_contr
 			}
 		}
 
-		// Entity level route table
-		if apiKey.EntityID != nil && *apiKey.EntityID != "" {
-			entity, exists := entityMap[*apiKey.EntityID]
-			if exists && entity.RouteRulesID != nil {
+		// Entity level route table (walk up the entity hierarchy)
+		currentEntityID := apiKey.EntityID
+		for currentEntityID != nil && *currentEntityID != "" {
+			entity, exists := entityMap[*currentEntityID]
+			if !exists {
+				break
+			}
+			if entity.RouteRulesID != nil {
 				routeRulesParam, err := e.routeRulesStorager.FetchRouteRulesByID(ctx, *entity.RouteRulesID)
 				if err != nil {
 					return nil, err
@@ -171,6 +175,7 @@ func (e *AIRouteExporter) AIRouteGenerator(ctx context.Context) (*iversion_contr
 					bindingList = append(bindingList, tableKey)
 				}
 			}
+			currentEntityID = entity.ParentID
 		}
 
 		// Global level route table

@@ -157,6 +157,11 @@ func GetRemainingQuota(param *APIKeyParam) (*int64, error) {
 		return nil, nil
 	}
 
+	// If the associated quota plan is unlimited, there is no remaining quota to track.
+	if param.QuotaPlan != nil && param.QuotaPlan.Unlimited != nil && *param.QuotaPlan.Unlimited {
+		return nil, nil
+	}
+
 	if param.QuotaPlan == nil || param.QuotaPlan.Quota == nil {
 		return nil, nil
 	}

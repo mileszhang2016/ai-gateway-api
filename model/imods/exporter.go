@@ -25,6 +25,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
 	"github.com/yf-networks/ai-gateway-api/model/quota"
+	"github.com/yf-networks/ai-gateway-api/model/shared"
 	"github.com/yf-networks/ai-gateway-api/stateful"
 )
 
@@ -195,6 +196,27 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 		return nil, err
 	}
 
+	// Populate QuotaPlan for status calculation. The raw storager does not load
+	// associated objects, but GetRemainingQuota needs QuotaPlan.Quota to decide
+	// whether the token is exhausted.
+	for _, one := range apiKeyList {
+		if one.QuotaPlanID != nil && rlm.quotaPlanStorager != nil {
+			quotaPlan, err := rlm.quotaPlanStorager.FetchQuotaPlan(ctx, &quota.QuotaPlanFilter{ID: one.QuotaPlanID})
+			if err != nil {
+				return nil, err
+			}
+			if quotaPlan != nil {
+				one.QuotaPlan = &shared.QuotaPlanParam{
+					Unlimited:             quotaPlan.Unlimited,
+					PassWhenNoEnoughQuota: quotaPlan.PassWhenNoEnoughQuota,
+					Quota:                 quotaPlan.Quota,
+					Unit:                  quotaPlan.Unit,
+					ResetPeriod:           quotaPlan.ResetPeriod,
+				}
+			}
+		}
+	}
+
 	apiKey2Config := make(map[string]map[string]*TokenFile)
 	for _, one := range apiKeyList {
 		if _, ok := apiKey2Config[*one.ProductName]; !ok {
@@ -363,14 +385,18 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Con
 			return nil, nil, err
 		}
 		if quotaPlan != nil {
-			qp := convertQuotaPlanToExport(quotaPlan, *apiKey.Key, *apiKey.Key)
-			if !rlm.isQuotaPlanCached(productName, qp.Id) {
-				if _, ok := rlm.quotaPlanCache[productName]; !ok {
-					rlm.quotaPlanCache[productName] = make([]*QuotaPlan, 0)
+			// Skip API-Key own unlimited quota plans: they do not need to be
+			// referenced in the token's quota_plans list.
+			if quotaPlan.Unlimited == nil || !*quotaPlan.Unlimited {
+				qp := convertQuotaPlanToExport(quotaPlan, *apiKey.Key, *apiKey.Key)
+				if !rlm.isQuotaPlanCached(productName, qp.Id) {
+					if _, ok := rlm.quotaPlanCache[productName]; !ok {
+						rlm.quotaPlanCache[productName] = make([]*QuotaPlan, 0)
+					}
+					rlm.quotaPlanCache[productName] = append(rlm.quotaPlanCache[productName], qp)
 				}
-				rlm.quotaPlanCache[productName] = append(rlm.quotaPlanCache[productName], qp)
+				quotaPlanIDs = append(quotaPlanIDs, qp.Id)
 			}
-			quotaPlanIDs = append(quotaPlanIDs, qp.Id)
 		}
 	}
 
@@ -409,14 +435,18 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context,
 			return nil, nil, err
 		}
 		if quotaPlan != nil && entity.EntityID != nil {
-			qp := convertQuotaPlanToExport(quotaPlan, *entity.EntityID, *entity.EntityID)
-			if !rlm.isQuotaPlanCached(productName, qp.Id) {
-				if _, ok := rlm.quotaPlanCache[productName]; !ok {
-					rlm.quotaPlanCache[productName] = make([]*QuotaPlan, 0)
+			// Skip unlimited entity quota plans: they do not enforce any quota
+			// and should not be referenced by the token.
+			if quotaPlan.Unlimited == nil || !*quotaPlan.Unlimited {
+				qp := convertQuotaPlanToExport(quotaPlan, *entity.EntityID, *entity.EntityID)
+				if !rlm.isQuotaPlanCached(productName, qp.Id) {
+					if _, ok := rlm.quotaPlanCache[productName]; !ok {
+						rlm.quotaPlanCache[productName] = make([]*QuotaPlan, 0)
+					}
+					rlm.quotaPlanCache[productName] = append(rlm.quotaPlanCache[productName], qp)
 				}
-				rlm.quotaPlanCache[productName] = append(rlm.quotaPlanCache[productName], qp)
+				quotaPlanIDs = append(quotaPlanIDs, qp.Id)
 			}
-			quotaPlanIDs = append(quotaPlanIDs, qp.Id)
 		}
 	}
 

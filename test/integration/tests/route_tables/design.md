@@ -2,7 +2,7 @@
 
 ## 1. 模块概述
 
-Route Tables 模块用于查询系统中各类路由表的元数据列表（global/entity/api_key）。本模块为只读列表接口，路由表的实际创建/更新由其对应模块（Global Route Rules、Entity、API-Key）间接维护。
+Route Tables 模块用于查询系统中各类路由表的元数据列表（global/entity/apikey）。本模块为只读列表接口，路由表的实际创建/更新由其对应模块（Global Route Rules、Entity、API-Key）间接维护。
 
 ## 2. 接口列表
 
@@ -54,7 +54,7 @@ route_tables/
 | page_size | int | N | 每页条数，默认 20，最大 100 |
 | sort_by | string | N | 排序字段 |
 | sort_order | string | N | 排序方向，asc/desc，默认 desc |
-| type | string | N | 按路由表类型过滤：global、entity、api_key |
+| type | string | N | 按路由表类型过滤：global、entity、apikey |
 | owner | string | N | 按所有者标识精确匹配过滤 |
 | enabled | bool | N | 按启用状态过滤 |
 
@@ -63,7 +63,7 @@ route_tables/
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | list | []RouteTable | 路由表列表 |
-| list[].type | string | 路由表类型：global、entity、api_key |
+| list[].type | string | 路由表类型：global、entity、apikey |
 | list[].owner | string | 所有者标识 |
 | list[].enabled | bool | 是否启用 |
 | pagination | object | 分页信息 |
@@ -78,7 +78,7 @@ route_tables/
 | RT-1-001 | 无参数查询路由表列表 | 正常参数 | 返回所有路由表元数据 |
 | RT-1-002 | 按 type=global 过滤 | 正常参数 | 仅返回 global 类型 |
 | RT-1-003 | 按 type=entity 过滤 | 正常参数 | 仅返回 entity 类型 |
-| RT-1-004 | 按 type=api_key 过滤 | 正常参数 | 仅返回 api_key 类型 |
+| RT-1-004 | 按 type=apikey 过滤 | 正常参数 | 仅返回 apikey 类型 |
 | RT-1-005 | 按 owner 精确匹配过滤 | 正常参数 | 验证 owner 过滤 |
 | RT-1-006 | 按 enabled 过滤 | 正常参数 | 验证状态过滤 |
 | RT-1-007 | 分页参数边界 | 边界值 | page=1&page_size=1 |
@@ -98,13 +98,13 @@ route_tables/
 
 - 已通过 `PUT /global-route-rules` 创建 global 路由表。
 - 已通过 `POST /entities` 创建 entity 路由表。
-- 已通过 `POST /api-keys` 创建 api_key 路由表。
+- 已通过 `POST /api-keys` 创建 apikey 路由表。
 
 ##### 执行步骤
 
 1. 发送 GET 请求到 `/open-api/v1/route-tables`。
 2. 验证响应状态码和返回结构。
-3. 验证 `list` 中至少包含 global、entity、api_key 三类元素。
+3. 验证 `list` 中至少包含 global、entity、apikey 三类元素。
 
 ##### 请求参数
 
@@ -120,7 +120,7 @@ route_tables/
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
 | list | 数组 | IsArray |
-| list[*].type | 包含 global/entity/api_key | Contains |
+| list[*].type | 包含 global/entity/apikey | Contains |
 | pagination.total | ≥ 3 | Gte |
 
 ---
@@ -195,25 +195,25 @@ type=entity
 
 ---
 
-#### 6.4.4 RT-1-004：按 type=api_key 过滤（正常参数）
+#### 6.4.4 RT-1-004：按 type=apikey 过滤（正常参数）
 
 ##### 设计思路
 
-验证按 `type=api_key` 过滤后，列表中仅返回 api_key 类型路由表。
+验证按 `type=apikey` 过滤后，列表中仅返回 apikey 类型路由表。
 
 ##### 前提数据准备
 
-已存在 api_key 路由表。
+已存在 apikey 路由表。
 
 ##### 执行步骤
 
-1. 发送 GET 请求，`type=api_key`。
-2. 验证列表中所有元素的 `type` 均为 `api_key`。
+1. 发送 GET 请求，`type=apikey`。
+2. 验证列表中所有元素的 `type` 均为 `apikey`。
 
 ##### 请求参数
 
 ```
-type=api_key
+type=apikey
 ```
 
 ##### 预期返回结果
@@ -226,7 +226,7 @@ type=api_key
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
 | list | 数组 | IsArray |
-| list[*].type | 全部为 "api_key" | Equals |
+| list[*].type | 全部为 "apikey" | Equals |
 
 ---
 
@@ -432,7 +432,7 @@ type=unknown
 - 查询前需通过其他模块预置数据：
   - `global` 类型：调用 `PUT /global-route-rules`。
   - `entity` 类型：调用 `POST /entities`。
-  - `api_key` 类型：调用 `POST /api-keys`。
+  - `apikey` 类型：调用 `POST /api-keys`。
 
 ## 8. 注意事项
 
