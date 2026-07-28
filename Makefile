@@ -76,6 +76,28 @@ test: prepare test-case
 test-case:
 	$(GOTEST) -v -cover $(GOPKGS)
 
+# model-only unit tests
+MODEL_COVERAGE_THRESHOLD := 70
+
+.PHONY: test-model test-model-cover test-model-cover-gate
+test-model:
+	$(GOTEST) -v ./model/...
+
+test-model-cover:
+	$(GOTEST) -cover ./model/...
+
+test-model-cover-gate:
+	@echo "Running model tests with coverage gate ($(MODEL_COVERAGE_THRESHOLD)%)..."
+	@$(GOTEST) -coverprofile=$(HOMEDIR)/model_coverage.out ./model/... >/dev/null && \
+	COV=$$(go tool cover -func=$(HOMEDIR)/model_coverage.out | grep '^total:' | awk '{print $$3}' | sed 's/%//') && \
+	echo "Model coverage: $$COV%" && \
+	if awk -v cov="$$COV" -v threshold="$(MODEL_COVERAGE_THRESHOLD)" 'BEGIN {exit (cov+0 >= threshold+0) ? 0 : 1}'; then \
+		echo "Coverage gate passed"; \
+	else \
+		echo "Model coverage $$COV% is below threshold $(MODEL_COVERAGE_THRESHOLD)%"; \
+		exit 1; \
+	fi
+
 # make package
 package: package-bin
 package-bin:
@@ -130,4 +152,4 @@ clean:
 	rm -rf $(GOPATH)/pkg/darwin_amd64
 
 # avoid filename conflict and speed up build 
-.PHONY: all prepare compile test package clean build
+.PHONY: all prepare compile test package clean build test-model test-model-cover test-model-cover-gate

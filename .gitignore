@@ -25,11 +25,19 @@ profile.out
 coverage.txt
 .idea/*
 .vscode/*
-.github
 dist/*
 conf/wasm_plugin
 
+# Coverage artifacts
+model_coverage.out
+
+
 .DS_Store
+
+# Coverage artifacts
+coverage.out
+**/coverage.out
+model_coverage.out
 
 # Compiled binary
 ai-gateway-api.exe

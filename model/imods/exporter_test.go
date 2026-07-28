@@ -1,0 +1,682 @@
+// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package imods
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/yf-networks/ai-gateway-api/lib"
+	"github.com/yf-networks/ai-gateway-api/model/iai_route"
+	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
+	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
+	"github.com/yf-networks/ai-gateway-api/model/quota"
+	"github.com/yf-networks/ai-gateway-api/model/shared"
+)
+
+func newTestAPIKeyRuleManager() *APIKeyRuleManager {
+	return NewAPIKeyRuleManager(
+		&fakeTxn{},
+		iversion_control.NewVersionControllerManager(&fakeTxn{}, &fakeVersionControlStorager{}),
+		&fakeAPIKeyStorager{},
+		&fakeAIRouteRuleStorager{},
+		&fakeQuotaPlanStorager{},
+		&fakeEntityStorager{},
+	)
+}
+
+func TestAPIKeyRuleManager_ConfigExport(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:        lib.PString("key-1"),
+					Key:       lib.PString("ak-key-1"),
+					ProductName: lib.PString("AI_product"),
+					Enable:    lib.PBool(true),
+					KeyCreateAt: lib.PTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)),
+				},
+			}, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	versionStore := &fakeVersionControlStorager{
+		upsertFn: func(ctx context.Context, css *iversion_control.ExportData) (string, error) {
+			return "v-abc", nil
+		},
+	}
+
+	m := NewAPIKeyRuleManager(
+		&fakeTxn{},
+		iversion_control.NewVersionControllerManager(&fakeTxn{}, versionStore),
+		apiKeyStore,
+		aiRouteStore,
+		&fakeQuotaPlanStorager{},
+		&fakeEntityStorager{},
+	)
+
+	conf, err := m.ConfigExport(ctx, "")
+	require.NoError(t, err)
+	require.NotNil(t, conf)
+	assert.Equal(t, "v-abc", *conf.Version)
+	assert.Len(t, conf.Config["AI_product"], 1)
+	assert.Len(t, conf.Tokens["AI_product"], 1)
+
+	// Same version returns nil
+	conf2, err := m.ConfigExport(ctx, "v-abc")
+	require.NoError(t, err)
+	assert.Nil(t, conf2)
+}
+
+func TestAPIKeyRuleManager_ConfigExport_GeneratorError(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return nil, errors.New("api key fetch error")
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.apiKeyStorager = apiKeyStore
+
+	conf, err := m.ConfigExport(ctx, "")
+	require.Error(t, err)
+	assert.Nil(t, conf)
+}
+
+func TestAPIKeyRuleManager_FormatAIRouteAPIKeyRules(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return []*iai_route.Rule{
+				{
+					Basic: &iai_route.BasicInfo{
+						Domain: lib.PString("example.com"),
+						PathFilter: &iai_route.PathFilter{
+							MatchMode:  lib.PString(iai_route.MatchModePrefix),
+							Path:       lib.PString("/api"),
+							IgnoreCase: lib.PBool(true),
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.aiRouteStorager = aiRouteStore
+
+	rules, err := m.FormatAIRouteAPIKeyRules(ctx, "AI_product")
+	require.NoError(t, err)
+	require.Len(t, rules, 2)
+	assert.Equal(t, `req_host_in("example.com")&&req_path_prefix_in("/api", true)`, rules[0].Cond)
+	assert.Equal(t, APIKeyActionCMD, rules[0].Actions[0].Cmd)
+	assert.Equal(t, "default_t()", rules[1].Cond)
+	assert.Equal(t, "AI_product", rules[0].ProductName)
+}
+
+func TestAPIKeyRuleManager_FormatAIRouteAPIKeyRules_Error(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, errors.New("route fetch error")
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.aiRouteStorager = aiRouteStore
+
+	rules, err := m.FormatAIRouteAPIKeyRules(ctx, "AI_product")
+	require.Error(t, err)
+	assert.Nil(t, rules)
+}
+
+func TestAPIKeyRuleManager_APIKeyRuleGenerator(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+	futureExpire := time.Date(2030, 1, 1, 0, 0, 0, 0, time.Local).Unix()
+	quotaPlanID := int64(10)
+	entityID := "entity-1"
+
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:          lib.PString("key-1"),
+					Key:         lib.PString("ak-key-1"),
+					ProductName: lib.PString("AI_product"),
+					Enable:      lib.PBool(true),
+					ExpiredTime: &futureExpire,
+					KeyCreateAt: lib.PTime(keyCreateAt),
+					QuotaPlanID: &quotaPlanID,
+					EntityID:    &entityID,
+					Models:      []string{"gpt-4", "gpt-3.5"},
+					Subnet:      []string{"10.0.0.0/8"},
+				},
+			}, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	quotaPlanStore := &fakeQuotaPlanStorager{
+		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
+			if filter.ID != nil && *filter.ID == quotaPlanID {
+				return &quota.QuotaPlanParam{
+					ID:        lib.PInt64(quotaPlanID),
+					Unlimited: lib.PBool(false),
+					Quota:     lib.PInt64(1000),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	entityStore := &fakeEntityStorager{
+		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+			if filter.EntityID != nil && *filter.EntityID == entityID {
+				return &quota.EntityParam{
+					EntityID: lib.PString(entityID),
+					Name:     lib.PString("team-a"),
+					Type:     lib.PString("team"),
+					AllowModels: []string{"gpt-4", "claude"},
+					BlockModels: []string{"gpt-2"},
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	m := NewAPIKeyRuleManager(
+		&fakeTxn{},
+		iversion_control.NewVersionControllerManager(&fakeTxn{}, &fakeVersionControlStorager{}),
+		apiKeyStore,
+		aiRouteStore,
+		quotaPlanStore,
+		entityStore,
+	)
+
+	data, err := m.APIKeyRuleGenerator(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, data)
+	assert.Equal(t, ConfigTopicProductAPIKeyRule, data.Topic)
+
+	conf, ok := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
+	require.True(t, ok)
+	assert.NotNil(t, conf.Tokens["AI_product"]["ak-key-1"])
+	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, TokenStatusEnabled, token.Status)
+	assert.Equal(t, 1, token.Enabled)
+	assert.Equal(t, "gpt-4", *token.Models)
+	assert.Equal(t, "gpt-2", *token.BlockModels)
+	assert.Equal(t, "10.0.0.0/8", *token.Subnet)
+	assert.NotEmpty(t, token.QuotaPlans)
+	assert.NotEmpty(t, token.Tags)
+}
+
+func TestAPIKeyRuleManager_APIKeyRuleGenerator_Unlimited(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:             lib.PString("key-1"),
+					Key:            lib.PString("ak-key-1"),
+					ProductName:    lib.PString("AI_product"),
+					Enable:         lib.PBool(true),
+					UnlimitedQuota: lib.PBool(true),
+					KeyCreateAt:    lib.PTime(keyCreateAt),
+				},
+			}, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.apiKeyStorager = apiKeyStore
+	m.aiRouteStorager = aiRouteStore
+
+	data, err := m.APIKeyRuleGenerator(ctx)
+	require.NoError(t, err)
+	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
+	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, TokenStatusEnabled, token.Status)
+	assert.True(t, token.UnlimitedQuota)
+}
+
+func TestAPIKeyRuleManager_APIKeyRuleGenerator_Expired(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+	pastExpire := keyCreateAt.Add(-24 * time.Hour).Unix()
+	quota := int64(100)
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:          lib.PString("key-1"),
+					Key:         lib.PString("ak-key-1"),
+					ProductName: lib.PString("AI_product"),
+					Enable:      lib.PBool(true),
+					ExpiredTime: &pastExpire,
+					KeyCreateAt: lib.PTime(keyCreateAt),
+					QuotaPlan: &shared.QuotaPlanParam{
+						Quota: &quota,
+					},
+				},
+			}, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.apiKeyStorager = apiKeyStore
+	m.aiRouteStorager = aiRouteStore
+
+	data, err := m.APIKeyRuleGenerator(ctx)
+	require.NoError(t, err)
+	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
+	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, TokenStatusExpired, token.Status)
+}
+
+func TestAPIKeyRuleManager_APIKeyRuleGenerator_Exhausted(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+	futureExpire := time.Date(2030, 1, 1, 0, 0, 0, 0, time.Local).Unix()
+	quota := int64(0)
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:          lib.PString("key-1"),
+					Key:         lib.PString("ak-key-1"),
+					ProductName: lib.PString("AI_product"),
+					Enable:      lib.PBool(true),
+					ExpiredTime: &futureExpire,
+					KeyCreateAt: lib.PTime(keyCreateAt),
+					QuotaPlan: &shared.QuotaPlanParam{
+						Quota: &quota,
+					},
+				},
+			}, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.apiKeyStorager = apiKeyStore
+	m.aiRouteStorager = aiRouteStore
+
+	data, err := m.APIKeyRuleGenerator(ctx)
+	require.NoError(t, err)
+	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
+	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, TokenStatusExhausted, token.Status)
+}
+
+func TestAPIKeyRuleManager_APIKeyRuleGenerator_Disabled(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:          lib.PString("key-1"),
+					Key:         lib.PString("ak-key-1"),
+					ProductName: lib.PString("AI_product"),
+					Enable:      lib.PBool(false),
+					KeyCreateAt: lib.PTime(time.Now()),
+				},
+			}, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.apiKeyStorager = apiKeyStore
+	m.aiRouteStorager = aiRouteStore
+
+	data, err := m.APIKeyRuleGenerator(ctx)
+	require.NoError(t, err)
+	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
+	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, TokenStatusDisabled, token.Status)
+	assert.Equal(t, 2, token.Enabled)
+}
+
+func TestAPIKeyRuleManager_APIKeyRuleGenerator_ModelIntersectionEmpty(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+	entityID := "entity-1"
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:          lib.PString("key-1"),
+					Key:         lib.PString("ak-key-1"),
+					ProductName: lib.PString("AI_product"),
+					Enable:      lib.PBool(true),
+					KeyCreateAt: lib.PTime(keyCreateAt),
+					EntityID:    &entityID,
+					Models:      []string{"gpt-4"},
+				},
+			}, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	entityStore := &fakeEntityStorager{
+		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+			return &quota.EntityParam{
+				EntityID:    lib.PString(entityID),
+				AllowModels: []string{"claude"},
+			}, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.apiKeyStorager = apiKeyStore
+	m.aiRouteStorager = aiRouteStore
+	m.entityStorager = entityStore
+
+	data, err := m.APIKeyRuleGenerator(ctx)
+	require.NoError(t, err)
+	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
+	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, "", *token.Models)
+	assert.Equal(t, 2, token.Enabled)
+}
+
+func TestAPIKeyRuleManager_APIKeyRuleGenerator_EntityHierarchy(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+	parentID := "parent-1"
+	entityID := "entity-1"
+	quotaPlanID := int64(20)
+
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:          lib.PString("key-1"),
+					Key:         lib.PString("ak-key-1"),
+					ProductName: lib.PString("AI_product"),
+					Enable:      lib.PBool(true),
+					KeyCreateAt: lib.PTime(keyCreateAt),
+					EntityID:    &entityID,
+				},
+			}, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	quotaPlanStore := &fakeQuotaPlanStorager{
+		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
+			if filter.ID != nil && *filter.ID == quotaPlanID {
+				return &quota.QuotaPlanParam{
+					ID:        lib.PInt64(quotaPlanID),
+					Unlimited: lib.PBool(false),
+					Quota:     lib.PInt64(500),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	entityStore := &fakeEntityStorager{
+		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+			if filter.EntityID != nil && *filter.EntityID == entityID {
+				return &quota.EntityParam{
+					EntityID:    lib.PString(entityID),
+					Name:        lib.PString("team-a"),
+					Type:        lib.PString("team"),
+					ParentID:    &parentID,
+					QuotaPlanID: &quotaPlanID,
+					AllowModels: []string{"gpt-4"},
+				}, nil
+			}
+			if filter.EntityID != nil && *filter.EntityID == parentID {
+				return &quota.EntityParam{
+					EntityID:    lib.PString(parentID),
+					Name:        lib.PString("org-a"),
+					Type:        lib.PString("org"),
+					AllowModels: []string{"gpt-4", "claude"},
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.apiKeyStorager = apiKeyStore
+	m.aiRouteStorager = aiRouteStore
+	m.quotaPlanStorager = quotaPlanStore
+	m.entityStorager = entityStore
+
+	data, err := m.APIKeyRuleGenerator(ctx)
+	require.NoError(t, err)
+	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
+	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, "gpt-4", *token.Models)
+	assert.Len(t, token.Tags, 2)
+	assert.Contains(t, token.QuotaPlans, "entity-1")
+}
+
+func TestAPIKeyRuleManager_FetchQuotaPlansWithEntityHierarchy(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	key := "ak-key-1"
+	quotaPlanID := int64(10)
+	entityID := "entity-1"
+
+	apiKey := &icluster_conf.APIKeyParam{
+		Key:         &key,
+		QuotaPlanID: &quotaPlanID,
+		EntityID:    &entityID,
+	}
+
+	quotaPlanStore := &fakeQuotaPlanStorager{
+		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
+			if filter.ID != nil && *filter.ID == quotaPlanID {
+				return &quota.QuotaPlanParam{
+					ID:        lib.PInt64(quotaPlanID),
+					Unlimited: lib.PBool(false),
+					Quota:     lib.PInt64(100),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	entityStore := &fakeEntityStorager{
+		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+			if filter.EntityID != nil && *filter.EntityID == entityID {
+				return &quota.EntityParam{
+					EntityID: lib.PString(entityID),
+					Name:     lib.PString("team-a"),
+					Type:     lib.PString("team"),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.quotaPlanStorager = quotaPlanStore
+	m.entityStorager = entityStore
+	m.quotaPlanCache = make(map[string][]*QuotaPlan)
+
+	ids, tags, err := m.fetchQuotaPlansWithEntityHierarchy(ctx, apiKey, "AI_product")
+	require.NoError(t, err)
+	assert.Len(t, ids, 1)
+	assert.Len(t, tags, 1)
+	assert.Equal(t, "team-a", tags[0].TagValue)
+}
+
+func TestAPIKeyRuleManager_FetchEntityModelHierarchy(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	parentID := "parent-1"
+	entityID := "entity-1"
+
+	entityStore := &fakeEntityStorager{
+		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+			if filter.EntityID != nil && *filter.EntityID == entityID {
+				return &quota.EntityParam{
+					EntityID:    lib.PString(entityID),
+					ParentID:    &parentID,
+					AllowModels: []string{"gpt-4", "claude"},
+					BlockModels: []string{"gpt-2"},
+				}, nil
+			}
+			if filter.EntityID != nil && *filter.EntityID == parentID {
+				return &quota.EntityParam{
+					EntityID:    lib.PString(parentID),
+					AllowModels: []string{"gpt-4"},
+					BlockModels: []string{"bloom"},
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.entityStorager = entityStore
+
+	allow, block, err := m.fetchEntityModelHierarchy(ctx, entityID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"gpt-4"}, allow)
+	assert.Equal(t, []string{"gpt-2", "bloom"}, block)
+}
+
+func TestAPIKeyRuleManager_FetchEntityModelHierarchy_EntityNotFound(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	entityStore := &fakeEntityStorager{
+		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.entityStorager = entityStore
+
+	allow, block, err := m.fetchEntityModelHierarchy(ctx, "missing")
+	require.NoError(t, err)
+	assert.Nil(t, allow)
+	assert.Empty(t, block)
+}
+
+func TestAPIKeyRuleManager_CollectEntityModels_Star(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	entityStore := &fakeEntityStorager{}
+	m := newTestAPIKeyRuleManager()
+	m.entityStorager = entityStore
+
+	var allAllowModels [][]string
+	var allBlockModels []string
+	m.collectEntityModels(ctx, &quota.EntityParam{
+		AllowModels: []string{"*"},
+		BlockModels: []string{"*"},
+	}, &allAllowModels, &allBlockModels)
+
+	assert.Empty(t, allAllowModels)
+	assert.Empty(t, allBlockModels)
+}
+
+func TestAPIKeyRuleManager_IsQuotaPlanCached(t *testing.T) {
+	m := newTestAPIKeyRuleManager()
+	m.quotaPlanCache = map[string][]*QuotaPlan{
+		"AI_product": {
+			{Id: "qp-1"},
+		},
+	}
+
+	assert.True(t, m.isQuotaPlanCached("AI_product", "qp-1"))
+	assert.False(t, m.isQuotaPlanCached("AI_product", "qp-2"))
+	assert.False(t, m.isQuotaPlanCached("other", "qp-1"))
+}
