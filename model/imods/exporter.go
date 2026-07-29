@@ -177,7 +177,7 @@ func (rlm *APIKeyRuleManager) buildAIRouteAPIKeyRules(ctx context.Context) (map[
 
 // APIKeyRuleGenerator generates API key rules and token information for BFE configuration
 func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversion_control.ExportData, error) {
-	rlm.quotaPlanCache = make(map[string][]*QuotaPlan)
+	collectedQuotaPlans := make(map[string][]*QuotaPlan)
 
 	product2config, err := rlm.buildAIRouteAPIKeyRules(ctx)
 	if err != nil {
@@ -331,7 +331,7 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 			tokenFile.Subnet = &subnetStr
 		}
 
-		quotaPlanIDs, tags, err := rlm.fetchQuotaPlansWithEntityHierarchy(ctx, one, *one.ProductName)
+		quotaPlanIDs, tags, err := rlm.fetchQuotaPlansWithEntityHierarchy(ctx, one, *one.ProductName, collectedQuotaPlans)
 		if err != nil {
 			return nil, fmt.Errorf("fetch quota plans error: %s", err.Error())
 		}
@@ -344,7 +344,7 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 
 	conf := &ModAPIKeyRuleConf{
 		Config:     productName2Config,
-		QuotaPlans: rlm.quotaPlanCache,
+		QuotaPlans: collectedQuotaPlans,
 		Tokens:     apiKey2Config,
 	}
 
@@ -375,7 +375,7 @@ func convertAPIKeyRulesToBfeRules(oldRules []*APIKeyRule) []*TokenRuleFile {
 	return exportRules
 }
 
-func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Context, apiKey *icluster_conf.APIKeyParam, productName string) ([]string, []ApikeyTag, error) {
+func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Context, apiKey *icluster_conf.APIKeyParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
 	quotaPlanIDs := make([]string, 0)
 	tags := make([]ApikeyTag, 0)
 
@@ -389,11 +389,11 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Con
 			// referenced in the token's quota_plans list.
 			if quotaPlan.Unlimited == nil || !*quotaPlan.Unlimited {
 				qp := convertQuotaPlanToExport(quotaPlan, *apiKey.Key, *apiKey.Key)
-				if !rlm.isQuotaPlanCached(productName, qp.Id) {
-					if _, ok := rlm.quotaPlanCache[productName]; !ok {
-						rlm.quotaPlanCache[productName] = make([]*QuotaPlan, 0)
+				if !containsQuotaPlan(collectedQuotaPlans, productName, qp.Id) {
+					if _, ok := collectedQuotaPlans[productName]; !ok {
+						collectedQuotaPlans[productName] = make([]*QuotaPlan, 0)
 					}
-					rlm.quotaPlanCache[productName] = append(rlm.quotaPlanCache[productName], qp)
+					collectedQuotaPlans[productName] = append(collectedQuotaPlans[productName], qp)
 				}
 				quotaPlanIDs = append(quotaPlanIDs, qp.Id)
 			}
@@ -406,7 +406,7 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Con
 			return nil, nil, err
 		}
 		if entity != nil {
-			entityQuotaPlanIDs, entityTags, err := rlm.fetchEntityQuotaPlanHierarchy(ctx, entity, productName)
+			entityQuotaPlanIDs, entityTags, err := rlm.fetchEntityQuotaPlanHierarchy(ctx, entity, productName, collectedQuotaPlans)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -418,7 +418,7 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Con
 	return quotaPlanIDs, tags, nil
 }
 
-func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context, entity *quota.EntityParam, productName string) ([]string, []ApikeyTag, error) {
+func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context, entity *quota.EntityParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
 	quotaPlanIDs := make([]string, 0)
 	tags := make([]ApikeyTag, 0)
 
@@ -439,11 +439,11 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context,
 			// and should not be referenced by the token.
 			if quotaPlan.Unlimited == nil || !*quotaPlan.Unlimited {
 				qp := convertQuotaPlanToExport(quotaPlan, *entity.EntityID, *entity.EntityID)
-				if !rlm.isQuotaPlanCached(productName, qp.Id) {
-					if _, ok := rlm.quotaPlanCache[productName]; !ok {
-						rlm.quotaPlanCache[productName] = make([]*QuotaPlan, 0)
+				if !containsQuotaPlan(collectedQuotaPlans, productName, qp.Id) {
+					if _, ok := collectedQuotaPlans[productName]; !ok {
+						collectedQuotaPlans[productName] = make([]*QuotaPlan, 0)
 					}
-					rlm.quotaPlanCache[productName] = append(rlm.quotaPlanCache[productName], qp)
+					collectedQuotaPlans[productName] = append(collectedQuotaPlans[productName], qp)
 				}
 				quotaPlanIDs = append(quotaPlanIDs, qp.Id)
 			}
@@ -456,7 +456,7 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context,
 			return nil, nil, err
 		}
 		if parentEntity != nil {
-			parentQuotaPlanIDs, parentTags, err := rlm.fetchEntityQuotaPlanHierarchy(ctx, parentEntity, productName)
+			parentQuotaPlanIDs, parentTags, err := rlm.fetchEntityQuotaPlanHierarchy(ctx, parentEntity, productName, collectedQuotaPlans)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -551,8 +551,8 @@ func intersectSlices(a, b []string) []string {
 	return result
 }
 
-func (rlm *APIKeyRuleManager) isQuotaPlanCached(productName, id string) bool {
-	qpList, ok := rlm.quotaPlanCache[productName]
+func containsQuotaPlan(collectedQuotaPlans map[string][]*QuotaPlan, productName, id string) bool {
+	qpList, ok := collectedQuotaPlans[productName]
 	if !ok {
 		return false
 	}
