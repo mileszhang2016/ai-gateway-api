@@ -746,8 +746,8 @@ integration/tests/{module}/
 | 文档 | 路径 | 说明 |
 |------|------|------|
 | 测试使用说明 | `test/integration/README.md` | 集成测试详细使用说明 |
-| OpenAPI 接口文档 | `design-docs/api-define/OpenAPI接口定义.md` | 各模块接口定义 |
-| InnerAPI 接口文档 | `design-docs/api-define/InnerAPI接口定义.md` | InnerAPI 接口详细设计 |
+| OpenAPI 接口文档 | `design-docs/api-define/OpenAPI接口定义/README.md` | 各模块接口定义索引 |
+| InnerAPI 接口文档 | `design-docs/api-define/InnerAPI接口定义/README.md` | InnerAPI 接口详细设计索引 |
 | 系统设计文档 | `design-docs/sys-design/` | 系统总体与详细设计 |
 
 ---
