@@ -144,10 +144,15 @@ func (m *RateLimitPolicyManager) RateLimitPolicyGenerator(ctx context.Context) (
 			}
 
 			policyKey := fmt.Sprintf("rlp-%d", policyID)
+			// Skip disabled policies: only effective policies should be exported
+			// and bound to API keys.
+			if policy.Enabled == nil || !*policy.Enabled {
+				continue
+			}
 			if _, exists := rateLimitPolicies[policyKey]; !exists {
 				exportPolicy := &ExportRateLimitPolicy{
 					Name:    policyKey,
-					Enabled: policy.Enabled != nil && *policy.Enabled,
+					Enabled: true,
 					Rules: &ExportRateLimitRules{
 						MaxConcurrency: 0,
 						TPM:            []ExportTPMConfig{},

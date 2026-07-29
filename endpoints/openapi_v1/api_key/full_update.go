@@ -97,6 +97,7 @@ func APIKeyFullUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyPar
 		ProductName:     &product.Name,
 		QuotaPlan:       param.QuotaPlan,
 		RateLimitPolicy: param.RateLimitPolicy,
+		RouteRules:      param.RouteRules,
 	})
 
 	if err != nil {

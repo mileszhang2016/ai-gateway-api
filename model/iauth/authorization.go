@@ -176,9 +176,15 @@ func (m *AuthorizeManager) BindUserProduct(ctx context.Context, user *User, prod
 
 func (m *AuthorizeManager) UnBindUserProduct(ctx context.Context, user *User, product *ibasic.Product) (err error) {
 	err = m.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		err = m.storager.UnbindUserProduct(ctx, user, product)
+		bound, err := m.storager.IsUserProductGranted(ctx, user, product)
+		if err != nil {
+			return err
+		}
+		if !bound {
+			return xerror.WrapRecordNotExist("User Product Binding")
+		}
 
-		return err
+		return m.storager.UnbindUserProduct(ctx, user, product)
 	})
 
 	return

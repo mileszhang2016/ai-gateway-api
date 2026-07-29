@@ -39,6 +39,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/itxn"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
 	"github.com/yf-networks/ai-gateway-api/model/quota"
+	"github.com/yf-networks/ai-gateway-api/model/shared"
 )
 
 var (
@@ -80,11 +81,14 @@ var (
 	QuotaPlanStorager       quota.QuotaPlanStorager
 	QuotaBalanceStorager    quota.QuotaBalanceStorager
 	RateLimitPolicyStorager quota.RateLimitPolicyStorager
+	RouteRulesStorager      shared.RouteRulesStorager
 
 	EntityTypeManager      *quota.EntityTypeManager
 	EntityManager          *quota.EntityManager
 	QuotaPlanManager       *quota.QuotaPlanManager
 	RateLimitPolicyManager *quota.RateLimitPolicyManager
+	RouteRulesManager      *shared.RouteRulesManager
+	AIRouteExporter        *imods.AIRouteExporter
 	BalanceSyncManager     *quota.BalanceSyncManager
 	QuotaResetScheduler    *quota.QuotaResetScheduler
 )

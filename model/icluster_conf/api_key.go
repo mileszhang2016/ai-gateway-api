@@ -54,12 +54,14 @@ type APIKeyParam struct {
 	EntityID          *string  `json:"entity_id,omitempty"`
 	QuotaPlanID       *int64   `json:"quota_plan_id,omitempty"`
 	RateLimitPolicyID *int64   `json:"rate_limit_policy_id,omitempty"`
+	RouteRulesID      *int64   `json:"route_rules_id,omitempty"`
 	ProductName       *string  `json:"-"`
 	InnerID           *int64   `json:"-"`
 	RemainingQuota    *int64   `json:"remaining_quota,omitempty"`
 
 	QuotaPlan       *shared.QuotaPlanParam       `json:"quota_plan,omitempty"`
 	RateLimitPolicy *shared.RateLimitPolicyParam `json:"rate_limit_policy,omitempty"`
+	RouteRules      *shared.RouteRulesParam      `json:"route_rules,omitempty"`
 	Entity          *shared.EntitySummary        `json:"entity,omitempty"`
 }
 
@@ -77,17 +79,19 @@ type APIKeyTokenFilter struct {
 
 // APIKeyFilter defines filters for querying API keys
 type APIKeyFilter struct {
-	ProductName    *string
-	ProductNames   []string
-	ALBGroupName   *string
-	ID             *string
-	InnerID        *int64
-	QuotaPlanID    *int64
-	Page           *int
-	PageSize       *int
-	Enabled        *bool
-	EntityID       *string
-	UnlimitedQuota *bool
+	ProductName     *string
+	ProductNames    []string
+	ALBGroupName    *string
+	ID              *string
+	Key             *string
+	InnerID         *int64
+	QuotaPlanID     *int64
+	RouteRulesID    *int64
+	Page            *int
+	PageSize        *int
+	Enabled         *bool
+	EntityID        *string
+	UnlimitedQuota  *bool
 }
 
 // APIKeyStorager interface defines storage operations for API keys
@@ -109,6 +113,7 @@ type APIKeyManager struct {
 	clusterStorager         ClusterStorager
 	quotaPlanStorager       QuotaPlanStorager
 	rateLimitPolicyStorager RateLimitPolicyStorager
+	routeRulesStorager      shared.RouteRulesStorager
 	entityStorager          shared.EntityStorager
 	quotaBalanceStorager    shared.QuotaBalanceStorager
 }
@@ -132,13 +137,15 @@ type RateLimitPolicyStorager interface {
 // NewAPIKeyManager creates a new APIKeyManager instance
 func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager, clusterStorager ClusterStorager,
 	quotaPlanStorager QuotaPlanStorager, rateLimitPolicyStorager RateLimitPolicyStorager,
-	entityStorager shared.EntityStorager, quotaBalanceStorager shared.QuotaBalanceStorager) *APIKeyManager {
+	routeRulesStorager shared.RouteRulesStorager, entityStorager shared.EntityStorager,
+	quotaBalanceStorager shared.QuotaBalanceStorager) *APIKeyManager {
 	return &APIKeyManager{
 		txn:                     txn,
 		storager:                storager,
 		clusterStorager:         clusterStorager,
 		quotaPlanStorager:       quotaPlanStorager,
 		rateLimitPolicyStorager: rateLimitPolicyStorager,
+		routeRulesStorager:      routeRulesStorager,
 		entityStorager:          entityStorager,
 		quotaBalanceStorager:    quotaBalanceStorager,
 	}
@@ -147,6 +154,11 @@ func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager, clusterStor
 // GetRemainingQuota calculates the remaining quota for an API key
 func GetRemainingQuota(param *APIKeyParam) (*int64, error) {
 	if param.UnlimitedQuota != nil && *param.UnlimitedQuota {
+		return nil, nil
+	}
+
+	// If the associated quota plan is unlimited, there is no remaining quota to track.
+	if param.QuotaPlan != nil && param.QuotaPlan.Unlimited != nil && *param.QuotaPlan.Unlimited {
 		return nil, nil
 	}
 
@@ -218,6 +230,16 @@ func (rppm *APIKeyManager) populateAssociatedData(ctx context.Context, one *APIK
 	if one.RateLimitPolicy == nil {
 		one.RateLimitPolicy = &shared.RateLimitPolicyParam{}
 	}
+	if one.RouteRules == nil {
+		one.RouteRules = &shared.RouteRulesParam{}
+	}
+	if one.RouteRules.Enabled == nil {
+		enabled := false
+		one.RouteRules.Enabled = &enabled
+	}
+	if one.RouteRules.Rules == nil {
+		one.RouteRules.Rules = []*shared.AiRouteRuleParam{}
+	}
 
 	if one.QuotaPlanID != nil && rppm.quotaPlanStorager != nil {
 		quotaPlan, err := rppm.quotaPlanStorager.FetchQuotaPlan(ctx, *one.QuotaPlanID)
@@ -242,6 +264,16 @@ func (rppm *APIKeyManager) populateAssociatedData(ctx context.Context, one *APIK
 			return err
 		}
 		one.RateLimitPolicy = rateLimitPolicy
+	}
+
+	if one.RouteRulesID != nil && rppm.routeRulesStorager != nil {
+		routeRules, err := rppm.routeRulesStorager.FetchRouteRulesByID(ctx, *one.RouteRulesID)
+		if err != nil {
+			return err
+		}
+		if routeRules != nil {
+			one.RouteRules = routeRules
+		}
 	}
 
 	if one.EntityID != nil && rppm.entityStorager != nil {
@@ -286,6 +318,12 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 			}
 		}
 
+		if one.RouteRulesID != nil && rppm.routeRulesStorager != nil {
+			if err := rppm.routeRulesStorager.DeleteRouteRules(ctx, *one.RouteRulesID); err != nil {
+				return err
+			}
+		}
+
 		return rppm.storager.DeleteAPIKey(ctx, filter)
 	})
 }
@@ -302,6 +340,9 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		}
 
 		one := list[0]
+
+		// key is immutable through update endpoints
+		param.Key = nil
 
 		if param.QuotaPlan != nil && rppm.quotaPlanStorager != nil {
 			if one.QuotaPlanID != nil {
@@ -341,6 +382,21 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 			}
 		}
 
+		if param.RouteRules != nil && rppm.routeRulesStorager != nil {
+			if one.RouteRulesID != nil {
+				_, err = rppm.routeRulesStorager.UpdateRouteRules(ctx, *one.RouteRulesID, param.RouteRules)
+				if err != nil {
+					return err
+				}
+			} else {
+				routeRulesID, err := rppm.routeRulesStorager.CreateRouteRules(ctx, shared.RouteRulesTypeAPIKey, one.Key, param.RouteRules)
+				if err != nil {
+					return err
+				}
+				param.RouteRulesID = &routeRulesID
+			}
+		}
+
 		_, err = rppm.storager.UpdateAPIKey(ctx, &APIKeyFilter{
 			InnerID: one.InnerID,
 		}, param)
@@ -376,22 +432,32 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 			}
 		}
 
-		// Check for existing API key tokens
-		tokens, err := rppm.storager.FetchAPIKeyTokenList(ctx, &APIKeyTokenFilter{Key: param.Key})
-		if err != nil {
-			return err
-		}
-		if len(tokens) > 1 {
-			return xerror.WrapDirtyDataErrorWithMsg(fmt.Sprintf("API-Key-Token:%s", *param.Key))
-		}
+		updatedTime := time.Now().Unix()
+		param.UpdatedTime = &updatedTime
 
-		// Set updated time based on existing token or current time
-		if len(tokens) > 0 {
-			updatedTime := tokens[0].CreatedAt.Unix()
-			param.UpdatedTime = &updatedTime
-		} else {
-			updatedTime := time.Now().Unix()
-			param.UpdatedTime = &updatedTime
+		// Check global uniqueness of the API key value
+		if param.Key != nil && *param.Key != "" {
+			tokens, err := rppm.storager.FetchAPIKeyTokenList(ctx, &APIKeyTokenFilter{Key: param.Key})
+			if err != nil {
+				return err
+			}
+			if len(tokens) > 1 {
+				return xerror.WrapDirtyDataErrorWithMsg(fmt.Sprintf("API-Key-Token:%s", *param.Key))
+			}
+
+			existingKeys, err := rppm.storager.FetchAPIKeyList(ctx, &APIKeyFilter{Key: param.Key})
+			if err != nil {
+				return err
+			}
+			if len(existingKeys) > 0 {
+				return xerror.WrapParamErrorWithMsg("API-Key value %s already exists", *param.Key)
+			}
+
+			// Set updated time based on existing token if reused
+			if len(tokens) > 0 {
+				updatedTime := tokens[0].CreatedAt.Unix()
+				param.UpdatedTime = &updatedTime
+			}
 		}
 
 		// Create QuotaPlan if provided
@@ -419,6 +485,15 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 				return err
 			}
 			param.RateLimitPolicyID = &rateLimitPolicyID
+		}
+
+		// Create RouteRules if provided
+		if param.RouteRules != nil && rppm.routeRulesStorager != nil {
+			routeRulesID, err := rppm.routeRulesStorager.CreateRouteRules(ctx, shared.RouteRulesTypeAPIKey, param.Key, param.RouteRules)
+			if err != nil {
+				return err
+			}
+			param.RouteRulesID = &routeRulesID
 		}
 
 		_, err = rppm.storager.CreateAPIKey(ctx, param)

@@ -1,0 +1,22 @@
+[
+  {
+    "name":"OpenAI",
+    "id": "openai"
+  },
+  {
+    "name":"DeepSeek",
+    "id": "deepseek"
+  },
+  {
+    "name":"千问",
+    "id": "qwen"
+  },
+  {
+    "name":"火山CodePlan",
+    "id": "huoshancodeplan"
+  },
+  {
+    "name":"百炼TokenPlan",
+    "id": "bailiantokenplan"
+  }
+]

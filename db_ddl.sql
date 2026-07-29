@@ -283,15 +283,18 @@ CREATE TABLE api_keys (
   `entity_id` varchar(64) DEFAULT NULL comment "挂载的Entity ID",
   `quota_plan_id` bigint DEFAULT NULL comment "配额计划ID",
   `rate_limit_policy_id` bigint DEFAULT NULL comment "限流策略ID",
+  `route_rules_id` bigint DEFAULT NULL comment "路由规则ID",
   `created_at` datetime NOT NULL DEFAULT '0000-01-01 00:00:00' COMMENT '创建时间',
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  comment "更新时间",
   PRIMARY KEY (`inner_id`),
   UNIQUE KEY `uk_id` (`id`),
+  UNIQUE KEY `uk_api_key` (`api_key`),
   INDEX idx_product_name (product_name),
   INDEX idx_entity_id (entity_id),
   INDEX idx_quota_plan_id (quota_plan_id),
-  INDEX idx_rate_limit_policy_id (rate_limit_policy_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 comment = "api keys"; 
+  INDEX idx_rate_limit_policy_id (rate_limit_policy_id),
+  INDEX idx_route_rules_id (route_rules_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 comment = "api keys";
 
 -- create api_key_tokens
 DROP TABLE IF EXISTS `api_key_tokens`;
@@ -359,6 +362,7 @@ CREATE TABLE `entities` (
   `block_models` TEXT COMMENT '禁止访问的模型黑名单（JSON数组）',
   `quota_plan_id` BIGINT DEFAULT NULL COMMENT '配额计划ID',
   `rate_limit_policy_id` BIGINT DEFAULT NULL COMMENT '限流策略ID',
+  `route_rules_id` BIGINT DEFAULT NULL COMMENT '路由规则ID',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE KEY `uk_entity_id` (`entity_id`),
@@ -366,7 +370,8 @@ CREATE TABLE `entities` (
   INDEX `idx_parent_id` (`parent_id`),
   INDEX `idx_type` (`type`),
   INDEX `idx_quota_plan_id` (`quota_plan_id`),
-  INDEX `idx_rate_limit_policy_id` (`rate_limit_policy_id`)
+  INDEX `idx_rate_limit_policy_id` (`rate_limit_policy_id`),
+  INDEX `idx_route_rules_id` (`route_rules_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Entity实体表';
 
 -- create quota_plans (配额计划表)
@@ -409,6 +414,20 @@ CREATE TABLE `rate_limit_policies` (
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_enabled` (`enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='限流策略表';
+
+-- create route_rules (路由规则表)
+DROP TABLE IF EXISTS `route_rules`;
+CREATE TABLE `route_rules` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
+  `type` VARCHAR(32) NOT NULL DEFAULT 'api_key' COMMENT '规则类型：api_key/entity/global',
+  `owner` VARCHAR(64) NOT NULL COMMENT '所有者标识：api_key_id/entity_id/global',
+  `enabled` TINYINT(1) DEFAULT 0 COMMENT '是否启用：0-禁用，1-启用',
+  `rules` TEXT COMMENT '路由规则列表（JSON数组）',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY `uk_type_owner` (`type`, `owner`),
+  INDEX `idx_enabled` (`enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='路由规则表';
 
 -- insert default user
 insert into users (id, name, password, scopes, created_at) values(1, 'admin', 'admin', 'System', now());

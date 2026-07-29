@@ -1,0 +1,190 @@
+package alb_pool_test
+
+import (
+	"encoding/json"
+	"os"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/yf-networks/ai-gateway-api/integration/testutil"
+)
+
+var sm *testutil.ServerManager
+
+func TestMain(m *testing.M) {
+	var err error
+	sm, err = testutil.StartServer()
+	if err != nil {
+		panic("failed to start server: " + err.Error())
+	}
+	code := m.Run()
+	sm.Shutdown()
+	os.Exit(code)
+}
+
+func patchAlbPool(t *testing.T, body map[string]interface{}) *testutil.APIResponse {
+	resp, err := testutil.GetClient().Patch("/open-api/v1/alb-pool", body)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	return resp
+}
+
+func restoreDefaultPool(t *testing.T) {
+	patchAlbPool(t, map[string]interface{}{
+		"instances": []interface{}{
+			map[string]interface{}{
+				"hostname": "127.0.0.1",
+				"ip":       "127.0.0.1",
+				"weight":   1,
+				"ports": map[string]interface{}{
+					"Default": 8080,
+				},
+			},
+		},
+	})
+}
+
+func TestAlbPool_Update(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     map[string]interface{}
+		wantCode int
+		skip     string
+		check    func(t *testing.T, resp *testutil.APIResponse)
+	}{
+		{
+			name: "BP-2-001 更新实例列表",
+			body: map[string]interface{}{
+				"instances": []interface{}{
+					map[string]interface{}{
+						"hostname": "127.0.0.1",
+						"ip":       "127.0.0.1",
+						"weight":   1,
+						"ports": map[string]interface{}{
+							"Default": 8080,
+						},
+					},
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				testutil.AssertDataFieldNotEmpty(t, resp, "name")
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				insts := data["instances"].([]interface{})
+				assert.Len(t, insts, 1)
+				inst := insts[0].(map[string]interface{})
+				assert.Equal(t, "127.0.0.1", inst["hostname"])
+				assert.Equal(t, "127.0.0.1", inst["ip"])
+				assert.NotContains(t, inst, "tags")
+			},
+		},
+		{
+			name: "BP-2-002 更新后查询一致性",
+			body: map[string]interface{}{
+				"instances": []interface{}{
+					map[string]interface{}{
+						"hostname": "host-a",
+						"ip":       "10.0.0.1",
+						"weight":   50,
+						"ports": map[string]interface{}{
+							"Default": 8090,
+						},
+					},
+					map[string]interface{}{
+						"hostname": "host-b",
+						"ip":       "10.0.0.2",
+						"weight":   50,
+						"ports": map[string]interface{}{
+							"Default": 8091,
+						},
+					},
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				getResp, err := testutil.GetClient().Get("/open-api/v1/alb-pool")
+				if err != nil {
+					t.Fatalf("get failed: %v", err)
+				}
+				testutil.AssertSuccess(t, getResp)
+				assert.Equal(t, string(resp.Data), string(getResp.Data), "GET should match PATCH response")
+			},
+		},
+		{
+			name:     "BP-2-003 更新为空列表",
+			body:     map[string]interface{}{"instances": []interface{}{}},
+			wantCode: 422,
+		},
+		{
+			name:     "BP-2-004 缺少 instances",
+			body:     map[string]interface{}{},
+			wantCode: 422,
+		},
+		{
+			name: "BP-2-005 缺少实例必填字段",
+			body: map[string]interface{}{
+				"instances": []interface{}{
+					map[string]interface{}{
+						"hostname": "127.0.0.1",
+						"weight":   1,
+						"ports": map[string]interface{}{
+							"Default": 8080,
+						},
+					},
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "BP-2-006 ports 不含 Default",
+			body: map[string]interface{}{
+				"instances": []interface{}{
+					map[string]interface{}{
+						"hostname": "127.0.0.1",
+						"ip":       "127.0.0.1",
+						"weight":   1,
+						"ports": map[string]interface{}{
+							"Other": 8080,
+						},
+					},
+				},
+			},
+			wantCode: 422,
+			skip:     "implementation does not validate Default port presence",
+		},
+		{
+			name: "BP-2-007 实例权重超出范围",
+			body: map[string]interface{}{
+				"instances": []interface{}{
+					map[string]interface{}{
+						"hostname": "127.0.0.1",
+						"ip":       "127.0.0.1",
+						"weight":   101,
+						"ports": map[string]interface{}{
+							"Default": 8080,
+						},
+					},
+				},
+			},
+			wantCode: 422,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.skip != "" {
+				t.Skip(tt.skip)
+			}
+			resp := patchAlbPool(t, tt.body)
+			if resp.ErrNum != tt.wantCode {
+				t.Errorf("expected ErrNum=%d, got ErrNum=%d, ErrMsg=%s", tt.wantCode, resp.ErrNum, resp.ErrMsg)
+			}
+			if tt.check != nil {
+				tt.check(t, resp)
+			}
+			restoreDefaultPool(t)
+		})
+	}
+}

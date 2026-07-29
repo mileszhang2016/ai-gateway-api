@@ -1,0 +1,60 @@
+package entity_type_test
+
+import (
+	"os"
+	"testing"
+
+	"github.com/yf-networks/ai-gateway-api/integration/testutil"
+)
+
+var sm *testutil.ServerManager
+
+func TestMain(m *testing.M) {
+	var err error
+	sm, err = testutil.StartServer()
+	if err != nil {
+		panic("failed to start server: " + err.Error())
+	}
+	code := m.Run()
+	sm.Shutdown()
+	os.Exit(code)
+}
+
+func TestEntityType_Delete(t *testing.T) {
+	t.Run("ET-5-001 删除 Entity-Type", func(t *testing.T) {
+		typeName := testutil.UniqueEntityTypeName()
+		if _, err := testutil.CreateEntityType(typeName, 1); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		resp, err := testutil.GetClient().Delete("/open-api/v1/entity-types/" + typeName)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		resp, _ = testutil.GetClient().Get("/open-api/v1/entity-types/" + typeName)
+		testutil.AssertErrCode(t, resp, 404)
+	})
+
+	t.Run("ET-5-002 删除被 Entity 引用的 Entity-Type", func(t *testing.T) {
+		typeName := testutil.UniqueEntityTypeName()
+		if _, err := testutil.CreateEntityType(typeName, 1); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		entityName := testutil.UniqueEntityName()
+		entityID, err := testutil.CreateEntity(entityName, typeName, "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		resp, err := testutil.GetClient().Delete("/open-api/v1/entity-types/" + typeName)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 409 && resp.ErrNum != 422 {
+			t.Errorf("expected ErrNum=409 or 422, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+		t.Cleanup(func() {
+			testutil.DeleteEntity(entityID)
+			testutil.DeleteEntityType(typeName)
+		})
+	})
+}

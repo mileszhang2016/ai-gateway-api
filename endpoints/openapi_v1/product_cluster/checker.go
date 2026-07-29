@@ -18,9 +18,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
-	"strconv"
 
-	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 )
@@ -35,53 +33,20 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Field, e.Message)
 }
 
-const (
-	maxServiceNameLen = 255
-	maxGroupLen       = 255
-)
-
 func checkLLMConfig(llmConfig *icluster_conf.LLMConfig) error {
 	if llmConfig == nil {
-		return nil
+		return xerror.WrapParamErrorWithMsg("llm_config is required")
 	}
 
-	// Enable defaults to true, no longer required in request
-	if llmConfig.Enable == nil {
-		llmConfig.Enable = lib.PBool(true)
-	}
-
-	if llmConfig.ServiceName != nil && len(*llmConfig.ServiceName) > maxServiceNameLen {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("llm_config.service_name length must be lower than %s", strconv.Itoa(maxServiceNameLen)))
-	}
-
-	if llmConfig.Group != nil && len(*llmConfig.Group) > maxGroupLen {
-		return xerror.WrapParamErrorWithMsg(fmt.Sprintf("llm_config.group length must be lower than %s", strconv.Itoa(maxGroupLen)))
+	if len(llmConfig.Models) == 0 {
+		return xerror.WrapParamErrorWithMsg("llm_config.models is required")
 	}
 
 	if llmConfig.ModelEndpoint != nil {
 		switch llmConfig.ModelEndpoint.Schema {
-		case "http":
-		case "https":
+		case "", "http", "https":
 		default:
-			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("llm_config.model_endpoint.schema must be http or https"))
-		}
-	}
-
-	if *llmConfig.Enable {
-		if llmConfig.ServiceName == nil || *llmConfig.ServiceName == "" {
-			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set llm_config.service_name"))
-		}
-
-		if llmConfig.ModelEndpoint == nil {
-			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set llm_config.model_endpoint"))
-		}
-
-		if llmConfig.ModelEndpoint.URI == "" {
-			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set llm_config.model_endpoint.uri"))
-		}
-
-		if len(llmConfig.Models) == 0 {
-			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("Must set llm_config.models"))
+			return xerror.WrapParamErrorWithMsg("llm_config.model_endpoint.schema must be http or https")
 		}
 	}
 

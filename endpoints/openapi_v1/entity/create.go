@@ -149,6 +149,13 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 		}
 	}
 
+	if param.RouteRules == nil {
+		param.RouteRules = &shared.RouteRulesParam{
+			Enabled: lib.PBool(false),
+			Rules:   []*shared.AiRouteRuleParam{},
+		}
+	}
+
 	if _, err := container.EntityManager.CreateEntity(req.Context(), param); err != nil {
 		return nil, err
 	}

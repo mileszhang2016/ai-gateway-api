@@ -31,7 +31,7 @@ func UserProbeAction(req *http.Request) (*http.Request, error) {
 
 	ss := strings.SplitN(authHeader, " ", 2)
 	if len(ss) != 2 {
-		return req, xerror.WrapParamErrorWithMsg("Bad Format Header Authorization")
+		return nil, xerror.WrapAuthenticateFailErrorWithMsg("Bad Format Header Authorization")
 	}
 
 	param := &iauth.AuthenticateParam{

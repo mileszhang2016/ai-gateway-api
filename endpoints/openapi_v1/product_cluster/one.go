@@ -40,85 +40,68 @@ import (
 )
 
 // StickySessions Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type StickySessions struct {
-	SessionStickyType string `json:"session_sticky_type" uri:"session_sticky_type"`
-	HashStrategy      string `json:"hash_strategy" uri:"hash_strategy"`
-	HashHeader        string `json:"hash_header" uri:"hash_header"`
+	Enabled      bool   `json:"enabled"`
+	HashStrategy string `json:"hash_strategy"`
+	HashHeader   string `json:"hash_header"`
 }
 
 // Basic Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type Basic struct {
-	Connection *Connection `json:"connection" uri:"connection"`
-	Retries    *Retries    `json:"retries" uri:"retries"`
-	Buffers    *Buffers    `json:"buffers" uri:"buffers"`
-	Timeouts   *Timeouts   `json:"timeouts" uri:"timeouts"`
+	Connection *Connection `json:"connection"`
+	Retries    *Retries    `json:"retries"`
+	Buffers    *Buffers    `json:"buffers"`
+	Timeouts   *Timeouts   `json:"timeouts"`
 	Protocol   *string     `json:"protocol"`
 }
 
 // Connection Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type Connection struct {
-	MaxIdleConnPerRs    int16 `json:"max_idle_conn_per_rs" uri:"max_idle_conn_per_rs"`
-	CancelOnClientClose bool  `json:"cancel_on_client_close" uri:"cancel_on_client_close"`
+	MaxIdleConnPerRs    int16 `json:"max_idle_conn_per_rs"`
+	CancelOnClientClose bool  `json:"cancel_on_client_close"`
 }
 
 // Retries Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type Retries struct {
-	MaxRetryInSubcluster    int8 `json:"max_retry_in_subcluster" uri:"max_retry_in_subcluster"`
-	MaxRetryCrossSubcluster int8 `json:"max_retry_cross_subcluster" uri:"max_retry_cross_subcluster"`
+	MaxRetryInCluster int8 `json:"max_retry_in_cluster"`
 }
 
 // Buffers Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type Buffers struct {
-	ReqWriteBufferSize int32 `json:"req_write_buffer_size" uri:"req_write_buffer_size"`
+	ReqWriteBufferSize int32 `json:"req_write_buffer_size"`
 }
 
 // Timeouts Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type Timeouts struct {
-	TimeoutConnServ        int32 `json:"timeout_conn_serv" uri:"timeout_conn_serv"`
-	TimeoutResponseHeader  int32 `json:"timeout_response_header" uri:"timeout_response_header"`
-	TimeoutReadbodyClient  int32 `json:"timeout_readbody_client" uri:"timeout_readbody_client"`
-	TimeoutReadClientAgain int32 `json:"timeout_read_client_again" uri:"timeout_read_client_again"`
-	TimeoutWriteClient     int32 `json:"timeout_write_client" uri:"timeout_write_client"`
+	TimeoutConnServ        int32 `json:"timeout_conn_serv"`
+	TimeoutResponseHeader  int32 `json:"timeout_response_header"`
+	TimeoutReadbodyClient  int32 `json:"timeout_readbody_client"`
+	TimeoutReadClientAgain int32 `json:"timeout_read_client_again"`
+	TimeoutWriteClient     int32 `json:"timeout_write_client"`
 }
 
 // OneParam Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type OneParam struct {
 	Name *string `uri:"cluster_name" validate:"required,min=2"`
 }
 
 type PassiveHealthCheck struct {
-	Schema     string `json:"schema"`
-	Interval   int32  `json:"interval" validate:"required,min=1"`
-	Failnum    int32  `json:"failnum" validate:"required,min=1"`
-	Statuscode int32  `json:"statuscode" validate:"required,min=0"`
-	Host       string `json:"host" validate:"required,min=1"`
-	Uri        string `json:"uri" validate:"required,min=1,startswith=/"`
+	Interval   int32  `json:"interval"`
+	Failnum    int32  `json:"failnum"`
+	Statuscode int32  `json:"statuscode"`
+	Host       string `json:"host"`
+	Uri        string `json:"uri"`
 }
 
 // ClusterData Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type ClusterData struct {
-	Name           string          `json:"name" uri:"name"`
-	Description    string          `json:"description" uri:"description"`
-	Basic          *Basic          `json:"basic" uri:"basic"`
-	StickySessions *StickySessions `json:"sticky_sessions" uri:"sticky_sessions"`
-	Ready          bool            `json:"ready"`
-
-	PassiveHealthCheck *PassiveHealthCheck `json:"passive_health_check"`
-
-	InstancePool []icluster_conf.Instance `json:"instance_pool"`
-
-	SubClusters []string `json:"sub_clusters"`
-
-	Scheduler map[string]map[string]int `json:"scheduler,omitempty"`
-	LLMConfig *icluster_conf.LLMConfig  `json:"llm_config"`
+	Name               string                   `json:"name"`
+	Description        string                   `json:"description"`
+	Basic              *Basic                   `json:"basic"`
+	StickySessions     *StickySessions          `json:"sticky_sessions"`
+	PassiveHealthCheck *PassiveHealthCheck      `json:"passive_health_check"`
+	InstancePool       []icluster_conf.Instance `json:"instance_pool"`
+	LLMConfig          *icluster_conf.LLMConfig `json:"llm_config"`
 }
 
 type AutoLbMatrix struct {
@@ -132,15 +115,13 @@ func clusterModel2Control(cluster *icluster_conf.Cluster) *ClusterData {
 	rsp := &ClusterData{
 		Name:        cluster.Name,
 		Description: cluster.Description,
-		Ready:       cluster.Ready,
 		Basic: &Basic{
 			Connection: &Connection{
 				MaxIdleConnPerRs:    cluster.Basic.Connection.MaxIdleConnPerRs,
 				CancelOnClientClose: cluster.Basic.Connection.CancelOnClientClose,
 			},
 			Retries: &Retries{
-				MaxRetryCrossSubcluster: cluster.Basic.Retries.MaxRetryCrossSubcluster,
-				MaxRetryInSubcluster:    cluster.Basic.Retries.MaxRetryInSubcluster,
+				MaxRetryInCluster: cluster.Basic.Retries.MaxRetryInSubcluster,
 			},
 			Buffers: &Buffers{
 				ReqWriteBufferSize: cluster.Basic.Buffers.ReqWriteBufferSize,
@@ -155,10 +136,7 @@ func clusterModel2Control(cluster *icluster_conf.Cluster) *ClusterData {
 			Protocol: cluster.Basic.Protocol,
 		},
 		StickySessions: &StickySessions{
-			SessionStickyType: map[bool]string{
-				true:  icluster_conf.ClusterStickTypeInstance,
-				false: icluster_conf.ClusterStickTypeSubCluster,
-			}[cluster.StickySessions.SessionSticky],
+			Enabled: cluster.StickySessions.SessionSticky,
 			HashStrategy: map[int32]string{
 				icluster_conf.ClusterHashStrategyClientIDOnlyI:     clusterHashStrategyClientIDOnly,
 				icluster_conf.ClusterHashStrategyClientIPOnlyI:     clusterHashStrategyClientIPOnly,
@@ -166,10 +144,6 @@ func clusterModel2Control(cluster *icluster_conf.Cluster) *ClusterData {
 			}[cluster.StickySessions.HashStrategy],
 			HashHeader: cluster.StickySessions.HashHeader,
 		},
-
-		SubClusters: cluster.SubClusterNames(),
-
-		Scheduler: cluster.Scheduler,
 
 		PassiveHealthCheck: PassiveHealthCheckM2C(cluster.PassiveHealthCheck),
 
@@ -194,7 +168,6 @@ func PassiveHealthCheckM2C(phc *icluster_conf.ClusterPassiveHealthCheck) *Passiv
 	}
 
 	return &PassiveHealthCheck{
-		Schema:     phc.Schema,
 		Interval:   phc.Interval,
 		Failnum:    phc.Failnum,
 		Statuscode: phc.Statuscode,
@@ -204,7 +177,6 @@ func PassiveHealthCheckM2C(phc *icluster_conf.ClusterPassiveHealthCheck) *Passiv
 }
 
 // OneRoute route
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 var OneEndpoint = &xreq.Endpoint{
 	Path:       "/clusters/{cluster_name}",
 	Method:     http.MethodGet,
@@ -222,7 +194,6 @@ func newOneParam4One(req *http.Request) (*OneParam, error) {
 var _ xreq.Handler = OneAction
 
 // OneAction action
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 func OneAction(req *http.Request) (interface{}, error) {
 	param, err := newOneParam4One(req)
 	if err != nil {

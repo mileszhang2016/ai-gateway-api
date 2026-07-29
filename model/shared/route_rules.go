@@ -1,0 +1,220 @@
+// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+//
+//Licensed under the Apache License, Version 2.0 (the "License");
+//you may not use this file except in compliance with the License.
+//You may obtain a copy of the License at
+//
+//http: //www.apache.org/licenses/LICENSE-2.0
+//
+//Unless required by applicable law or agreed to in writing, software
+//distributed under the License is distributed on an "AS IS" BASIS,
+//WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//See the License for the specific language governing permissions and
+//limitations under the License.
+
+package shared
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/yf-networks/ai-gateway-api/lib/xerror"
+	"github.com/yf-networks/ai-gateway-api/model/itxn"
+)
+
+const (
+	RouteRulesTypeAPIKey = "apikey"
+	RouteRulesTypeEntity = "entity"
+	RouteRulesTypeGlobal = "global"
+)
+
+// RouteRulesFilter defines filters for querying route rules
+type RouteRulesFilter struct {
+	Type      *string `form:"type"`
+	Owner     *string `form:"owner"`
+	Enabled   *bool   `form:"enabled"`
+	Page      *int    `form:"page"`
+	PageSize  *int    `form:"page_size"`
+	SortBy    *string `form:"sort_by"`
+	SortOrder *string `form:"sort_order"`
+}
+
+// RouteRulesStorager defines storage operations for route rules
+type RouteRulesStorager interface {
+	CreateRouteRules(ctx context.Context, ruleType string, owner *string, param *RouteRulesParam) (int64, error)
+	FetchRouteRules(ctx context.Context, ruleType string, owner *string) (*RouteRulesParam, error)
+	FetchRouteRulesList(ctx context.Context, filter *RouteRulesFilter) ([]*RouteTableParam, int64, error)
+	UpdateRouteRules(ctx context.Context, id int64, param *RouteRulesParam) (int64, error)
+	DeleteRouteRules(ctx context.Context, id int64) error
+	FetchRouteRulesByID(ctx context.Context, id int64) (*RouteRulesParam, error)
+}
+
+// RouteRulesManager manages route rules with transaction support
+type RouteRulesManager struct {
+	txn      itxn.TxnStorager
+	storager RouteRulesStorager
+}
+
+// NewRouteRulesManager creates a new RouteRulesManager instance
+func NewRouteRulesManager(txn itxn.TxnStorager, storager RouteRulesStorager) *RouteRulesManager {
+	return &RouteRulesManager{
+		txn:      txn,
+		storager: storager,
+	}
+}
+
+// CreateRouteRules creates route rules for a given type and owner
+func (m *RouteRulesManager) CreateRouteRules(ctx context.Context, ruleType string, owner *string, param *RouteRulesParam) (int64, error) {
+	var id int64
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		if err := m.validateRouteRules(param); err != nil {
+			return err
+		}
+
+		var err error
+		id, err = m.storager.CreateRouteRules(ctx, ruleType, owner, param)
+		return err
+	})
+
+	return id, err
+}
+
+// UpdateRouteRules updates route rules by type and owner
+// If no existing rules, creates a new one
+func (m *RouteRulesManager) UpdateRouteRules(ctx context.Context, ruleType string, owner *string, param *RouteRulesParam) (int64, error) {
+	var id int64
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		if err := m.validateRouteRules(param); err != nil {
+			return err
+		}
+
+		existing, err := m.storager.FetchRouteRules(ctx, ruleType, owner)
+		if err != nil {
+			return err
+		}
+
+		if existing == nil || existing.ID == nil {
+			id, err = m.storager.CreateRouteRules(ctx, ruleType, owner, param)
+			return err
+		}
+
+		id = *existing.ID
+		_, err = m.storager.UpdateRouteRules(ctx, id, param)
+		return err
+	})
+
+	return id, err
+}
+
+// FetchRouteRules fetches route rules by type and owner
+func (m *RouteRulesManager) FetchRouteRules(ctx context.Context, ruleType string, owner *string) (*RouteRulesParam, error) {
+	var result *RouteRulesParam
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		var err error
+		result, err = m.storager.FetchRouteRules(ctx, ruleType, owner)
+		return err
+	})
+
+	return result, err
+}
+
+// DeleteRouteRules deletes route rules by type and owner
+func (m *RouteRulesManager) DeleteRouteRules(ctx context.Context, ruleType string, owner *string) error {
+	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		existing, err := m.storager.FetchRouteRules(ctx, ruleType, owner)
+		if err != nil {
+			return err
+		}
+		if existing == nil || existing.ID == nil {
+			return nil
+		}
+
+		return m.storager.DeleteRouteRules(ctx, *existing.ID)
+	})
+}
+
+// GetGlobalRouteRules fetches global route rules
+func (m *RouteRulesManager) GetGlobalRouteRules(ctx context.Context) (*RouteRulesParam, error) {
+	owner := RouteRulesTypeGlobal
+	return m.FetchRouteRules(ctx, RouteRulesTypeGlobal, &owner)
+}
+
+// SetGlobalRouteRules sets global route rules
+func (m *RouteRulesManager) SetGlobalRouteRules(ctx context.Context, param *RouteRulesParam) (*RouteRulesParam, error) {
+	owner := RouteRulesTypeGlobal
+	id, err := m.UpdateRouteRules(ctx, RouteRulesTypeGlobal, &owner, param)
+	if err != nil {
+		return nil, err
+	}
+
+	return m.storager.FetchRouteRulesByID(ctx, id)
+}
+
+// FetchRouteRulesByID fetches route rules by id
+func (m *RouteRulesManager) FetchRouteRulesByID(ctx context.Context, id int64) (*RouteRulesParam, error) {
+	var result *RouteRulesParam
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		var err error
+		result, err = m.storager.FetchRouteRulesByID(ctx, id)
+		return err
+	})
+
+	return result, err
+}
+
+// ListRouteTables lists route tables with pagination
+func (m *RouteRulesManager) ListRouteTables(ctx context.Context, filter *RouteRulesFilter) ([]*RouteTableParam, int64, error) {
+	var result []*RouteTableParam
+	var total int64
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		var err error
+		result, total, err = m.storager.FetchRouteRulesList(ctx, filter)
+		return err
+	})
+
+	return result, total, err
+}
+
+func (m *RouteRulesManager) validateRouteRules(param *RouteRulesParam) error {
+	if param == nil {
+		return nil
+	}
+
+	nameSet := make(map[string]struct{})
+	for _, rule := range param.Rules {
+		if rule.Name == nil || *rule.Name == "" {
+			return xerror.WrapParamErrorWithMsg("rule name is required")
+		}
+		if _, ok := nameSet[*rule.Name]; ok {
+			return xerror.WrapParamErrorWithMsg(fmt.Sprintf("duplicate rule name: %s", *rule.Name))
+		}
+		nameSet[*rule.Name] = struct{}{}
+
+		if rule.Cond == nil || *rule.Cond == "" {
+			return xerror.WrapParamErrorWithMsg("rule Cond is required")
+		}
+
+		if len(rule.Targets) == 0 {
+			return xerror.WrapParamErrorWithMsg("targets cannot be empty")
+		}
+
+		totalWeight := 0
+		for _, target := range rule.Targets {
+			if target.Weight == nil {
+				return xerror.WrapParamErrorWithMsg("target weight is required")
+			}
+			totalWeight += *target.Weight
+		}
+		if totalWeight != 100 {
+			return xerror.WrapParamErrorWithMsg("targets total weight must be 100")
+		}
+
+		for _, fallback := range rule.Fallbacks {
+			if fallback.ClusterName == nil || *fallback.ClusterName == "" {
+				return xerror.WrapParamErrorWithMsg("fallback ClusterName cannot be empty")
+			}
+		}
+	}
+
+	return nil
+}

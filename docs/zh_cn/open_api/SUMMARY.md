@@ -11,3 +11,5 @@
 * 产品线资源
     * [集群](clusters.md)
     * [AI路由规则](ai_route_rule.md)
+    * [Global路由表](global_route_rules.md)
+    * [路由表列表](route_tables.md)

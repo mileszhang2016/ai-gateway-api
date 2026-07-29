@@ -38,6 +38,7 @@ type TAPIKey struct {
 	EntityID          *string   `db:"entity_id"`
 	QuotaPlanID       *int64    `db:"quota_plan_id"`
 	RateLimitPolicyID *int64    `db:"rate_limit_policy_id"`
+	RouteRulesID      *int64    `db:"route_rules_id"`
 	CreatedAt         time.Time `db:"created_at"`
 	UpdatedAt         time.Time `db:"updated_at"`
 }
@@ -84,6 +85,7 @@ type TAPIKeyParam struct {
 	EntityID          *string    `db:"entity_id"`
 	QuotaPlanID       *int64     `db:"quota_plan_id"`
 	RateLimitPolicyID *int64     `db:"rate_limit_policy_id"`
+	RouteRulesID      *int64     `db:"route_rules_id"`
 	CreatedAt         *time.Time `db:"created_at"`
 	UpdatedAt         *time.Time `db:"updated_at"`
 

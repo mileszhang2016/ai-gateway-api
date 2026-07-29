@@ -40,7 +40,6 @@ import (
 )
 
 // UpdateBasicRoute route
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 var UpdateBasicEndpoint = &xreq.Endpoint{
 	Path:       "/clusters/{cluster_name}",
 	Method:     http.MethodPatch,
@@ -55,27 +54,14 @@ func newUpdateParam4Update(req *http.Request) (*UpsertParam, error) {
 		return nil, err
 	}
 
-	// SubClusters and Scheduler are auto-managed, no longer manually set via update
+	if param.Name == nil || *param.Name == "" {
+		return nil, xerror.WrapParamErrorWithMsg("cluster_name is required")
+	}
 
-	if ss := param.StickySessions; ss != nil {
-		if *ss.HashStrategy != clusterHashStrategyClientIPOnly && ss.HashHeader == nil {
-			return nil, xerror.WrapParamErrorWithMsg("StickySessions.HashHeader Want Be Set")
+	if param.LLMConfig != nil {
+		if err := checkLLMConfig(param.LLMConfig); err != nil {
+			return nil, err
 		}
-	}
-
-	if err := checkLLMConfig(param.LLMConfig); err != nil {
-		return nil, err
-	}
-
-	if param.Basic.Protocol == nil {
-		return nil, xerror.WrapParamErrorWithMsg("Basic.Protocol Want Be Set")
-	}
-
-	switch *param.Basic.Protocol {
-	case "http":
-	case "https":
-	default:
-		param.Basic.Protocol = lib.PString("http")
 	}
 
 	return param, nil
@@ -97,8 +83,7 @@ func updateActionProcess(req *http.Request, param *UpsertParam) (*ClusterData, e
 		return nil, xerror.WrapRecordNotExist("Cluster")
 	}
 
-	// InstancePool is auto-handled by model layer (updates pool in one transaction)
-	_modelParam := clusterParamControlModel(param)
+	_modelParam := clusterParamControlModel4Update(param)
 	if len(param.InstancePool) > 0 {
 		_modelParam.InstancePool = Instancesc2i(param.InstancePool)
 	}
@@ -116,10 +101,88 @@ func updateActionProcess(req *http.Request, param *UpsertParam) (*ClusterData, e
 	return clusterModel2Control(cluster), nil
 }
 
+func clusterParamControlModel4Update(param *UpsertParam) *icluster_conf.ClusterParam {
+	rst := &icluster_conf.ClusterParam{
+		Name:        param.Name,
+		Description: param.Description,
+	}
+
+	if param.LLMConfig != nil {
+		rst.LLMConfig = normalizeLLMConfig(param.LLMConfig)
+	}
+
+	if param.Basic != nil {
+		basic := param.Basic
+		rst.Basic = &icluster_conf.ClusterBasicParam{
+			Protocol: basic.Protocol,
+		}
+		if basic.Protocol != nil {
+			switch *basic.Protocol {
+			case "http", "https":
+			default:
+				rst.Basic.Protocol = lib.PString("http")
+			}
+		}
+		if basic.Connection != nil {
+			rst.Basic.Connection = &icluster_conf.ClusterBasicConnectionParam{
+				MaxIdleConnPerRs:    basic.Connection.MaxIdleConnPerRs,
+				CancelOnClientClose: basic.Connection.CancelOnClientClose,
+			}
+		}
+		if basic.Retries != nil {
+			rst.Basic.Retries = &icluster_conf.ClusterBasicRetriesParam{
+				MaxRetryInSubcluster: basic.Retries.MaxRetryInCluster,
+			}
+		}
+		if basic.Buffers != nil {
+			rst.Basic.Buffers = &icluster_conf.ClusterBasicBuffersParam{
+				ReqWriteBufferSize: basic.Buffers.ReqWriteBufferSize,
+				ReqFlushInterval:   &icluster_conf.ClusterDefaultReqFlushInterval,
+				ResFlushInterval:   &icluster_conf.ClusterDefaultResFlushInterval,
+			}
+		}
+		if basic.Timeouts != nil {
+			rst.Basic.Timeouts = &icluster_conf.ClusterBasicTimeoutsParam{
+				TimeoutConnServ:        basic.Timeouts.TimeoutConnServ,
+				TimeoutResponseHeader:  basic.Timeouts.TimeoutResponseHeader,
+				TimeoutReadbodyClient:  basic.Timeouts.TimeoutReadbodyClient,
+				TimeoutReadClientAgain: basic.Timeouts.TimeoutReadClientAgain,
+				TimeoutWriteClient:     basic.Timeouts.TimeoutWriteClient,
+			}
+		}
+	}
+
+	if param.StickySessions != nil {
+		sticky := param.StickySessions
+		rst.StickySessions = &icluster_conf.ClusterStickySessionsParam{
+			HashStrategy: hashStrategyConvert(sticky.HashStrategy),
+		}
+		if sticky.Enabled != nil {
+			rst.StickySessions.SessionSticky = sticky.Enabled
+		}
+		if sticky.HashHeader != nil {
+			rst.StickySessions.HashHeader = sticky.HashHeader
+		}
+	}
+
+	if param.PassiveHealthCheck != nil {
+		phc := param.PassiveHealthCheck
+		rst.PassiveHealthCheck = &icluster_conf.ClusterPassiveHealthCheckParam{
+			Schema:     &icluster_conf.ClusterHealthCheckHTTP,
+			Interval:   phc.Interval,
+			Failnum:    phc.Failnum,
+			Statuscode: phc.Statuscode,
+			Host:       phc.Host,
+			Uri:        phc.Uri,
+		}
+	}
+
+	return rst
+}
+
 var _ xreq.Handler = UpdateAction
 
 // UpdateAction action
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 func UpdateAction(req *http.Request) (interface{}, error) {
 	param, err := newUpdateParam4Update(req)
 	if err != nil {

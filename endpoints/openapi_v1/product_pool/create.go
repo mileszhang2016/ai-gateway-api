@@ -139,7 +139,6 @@ func Instancesc2i(is []*Instance) []icluster_conf.Instance {
 			Weight:   weight,
 			Ports:    instance.Ports,
 			Port:     port,
-			Tags:     instance.Tags,
 		})
 	}
 

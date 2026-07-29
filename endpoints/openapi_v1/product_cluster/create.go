@@ -39,158 +39,81 @@ import (
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
-// HealthCheckParam Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
-type HealthCheckParam struct {
-	HealthcheckInterval   *int32  `json:"healthcheck_interval" validate:"required,min=1"`
-	HealthcheckFailnum    *int32  `json:"healthcheck_failnum" validate:"required,min=1"`
-	HealthcheckStatuscode *int32  `json:"healthcheck_statuscode" validate:"required,min=0"`
-	HealthcheckHost       *string `json:"healthcheck_host" validate:"required,min=1"`
-	HealthcheckUri        *string `json:"healthcheck_uri" validate:"required,min=1,startswith=/"`
-}
-
+// PassiveHealthCheckParam Request Param
 type PassiveHealthCheckParam struct {
-	Schema     *string `json:"schema"`
-	Interval   *int32  `json:"interval" validate:"required,min=1"`
-	Failnum    *int32  `json:"failnum" validate:"required,min=1"`
-	Statuscode *int32  `json:"statuscode" validate:"required,min=0"`
-	Host       *string `json:"host" validate:"required,min=1"`
-	Uri        *string `json:"uri" validate:"required,min=1,startswith=/"`
+	Interval   *int32  `json:"interval"`
+	Failnum    *int32  `json:"failnum"`
+	Statuscode *int32  `json:"statuscode"`
+	Host       *string `json:"host"`
+	Uri        *string `json:"uri"`
 }
 
 // Instance Request Param
 type Instance struct {
-	Hostname string            `json:"hostname" validate:"required,min=2"`
-	IP       string            `json:"ip" validate:"required"`
-	Weight   int64             `json:"weight" validate:"min=0,max=100"`
-	Ports    map[string]int    `json:"ports" validate:"required,min=1"`
-	Tags     map[string]string `json:"tags"`
+	Hostname string         `json:"hostname" validate:"required,min=2"`
+	IP       string         `json:"ip" validate:"required"`
+	Weight   int64          `json:"weight" validate:"min=0,max=100"`
+	Ports    map[string]int `json:"ports" validate:"required,min=1"`
 }
 
 // UpsertParam Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type UpsertParam struct {
-	Name           *string              `json:"name" uri:"cluster_name"`
-	Description    *string              `json:"description"`
-	Basic          *BasicParam          `json:"basic"`
-	StickySessions *StickySessionsParam `json:"sticky_sessions"`
-
-	// InstancePool replaces SubClusters - system auto-creates instance-pool and sub-cluster from this
-	InstancePool []*Instance `json:"instance_pool"`
-
-	// Scheduler is auto-generated, no longer required in request
-	// Scheduler map[string]map[string]int `json:"scheduler"`
-
+	Name           *string                  `json:"name" uri:"cluster_name"`
+	Description    *string                  `json:"description"`
+	Basic          *BasicParam              `json:"basic"`
+	StickySessions *StickySessionsParam     `json:"sticky_sessions"`
+	InstancePool   []*Instance              `json:"instance_pool"`
 	PassiveHealthCheck *PassiveHealthCheckParam `json:"passive_health_check"`
 	LLMConfig          *icluster_conf.LLMConfig `json:"llm_config"`
 }
 
 // ConnectionParam Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type ConnectionParam struct {
-	MaxIdleConnPerRs    *int16 `json:"max_idle_conn_per_rs" validate:"required,min=0"`
-	CancelOnClientClose *bool  `json:"cancel_on_client_close" validate:"required"`
+	MaxIdleConnPerRs    *int16 `json:"max_idle_conn_per_rs"`
+	CancelOnClientClose *bool  `json:"cancel_on_client_close"`
 }
 
 // BuffersParam Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type BuffersParam struct {
-	ReqWriteBufferSize *int32 `json:"req_write_buffer_size" validate:"required,min=0"`
+	ReqWriteBufferSize *int32 `json:"req_write_buffer_size"`
 }
 
 // TimeoutsParam Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type TimeoutsParam struct {
-	TimeoutConnServ        *int32 `json:"timeout_conn_serv" validate:"required,min=1"`
-	TimeoutResponseHeader  *int32 `json:"timeout_response_header" validate:"required,min=1"`
-	TimeoutReadbodyClient  *int32 `json:"timeout_readbody_client" validate:"required,min=1"`
-	TimeoutReadClientAgain *int32 `json:"timeout_read_client_again" validate:"required,min=1"`
-	TimeoutWriteClient     *int32 `json:"timeout_write_client" validate:"required,min=1"`
+	TimeoutConnServ        *int32 `json:"timeout_conn_serv"`
+	TimeoutResponseHeader  *int32 `json:"timeout_response_header"`
+	TimeoutReadbodyClient  *int32 `json:"timeout_readbody_client"`
+	TimeoutReadClientAgain *int32 `json:"timeout_read_client_again"`
+	TimeoutWriteClient     *int32 `json:"timeout_write_client"`
 }
 
 // BasicParam Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type BasicParam struct {
-	Connection *ConnectionParam `json:"connection" validate:"required"`
-	Retries    *RetriesParam    `json:"retries" validate:"required"`
-	Buffers    *BuffersParam    `json:"buffers" validate:"required"`
-	Timeouts   *TimeoutsParam   `json:"timeouts" validate:"required"`
+	Connection *ConnectionParam `json:"connection"`
+	Retries    *RetriesParam    `json:"retries"`
+	Buffers    *BuffersParam    `json:"buffers"`
+	Timeouts   *TimeoutsParam   `json:"timeouts"`
 	Protocol   *string          `json:"protocol"`
 }
 
 // RetriesParam Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type RetriesParam struct {
-	MaxRetryInSubcluster    *int8 `json:"max_retry_in_subcluster" validate:"required,min=0"`
-	MaxRetryCrossSubcluster *int8 `json:"max_retry_cross_subcluster" validate:"required,min=0"`
+	MaxRetryInCluster *int8 `json:"max_retry_in_cluster"`
 }
 
 // StickySessionsParam Request Param
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 type StickySessionsParam struct {
-	SessionStickyType *string `json:"session_sticky_type" validate:"required,oneof=INSTANCE SUB_CLUSTER"`
-	HashStrategy      *string `json:"hash_strategy" validate:"required,oneof=CLIENT_IP_ONLY CLIENT_ID_ONLY CLIENT_ID_PREFERED"`
-	HashHeader        *string `json:"hash_header"`
+	Enabled      *bool   `json:"enabled"`
+	HashStrategy *string `json:"hash_strategy"`
+	HashHeader   *string `json:"hash_header"`
 }
 
 // CreateRoute route
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 var CreateEndpoint = &xreq.Endpoint{
 	Path:       "/clusters",
 	Method:     http.MethodPost,
 	Handler:    xreq.Convert(CreateAction),
 	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionCreate),
-}
-
-// AUTO GEN BY ctrl, MODIFY AS U NEED
-func newCreateParam4Create(req *http.Request) (*UpsertParam, error) {
-	param := &UpsertParam{
-		StickySessions: &StickySessionsParam{
-			HashStrategy: lib.PString(clusterHashStrategyClientIDOnly),
-		},
-	}
-	err := xreq.BindJSON(req, param)
-	if err != nil {
-		return nil, err
-	}
-
-	// Scheduler is auto-generated from DefaultAIClusterName config
-
-	if len(param.InstancePool) == 0 {
-		return nil, xerror.WrapParamErrorWithMsg("InstancePool Want Be Set")
-	}
-
-	if param.Basic == nil {
-		return nil, xerror.WrapParamErrorWithMsg("Basic Want Be Set")
-	}
-
-	if param.PassiveHealthCheck == nil {
-		return nil, xerror.WrapParamErrorWithMsg("PassiveHealthCheck Want Be Set")
-	}
-
-	if param.StickySessions == nil {
-		return nil, xerror.WrapParamErrorWithMsg("StickySessions Want Be Set")
-	}
-	if *param.StickySessions.HashStrategy != clusterHashStrategyClientIPOnly && param.StickySessions.HashHeader == nil {
-		return nil, xerror.WrapParamErrorWithMsg("StickySessions.HashHeader Want Be Set")
-	}
-
-	if err := checkLLMConfig(param.LLMConfig); err != nil {
-		return nil, err
-	}
-
-	if param.Basic.Protocol == nil {
-		return nil, xerror.WrapParamErrorWithMsg("Basic.Protocol Want Be Set")
-	}
-
-	switch *param.Basic.Protocol {
-	case "http":
-	case "https":
-	default:
-		param.Basic.Protocol = lib.PString("http")
-	}
-
-	return param, err
 }
 
 var (
@@ -200,85 +123,228 @@ var (
 	defaultWeight                       = int64(1)
 )
 
+func newCreateParam4Create(req *http.Request) (*UpsertParam, error) {
+	param := &UpsertParam{}
+	if err := xreq.BindJSON(req, param); err != nil {
+		return nil, err
+	}
+
+	if param.Name == nil || *param.Name == "" {
+		return nil, xerror.WrapParamErrorWithMsg("name is required")
+	}
+
+	if len(param.InstancePool) == 0 {
+		return nil, xerror.WrapParamErrorWithMsg("instance_pool is required")
+	}
+
+	if err := checkLLMConfig(param.LLMConfig); err != nil {
+		return nil, err
+	}
+
+	return param, nil
+}
+
 func clusterParamControlModel(param *UpsertParam) *icluster_conf.ClusterParam {
 	rst := &icluster_conf.ClusterParam{
 		Name:        param.Name,
 		Description: param.Description,
-		LLMConfig:   param.LLMConfig,
+		LLMConfig:   normalizeLLMConfig(param.LLMConfig),
 	}
-	// SubClusters and Scheduler are auto-generated in CreateActionProcess
 
-	if basic := param.Basic; basic != nil {
-		rst.Basic = &icluster_conf.ClusterBasicParam{
-			Protocol: basic.Protocol,
+	basic := normalizeBasic(param.Basic)
+	rst.Basic = &icluster_conf.ClusterBasicParam{
+		Protocol: basic.Protocol,
+	}
+	if basic.Connection != nil {
+		rst.Basic.Connection = &icluster_conf.ClusterBasicConnectionParam{
+			MaxIdleConnPerRs:    basic.Connection.MaxIdleConnPerRs,
+			CancelOnClientClose: basic.Connection.CancelOnClientClose,
 		}
-
-		if conn := basic.Connection; conn != nil {
-			rst.Basic.Connection = &icluster_conf.ClusterBasicConnectionParam{
-				MaxIdleConnPerRs:    conn.MaxIdleConnPerRs,
-				CancelOnClientClose: conn.CancelOnClientClose,
-			}
+	}
+	if basic.Retries != nil {
+		rst.Basic.Retries = &icluster_conf.ClusterBasicRetriesParam{
+			MaxRetryInSubcluster: basic.Retries.MaxRetryInCluster,
 		}
-
-		if retries := basic.Retries; retries != nil {
-			rst.Basic.Retries = &icluster_conf.ClusterBasicRetriesParam{
-				MaxRetryInSubcluster:    retries.MaxRetryInSubcluster,
-				MaxRetryCrossSubcluster: retries.MaxRetryCrossSubcluster,
-			}
+	}
+	if basic.Buffers != nil {
+		rst.Basic.Buffers = &icluster_conf.ClusterBasicBuffersParam{
+			ReqWriteBufferSize: basic.Buffers.ReqWriteBufferSize,
+			ReqFlushInterval:   &icluster_conf.ClusterDefaultReqFlushInterval,
+			ResFlushInterval:   &icluster_conf.ClusterDefaultResFlushInterval,
 		}
-
-		if buffers := basic.Buffers; buffers != nil {
-			rst.Basic.Buffers = &icluster_conf.ClusterBasicBuffersParam{
-				ReqWriteBufferSize: buffers.ReqWriteBufferSize,
-				ReqFlushInterval:   &icluster_conf.ClusterDefaultReqFlushInterval,
-				ResFlushInterval:   &icluster_conf.ClusterDefaultResFlushInterval,
-			}
-		}
-
-		if timeouts := basic.Timeouts; timeouts != nil {
-			rst.Basic.Timeouts = &icluster_conf.ClusterBasicTimeoutsParam{
-				TimeoutConnServ:        timeouts.TimeoutConnServ,
-				TimeoutResponseHeader:  timeouts.TimeoutResponseHeader,
-				TimeoutReadbodyClient:  timeouts.TimeoutReadbodyClient,
-				TimeoutReadClientAgain: timeouts.TimeoutReadClientAgain,
-				TimeoutWriteClient:     timeouts.TimeoutWriteClient,
-			}
+	}
+	if basic.Timeouts != nil {
+		rst.Basic.Timeouts = &icluster_conf.ClusterBasicTimeoutsParam{
+			TimeoutConnServ:        basic.Timeouts.TimeoutConnServ,
+			TimeoutResponseHeader:  basic.Timeouts.TimeoutResponseHeader,
+			TimeoutReadbodyClient:  basic.Timeouts.TimeoutReadbodyClient,
+			TimeoutReadClientAgain: basic.Timeouts.TimeoutReadClientAgain,
+			TimeoutWriteClient:     basic.Timeouts.TimeoutWriteClient,
 		}
 	}
 
-	stickySessionConvert := func(s *string) *bool {
-		if s == nil {
-			return nil
-		}
-
-		return lib.PBool(*s == icluster_conf.ClusterStickTypeInstance)
+	sticky := normalizeStickySessions(param.StickySessions)
+	rst.StickySessions = &icluster_conf.ClusterStickySessionsParam{
+		SessionSticky: sticky.Enabled,
+		HashStrategy:  hashStrategyConvert(sticky.HashStrategy),
+		HashHeader:    sticky.HashHeader,
 	}
 
-	hashStrategyConvert := func(s *string) *int32 {
-		if s == nil {
-			return nil
-		}
+	phc := normalizePassiveHealthCheck(param.PassiveHealthCheck, param.InstancePool)
+	rst.PassiveHealthCheck = PassiveHealthCheckParamC2M(phc)
 
-		return lib.PInt32(map[string]int32{
-			clusterHashStrategyClientIDOnly:     icluster_conf.ClusterHashStrategyClientIDOnlyI,
-			clusterHashStrategyClientIPOnly:     icluster_conf.ClusterHashStrategyClientIPOnlyI,
-			clusterHashStrategyClientIDPrefered: icluster_conf.ClusterHashStrategyClientIDPreferedI,
-		}[*s])
+	return rst
+}
+
+func normalizeBasic(basic *BasicParam) *BasicParam {
+	if basic == nil {
+		basic = &BasicParam{}
 	}
 
-	if stickySession := param.StickySessions; stickySession != nil {
-		rst.StickySessions = &icluster_conf.ClusterStickySessionsParam{
-			SessionSticky: stickySessionConvert(stickySession.SessionStickyType),
-			HashStrategy:  hashStrategyConvert(stickySession.HashStrategy),
-			HashHeader:    stickySession.HashHeader,
+	if basic.Protocol == nil {
+		basic.Protocol = lib.PString("http")
+	}
+
+	switch *basic.Protocol {
+	case "http", "https":
+	default:
+		basic.Protocol = lib.PString("http")
+	}
+
+	if basic.Connection == nil {
+		basic.Connection = &ConnectionParam{}
+	}
+	if basic.Connection.MaxIdleConnPerRs == nil {
+		basic.Connection.MaxIdleConnPerRs = lib.PInt16(0)
+	}
+	if basic.Connection.CancelOnClientClose == nil {
+		basic.Connection.CancelOnClientClose = lib.PBool(false)
+	}
+
+	if basic.Retries == nil {
+		basic.Retries = &RetriesParam{}
+	}
+	if basic.Retries.MaxRetryInCluster == nil {
+		basic.Retries.MaxRetryInCluster = lib.PInt8(2)
+	}
+
+	if basic.Buffers == nil {
+		basic.Buffers = &BuffersParam{}
+	}
+	if basic.Buffers.ReqWriteBufferSize == nil {
+		basic.Buffers.ReqWriteBufferSize = lib.PInt32(512)
+	}
+
+	if basic.Timeouts == nil {
+		basic.Timeouts = &TimeoutsParam{}
+	}
+	if basic.Timeouts.TimeoutConnServ == nil {
+		basic.Timeouts.TimeoutConnServ = lib.PInt32(50000)
+	}
+	if basic.Timeouts.TimeoutResponseHeader == nil {
+		basic.Timeouts.TimeoutResponseHeader = lib.PInt32(50000)
+	}
+	if basic.Timeouts.TimeoutReadbodyClient == nil {
+		basic.Timeouts.TimeoutReadbodyClient = lib.PInt32(30000)
+	}
+	if basic.Timeouts.TimeoutReadClientAgain == nil {
+		basic.Timeouts.TimeoutReadClientAgain = lib.PInt32(30000)
+	}
+	if basic.Timeouts.TimeoutWriteClient == nil {
+		basic.Timeouts.TimeoutWriteClient = lib.PInt32(60000)
+	}
+
+	return basic
+}
+
+func normalizeStickySessions(ss *StickySessionsParam) *StickySessionsParam {
+	if ss == nil {
+		ss = &StickySessionsParam{}
+	}
+	if ss.Enabled == nil {
+		ss.Enabled = lib.PBool(false)
+	}
+	if ss.HashStrategy == nil {
+		ss.HashStrategy = lib.PString(clusterHashStrategyClientIDOnly)
+	}
+	if ss.HashHeader == nil {
+		ss.HashHeader = lib.PString("")
+	}
+	return ss
+}
+
+func normalizePassiveHealthCheck(phc *PassiveHealthCheckParam, instances []*Instance) *PassiveHealthCheckParam {
+	if phc == nil {
+		phc = &PassiveHealthCheckParam{}
+	}
+	if phc.Interval == nil {
+		phc.Interval = lib.PInt32(1000)
+	}
+	if phc.Failnum == nil {
+		phc.Failnum = lib.PInt32(3)
+	}
+	if phc.Statuscode == nil {
+		phc.Statuscode = lib.PInt32(0)
+	}
+	if phc.Uri == nil {
+		phc.Uri = lib.PString("/")
+	}
+	if phc.Host == nil {
+		if len(instances) > 0 {
+			phc.Host = &instances[0].Hostname
+		} else {
+			empty := ""
+			phc.Host = &empty
+		}
+	}
+	return phc
+}
+
+func normalizeLLMConfig(llm *icluster_conf.LLMConfig) *icluster_conf.LLMConfig {
+	if llm == nil {
+		return nil
+	}
+
+	rst := &icluster_conf.LLMConfig{
+		Models:        llm.Models,
+		ModelMappings: llm.ModelMappings,
+		Key:           llm.Key,
+		ProviderType:  llm.ProviderType,
+	}
+
+	if llm.ModelEndpoint != nil {
+		rst.ModelEndpoint = &icluster_conf.Endpoint{
+			Schema:  llm.ModelEndpoint.Schema,
+			URI:     llm.ModelEndpoint.URI,
+			Headers: llm.ModelEndpoint.Headers,
+		}
+	} else {
+		rst.ModelEndpoint = &icluster_conf.Endpoint{
+			Schema: "https",
+			URI:    "/v1/models",
 		}
 	}
 
-	if passiveHealthCheck := param.PassiveHealthCheck; passiveHealthCheck != nil {
-		rst.PassiveHealthCheck = PassiveHealthCheckParamC2M(passiveHealthCheck)
+	if rst.ModelEndpoint.Schema == "" {
+		rst.ModelEndpoint.Schema = "https"
+	}
+	if rst.ModelEndpoint.URI == "" {
+		rst.ModelEndpoint.URI = "/v1/models"
 	}
 
 	return rst
+}
+
+func hashStrategyConvert(s *string) *int32 {
+	if s == nil {
+		return nil
+	}
+
+	return lib.PInt32(map[string]int32{
+		clusterHashStrategyClientIDOnly:     icluster_conf.ClusterHashStrategyClientIDOnlyI,
+		clusterHashStrategyClientIPOnly:     icluster_conf.ClusterHashStrategyClientIPOnlyI,
+		clusterHashStrategyClientIDPrefered: icluster_conf.ClusterHashStrategyClientIDPreferedI,
+	}[*s])
 }
 
 func PassiveHealthCheckParamC2M(passiveHealthCheck *PassiveHealthCheckParam) *icluster_conf.ClusterPassiveHealthCheckParam {
@@ -315,7 +381,6 @@ func Instancesc2i(is []*Instance) []icluster_conf.Instance {
 			Weight:   weight,
 			Ports:    instance.Ports,
 			Port:     port,
-			Tags:     instance.Tags,
 		})
 	}
 
@@ -329,7 +394,6 @@ func CreateActionProcess(req *http.Request, _param *UpsertParam) (*ClusterData, 
 	}
 
 	param := clusterParamControlModel(_param)
-	// InstancePool is auto-handled by model layer (creates pool + sub-cluster + scheduler in one transaction)
 	if len(_param.InstancePool) == 0 {
 		return nil, xerror.WrapParamErrorWithMsg("instance_pool is required")
 	}
@@ -353,7 +417,6 @@ func CreateActionProcess(req *http.Request, _param *UpsertParam) (*ClusterData, 
 var _ xreq.Handler = CreateAction
 
 // CreateAction action
-// AUTO GEN BY ctrl, MODIFY AS U NEED
 func CreateAction(req *http.Request) (interface{}, error) {
 	param, err := newCreateParam4Create(req)
 	if err != nil {

@@ -417,7 +417,7 @@ func (m *AuthenticateManager) CreateToken(ctx context.Context, param *TokenParam
 			Name: param.Name,
 		})
 		if len(tokens) > 0 {
-			return xerror.WrapModelErrorWithMsg("Token Existed")
+			return xerror.WrapRecordExisted("Token")
 		}
 
 		var tokenVal string
@@ -490,7 +490,7 @@ func (m *AuthenticateManager) CreateUser(ctx context.Context, param *UserParam) 
 		}
 
 		if user != nil {
-			return xerror.WrapModelErrorWithMsg("User Existed")
+			return xerror.WrapRecordExisted("User")
 		}
 
 		return m.storager.CreateUser(ctx, param)
@@ -542,7 +542,7 @@ func (m *AuthenticateManager) UpdateUserPassword(ctx context.Context, pcd *Passw
 	}, func(user *User) error {
 		if pcd.OldPassword != "" {
 			if user.Password != pcd.OldPassword {
-				return xerror.WrapModelErrorWithMsg("Invalid Password")
+				return xerror.WrapParamErrorWithMsg("Invalid Password")
 			}
 		}
 		return nil
@@ -563,7 +563,7 @@ func (m *AuthenticateManager) updateUser(ctx context.Context, filter *UserFilter
 		}
 
 		if user == nil {
-			return xerror.WrapModelErrorWithMsg("User Not Exist")
+			return xerror.WrapRecordNotExist("User")
 		}
 
 		if userChecker != nil {

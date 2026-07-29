@@ -47,11 +47,10 @@ type OneParam struct {
 // Instance Request Param
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 type Instance struct {
-	Hostname string            `json:"hostname" uri:"hostname" validate:"required,min=2"`
-	IP       string            `json:"ip" uri:"ip" validate:"required"`
-	Weight   int64             `json:"weight" uri:"weight" validate:"min=0,max=100"`
-	Ports    map[string]int    `json:"ports" uri:"ports" validate:"required,min=1"`
-	Tags     map[string]string `json:"tags" uri:"tags"`
+	Hostname string         `json:"hostname" uri:"hostname" validate:"required,min=2"`
+	IP       string         `json:"ip" uri:"ip" validate:"required"`
+	Weight   int64          `json:"weight" uri:"weight" validate:"min=0,max=100"`
+	Ports    map[string]int `json:"ports" uri:"ports" validate:"required,min=1"`
 }
 
 // OneData Request Param
@@ -70,7 +69,6 @@ func NewOneData(pool *icluster_conf.Pool) *OneData {
 			IP:       one.IP,
 			Weight:   one.Weight,
 			Ports:    one.Ports,
-			Tags:     one.Tags,
 		})
 	}
 

@@ -47,6 +47,10 @@ func newUserUpdateIsAdminParam(req *http.Request) (*UserUpdateIsAdminParam, erro
 }
 
 func userUpdateIsAdminActionProcess(req *http.Request, param *UserUpdateIsAdminParam) error {
+	if !param.IsAdmin {
+		return xerror.WrapParamErrorWithMsg("is_admin must be true")
+	}
+
 	user, err := container.AuthenticateManager.FetchUser(req.Context(), &iauth.UserFilter{
 		Name: param.UserName,
 	})
@@ -56,7 +60,7 @@ func userUpdateIsAdminActionProcess(req *http.Request, param *UserUpdateIsAdminP
 	if user == nil {
 		return xerror.WrapRecordNotExist("User")
 	}
-	return container.AuthorizeManager.UpdateUserIsAdmin(req.Context(), user, param.IsAdmin)
+	return container.AuthorizeManager.UpdateUserIsAdmin(req.Context(), user, true)
 }
 
 var _ xreq.Handler = UserUpdateIsAdminAction

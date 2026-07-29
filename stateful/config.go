@@ -39,9 +39,10 @@ import (
 )
 
 type ServerConfig struct {
-	ServerPort          int `validate:"required,min=1"` // service port
-	MonitorPort         int // monitor port
-	GracefulTimeOutInMs int `validate:"required,min=1"` // time out setting for graceful shutdown
+	ServerAddr          string `validate:"ip"`              // service bind address, default 0.0.0.0
+	ServerPort          int    `validate:"required,min=1"`  // service port
+	MonitorPort         int                                 // monitor port
+	GracefulTimeOutInMs int    `validate:"required,min=1"`  // time out setting for graceful shutdown
 }
 
 type RunTimeConfig struct {

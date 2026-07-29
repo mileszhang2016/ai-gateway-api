@@ -24,9 +24,9 @@ API 规范、鉴权机制等通用说明请参考 [norms.md](norms.md)。
 
 | 文档 | 说明 |
 |------|------|
-| [api_key.md](api_key.md) | API-Key 管理（创建、查询、更新、删除、配额计划、限流策略） |
+| [api_key.md](api_key.md) | API-Key 管理（创建、查询、更新、删除、配额计划、限流策略、路由规则） |
 | [entity_type.md](entity_type.md) | Entity-Type 管理（创建、查询、更新、删除Entity类型定义） |
-| [entity.md](entity.md) | Entity 管理（创建、查询、更新、删除实体，支持层级结构和配额配置） |
+| [entity.md](entity.md) | Entity 管理（创建、查询、更新、删除实体，支持层级结构、配额配置和路由规则） |
 
 ### 2.3 实例池管理
 
@@ -45,6 +45,8 @@ API 规范、鉴权机制等通用说明请参考 [norms.md](norms.md)。
 | 文档 | 说明 |
 |------|------|
 | [ai_route_rule.md](ai_route_rule.md) | AI 路由规则管理 |
+| [global_route_rules.md](global_route_rules.md) | Global 路由表管理（全量更新、查询全局默认路由表） |
+| [route_tables.md](route_tables.md) | 路由表列表查询（global/entity/api_key） |
 
 ### 2.6 证书
 

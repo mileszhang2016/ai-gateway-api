@@ -1,0 +1,395 @@
+# InnerAPI 配置导出与版本控制
+
+## 1. 概述
+
+`ai-gateway-api` 除了面向管理员的 OpenAPI 外，还提供一组面向数据面的 **InnerAPI**（路由前缀 `/inner-api/v1`），供 BFE、Conf Agent 等下游组件拉取运行时配置。
+
+由于 BFE 配置通常较大且变更不频繁，系统引入了 **版本控制机制**：
+
+- 每次导出时计算配置数据的 **MD5 签名**；
+- 与上一次导出的签名比较，若相同则返回 `Data: nil`，避免重复下发；
+- 若不同则生成新的版本号（时间戳格式），并持久化到 `config_versions` 表。
+
+这样下游组件通过携带 `version` 查询参数即可实现 **增量同步**。
+
+---
+
+## 2. 核心抽象
+
+### 2.1 `VersionControlManager`
+
+```go
+type VersionControlManager struct {
+    storager VersionControlStorager
+    txn itxn.TxnStorager
+}
+
+func (vcm *VersionControlManager) ExportConfig(
+    ctx context.Context,
+    configTopic string,
+    generator ConfigGenerator,
+) (*ExportData, error)
+```
+
+`ConfigGenerator` 是实际生成配置数据的回调函数：
+
+```go
+type ConfigGenerator func(ctx context.Context) (*ExportData, error)
+```
+
+### 2.2 `ExportData`
+
+```go
+type ExportData struct {
+    Topic string
+    DataWithoutVersion VersionValuable
+
+    version string
+    DataSignWithoutVersion string
+}
+```
+
+- `Topic`：配置主题，对应 `config_versions.name`；
+- `DataWithoutVersion`：最终返回给下游的配置结构体，需实现 `UpdateVersion(version string) error`；
+- `DataSignWithoutVersion`：对配置数据（版本号置零后）计算的 MD5 签名；
+- `version`：由版本控制管理器写入的实际版本号。
+
+### 2.3 签名与版本号
+
+```go
+func Sign(data interface{}) (string, error) {
+    bs, err := json.Marshal(data)
+    if err != nil {
+        return "", err
+    }
+    return fmt.Sprintf("%x", md5.Sum(bs)), nil
+}
+
+func Version(t time.Time) string {
+    return t.Format("20060102150405")
+}
+
+var ZeroVersion = Version(time.Time{})
+```
+
+生成签名前，会先把配置结构体中的版本号字段更新为 `ZeroVersion`（即 `"00010101000000"`），避免版本号变化影响签名。
+
+### 2.4 存储层 `config_versions`
+
+| 字段 | 说明 |
+|------|------|
+| `id` | 自增主键 |
+| `name` | 配置主题（Topic） |
+| `data_sign` | 配置数据 MD5 签名 |
+| `version` | 对应版本号 |
+
+同一 Topic 下可有多条记录，按时间顺序递增。`VersionControlStorager.UpsertConfigLastExportedVersion` 会返回最新签名对应的版本号；若签名不存在则新增记录。
+
+---
+
+## 3. InnerAPI 接口清单
+
+| 路径 | 对应 Manager | 配置主题 | 说明 |
+|------|-------------|---------|------|
+| `GET /configs/tls_conf/server_data_conf` | `RouteRuleManager` | `route_rule` | 域名、基础/高级路由规则、集群配置 |
+| `GET /configs/gslb_data/gslb` | `ClusterManager` | `gslb.<bfe_cluster>` | GSLB 调度配置，需 `bfe_cluster` 参数 |
+| `GET /configs/gslb_data/cluster_table` | `ClusterManager` | `cluster_table` | 集群表（后端实例列表） |
+| `GET /configs/protocol/server_cert_conf` | `CertificateManager` | `certificate` | TLS 证书配置 |
+| `GET /configs/extra_files/{filename}` | `ExtraFileManager` | 无 | 附加文件原始内容 |
+| `GET /configs/mod-api-key` | `APIKeyRuleManager` | `mod_api_key_rule` | API-Key 校验规则与配额计划 |
+| `GET /configs/mod-body-process` | `ModBodyProcessManager` | `mod_body_process` | 请求体处理模块配置 |
+| `GET /configs/rate-limit-policy` | `RateLimitPolicyManager` | `mod_ai_rate_limit` | 限流策略配置 |
+| `GET /configs/ai-route` | `AIRouteExporter` | `ai_route` | AI 路由规则与绑定关系 |
+
+---
+
+## 4. 各配置导出详解
+
+### 4.1 Server Data（`/configs/tls_conf/server_data_conf`）
+
+由 `model/iroute_conf/exporter.go` 实现，导出三类 BFE 配置：
+
+```go
+type RouteRuleExportData struct {
+    Version string
+    HostTable *host_rule_conf.HostTableConf
+    RouteTable *route_rule_conf.RouteTableFile
+    ClusterConf *cluster_conf.BfeClusterConf
+}
+```
+
+生成流程：
+
+1. 查询所有 `domains`；
+2. 查询所有 `clusters` 及子集群/实例池；
+3. 查询所有 `products`；
+4. 组装 HostTable、RouteTable、ClusterConf；
+5. 调用 `VersionControlManager.ExportConfig`。
+
+其中 `RouteTable` 包含产品级高级路由规则（来自 `route_advance_rules`），`ClusterConf` 包含集群转发参数。
+
+### 4.2 GSLB（`/configs/gslb_data/gslb`）
+
+由 `model/icluster_conf/exporter.go` 实现，根据请求的 `bfe_cluster` 参数返回对应 BFE 集群的 GSLB 配置：
+
+```go
+type GSLBConf struct {
+    Version string
+    gslb_conf.GslbConf
+}
+```
+
+Topic 为 `gslb.<bfe_cluster_name>`，因此不同 BFE 集群有独立的版本线。
+
+生成流程：
+
+1. 查询所有 `clusters`；
+2. 对每个集群，取其 `lb_matrices` 中对应 `bfe_cluster` 的调度矩阵；
+3. 组装 `GslbConf.Clusters`。
+
+### 4.3 Cluster Table（`/configs/gslb_data/cluster_table`）
+
+同样由 `model/icluster_conf/exporter.go` 实现，导出所有集群的后端实例：
+
+```go
+type ClusterTableConf struct {
+    cluster_table_conf.ClusterTableConf
+}
+```
+
+生成流程：
+
+1. 查询所有 `clusters`；
+2. 对每个集群，遍历其 `sub_clusters`；
+3. 对每个子集群，遍历其 `InstancePool.Instances`；
+4. IPv6 地址自动加 `[]` 包裹；
+5. 输出 BFE 标准的 `cluster_table_conf`。
+
+> 说明：管理面 Cluster 对外模型精简（隐藏 `ready`、`sub_clusters`、`scheduler`）不影响 InnerAPI 导出。数据面仍从 `clusters`、`sub_clusters`、`pools`、`lb_matrices` 等存储模型生成 `cluster_table` 与 `gslb` 配置。
+
+### 4.4 Server Cert（`/configs/protocol/server_cert_conf`）
+
+由 `model/iprotocol/exporter.go` 实现：
+
+```go
+type ServerCertConf struct {
+    server_cert_conf.BfeServerCertConf
+}
+```
+
+生成流程：
+
+1. 查询所有 `certificates`；
+2. 标记默认证书；
+3. 将证书/密钥文件路径写入配置；
+4. `UpdateVersion` 时会对文件路径做版本化替换（如 `tls_conf_<version>/...`），便于 BFE 按版本加载。
+
+### 4.5 Extra Files（`/configs/extra_files/{filename}`）
+
+特殊接口，不使用版本控制：
+
+```go
+var ExportExtraFileEndpoint = &xreq.Endpoint{
+    RegisterHandler: func(router *mux.Router) *mux.Route {
+        return router.PathPrefix("/configs/extra_files/").Methods(http.MethodGet)
+    },
+    Handler: xreq.RawConvert(ExportExtraFileAction),
+}
+```
+
+直接从 `extra_files` 表按文件名读取 `content` 并原样返回（`application/octet-stream`）。
+
+### 4.6 mod-api-key（`/configs/mod-api-key`）
+
+由 `model/imods/mod_api_key_rule.go` 实现，是 BFE `mod_api_key` 模块的完整输入：
+
+```go
+type ModAPIKeyRuleConf struct {
+    Version *string `json:"version"`
+    Config map[string][]*TokenRuleFile `json:"config"`
+    QuotaPlans map[string][]*QuotaPlan `json:"QuotaPlans"`
+    Tokens map[string]map[string]*TokenFile `json:"tokens"`
+}
+```
+
+生成流程：
+
+1. 构造 AI 路由对应的 API-Key 规则（`buildAIRouteAPIKeyRules`）；
+2. 遍历所有 `api_keys`，为每个 key 生成 `TokenFile`；
+3. **预加载每个 API-Key 关联的 `QuotaPlan`**（raw storager 不会自动填充关联对象，而 `GetRemainingQuota` 需要 `QuotaPlan.Quota` 判断 token 是否耗尽）；
+4. 计算 token 状态（`enabled/disabled/expired/exhausted`）；
+5. 合并 Entity 层级的 `allow_models`（交集）与 `block_models`（并集）；
+6. 收集 API-Key 自身及 Entity 层级向上的配额计划，**跳过 `unlimited=true` 的配额计划**；
+7. 输出 `QuotaPlans`、`Tokens`、`Config`。
+
+> 详见《API-Key 与 Entity 关联及模型继承.md》。
+
+### 4.7 mod-body-process（`/configs/mod-body-process`）
+
+由 `model/imods/mod_body_process.go` 实现，当前为占位实现：
+
+```go
+type ModBodyProcessConf struct {
+    Version *string `json:"Version"`
+    Config map[string][]string `json:"Config"`
+}
+```
+
+仅输出一个空的配置列表，供 BFE 模块初始化使用。
+
+### 4.8 rate-limit-policy（`/configs/rate-limit-policy`）
+
+由 `model/quota/rate_limit_policy_manager.go` 实现：
+
+```go
+type ExportRateLimitPolicyConfig struct {
+    Config map[string][]*ExportRouteRule `json:"Config"`
+    RateLimitPolicies map[string]*ExportRateLimitPolicy `json:"RateLimitPolicies"`
+    ApikeyRateLimitPolicyBindings map[string][]string `json:"ApikeyRateLimitPolicyBindings"`
+    Version string `json:"Version"`
+}
+```
+
+生成流程：
+
+1. 查询所有 `rate_limit_policies`；
+2. 遍历所有 `api_keys`；
+3. 收集每个 API-Key 自身及其 Entity 层级向上的限流策略 ID；
+4. **跳过 `enabled=false` 的策略**，不导出也不生成绑定；
+5. 将启用的策略转换为 BFE 格式并输出绑定关系。
+
+> 详见《限流策略与导出.md》。
+
+### 4.9 ai-route（`/configs/ai-route`）
+
+由 `model/imods/ai_route_exporter.go` 实现：
+
+```go
+type AiRouteDataExport struct {
+    Version string `json:"Version"`
+    RouteRules map[string]*RouteTableExport `json:"RouteRules"`
+    ApikeyRouteTableBindings map[string][]string `json:"ApikeyRouteTableBindings"`
+}
+```
+
+生成流程：
+
+1. 查询所有 `api_keys` 和 `entities`；
+2. 查询 Global 路由规则；
+3. 对每个 API-Key，依次检查其 API-Key 级、**Entity 层级向上（沿 `parent_id` 遍历）**、Global 级路由规则；
+4. 若规则启用，则生成对应 `RouteTable` 并建立绑定关系。
+
+> AI 路由条件表达式的构造详见《AI 路由规则与条件表达式.md》（待补充）。
+
+---
+
+## 5. 增量同步机制
+
+所有使用版本控制的导出接口都遵循统一的增量同步协议：
+
+### 5.1 请求
+
+```http
+GET /inner-api/v1/configs/mod-api-key?version=20260101120000
+Authorization: Token <token>
+```
+
+### 5.2 响应
+
+- **配置未变化**：
+
+  ```json
+  {
+    "ErrNum": 200,
+    "ErrMsg": "success",
+    "Data": null
+  }
+  ```
+
+- **配置变化**：
+
+  ```json
+  {
+    "ErrNum": 200,
+    "ErrMsg": "success",
+    "Data": {
+      "version": "20260102120000",
+      "config": {...},
+      "QuotaPlans": {...},
+      "tokens": {...}
+    }
+  }
+  ```
+
+### 5.3 下游使用建议
+
+1. 首次拉取时不传 `version` 或传空，获取全量配置与当前版本号；
+2. 后续定时拉取时携带上一次返回的 `version`；
+3. 若返回 `Data == null`，跳过本次更新；
+4. 若返回新配置，更新本地文件并触发 BFE 热加载。
+
+---
+
+## 6. 配置 Topic 设计
+
+| Topic | 对应配置 | 是否依赖外部参数 |
+|-------|---------|----------------|
+| `route_rule` | TLS/Server/路由 | 否 |
+| `cluster_table` | 集群实例表 | 否 |
+| `gslb.<bfe_cluster>` | GSLB 调度 | 是（BFE 集群名） |
+| `certificate` | TLS 证书 | 否 |
+| `mod_api_key_rule` | API-Key 模块 | 否 |
+| `mod_body_process` | Body 处理模块 | 否 |
+| `mod_ai_rate_limit` | 限流策略模块 | 否 |
+| `ai_route` | AI 路由模块 | 否 |
+
+> `gslb.<bfe_cluster>` 因为依赖参数，不同 BFE 集群的版本号线相互独立。
+
+---
+
+## 7. 边界情况与注意事项
+
+| 场景 | 行为 |
+|------|------|
+| 首次导出（`config_versions` 无记录） | 生成新记录，返回全量配置 |
+| 配置未变化 | 返回 `Data: nil`，不生成新记录 |
+| 配置变化但版本号相同 | 不可能，因为版本号基于当前时间生成 |
+| `generator` 返回错误 | 直接返回错误，不更新 `config_versions` |
+| `DataWithoutVersion.UpdateVersion` 失败 | 中断导出流程 |
+| `extra_files` 不存在 | 返回 `Record Not Exist`（404） |
+| GSLB 请求缺少 `bfe_cluster` | 参数校验失败，返回 422 |
+
+---
+
+## 8. 性能优化建议
+
+1. **缓存热点配置**：`mod-api-key`、`rate-limit-policy`、`ai-route` 每次导出都全量读取所有 API-Key / Entity，数据量大时建议加缓存。
+2. **异步签名计算**：复杂配置的 MD5 计算可异步化，避免阻塞请求。
+3. **按产品线分片**：当前所有配置按默认产品 `AI_product` 聚合，若未来多产品线并行，可按产品线拆分 Topic。
+4. **压缩传输**：InnerAPI 返回的 JSON 较大时，可启用 Gzip 压缩。
+
+---
+
+## 9. 相关文件索引
+
+| 文件 | 说明 |
+|------|------|
+| `model/iversion_control/version_control.go` | 版本控制核心抽象 |
+| `storage/rdb/version_control/version_control.go` | `config_versions` 存储实现 |
+| `endpoints/innerapi_v1/endpoints.go` | InnerAPI 路由注册 |
+| `endpoints/innerapi_v1/export_util/param.go` | `version` 参数解析 |
+| `endpoints/innerapi_v1/server_data/export.go` | Server Data 导出端点 |
+| `endpoints/innerapi_v1/gslb_data/*.go` | GSLB / Cluster Table 导出端点 |
+| `endpoints/innerapi_v1/protocol/cert_export.go` | 证书导出端点 |
+| `endpoints/innerapi_v1/extra_file/export.go` | 附加文件导出端点 |
+| `endpoints/innerapi_v1/mod_api_key/export.go` | mod-api-key 导出端点 |
+| `endpoints/innerapi_v1/mod_body_process/export.go` | mod-body-process 导出端点 |
+| `endpoints/innerapi_v1/rate_limit_policy/export.go` | 限流策略导出端点 |
+| `endpoints/innerapi_v1/ai_route/export.go` | AI 路由导出端点 |
+| `model/iroute_conf/exporter.go` | Server Data 配置生成 |
+| `model/icluster_conf/exporter.go` | GSLB / Cluster Table 配置生成 |
+| `model/iprotocol/exporter.go` | 证书配置生成 |
+| `model/imods/mod_api_key_rule.go` | mod-api-key 配置生成 |
+| `model/imods/mod_body_process.go` | mod-body-process 配置生成 |
+| `model/imods/ai_route_exporter.go` | AI 路由配置生成 |
+| `model/quota/rate_limit_policy_manager.go` | 限流策略配置生成 |

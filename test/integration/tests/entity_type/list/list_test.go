@@ -1,0 +1,63 @@
+package entity_type_test
+
+import (
+	"os"
+	"testing"
+
+	"github.com/yf-networks/ai-gateway-api/integration/testutil"
+)
+
+var sm *testutil.ServerManager
+
+func TestMain(m *testing.M) {
+	var err error
+	sm, err = testutil.StartServer()
+	if err != nil {
+		panic("failed to start server: " + err.Error())
+	}
+	code := m.Run()
+	sm.Shutdown()
+	os.Exit(code)
+}
+
+func TestEntityType_List(t *testing.T) {
+	typeName1 := testutil.UniqueEntityTypeName()
+	typeName2 := testutil.UniqueEntityTypeName()
+	if _, err := testutil.CreateEntityType(typeName1, 1); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	if _, err := testutil.CreateEntityType(typeName2, 2); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	t.Run("ET-2-001 查询 Entity-Type 列表", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/entity-types", map[string]string{
+			"page":      "1",
+			"page_size": "20",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertListFieldLen(t, resp, "list", 2)
+		testutil.AssertPagination(t, resp, 1, 20, 2)
+	})
+
+	t.Run("ET-2-002 分页参数边界", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/entity-types", map[string]string{
+			"page":      "1",
+			"page_size": "1",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertListFieldLen(t, resp, "list", 1)
+		testutil.AssertPagination(t, resp, 1, 1, 2)
+	})
+
+	t.Cleanup(func() {
+		testutil.DeleteEntityType(typeName1)
+		testutil.DeleteEntityType(typeName2)
+	})
+}

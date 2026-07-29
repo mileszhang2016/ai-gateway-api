@@ -18,7 +18,6 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/yf-networks/ai-gateway-api/endpoints/middleware"
-	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/ai_route"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/api_key"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/auth"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/bfe_cluster"
@@ -27,13 +26,15 @@ import (
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/domain"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/entity"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/entity_type"
-	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/general"
-	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/models"
+	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/global_route_rules"
+	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/model_provider_type"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/product"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/product_cluster"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/product_pool"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/route"
+	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/route_tables"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/subcluster"
+	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/tool"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/traffic"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 )
@@ -61,11 +62,12 @@ func endpoints() []*xreq.Endpoint {
 		route.Endpoints,
 		domain.Endpoints,
 		api_key.Endpoints,
-		ai_route.Endpoints,
-		general.Endpoints,
 		entity_type.Endpoints,
 		entity.Endpoints,
-		models.Endpoints,
+		global_route_rules.Endpoints,
+		route_tables.Endpoints,
+		model_provider_type.Endpoints,
+		tool.Endpoints,
 	)
 }
 

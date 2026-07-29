@@ -1,0 +1,66 @@
+package api_key_test
+
+import (
+	"os"
+	"testing"
+
+	"github.com/yf-networks/ai-gateway-api/integration/testutil"
+)
+
+var sm *testutil.ServerManager
+
+func TestMain(m *testing.M) {
+	var err error
+	sm, err = testutil.StartServer()
+	if err != nil {
+		panic("failed to start server: " + err.Error())
+	}
+	code := m.Run()
+	sm.Shutdown()
+	os.Exit(code)
+}
+
+func TestAPIKey_QuotaReset(t *testing.T) {
+	apiKeyID, err := testutil.CreateAPIKey("quota-reset-key", "")
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+apiKeyID, map[string]interface{}{
+		"quota_plan": map[string]interface{}{
+			"unlimited": false,
+			"quota": 1000000,
+			"unit": "total_token",
+			"reset_period": "monthly",
+		},
+	})
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	t.Run("AK-8-001 重置配额余额", func(t *testing.T) {
+		resp, err := testutil.GetClient().Post("/open-api/v1/api-keys/"+apiKeyID+"/quota-plan/reset", map[string]interface{}{
+			"reason": "test reset",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "id", apiKeyID)
+	})
+
+	t.Run("AK-8-002 重置并修改 quota", func(t *testing.T) {
+		resp, err := testutil.GetClient().Post("/open-api/v1/api-keys/"+apiKeyID+"/quota-plan/reset", map[string]interface{}{
+			"quota":  500000,
+			"reason": "adjust",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "new_quota", float64(500000))
+	})
+
+	t.Cleanup(func() {
+		testutil.DeleteAPIKey(apiKeyID)
+	})
+}

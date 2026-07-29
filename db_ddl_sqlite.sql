@@ -290,14 +290,17 @@ CREATE TABLE api_keys (
   entity_id TEXT DEFAULT NULL,
   quota_plan_id INTEGER DEFAULT NULL,
   rate_limit_policy_id INTEGER DEFAULT NULL,
+  route_rules_id INTEGER DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT '0000-01-01 00:00:00',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (id)
+  UNIQUE (id),
+  UNIQUE (api_key)
 );
 CREATE INDEX api_keys_product_name ON api_keys (product_name);
 CREATE INDEX api_keys_entity_id ON api_keys (entity_id);
 CREATE INDEX api_keys_quota_plan_id ON api_keys (quota_plan_id);
 CREATE INDEX api_keys_rate_limit_policy_id ON api_keys (rate_limit_policy_id);
+CREATE INDEX api_keys_route_rules_id ON api_keys (route_rules_id);
 CREATE TRIGGER api_keys_updated_at AFTER UPDATE ON api_keys
   FOR EACH ROW BEGIN UPDATE api_keys SET updated_at = CURRENT_TIMESTAMP WHERE inner_id = OLD.inner_id; END;
 
@@ -372,6 +375,7 @@ CREATE TABLE entities (
   block_models TEXT,
   quota_plan_id INTEGER DEFAULT NULL,
   rate_limit_policy_id INTEGER DEFAULT NULL,
+  route_rules_id INTEGER DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (entity_id),
@@ -381,6 +385,7 @@ CREATE INDEX entities_parent_id ON entities (parent_id);
 CREATE INDEX entities_type ON entities (type);
 CREATE INDEX entities_quota_plan_id ON entities (quota_plan_id);
 CREATE INDEX entities_rate_limit_policy_id ON entities (rate_limit_policy_id);
+CREATE INDEX entities_route_rules_id ON entities (route_rules_id);
 CREATE TRIGGER entities_updated_at AFTER UPDATE ON entities
   FOR EACH ROW BEGIN UPDATE entities SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
@@ -430,6 +435,22 @@ CREATE TABLE rate_limit_policies (
 CREATE INDEX rate_limit_policies_enabled ON rate_limit_policies (enabled);
 CREATE TRIGGER rate_limit_policies_updated_at AFTER UPDATE ON rate_limit_policies
   FOR EACH ROW BEGIN UPDATE rate_limit_policies SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create route_rules (路由规则表)
+DROP TABLE IF EXISTS route_rules;
+CREATE TABLE route_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL DEFAULT 'api_key',
+  owner TEXT NOT NULL,
+  enabled INTEGER DEFAULT 0,
+  rules TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (type, owner)
+);
+CREATE INDEX route_rules_enabled ON route_rules (enabled);
+CREATE TRIGGER route_rules_updated_at AFTER UPDATE ON route_rules
+  FOR EACH ROW BEGIN UPDATE route_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
 -- insert default user
 INSERT INTO users (id, name, password, scopes, created_at) VALUES (1, 'admin', 'admin', 'System', CURRENT_TIMESTAMP);

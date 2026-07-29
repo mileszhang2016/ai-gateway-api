@@ -1,0 +1,110 @@
+// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package stateful
+
+import (
+	"sync"
+
+	"github.com/bfenetworks/bfe/bfe_util/redis_client"
+)
+
+// MockRedisClient 内存 Redis Mock 实现
+// 用于测试环境替代真实 Redis，避免依赖外部 Redis 服务
+type MockRedisClient struct {
+	mu   sync.Mutex
+	data map[string]int64
+}
+
+var _ redis_client.Client = (*MockRedisClient)(nil)
+
+// NewMockRedisClient 创建新的 Mock Redis 客户端
+func NewMockRedisClient() *MockRedisClient {
+	return &MockRedisClient{
+		data: make(map[string]int64),
+	}
+}
+
+// Setex 设置 key 的值并设置过期时间（mock 忽略过期时间）
+func (m *MockRedisClient) Setex(key string, value []byte, expire int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.data[key] = 0
+	return nil
+}
+
+// Get 获取 key 的值
+func (m *MockRedisClient) Get(key string) (interface{}, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if v, ok := m.data[key]; ok {
+		return v, nil
+	}
+	return nil, nil
+}
+
+// Expire 设置 key 的过期时间（mock 忽略）
+func (m *MockRedisClient) Expire(key string, expire int) error {
+	return nil
+}
+
+// Incr 将 key 对应的值增加 1
+func (m *MockRedisClient) Incr(key string) (int64, error) {
+	return m.IncrBy(key, 1)
+}
+
+// IncrAndExpire Incr 并设置过期时间（mock 忽略过期时间）
+func (m *MockRedisClient) IncrAndExpire(key string, expire int) (int64, error) {
+	return m.IncrBy(key, 1)
+}
+
+// Decr 将 key 对应的值减少 1
+func (m *MockRedisClient) Decr(key string) (int64, error) {
+	return m.IncrBy(key, -1)
+}
+
+// PIncr 批量增加多个 key
+func (m *MockRedisClient) PIncr(keys []string) ([]int64, error) {
+	results := make([]int64, len(keys))
+	for i, key := range keys {
+		val, err := m.IncrBy(key, 1)
+		if err != nil {
+			return nil, err
+		}
+		results[i] = val
+	}
+	return results, nil
+}
+
+// GetInt64 获取 key 对应的 int64 值
+func (m *MockRedisClient) GetInt64(key string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.data[key], nil
+}
+
+// IncrBy 将 key 对应的值增加 delta
+func (m *MockRedisClient) IncrBy(key string, delta int64) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.data[key] += delta
+	return m.data[key], nil
+}
+
+// Reset 清空所有数据
+func (m *MockRedisClient) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.data = make(map[string]int64)
+}

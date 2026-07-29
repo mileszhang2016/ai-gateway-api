@@ -238,7 +238,7 @@ Data为null。
 ```
 
 **约束**
-- 若该类型下存在Entity，返回ErrNum=409
+- 若该Entity-Type已被任何Entity引用，返回ErrNum=409
 
 ---
 

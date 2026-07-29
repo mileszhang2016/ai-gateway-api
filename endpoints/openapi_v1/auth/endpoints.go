@@ -23,12 +23,7 @@ var Endpoints = []*xreq.Endpoint{
 	TokenCreateEndpoint,
 	TokenDestroyEndpoint,
 	TokenListEndpoint,
-
-	TokenListEndpoint,
 	TokenOneEndpoint,
-	TokenCreateEndpoint,
-	TokenDestroyEndpoint,
-	ProductTokenListEndpoint,
 
 	UserCreateEndpoint,
 	UserDeleteEndpoint,
@@ -36,10 +31,6 @@ var Endpoints = []*xreq.Endpoint{
 	UserOneEndpoint,
 	UserUpdateIsAdminEndpoint,
 	UserUpdatePasswordEndpoint,
-
-	ProductUserBindEndpoint,
-	ProductUserBindListEndpoint,
-	ProductUserUnbindEndpoint,
 
 	NavigationEndpoint,
 }
