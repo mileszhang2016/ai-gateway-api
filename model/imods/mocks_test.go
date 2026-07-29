@@ -16,6 +16,7 @@ package imods
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/baidu/go-lib/log/log4go"
@@ -101,14 +102,17 @@ var _ icluster_conf.APIKeyStorager = (*fakeAPIKeyStorager)(nil)
 
 // fakeAIRouteRuleStorager implements iai_route.AIRouteRuleStorager.
 type fakeAIRouteRuleStorager struct {
-	fetchFn   func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error)
-	createFn  func(ctx context.Context, param []*iai_route.Rule) error
-	created   [][]*iai_route.Rule
-	fetched   []*iai_route.AIRouteFilter
+	fetchFn  func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error)
+	createFn func(ctx context.Context, param []*iai_route.Rule) error
+	mu       sync.Mutex
+	created  [][]*iai_route.Rule
+	fetched  []*iai_route.AIRouteFilter
 }
 
 func (s *fakeAIRouteRuleStorager) FetchAIRouteRules(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+	s.mu.Lock()
 	s.fetched = append(s.fetched, filter)
+	s.mu.Unlock()
 	if s.fetchFn != nil {
 		return s.fetchFn(ctx, filter)
 	}
@@ -116,7 +120,9 @@ func (s *fakeAIRouteRuleStorager) FetchAIRouteRules(ctx context.Context, filter 
 }
 
 func (s *fakeAIRouteRuleStorager) CreateAIRouteRules(ctx context.Context, param []*iai_route.Rule) error {
+	s.mu.Lock()
 	s.created = append(s.created, param)
+	s.mu.Unlock()
 	if s.createFn != nil {
 		return s.createFn(ctx, param)
 	}
@@ -133,6 +139,7 @@ type fakeQuotaPlanStorager struct {
 	updateFn func(ctx context.Context, filter *quota.QuotaPlanFilter, param *quota.QuotaPlanParam) (int64, error)
 	deleteFn func(ctx context.Context, filter *quota.QuotaPlanFilter) error
 
+	mu      sync.Mutex
 	created []*quota.QuotaPlanParam
 	fetched []*quota.QuotaPlanFilter
 	listed  []*quota.QuotaPlanFilter
@@ -146,7 +153,9 @@ type updateQuotaPlanCall struct {
 }
 
 func (s *fakeQuotaPlanStorager) CreateQuotaPlan(ctx context.Context, param *quota.QuotaPlanParam) (int64, error) {
+	s.mu.Lock()
 	s.created = append(s.created, param)
+	s.mu.Unlock()
 	if s.createFn != nil {
 		return s.createFn(ctx, param)
 	}
@@ -154,7 +163,9 @@ func (s *fakeQuotaPlanStorager) CreateQuotaPlan(ctx context.Context, param *quot
 }
 
 func (s *fakeQuotaPlanStorager) FetchQuotaPlan(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
+	s.mu.Lock()
 	s.fetched = append(s.fetched, filter)
+	s.mu.Unlock()
 	if s.fetchFn != nil {
 		return s.fetchFn(ctx, filter)
 	}
@@ -162,7 +173,9 @@ func (s *fakeQuotaPlanStorager) FetchQuotaPlan(ctx context.Context, filter *quot
 }
 
 func (s *fakeQuotaPlanStorager) FetchQuotaPlanList(ctx context.Context, filter *quota.QuotaPlanFilter) ([]*quota.QuotaPlanParam, error) {
+	s.mu.Lock()
 	s.listed = append(s.listed, filter)
+	s.mu.Unlock()
 	if s.listFn != nil {
 		return s.listFn(ctx, filter)
 	}
@@ -170,7 +183,9 @@ func (s *fakeQuotaPlanStorager) FetchQuotaPlanList(ctx context.Context, filter *
 }
 
 func (s *fakeQuotaPlanStorager) UpdateQuotaPlan(ctx context.Context, filter *quota.QuotaPlanFilter, param *quota.QuotaPlanParam) (int64, error) {
+	s.mu.Lock()
 	s.updated = append(s.updated, updateQuotaPlanCall{filter: filter, param: param})
+	s.mu.Unlock()
 	if s.updateFn != nil {
 		return s.updateFn(ctx, filter, param)
 	}
@@ -178,7 +193,9 @@ func (s *fakeQuotaPlanStorager) UpdateQuotaPlan(ctx context.Context, filter *quo
 }
 
 func (s *fakeQuotaPlanStorager) DeleteQuotaPlan(ctx context.Context, filter *quota.QuotaPlanFilter) error {
+	s.mu.Lock()
 	s.deleted = append(s.deleted, filter)
+	s.mu.Unlock()
 	if s.deleteFn != nil {
 		return s.deleteFn(ctx, filter)
 	}
@@ -195,6 +212,7 @@ type fakeEntityStorager struct {
 	updateFn func(ctx context.Context, filter *quota.EntityFilter, param *quota.EntityParam) (int64, error)
 	deleteFn func(ctx context.Context, filter *quota.EntityFilter) error
 
+	mu      sync.Mutex
 	created []*quota.EntityParam
 	fetched []*quota.EntityFilter
 	listed  []*quota.EntityFilter
@@ -208,7 +226,9 @@ type updateEntityCall struct {
 }
 
 func (s *fakeEntityStorager) CreateEntity(ctx context.Context, param *quota.EntityParam) (int64, error) {
+	s.mu.Lock()
 	s.created = append(s.created, param)
+	s.mu.Unlock()
 	if s.createFn != nil {
 		return s.createFn(ctx, param)
 	}
@@ -216,7 +236,9 @@ func (s *fakeEntityStorager) CreateEntity(ctx context.Context, param *quota.Enti
 }
 
 func (s *fakeEntityStorager) FetchEntity(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+	s.mu.Lock()
 	s.fetched = append(s.fetched, filter)
+	s.mu.Unlock()
 	if s.fetchFn != nil {
 		return s.fetchFn(ctx, filter)
 	}
@@ -224,7 +246,9 @@ func (s *fakeEntityStorager) FetchEntity(ctx context.Context, filter *quota.Enti
 }
 
 func (s *fakeEntityStorager) FetchEntityList(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error) {
+	s.mu.Lock()
 	s.listed = append(s.listed, filter)
+	s.mu.Unlock()
 	if s.listFn != nil {
 		return s.listFn(ctx, filter)
 	}
@@ -232,7 +256,9 @@ func (s *fakeEntityStorager) FetchEntityList(ctx context.Context, filter *quota.
 }
 
 func (s *fakeEntityStorager) UpdateEntity(ctx context.Context, filter *quota.EntityFilter, param *quota.EntityParam) (int64, error) {
+	s.mu.Lock()
 	s.updated = append(s.updated, updateEntityCall{filter: filter, param: param})
+	s.mu.Unlock()
 	if s.updateFn != nil {
 		return s.updateFn(ctx, filter, param)
 	}
@@ -240,7 +266,9 @@ func (s *fakeEntityStorager) UpdateEntity(ctx context.Context, filter *quota.Ent
 }
 
 func (s *fakeEntityStorager) DeleteEntity(ctx context.Context, filter *quota.EntityFilter) error {
+	s.mu.Lock()
 	s.deleted = append(s.deleted, filter)
+	s.mu.Unlock()
 	if s.deleteFn != nil {
 		return s.deleteFn(ctx, filter)
 	}
@@ -252,11 +280,14 @@ var _ quota.EntityStorager = (*fakeEntityStorager)(nil)
 // fakeVersionControlStorager implements iversion_control.VersionControlStorager.
 type fakeVersionControlStorager struct {
 	upsertFn func(ctx context.Context, css *iversion_control.ExportData) (string, error)
+	mu       sync.Mutex
 	upserted []*iversion_control.ExportData
 }
 
 func (s *fakeVersionControlStorager) UpsertConfigLastExportedVersion(ctx context.Context, css *iversion_control.ExportData) (string, error) {
+	s.mu.Lock()
 	s.upserted = append(s.upserted, css)
+	s.mu.Unlock()
 	if s.upsertFn != nil {
 		return s.upsertFn(ctx, css)
 	}
@@ -274,6 +305,7 @@ type fakeRouteRulesStorager struct {
 	deleteFn    func(ctx context.Context, id int64) error
 	fetchByIDFn func(ctx context.Context, id int64) (*shared.RouteRulesParam, error)
 
+	mu          sync.Mutex
 	created     []createRouteRulesCall
 	fetched     []fetchRouteRulesCall
 	listed      []*shared.RouteRulesFilter
@@ -299,7 +331,9 @@ type updateRouteRulesCall struct {
 }
 
 func (s *fakeRouteRulesStorager) CreateRouteRules(ctx context.Context, ruleType string, owner *string, param *shared.RouteRulesParam) (int64, error) {
+	s.mu.Lock()
 	s.created = append(s.created, createRouteRulesCall{ruleType: ruleType, owner: owner, param: param})
+	s.mu.Unlock()
 	if s.createFn != nil {
 		return s.createFn(ctx, ruleType, owner, param)
 	}
@@ -307,7 +341,9 @@ func (s *fakeRouteRulesStorager) CreateRouteRules(ctx context.Context, ruleType 
 }
 
 func (s *fakeRouteRulesStorager) FetchRouteRules(ctx context.Context, ruleType string, owner *string) (*shared.RouteRulesParam, error) {
+	s.mu.Lock()
 	s.fetched = append(s.fetched, fetchRouteRulesCall{ruleType: ruleType, owner: owner})
+	s.mu.Unlock()
 	if s.fetchFn != nil {
 		return s.fetchFn(ctx, ruleType, owner)
 	}
@@ -315,7 +351,9 @@ func (s *fakeRouteRulesStorager) FetchRouteRules(ctx context.Context, ruleType s
 }
 
 func (s *fakeRouteRulesStorager) FetchRouteRulesList(ctx context.Context, filter *shared.RouteRulesFilter) ([]*shared.RouteTableParam, int64, error) {
+	s.mu.Lock()
 	s.listed = append(s.listed, filter)
+	s.mu.Unlock()
 	if s.listFn != nil {
 		return s.listFn(ctx, filter)
 	}
@@ -323,7 +361,9 @@ func (s *fakeRouteRulesStorager) FetchRouteRulesList(ctx context.Context, filter
 }
 
 func (s *fakeRouteRulesStorager) UpdateRouteRules(ctx context.Context, id int64, param *shared.RouteRulesParam) (int64, error) {
+	s.mu.Lock()
 	s.updated = append(s.updated, updateRouteRulesCall{id: id, param: param})
+	s.mu.Unlock()
 	if s.updateFn != nil {
 		return s.updateFn(ctx, id, param)
 	}
@@ -331,7 +371,9 @@ func (s *fakeRouteRulesStorager) UpdateRouteRules(ctx context.Context, id int64,
 }
 
 func (s *fakeRouteRulesStorager) DeleteRouteRules(ctx context.Context, id int64) error {
+	s.mu.Lock()
 	s.deleted = append(s.deleted, id)
+	s.mu.Unlock()
 	if s.deleteFn != nil {
 		return s.deleteFn(ctx, id)
 	}
@@ -339,7 +381,9 @@ func (s *fakeRouteRulesStorager) DeleteRouteRules(ctx context.Context, id int64)
 }
 
 func (s *fakeRouteRulesStorager) FetchRouteRulesByID(ctx context.Context, id int64) (*shared.RouteRulesParam, error) {
+	s.mu.Lock()
 	s.fetchedByID = append(s.fetchedByID, id)
+	s.mu.Unlock()
 	if s.fetchByIDFn != nil {
 		return s.fetchByIDFn(ctx, id)
 	}

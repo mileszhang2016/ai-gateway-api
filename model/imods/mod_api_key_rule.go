@@ -29,7 +29,6 @@ type APIKeyRuleManager struct {
 	aiRouteStorager       iai_route.AIRouteRuleStorager
 	quotaPlanStorager     quota.QuotaPlanStorager
 	entityStorager        quota.EntityStorager
-	quotaPlanCache        map[string][]*QuotaPlan
 }
 
 const (

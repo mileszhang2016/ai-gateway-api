@@ -17,6 +17,9 @@ package imods
 import (
 	"context"
 	"errors"
+	"fmt"
+	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -109,6 +112,122 @@ func TestAPIKeyRuleManager_ConfigExport_GeneratorError(t *testing.T) {
 	conf, err := m.ConfigExport(ctx, "")
 	require.Error(t, err)
 	assert.Nil(t, conf)
+}
+
+func TestAPIKeyRuleManager_ConfigExport_Concurrent(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	const numKeys = 50
+	const numGoroutines = 100
+	const iterations = 10
+
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			keys := make([]*icluster_conf.APIKeyParam, numKeys)
+			for i := 0; i < numKeys; i++ {
+				id := fmt.Sprintf("key-%d", i)
+				quotaPlanID := int64(i%5 + 1)
+				entityID := fmt.Sprintf("entity-%d", i%10)
+				keys[i] = &icluster_conf.APIKeyParam{
+					ID:          lib.PString(id),
+					Key:         lib.PString(fmt.Sprintf("ak-%s", id)),
+					ProductName: lib.PString("AI_product"),
+					Enable:      lib.PBool(true),
+					QuotaPlanID: &quotaPlanID,
+					EntityID:    lib.PString(entityID),
+					KeyCreateAt: lib.PTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)),
+				}
+			}
+			return keys, nil
+		},
+	}
+
+	quotaPlanStore := &fakeQuotaPlanStorager{
+		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
+			if filter.ID != nil {
+				return &quota.QuotaPlanParam{
+					ID:        filter.ID,
+					Unlimited: lib.PBool(false),
+					Quota:     lib.PInt64(100),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	entityStore := &fakeEntityStorager{
+		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+			if filter.EntityID != nil {
+				return &quota.EntityParam{
+					EntityID: filter.EntityID,
+					Name:     filter.EntityID,
+					Type:     lib.PString("team"),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	versionStore := &fakeVersionControlStorager{
+		upsertFn: func(ctx context.Context, css *iversion_control.ExportData) (string, error) {
+			return "v-concurrent", nil
+		},
+	}
+
+	m := NewAPIKeyRuleManager(
+		&fakeTxn{},
+		iversion_control.NewVersionControllerManager(&fakeTxn{}, versionStore),
+		apiKeyStore,
+		aiRouteStore,
+		quotaPlanStore,
+		entityStore,
+	)
+
+	// Increase concurrency to maximize the chance of triggering the race.
+	prevMaxProcs := runtime.GOMAXPROCS(runtime.NumCPU())
+	defer runtime.GOMAXPROCS(prevMaxProcs)
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	errCh := make(chan error, numGoroutines*iterations)
+	for i := 0; i < numGoroutines; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				conf, err := m.ConfigExport(ctx, "")
+				if err != nil {
+					errCh <- err
+					return
+				}
+				if conf == nil {
+					continue
+				}
+				if len(conf.Tokens["AI_product"]) != numKeys {
+					errCh <- fmt.Errorf("expected %d tokens, got %d", numKeys, len(conf.Tokens["AI_product"]))
+					return
+				}
+				if len(conf.QuotaPlans["AI_product"]) == 0 {
+					errCh <- fmt.Errorf("expected non-empty quota plans")
+					return
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
 }
 
 func TestAPIKeyRuleManager_FormatAIRouteAPIKeyRules(t *testing.T) {
@@ -584,9 +703,9 @@ func TestAPIKeyRuleManager_FetchQuotaPlansWithEntityHierarchy(t *testing.T) {
 	m := newTestAPIKeyRuleManager()
 	m.quotaPlanStorager = quotaPlanStore
 	m.entityStorager = entityStore
-	m.quotaPlanCache = make(map[string][]*QuotaPlan)
+	collectedQuotaPlans := make(map[string][]*QuotaPlan)
 
-	ids, tags, err := m.fetchQuotaPlansWithEntityHierarchy(ctx, apiKey, "AI_product")
+	ids, tags, err := m.fetchQuotaPlansWithEntityHierarchy(ctx, apiKey, "AI_product", collectedQuotaPlans)
 	require.NoError(t, err)
 	assert.Len(t, ids, 1)
 	assert.Len(t, tags, 1)
@@ -668,15 +787,14 @@ func TestAPIKeyRuleManager_CollectEntityModels_Star(t *testing.T) {
 	assert.Empty(t, allBlockModels)
 }
 
-func TestAPIKeyRuleManager_IsQuotaPlanCached(t *testing.T) {
-	m := newTestAPIKeyRuleManager()
-	m.quotaPlanCache = map[string][]*QuotaPlan{
+func TestAPIKeyRuleManager_ContainsQuotaPlan(t *testing.T) {
+	collectedQuotaPlans := map[string][]*QuotaPlan{
 		"AI_product": {
 			{Id: "qp-1"},
 		},
 	}
 
-	assert.True(t, m.isQuotaPlanCached("AI_product", "qp-1"))
-	assert.False(t, m.isQuotaPlanCached("AI_product", "qp-2"))
-	assert.False(t, m.isQuotaPlanCached("other", "qp-1"))
+	assert.True(t, containsQuotaPlan(collectedQuotaPlans, "AI_product", "qp-1"))
+	assert.False(t, containsQuotaPlan(collectedQuotaPlans, "AI_product", "qp-2"))
+	assert.False(t, containsQuotaPlan(collectedQuotaPlans, "other", "qp-1"))
 }
