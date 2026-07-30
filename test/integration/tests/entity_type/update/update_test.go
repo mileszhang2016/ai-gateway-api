@@ -2,6 +2,7 @@ package entity_type_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/yf-networks/ai-gateway-api/integration/testutil"
@@ -62,6 +63,17 @@ func TestEntityType_Update(t *testing.T) {
 			t.Fatalf("request failed: %v", err)
 		}
 		testutil.AssertErrCode(t, resp, 404)
+	})
+
+	t.Run("ET-4-004 更新 description 超过最大长度", func(t *testing.T) {
+		longDesc := strings.Repeat("a", 300)
+		resp, err := testutil.GetClient().Patch("/open-api/v1/entity-types/"+typeName, map[string]interface{}{
+			"description": longDesc,
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
 	})
 
 	t.Cleanup(func() {

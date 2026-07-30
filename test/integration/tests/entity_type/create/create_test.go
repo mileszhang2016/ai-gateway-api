@@ -73,6 +73,30 @@ func TestEntityType_Create(t *testing.T) {
 			},
 			wantCode: 422,
 		},
+		{
+			name: "ET-1-007 type_name 包含大写字母",
+			body: map[string]interface{}{
+				"type_name": "BadType",
+				"level":     1,
+			},
+			wantCode: 422,
+		},
+		{
+			name: "ET-1-008 type_name 以 - 开头",
+			body: map[string]interface{}{
+				"type_name": "-badtype",
+				"level":     1,
+			},
+			wantCode: 422,
+		},
+		{
+			name: "ET-1-009 type_name 包含空白",
+			body: map[string]interface{}{
+				"type_name": "bad type",
+				"level":     1,
+			},
+			wantCode: 422,
+		},
 	}
 
 	for _, tt := range tests {

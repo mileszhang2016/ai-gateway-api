@@ -84,6 +84,23 @@ func TestClusters_Update(t *testing.T) {
 		testutil.AssertErrCode(t, resp, 404)
 	})
 
+	t.Run("CL-4-005 更新非法 instance_pool（非法 IP）", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
+			"instance_pool": []interface{}{
+				map[string]interface{}{
+					"hostname": "backend-1",
+					"ip":       "not-an-ip",
+					"weight":   100,
+					"ports":    map[string]interface{}{"Default": 8080},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteCluster(clusterName)
 	})

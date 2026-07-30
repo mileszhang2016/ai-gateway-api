@@ -26,20 +26,20 @@ Auth 模块负责管理用户（User）、Session Key、Token 及系统导航配
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建用户 | 5 |
+| 创建用户 | 11 |
 | 删除用户 | 2 |
-| 重置密码 | 3 |
+| 重置密码 | 4 |
 | 用户列表 | 1 |
 | 设置管理员 | 1 |
 | 查询单个用户 | 2 |
 | 创建 Session Key | 3 |
 | 删除 Session Key | 2 |
-| 创建 Token | 5 |
+| 创建 Token | 8 |
 | 删除 Token | 2 |
 | Token 详情 | 1 |
 | Token 列表 | 1 |
 | 获取系统导航配置 | 1 |
-| **合计** | **29** |
+| **合计** | **39** |
 
 ## 4. 认证方式
 
@@ -96,11 +96,11 @@ auth/
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| user_name | string | Y | 用户名 |
-| password | string | Y | 用户密码 |
-| is_admin | bool | N | 固定为 true，默认填充 true |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| user_name | string | Y | 用户名 | 长度 1-64；仅允许字母、数字、`_`、`-`、`.`；不能以 `.`、`-`、`_` 开头或结尾；全局唯一（大小写不敏感）；不能为 `admin`/`root`/`system` 等保留用户名 |
+| password | string | Y | 用户密码 | 长度 8-128；不能包含空白字符；不能等于 `user_name` 或其逆序 |
+| is_admin | bool | N | 固定为 true，默认填充 true | 仅支持 `true` |
 
 #### 6.2.2 返回数据字段
 
@@ -115,6 +115,12 @@ Data 为 null。
 | AUTH-1-003 | 创建用户缺少 user_name | 必填校验 | 验证 ErrNum=422 |
 | AUTH-1-004 | 创建用户缺少 password | 必填校验 | 验证 ErrNum=422 |
 | AUTH-1-005 | 重复创建用户 | 业务规则 | 验证 ErrNum=555/556 |
+| AUTH-1-006 | 非法 user_name（以 `-` 开头） | 合法性条件 | 验证 ErrNum=422 |
+| AUTH-1-007 | 保留 user_name（`admin`） | 合法性条件 | 验证 ErrNum=422 |
+| AUTH-1-008 | 密码过短 | 合法性条件 | 验证 ErrNum=422 |
+| AUTH-1-009 | 密码包含空白字符 | 合法性条件 | 验证 ErrNum=422 |
+| AUTH-1-010 | 密码与用户名相同 | 合法性条件 | 验证 ErrNum=422 |
+| AUTH-1-011 | is_admin 为 false | 合法性条件 | 验证 ErrNum=422 |
 
 ### 6.4 测试场景详细设计
 
@@ -287,6 +293,204 @@ Data 为 null。
 
 ---
 
+#### 6.4.6 AUTH-1-006：非法 user_name（以 `-` 开头）
+
+##### 设计思路
+
+验证 `user_name` 不能以 `-`、`.`、`_` 开头，否则返回参数校验错误。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`user_name` 以 `-` 开头。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "user_name": "-baduser",
+    "password": "password@123",
+    "is_admin": true
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 user_name 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.7 AUTH-1-007：保留 user_name（`admin`）
+
+##### 设计思路
+
+验证保留用户名 `admin`/`root`/`system` 不允许创建。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`user_name=admin`。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "user_name": "admin",
+    "password": "password@123",
+    "is_admin": true
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 user_name 保留的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.8 AUTH-1-008：密码过短
+
+##### 设计思路
+
+验证 `password` 长度必须 ≥8 字符。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`password` 为 6 位字符。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "user_name": "test_user_short",
+    "password": "short1",
+    "is_admin": true
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 password 长度非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.9 AUTH-1-009：密码包含空白字符
+
+##### 设计思路
+
+验证 `password` 不能包含空白字符。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`password` 包含空格。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "user_name": "test_user_space",
+    "password": "pass word",
+    "is_admin": true
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 password 不能包含空白的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.10 AUTH-1-010：密码与用户名相同
+
+##### 设计思路
+
+验证 `password` 不能等于 `user_name` 或其逆序。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`password` 与 `user_name` 相同。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "user_name": "myuser_2024",
+    "password": "myuser_2024",
+    "is_admin": true
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 password 不能等于用户名的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.11 AUTH-1-011：is_admin 为 false
+
+##### 设计思路
+
+验证 `is_admin` 仅支持 `true`，传入 `false` 时返回参数校验错误。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`is_admin=false`。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "user_name": "test_user_admin_false",
+    "password": "password@123",
+    "is_admin": false
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 is_admin 非法的错误信息  
+**Data**：null
+
+---
+
 ## 7. 删除用户
 
 ### 7.1 接口信息
@@ -406,10 +610,10 @@ URI：`non_existent_user`
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| old_password | string | N | 旧密码，修改当前登录用户时需要 |
-| password | string | Y | 新密码 |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| old_password | string | N | 旧密码，修改当前登录用户时需要 | - |
+| password | string | Y | 新密码 | 长度 8-128；不能包含空白字符；不能等于 `user_name` 或其逆序 |
 
 #### 8.2.2 返回数据字段
 
@@ -421,7 +625,8 @@ Data 为 null。
 |------|------|---------|---------|
 | AUTH-3-001 | 管理员重置他人密码 | 正常参数 | 无需 old_password |
 | AUTH-3-002 | 缺少 password | 必填校验 | 验证 ErrNum=422 |
-| AUTH-3-003 | 修改不存在用户的密码 | 异常参数 | 验证 ErrNum=404 |
+| AUTH-3-003 | 密码过短 | 合法性条件 | 验证 ErrNum=422 |
+| AUTH-3-004 | 修改不存在用户的密码 | 异常参数 | 验证 ErrNum=404 |
 
 ### 8.4 测试场景详细设计
 
@@ -490,7 +695,38 @@ Data 为 null。
 
 ---
 
-#### 8.4.3 AUTH-3-003：修改不存在用户的密码（异常参数）
+#### 8.4.3 AUTH-3-003：密码过短（合法性条件）
+
+##### 设计思路
+
+验证重置密码时 `password` 长度必须 ≥8 字符。
+
+##### 前提数据准备
+
+已创建用户。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求到 `/open-api/v1/auth/users/{user_name}/passwd`，传入过短密码。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "password": "short1"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 password 长度非法的错误信息  
+**Data**：null
+
+---
+
+#### 8.4.4 AUTH-3-004：修改不存在用户的密码（异常参数）
 
 ##### 设计思路
 
@@ -1022,10 +1258,10 @@ URI：`non_existent_key`
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| name | string | Y | Token 名称，全局唯一 |
-| scope | string | Y | 权限范围：System / Support |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| name | string | Y | Token 名称，全局唯一 | 长度 1-64；仅允许字母、数字、`_`、`-`、`.`；不能以 `.`、`-`、`_` 开头或结尾；全局唯一；不能为 `admin`/`system`/`default` 等保留名称；不能包含空白字符 |
+| scope | string | Y | 权限范围：System / Support | 仅允许 `System`/`Support` |
 
 #### 14.2.2 返回数据字段
 
@@ -1042,6 +1278,9 @@ URI：`non_existent_key`
 | AUTH-9-003 | 创建 Token 缺少 name | 必填校验 | 验证 ErrNum=422 |
 | AUTH-9-004 | 创建 Token 非法 scope | 异常参数 | Product 已移除 |
 | AUTH-9-005 | 重复创建 Token | 业务规则 | 验证 ErrNum=555/556 |
+| AUTH-9-006 | 非法 token name（以 `.` 开头） | 合法性条件 | 验证 ErrNum=422 |
+| AUTH-9-007 | 保留 token name（`default`） | 合法性条件 | 验证 ErrNum=422 |
+| AUTH-9-008 | token name 包含空白 | 合法性条件 | 验证 ErrNum=422 |
 
 ### 14.4 测试场景详细设计
 
@@ -1210,6 +1449,102 @@ URI：`non_existent_key`
 
 **ErrNum**：555 或 556  
 **ErrMsg**：Token 名称已存在的错误信息  
+**Data**：null
+
+---
+
+#### 14.4.6 AUTH-9-006：非法 token name（以 `.` 开头）
+
+##### 设计思路
+
+验证 Token `name` 不能以 `.`、`-`、`_` 开头，否则返回参数校验错误。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`name` 以 `.` 开头。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": ".badtoken",
+    "scope": "System"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 name 非法的错误信息  
+**Data**：null
+
+---
+
+#### 14.4.7 AUTH-9-007：保留 token name（`default`）
+
+##### 设计思路
+
+验证保留 Token 名称 `admin`/`system`/`default` 不允许创建。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`name=default`。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": "default",
+    "scope": "System"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 name 保留的错误信息  
+**Data**：null
+
+---
+
+#### 14.4.8 AUTH-9-008：token name 包含空白
+
+##### 设计思路
+
+验证 Token `name` 不能包含空白字符。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`name` 包含空格。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": "bad token",
+    "scope": "System"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 name 不能包含空白的错误信息  
 **Data**：null
 
 ---

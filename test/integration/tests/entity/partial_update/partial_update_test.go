@@ -57,6 +57,34 @@ func TestEntity_PartialUpdate(t *testing.T) {
 		testutil.AssertDataFieldEquals(t, resp, "block_models", []interface{}{"gpt-4-32k"})
 	})
 
+	t.Run("E-5-003 部分更新非法 route_rules（规则名重复）", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"route_rules": map[string]interface{}{
+				"enabled": true,
+				"rules": []interface{}{
+					map[string]interface{}{
+						"name": "dup",
+						"Cond": "default_t()",
+						"targets": []interface{}{
+							map[string]interface{}{"ClusterName": "c1", "Weight": 100},
+						},
+					},
+					map[string]interface{}{
+						"name": "dup",
+						"Cond": "default_t()",
+						"targets": []interface{}{
+							map[string]interface{}{"ClusterName": "c2", "Weight": 100},
+						},
+					},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteEntity(entityID)
 		testutil.DeleteEntityType(typeName)

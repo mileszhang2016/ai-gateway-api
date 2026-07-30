@@ -37,9 +37,7 @@ type OneData struct {
 	Description string `json:"description"`
 	IsDefault   bool   `json:"is_default"`
 
-	CertFileName string `json:"cert_file_name"`
-	KeyFileName  string `json:"key_file_name"`
-	ExpiredDate  string `json:"expired_date"`
+	ExpiredDate string `json:"expired_date"`
 }
 
 func newOneData(param *iprotocol.Certificate) *OneData {
@@ -48,12 +46,10 @@ func newOneData(param *iprotocol.Certificate) *OneData {
 	}
 
 	return &OneData{
-		CertName:     param.CertName,
-		Description:  param.Description,
-		IsDefault:    param.IsDefault,
-		CertFileName: param.CertFileName,
-		KeyFileName:  param.KeyFileName,
-		ExpiredDate:  param.ExpiredDate,
+		CertName:    param.CertName,
+		Description: param.Description,
+		IsDefault:   param.IsDefault,
+		ExpiredDate: param.ExpiredDate,
 	}
 }
 

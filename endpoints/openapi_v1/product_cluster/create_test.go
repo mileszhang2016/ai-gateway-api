@@ -1,0 +1,94 @@
+// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package product_cluster
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/yf-networks/ai-gateway-api/lib"
+	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
+)
+
+func TestUpsertParamValidate(t *testing.T) {
+	cases := []struct {
+		name    string
+		param   *UpsertParam
+		wantErr bool
+	}{
+		{
+			name:    "valid minimal",
+			param:   &UpsertParam{Name: lib.PString("cluster_1")},
+			wantErr: false,
+		},
+		{
+			name:    "missing name",
+			param:   &UpsertParam{},
+			wantErr: true,
+		},
+		{
+			name:    "invalid name",
+			param:   &UpsertParam{Name: lib.PString("-cluster")},
+			wantErr: true,
+		},
+		{
+			name: "valid with instance pool",
+			param: &UpsertParam{
+				Name: lib.PString("cluster_1"),
+				InstancePool: []*Instance{
+					{Hostname: "host1", IP: "192.0.2.1", Weight: 100, Ports: map[string]int{"Default": 8080}},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid instance pool ip",
+			param: &UpsertParam{
+				Name: lib.PString("cluster_1"),
+				InstancePool: []*Instance{
+					{Hostname: "host1", IP: "invalid-ip", Weight: 100, Ports: map[string]int{"Default": 8080}},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid with llm config",
+			param: &UpsertParam{
+				Name:      lib.PString("cluster_1"),
+				LLMConfig: &icluster_conf.LLMConfig{Models: []string{"gpt-4"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid llm config",
+			param: &UpsertParam{
+				Name:      lib.PString("cluster_1"),
+				LLMConfig: &icluster_conf.LLMConfig{},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.param.Validate()
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

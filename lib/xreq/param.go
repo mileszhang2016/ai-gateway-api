@@ -104,7 +104,7 @@ func Bind(req *http.Request, data interface{}) error {
 	if err := internal.MapUri(data, m2ms(vars)); err != nil {
 		return err
 	}
-	if err := ValidateData(data, getTranslator(req)); err != nil {
+	if err := validateData(data, getTranslator(req)); err != nil {
 		return err
 	}
 
@@ -116,7 +116,7 @@ func BindJSON(req *http.Request, data interface{}) error {
 		return err
 	}
 
-	if err := ValidateData(data, getTranslator(req)); err != nil {
+	if err := validateData(data, getTranslator(req)); err != nil {
 		return err
 	}
 
@@ -129,7 +129,7 @@ func BindURI(req *http.Request, data interface{}) error {
 		return err
 	}
 
-	if err := ValidateData(data, getTranslator(req)); err != nil {
+	if err := validateData(data, getTranslator(req)); err != nil {
 		return err
 	}
 
@@ -142,7 +142,7 @@ func BindForm(req *http.Request, data interface{}) error {
 		return err
 	}
 
-	if err := ValidateData(data, getTranslator(req)); err != nil {
+	if err := validateData(data, getTranslator(req)); err != nil {
 		return err
 	}
 

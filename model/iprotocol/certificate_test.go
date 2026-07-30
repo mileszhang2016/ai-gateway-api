@@ -138,25 +138,39 @@ func TestCertificateManager_DeleteCertificate(t *testing.T) {
 
 func Test_validateCertPair(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
-		require.NoError(t, validateCertPair("cert.pem", testCertPEM, "key.pem", testKeyPEM))
+		require.NoError(t, validateCertPair(testCertPEM, testKeyPEM))
 	})
 
 	t.Run("bad cert format", func(t *testing.T) {
 		badCert := "-----BEGIN FOO-----\nYmFy\n-----END FOO-----"
-		err := validateCertPair("cert.pem", badCert, "key.pem", testKeyPEM)
+		err := validateCertPair(badCert, testKeyPEM)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Certificate File Format Must Be PEM")
 	})
 
 	t.Run("bad key format", func(t *testing.T) {
-		err := validateCertPair("cert.pem", testCertPEM, "key.pem", "not-pem")
+		err := validateCertPair(testCertPEM, "not-pem")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Certificate Private Key File Format Must Be PEM")
 	})
 
 	t.Run("mismatched pair", func(t *testing.T) {
 		otherKey := strings.ReplaceAll(testKeyPEM, "QcN+8h9z", "AAAAAAAA")
-		err := validateCertPair("cert.pem", testCertPEM, "key.pem", otherKey)
+		err := validateCertPair(testCertPEM, otherKey)
+		require.Error(t, err)
+	})
+}
+
+func Test_parseExpiredDate(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		got, err := parseExpiredDate(testCertPEM)
+		require.NoError(t, err)
+		// testCertPEM is valid for 2026-07-28 -> 2026-07-29
+		assert.Equal(t, "2026-07-29 12:54:15", got)
+	})
+
+	t.Run("bad format", func(t *testing.T) {
+		_, err := parseExpiredDate("not-pem")
 		require.Error(t, err)
 	})
 }
@@ -166,9 +180,7 @@ func TestCertificateManager_CreateCertificate(t *testing.T) {
 	validParam := func() *CertificateParam {
 		return &CertificateParam{
 			CertName:        lib.PString("c1"),
-			CertFileName:    lib.PString("cert.pem"),
 			CertFileContent: lib.PString(testCertPEM),
-			KeyFileName:     lib.PString("key.pem"),
 			KeyFileContent:  lib.PString(testKeyPEM),
 			IsDefault:       lib.PBool(true),
 		}
@@ -184,8 +196,10 @@ func TestCertificateManager_CreateCertificate(t *testing.T) {
 			},
 			createCertificateFn: func(ctx context.Context, param *CertificateParam) error {
 				created = true
-				assert.True(t, strings.HasSuffix(*param.CertFilePath, "cert.pem"))
-				assert.True(t, strings.HasSuffix(*param.KeyFilePath, "key.pem"))
+				assert.True(t, strings.HasSuffix(*param.CertFilePath, "c1.crt"))
+				assert.True(t, strings.HasSuffix(*param.KeyFilePath, "c1.key"))
+				assert.NotNil(t, param.ExpiredDate)
+				assert.Equal(t, "2026-07-29 12:54:15", *param.ExpiredDate)
 				return nil
 			},
 			updateCertificateFn: func(ctx context.Context, cert *Certificate, param *CertificateParam) error {
@@ -238,33 +252,12 @@ func TestCertificateManager_CreateCertificate(t *testing.T) {
 		assert.Contains(t, err.Error(), "Certification Record Existed")
 	})
 
-	t.Run("duplicate file name", func(t *testing.T) {
-		store := &fakeCertificateStorager{
-			fetchCertificatesFn: func(ctx context.Context, filter *CertificateFilter) ([]*Certificate, error) {
-				return []*Certificate{{CertName: "other", CertFileName: "cert.pem"}}, nil
-			},
-		}
-		m := NewCertificateManager(&fakeTxn{}, store, nil, &fakeExtraFileStorager{})
-		err := m.CreateCertificate(ctx, validParam())
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "Certificate File Name cert.pem By Used By other")
-	})
-
 	t.Run("invalid cert pair", func(t *testing.T) {
 		param := validParam()
 		param.CertFileContent = lib.PString("invalid")
 		m := NewCertificateManager(&fakeTxn{}, &fakeCertificateStorager{}, nil, &fakeExtraFileStorager{})
 		err := m.CreateCertificate(ctx, param)
 		require.Error(t, err)
-	})
-
-	t.Run("same cert and key file name", func(t *testing.T) {
-		param := validParam()
-		param.KeyFileName = lib.PString("cert.pem")
-		m := NewCertificateManager(&fakeTxn{}, &fakeCertificateStorager{}, nil, &fakeExtraFileStorager{})
-		err := m.CreateCertificate(ctx, param)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "Certificate File Name cert.pem Existed")
 	})
 }
 

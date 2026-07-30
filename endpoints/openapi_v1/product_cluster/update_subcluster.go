@@ -17,6 +17,7 @@ package product_cluster
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 
@@ -29,6 +30,11 @@ import (
 type BindSubCluster struct {
 	ClusterName *string  `uri:"cluster_name" validate:"required,min=1"`
 	SubClusters []string `json:"sub_clusters" uri:"sub_clusters" validate:"required,min=1"`
+}
+
+// Validate performs centralized business validation on the request parameters.
+func (p *BindSubCluster) Validate() error {
+	return validate.ClusterName(*p.ClusterName)
 }
 
 // BindSubClusterRoute route

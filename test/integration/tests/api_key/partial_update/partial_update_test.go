@@ -75,6 +75,23 @@ func TestAPIKey_PartialUpdate(t *testing.T) {
 		testutil.AssertDataFieldEquals(t, resp, "models", []interface{}{"gpt-3.5-turbo"})
 	})
 
+	t.Run("AK-5-004 部分更新非法 rate_limit_policy（window_minutes 为 0）", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+apiKeyID, map[string]interface{}{
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": true,
+				"rules": map[string]interface{}{
+					"tpm": []interface{}{
+						map[string]interface{}{"name": "t1", "model": "*", "window_minutes": 0, "max_tokens": 100, "step_minutes": 1},
+					},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteAPIKey(apiKeyID)
 	})

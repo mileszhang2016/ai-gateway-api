@@ -17,6 +17,7 @@ package entity_type
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -40,6 +41,9 @@ func EntityTypeCreateAction(req *http.Request) (interface{}, error) {
 	if param.TypeName == nil || *param.TypeName == "" {
 		return nil, xerror.WrapParamErrorWithMsg("type_name is required")
 	}
+	if err := validate.EntityTypeName(*param.TypeName); err != nil {
+		return nil, err
+	}
 
 	if param.Level == nil {
 		return nil, xerror.WrapParamErrorWithMsg("level is required")
@@ -48,8 +52,10 @@ func EntityTypeCreateAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapParamErrorWithMsg("level must be between 1 and 5")
 	}
 
-	if param.Description != nil && len(*param.Description) >= 256 {
-		return nil, xerror.WrapParamErrorWithMsg("description must be less than 256 characters")
+	if param.Description != nil {
+		if err := validate.Description(*param.Description, validate.MaxDescriptionLength, "description"); err != nil {
+			return nil, err
+		}
 	}
 
 	existing, err := container.EntityTypeManager.FetchEntityType(req.Context(), &quota.EntityTypeFilter{

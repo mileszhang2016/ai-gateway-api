@@ -17,6 +17,7 @@ package auth
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
@@ -34,6 +35,14 @@ var TokenCreateEndpoint = &xreq.Endpoint{
 type TokenCreateParam struct {
 	Name  *string `json:"name" validate:"required,min=1"`
 	Scope *string `json:"scope" validate:"required,oneof=System Support"`
+}
+
+// Validate performs centralized business validation on the request parameters.
+func (p *TokenCreateParam) Validate() error {
+	if err := validate.TokenName(*p.Name); err != nil {
+		return err
+	}
+	return validate.Scope(*p.Scope)
 }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED

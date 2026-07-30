@@ -17,6 +17,8 @@ package ai_route
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
+	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
@@ -44,6 +46,27 @@ type BasicRouteRule struct {
 type ProductRouteRuleParam struct {
 	BasicRouteRules   []*BasicRouteRule   `json:"basic_forward_rules" validate:"dive"`
 	AdvanceRouteRules []*AdvanceRouteRule `json:"forward_rules" validate:"dive"`
+}
+
+// Validate performs centralized business validation on the request parameters.
+func (p *ProductRouteRuleParam) Validate() error {
+	for i, one := range p.AdvanceRouteRules {
+		if one == nil {
+			return xerror.WrapParamErrorWithMsg("AdvanceRouteRules element cant be nil")
+		}
+		if err := validate.ClusterName(one.ClusterName); err != nil {
+			return xerror.WrapParamErrorWithMsg("AdvanceRouteRules[%d].ClusterName: %v", i, err)
+		}
+	}
+	for i, one := range p.BasicRouteRules {
+		if one == nil {
+			return xerror.WrapParamErrorWithMsg("BasicRouteRules element cant be nil")
+		}
+		if err := validate.ClusterName(one.ClusterName); err != nil {
+			return xerror.WrapParamErrorWithMsg("BasicRouteRules[%d].ClusterName: %v", i, err)
+		}
+	}
+	return nil
 }
 
 // ProductRouteRuleData defines the response data for product route rules

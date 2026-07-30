@@ -14,8 +14,8 @@ Route Tables 模块用于查询系统中各类路由表的元数据列表（glob
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 查询路由表列表 | 10 |
-| **合计** | **10** |
+| 查询路由表列表 | 11 |
+| **合计** | **11** |
 
 ## 4. 认证方式
 
@@ -48,15 +48,15 @@ route_tables/
 
 ##### Query 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| page | int | N | 页码，默认 1 |
-| page_size | int | N | 每页条数，默认 20，最大 100 |
-| sort_by | string | N | 排序字段 |
-| sort_order | string | N | 排序方向，asc/desc，默认 desc |
-| type | string | N | 按路由表类型过滤：global、entity、apikey |
-| owner | string | N | 按所有者标识精确匹配过滤 |
-| enabled | bool | N | 按启用状态过滤 |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| page | int | N | 页码，默认 1 | 必须 >0，否则使用默认值 1 |
+| page_size | int | N | 每页条数，默认 20，最大 100 | 取值范围 1-100，超出时截断为 100 |
+| sort_by | string | N | 排序字段 | - |
+| sort_order | string | N | 排序方向，asc/desc，默认 desc | 仅 `asc`/`desc` 有效，其他值被忽略 |
+| type | string | N | 按路由表类型过滤：global、entity、apikey | 仅允许 `global`/`entity`/`apikey` |
+| owner | string | N | 按所有者标识精确匹配过滤 | - |
+| enabled | bool | N | 按启用状态过滤 | - |
 
 #### 6.2.2 返回数据字段
 
@@ -85,6 +85,7 @@ route_tables/
 | RT-1-008 | page_size 超过最大值 | 异常参数 | page_size=101 |
 | RT-1-009 | 非法 type 值 | 异常参数 | type=unknown |
 | RT-1-010 | 空列表返回 | 边界值 | 无任何路由表时返回空列表 |
+| RT-1-011 | 按不存在的 owner 过滤 | 异常参数 | 返回空列表，验证过滤生效 |
 
 ### 6.4 测试场景详细设计
 
@@ -260,7 +261,7 @@ owner=apikey-001
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| list | 数组 | IsArray |
+| list | 数组，长度 ≥ 1 | IsArray, Gte |
 | list[*].owner | 全部为 "apikey-001" | Equals |
 
 ---
@@ -424,6 +425,40 @@ type=unknown
 |------|--------|---------|
 | list | 空数组 | IsEmpty |
 | pagination.total | 0 | Equals |
+
+---
+
+#### 6.4.11 RT-1-011：按不存在的 owner 过滤（异常参数）
+
+##### 设计思路
+
+验证按不存在的 `owner` 过滤时返回空列表，确保 `owner` 过滤条件真实生效，而不是因为列表为空导致断言被跳过。
+
+##### 前提数据准备
+
+已存在 global/entity/apikey 路由表。
+
+##### 执行步骤
+
+1. 发送 GET 请求，`owner=non-existent-owner`。
+2. 验证返回成功，但 `list` 为空数组。
+
+##### 请求参数
+
+```
+owner=non-existent-owner
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| list | 空数组 | IsEmpty |
 
 ---
 

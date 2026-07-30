@@ -18,16 +18,16 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
+	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
 
-// Deprecated
 var ExpressionVerifyEndpoint = &xreq.Endpoint{
 	Path:    "/expression/verify",
 	Method:  http.MethodPatch,
 	Handler: xreq.Convert(ExpressionVerifyAction),
 
-	Authorizer: nil,
+	Authorizer: iauth.FA(iauth.FeatureRoute, iauth.ActionRead),
 }
 
 type ExpressionVerifyParam struct {

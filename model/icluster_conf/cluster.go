@@ -192,8 +192,8 @@ type LLMConfig struct {
 }
 
 type Mapping struct {
-	Key   *string `json:"key"`
-	Value *string `json:"value"`
+	SourceModel *string `json:"source_model"`
+	TargetModel *string `json:"target_model"`
 }
 
 type Endpoint struct {
@@ -855,7 +855,7 @@ func NewBfeClusterConf(version string, clusters []*Cluster) *cluster_conf.BfeClu
 func convertToBFEModelMapping(modelMappings []*Mapping) *map[string]string {
 	responseMap := make(map[string]string)
 	for _, modelMapping := range modelMappings {
-		responseMap[*modelMapping.Key] = *modelMapping.Value
+		responseMap[*modelMapping.SourceModel] = *modelMapping.TargetModel
 	}
 
 	if len(responseMap) == 0 {

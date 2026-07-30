@@ -15,9 +15,9 @@ Global Route Rules 模块负责全局（global）路由表的管理，包括全�
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 更新 Global 路由表 | 7 |
+| 更新 Global 路由表 | 9 |
 | 查询 Global 路由表 | 2 |
-| **合计** | **9** |
+| **合计** | **11** |
 
 ## 4. 认证方式
 
@@ -52,19 +52,19 @@ global_route_rules/
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| enabled | bool | N | 是否启用，默认 true |
-| rules | []Rule | Y | 规则列表 |
-| rules[].name | string | Y | 规则名称，同一 global 路由表内唯一 |
-| rules[].Cond | string | Y | BFE 条件表达式 |
-| rules[].targets | []Target | Y | 转发目标列表，权重总和为 100 |
-| rules[].targets[].ClusterName | string | Y | 后端集群名称 |
-| rules[].targets[].Model | string | N | 模型名称，空字符串表示透传原始模型 |
-| rules[].targets[].Weight | int | Y | 权重 |
-| rules[].fallbacks | []Fallback | N | 降级目标列表 |
-| rules[].fallbacks[].ClusterName | string | Y | 后端集群名称 |
-| rules[].fallbacks[].Model | string | N | 模型名称，空字符串表示透传原始模型 |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| enabled | bool | N | 是否启用，默认 true | - |
+| rules | []Rule | Y | 规则列表 | 必填 |
+| rules[].name | string | Y | 规则名称，同一 global 路由表内唯一 | 必填、非空；同一组 `rules` 内唯一 |
+| rules[].Cond | string | Y | BFE 条件表达式 | 必填、非空；须为合法 BFE 条件表达式 |
+| rules[].targets | []Target | Y | 转发目标列表，权重总和为 100 | 必填，至少 1 个元素 |
+| rules[].targets[].ClusterName | string | Y | 后端集群名称 | 必填；符合 ClusterName 类型；须为已存在集群 |
+| rules[].targets[].Model | string | N | 模型名称，空字符串表示透传原始模型 | 非空时须为对应集群已配置的模型名称 |
+| rules[].targets[].Weight | int | Y | 权重 | 0-100；同一规则内总和必须等于 100 |
+| rules[].fallbacks | []Fallback | N | 降级目标列表 | 可选；允许为空 |
+| rules[].fallbacks[].ClusterName | string | Y | 后端集群名称 | 必填；符合 ClusterName 类型；须为已存在集群 |
+| rules[].fallbacks[].Model | string | N | 模型名称，空字符串表示透传原始模型 | 非空时须为对应集群已配置的模型名称 |
 
 #### 6.2.2 返回数据字段
 
@@ -87,7 +87,9 @@ global_route_rules/
 | GRR-1-004 | 规则名称重复 | 异常参数 | 验证 ErrNum=422 |
 | GRR-1-005 | targets 权重总和不等于 100 | 异常参数 | 验证 ErrNum=422 |
 | GRR-1-006 | fallbacks ClusterName 为空 | 异常参数 | 验证 ErrNum=422 |
-| GRR-1-007 | Cond 表达式非法 | 异常参数 | 验证 ErrNum=422 |
+| GRR-1-007 | Cond 表达式非法 | 异常参数 | 验证 ErrNum=422（暂跳过） |
+| GRR-1-008 | 重复 target (ClusterName+Model) | 合法性条件 | 验证 ErrNum=422 |
+| GRR-1-009 | target ClusterName 格式非法 | 合法性条件 | 验证 ErrNum=422 |
 
 ### 6.4 测试场景详细设计
 
@@ -444,6 +446,85 @@ global_route_rules/
 
 **ErrNum**：422  
 **ErrMsg**：包含表达式非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.8 GRR-1-008：重复 target (ClusterName+Model)（合法性条件）
+
+##### 设计思路
+
+验证同一规则 `targets` 内 `(ClusterName, Model)` 组合不能重复。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 PUT 请求，同一规则内包含两条相同 `(ClusterName, Model)` 的 target。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "rules": [
+        {
+            "name": "dup-target",
+            "Cond": "default_t()",
+            "targets": [
+                {"ClusterName": "c1", "Model": "m1", "Weight": 50},
+                {"ClusterName": "c1", "Model": "m1", "Weight": 50}
+            ]
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含重复 target 的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.9 GRR-1-009：target ClusterName 格式非法（合法性条件）
+
+##### 设计思路
+
+验证 `targets` 中 `ClusterName` 必须符合 ClusterName 类型。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 PUT 请求，`ClusterName` 以 `-` 开头。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "rules": [
+        {
+            "name": "bad-cluster",
+            "Cond": "default_t()",
+            "targets": [
+                {"ClusterName": "-bad", "Weight": 100}
+            ]
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 ClusterName 非法的错误信息  
 **Data**：null
 
 ---

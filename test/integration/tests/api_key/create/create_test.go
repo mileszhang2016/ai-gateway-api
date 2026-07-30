@@ -109,6 +109,69 @@ func TestAPIKey_Create(t *testing.T) {
 			body:     map[string]interface{}{},
 			wantCode: 422,
 		},
+		{
+			name:     "AK-1-006 非法 key 字符",
+			body:     map[string]interface{}{"description": "test-key-bad-char", "key": "invalid@key"},
+			wantCode: 422,
+		},
+		{
+			name:     "AK-1-007 非法 subnet",
+			body:     map[string]interface{}{"description": "test-key-bad-subnet", "subnet": []string{"not-a-cidr"}},
+			wantCode: 422,
+		},
+		{
+			name: "AK-1-008 quota_plan 非法 unit",
+			body: map[string]interface{}{
+				"description": "test-key-bad-unit",
+				"quota_plan": map[string]interface{}{
+					"unlimited": false,
+					"quota":     100,
+					"unit":      "invalid_unit",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "AK-1-009 rate_limit_policy 非法 window_minutes",
+			body: map[string]interface{}{
+				"description": "test-key-bad-window",
+				"rate_limit_policy": map[string]interface{}{
+					"enabled": true,
+					"rules": map[string]interface{}{
+						"tpm": []interface{}{
+							map[string]interface{}{"name": "t1", "model": "*", "window_minutes": 0, "max_tokens": 100, "step_minutes": 1},
+						},
+					},
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "AK-1-010 route_rules 规则名称重复",
+			body: map[string]interface{}{
+				"description": "test-key-dup-rule",
+				"route_rules": map[string]interface{}{
+					"enabled": true,
+					"rules": []interface{}{
+						map[string]interface{}{
+							"name": "dup",
+							"Cond": "default_t()",
+							"targets": []interface{}{
+								map[string]interface{}{"ClusterName": "c1", "Weight": 100},
+							},
+						},
+						map[string]interface{}{
+							"name": "dup",
+							"Cond": "default_t()",
+							"targets": []interface{}{
+								map[string]interface{}{"ClusterName": "c2", "Weight": 100},
+							},
+						},
+					},
+				},
+			},
+			wantCode: 422,
+		},
 	}
 
 	for _, tt := range tests {

@@ -48,13 +48,13 @@ tool/
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| schema | string | Y | 请求协议，取值为 http、https |
-| uri | string | N | 请求 URI，路径前面可以有 `/`，也可以无 `/` |
-| hosts | []string | Y | 请求的 IP、Port 组合或域名 |
-| headers | map[string]string | N | 请求的 Header 参数列表 |
-| provider_type | string | N | AI 模型提供商类型，如 deepseek、openai、qwen |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| schema | string | Y | 请求协议 | 仅允许 `http`/`https` |
+| uri | string | N | 请求 URI，路径前面可以有 `/`，也可以无 `/` | - |
+| hosts | []string | Y | 请求的 IP、Port 组合或域名 | 必填，数组长度 ≥1 |
+| headers | map[string]string | N | 请求的 Header 参数列表 | - |
+| provider_type | string | N | AI 模型提供商类型，如 deepseek、openai、qwen | - |
 
 #### 6.2.2 返回数据字段
 

@@ -133,6 +133,27 @@ func TestEntity_FullUpdate(t *testing.T) {
 		testutil.AssertDataFieldEquals(t, resp, "type", typeName)
 	})
 
+	t.Run("E-4-005 全量更新非法 name（含首尾空白）", func(t *testing.T) {
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         " badname ",
+			"type":         typeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteEntity(entityID)
 		testutil.DeleteEntityType(typeName)

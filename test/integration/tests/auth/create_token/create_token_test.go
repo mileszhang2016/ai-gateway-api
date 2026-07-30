@@ -56,6 +56,21 @@ func TestAuth_CreateToken(t *testing.T) {
 			body:     map[string]interface{}{"name": tokenDup, "scope": "System"},
 			wantCode: 555,
 		},
+		{
+			name:     "AUTH-9-006 非法 token name（以 . 开头）",
+			body:     map[string]interface{}{"name": ".badtoken", "scope": "System"},
+			wantCode: 422,
+		},
+		{
+			name:     "AUTH-9-007 保留 token name（default）",
+			body:     map[string]interface{}{"name": "default", "scope": "System"},
+			wantCode: 422,
+		},
+		{
+			name:     "AUTH-9-008 token name 包含空白",
+			body:     map[string]interface{}{"name": "bad token", "scope": "System"},
+			wantCode: 422,
+		},
 	}
 
 	for _, tt := range tests {

@@ -40,11 +40,8 @@ type CreateParam struct {
 	Description *string `json:"description" validate:"required,min=2"`
 	IsDefault   *bool   `json:"is_default" validate:"required"`
 
-	CertFileName    *string `json:"cert_file_name" validate:"required,min=2"`
 	CertFileContent *string `json:"cert_file_content" validate:"required,min=2"`
-	KeyFileName     *string `json:"key_file_name" validate:"required,min=2"`
 	KeyFileContent  *string `json:"key_file_content" validate:"required,min=2"`
-	ExpiredDate     *string `json:"expired_date" validate:"required,min=2"`
 }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
@@ -56,15 +53,11 @@ func newCreateParam4Create(req *http.Request) (*CreateParam, error) {
 
 func createActionProcess(req *http.Request, param *CreateParam) (*OneData, error) {
 	if err := container.CertificateManager.CreateCertificate(req.Context(), &iprotocol.CertificateParam{
-		CertName:    param.Name,
-		Description: param.Description,
-		IsDefault:   param.IsDefault,
-
-		CertFileName:    param.CertFileName,
+		CertName:        param.Name,
+		Description:     param.Description,
+		IsDefault:       param.IsDefault,
 		CertFileContent: param.CertFileContent,
-		KeyFileName:     param.KeyFileName,
 		KeyFileContent:  param.KeyFileContent,
-		ExpiredDate:     param.ExpiredDate,
 	}); err != nil {
 		return nil, err
 	}

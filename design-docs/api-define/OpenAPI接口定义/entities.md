@@ -43,14 +43,14 @@
 | 字段 | 类型 | 说明 | 可能取值 |
 |------|------|------|----------|
 | `id` | string | Entity唯一标识 | 系统生成，如`ent-001` |
-| `name` | string | Entity名称 | 在全局范围内唯一 |
-| `type` | string | Entity类型 | 必须引用已定义的Entity-Type |
+| `name` | string | Entity名称 | 在全局范围内唯一 | 必填；长度 1-64 字符；不能包含控制字符；不能包含前导/尾随空白字符；全局唯一 |
+| `type` | string | Entity类型 | 必须引用已定义的Entity-Type | 必填；类型为 [EntityTypeName](./00-common.md#16-entity-type-名称entitytypename)；必须引用已存在的 Entity-Type |
 | `parent_id` | string | 父Entity ID | 为空表示根节点 |
 | `allow_models` | []string | 允许访问的模型白名单 | 包含"*"表示允许访问所有模型，**默认值为允许访问所有模型** |
-| `block_models` | []string | 禁止访问的模型黑名单 | 包含"*"表示禁止访问所有模型，**默认值为空数组**；若某模型同时出现在`allow_models`和`block_models`中，以`block_models`为准 |
-| `quota_plan` | object | 对该Entity设置的配额计划 | 同2.1中quota_plan结构，**不会为空** |
-| `rate_limit_policy` | object | 对该Entity设置的限流策略 | 同2.1中rate_limit_policy结构，**不会为空** |
-| `route_rules` | object | 对该Entity设置的路由规则 | 同2.1中route_rules结构，**不会为空** |
+| `block_models` | []string | 禁止访问的模型黑名单 | 包含"*"表示禁止访问所有模型，**默认值为空数组**；若某模型同时出现在`allow_models`和`block_models`中，以`block_models`为准；`block_models` 中的模型名无需为已配置的 `AIModel`（不必出现在 `/clusters` 的 `llm_config.models` 中） |
+| `quota_plan` | object | 对该Entity设置的配额计划 | 类型为 [QuotaPlan](./00-common.md#公共参数类型)，**不会为空** |
+| `rate_limit_policy` | object | 对该Entity设置的限流策略 | 类型为 [RateLimitPolicy](./00-common.md#公共参数类型)，**不会为空** |
+| `route_rules` | object | 对该Entity设置的路由规则 | 类型为 [RouteRules](./00-common.md#公共参数类型)，**不会为空** |
 | `create_time` | int64 | 创建时间 | Unix时间戳（秒） |
 | `update_time` | int64 | 更新时间 | Unix时间戳（秒） |
 
@@ -71,23 +71,25 @@
 
 **输入参数（Body）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| name | string | Entity名称 | Y | 全局唯一 |
-| type | string | Entity类型 | Y | 必须引用已定义的Entity-Type |
-| parent_id | string | 父Entity ID | N | 为空表示根节点 |
-| allow_models | []string | 允许访问的模型白名单 | N | 包含"*"表示允许访问所有模型，**默认值为允许访问所有模型** |
-| block_models | []string | 禁止访问的模型黑名单 | N | 包含"*"表示禁止访问所有模型，**默认值为空数组**；若某模型同时出现在`allow_models`和`block_models`中，以`block_models`为准 |
-| quota_plan | object | 配额计划 | N | 同2.1中quota_plan结构（不含balance），若未设置则使用默认值 |
-| rate_limit_policy | object | 限流策略 | N | 同2.1中rate_limit_policy结构，若未设置则使用默认值（enabled=false） |
-| route_rules | object | 路由规则 | N | 同2.1中route_rules结构，若未设置则使用默认值（enabled=false, rules为空） |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| name | string | Entity名称 | Y | 全局唯一 | 必填；长度 1-64 字符；不能包含控制字符；不能包含前导/尾随空白字符；全局唯一 |
+| type | string | Entity类型 | Y | 必须引用已定义的Entity-Type | 必填；类型为 [EntityTypeName](./00-common.md#16-entity-type-名称entitytypename)；必须引用已存在的 Entity-Type |
+| parent_id | string | 父Entity ID | N | 为空表示根节点 | 若传入非空值，父 Entity 必须存在，且父 Entity 对应 Entity-Type 的 level 必须小于本 Entity 对应 Entity-Type 的 level |
+| allow_models | []string | 允许访问的模型白名单 | N | 包含"*"表示允许访问所有模型，**默认值为允许访问所有模型** | 每个元素类型为 [AIModel](./00-common.md#5-ai-模型名称aimodel)；包含 `"*"` 时表示允许访问所有模型 |
+| block_models | []string | 禁止访问的模型黑名单 | N | 包含"*"表示禁止访问所有模型，**默认值为空数组**；若某模型同时出现在`allow_models`和`block_models`中，以`block_models`为准 | 每个元素为非空字符串；包含 `"*"` 时表示禁止访问所有模型；元素无需为已配置的 `AIModel`（不必出现在 `/clusters` 的 `llm_config.models` 中） |
+| quota_plan | object | 配额计划 | N | 同2.1中quota_plan结构（不含balance），若未设置则使用默认值 | 类型为 [QuotaPlan](./00-common.md#公共参数类型) |
+| rate_limit_policy | object | 限流策略 | N | 同2.1中rate_limit_policy结构，若未设置则使用默认值（enabled=false） | 类型为 [RateLimitPolicy](./00-common.md#公共参数类型) |
+| route_rules | object | 路由规则 | N | 同2.1中route_rules结构，若未设置则使用默认值（enabled=false, rules为空） | 类型为 [RouteRules](./00-common.md#公共参数类型) |
 
 **约束**
 
 - `type` 必须引用系统中已存在的Entity-Type
 - `parent_id` 若不为空，该父Entity对应的Entity-Type的 `level` 必须**小于**本Entity对应的Entity-Type的 `level`（数字越小级别越高，父节点级别必须更高）
-- `name` 全局唯一
-- 若传入 `rate_limit_policy` 且 `enabled` 为 `true`，则 `rules` 中 `tpm`、`rpm`、`max_concurrency` 三者至少配置其一
+- `name` 必填；长度 1-64 字符；不能包含控制字符；不能包含前导/尾随空白字符；全局唯一
+- `allow_models` 每个元素类型为 [AIModel](./00-common.md#5-ai-模型名称aimodel)；包含 `"*"` 时表示允许访问所有模型。
+- `block_models` 每个元素为非空字符串；包含 `"*"` 时表示禁止访问所有模型；元素无需为已配置的 `AIModel`（不必出现在 `/clusters` 的 `llm_config.models` 中）。
+- `quota_plan`、`rate_limit_policy`、`route_rules` 的字段及合法性条件分别见 [QuotaPlan](./00-common.md#公共参数类型)、[RateLimitPolicy](./00-common.md#公共参数类型)、[RouteRules](./00-common.md#公共参数类型) 公共类型定义。
 
 **HTTP BODY参数示例**
 
@@ -219,16 +221,16 @@
 
 **输入参数（Query）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| page | int | 页码 | N | 默认1 |
-| page_size | int | 每页条数 | N | 默认20，最大100 |
-| id | string | 按Entity ID过滤 | N | - |
-| name | string | 按Entity名称过滤 | N | - |
-| type | string | 按类型过滤 | N | - |
-| parent_id | string | 按父Entity过滤 | N | - |
-| quota_plan_id | int64 | 按配额计划ID过滤 | N | - |
-| route_rules_id | int64 | 按路由规则ID过滤 | N | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| page | int | 页码 | N | 默认1 | 有效值 >0；<=0 按 1 处理 |
+| page_size | int | 每页条数 | N | 默认20，最大100 | 有效范围 1-100；<1 按 20 处理，>100 按 100 处理 |
+| id | string | 按Entity ID过滤 | N | - | - |
+| name | string | 按Entity名称过滤 | N | - | - |
+| type | string | 按类型过滤 | N | - | - |
+| parent_id | string | 按父Entity过滤 | N | - | - |
+| quota_plan_id | int64 | 按配额计划ID过滤 | N | - | - |
+| route_rules_id | int64 | 按路由规则ID过滤 | N | - | - |
 
 
 **返回数据（Data内容）**
@@ -330,9 +332,9 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | Entity标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | Entity标识 | Y | - | 必填、非空 |
 
 **返回数据（Data内容）**
 
@@ -353,9 +355,9 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | Entity标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | Entity标识 | Y | - | 必填、非空 |
 
 **输入参数（Body）**
 
@@ -363,10 +365,10 @@
 
 **约束**
 
-- `type` 不可修改（创建后固定）
-- 若修改 `parent_id`，新父Entity对应的Entity-Type的 `level` 必须**小于**本Entity对应的Entity-Type的 `level`
-- `name` 全局唯一，不可与其他Entity冲突
-- 若传入 `rate_limit_policy` 且 `enabled` 为 `true`，则 `rules` 中 `tpm`、`rpm`、`max_concurrency` 三者至少配置其一
+- `type` 不可修改（创建后固定）。
+- 若修改 `parent_id`，新父Entity对应的Entity-Type的 `level` 必须**小于**本Entity对应的Entity-Type的 `level`。
+- `name` 必填；长度 1-64 字符；不能包含控制字符；不能包含前导/尾随空白字符；全局唯一，不可与其他Entity冲突。
+- `quota_plan`、`rate_limit_policy`、`route_rules` 的字段及合法性条件分别见 [QuotaPlan](./00-common.md#公共参数类型)、[RateLimitPolicy](./00-common.md#公共参数类型)、[RouteRules](./00-common.md#公共参数类型) 公共类型定义。
 
 **执行逻辑**
 
@@ -403,9 +405,9 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | Entity标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | Entity标识 | Y | - | 必填、非空 |
 
 **输入参数（Body）**
 
@@ -413,12 +415,12 @@
 
 **约束**
 
-- `type` 不可修改
-- 若修改 `parent_id`，新父Entity对应的Entity-Type的 `level` 必须**小于**本Entity对应的Entity-Type的 `level`
-- `name` 全局唯一，不可与其他Entity冲突
-- 若传入 `rate_limit_policy` 且 `enabled` 为 `true`，则 `rules` 中 `tpm`、`rpm`、`max_concurrency` 三者至少配置其一
-- 若修改 `quota_plan.quota`，视为重置配额（同步更新balance.remaining和used）
-- 若修改 `route_rules`，视为全量替换该路由规则配置
+- `type` 不可修改。
+- 若修改 `parent_id`，新父Entity对应的Entity-Type的 `level` 必须**小于**本Entity对应的Entity-Type的 `level`。
+- `name` 必填；长度 1-64 字符；不能包含控制字符；不能包含前导/尾随空白字符；全局唯一，不可与其他Entity冲突。
+- `quota_plan`、`rate_limit_policy`、`route_rules` 的字段及合法性条件分别见 [QuotaPlan](./00-common.md#公共参数类型)、[RateLimitPolicy](./00-common.md#公共参数类型)、[RouteRules](./00-common.md#公共参数类型) 公共类型定义。
+- 若修改 `quota_plan.quota`，视为重置配额（同步更新balance.remaining和used）。
+- 若修改 `route_rules`，视为全量替换该路由规则配置。
 
 **执行逻辑**
 
@@ -455,9 +457,9 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | Entity标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | Entity标识 | Y | - | 必填、非空 |
 
 **返回数据（Data内容）**
 
@@ -486,9 +488,9 @@ Data为null。
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | Entity标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | Entity标识 | Y | - | 必填、非空 |
 
 **返回数据（Data内容）**
 
@@ -525,16 +527,16 @@ Data为null。
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | Entity标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | Entity标识 | Y | - | 必填、非空 |
 
 **输入参数（Body）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| quota | int64 | 重置后的配额总量 | N | 若传入则更新quota并同步重置balance；若不传则按当前quota重置 |
-| reason | string | 重置原因 | N | 用于审计 |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| quota | int64 | 重置后的配额总量 | N | 若传入则更新quota并同步重置balance；若不传则按当前quota重置 | - |
+| reason | string | 重置原因 | N | 用于审计 | - |
 
 **执行逻辑**
 

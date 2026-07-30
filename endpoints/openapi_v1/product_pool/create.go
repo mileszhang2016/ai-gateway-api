@@ -33,6 +33,7 @@ import (
 
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/product_cluster"
 	"github.com/yf-networks/ai-gateway-api/lib"
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
@@ -51,6 +52,29 @@ type UpsertParam struct {
 	Instances []*Instance              `json:"instances" uri:"instances" validate:"min=1,dive"`
 	EPPServer *icluster_conf.EPPServer `json:"epp_server"`
 	Role      *string                  `json:"role"`
+}
+
+// Validate performs centralized business validation on the request parameters.
+func (p *UpsertParam) Validate() error {
+	if len(p.Instances) == 0 {
+		return nil
+	}
+
+	instances := make([]icluster_conf.Instance, len(p.Instances))
+	for i, inst := range p.Instances {
+		weight := inst.Weight
+		if weight == 0 {
+			weight = defaultWeight
+		}
+		instances[i] = icluster_conf.Instance{
+			HostName: inst.Hostname,
+			IP:       inst.IP,
+			Weight:   weight,
+			Ports:    inst.Ports,
+		}
+	}
+
+	return validate.InstancePool(instances)
 }
 
 // CreateRoute route

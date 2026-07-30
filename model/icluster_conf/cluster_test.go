@@ -132,7 +132,7 @@ func newTestClusterLLM() *Cluster {
 		},
 		Models: []string{"m1", "m2"},
 		ModelMappings: []*Mapping{
-			{Key: lib.PString("old"), Value: lib.PString("new")},
+			{SourceModel: lib.PString("old"), TargetModel: lib.PString("new")},
 		},
 		Key:          lib.PString("key"),
 		ProviderType: lib.PString("openai"),
@@ -799,7 +799,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 func TestConvertToBFEModelMapping(t *testing.T) {
 	t.Run("non empty", func(t *testing.T) {
 		got := convertToBFEModelMapping([]*Mapping{
-			{Key: lib.PString("k1"), Value: lib.PString("v1")},
+			{SourceModel: lib.PString("k1"), TargetModel: lib.PString("v1")},
 		})
 		require.NotNil(t, got)
 		assert.Equal(t, map[string]string{"k1": "v1"}, *got)

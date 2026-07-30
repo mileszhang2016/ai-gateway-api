@@ -163,6 +163,35 @@ func TestGlobalRouteRules_Update(t *testing.T) {
 			wantCode: 422,
 			skip:     "implementation does not validate Cond expression syntax",
 		},
+		{
+			name: "GRR-1-008 重复 target (ClusterName+Model)",
+			body: map[string]interface{}{
+				"rules": []interface{}{
+					map[string]interface{}{
+						"name": "dup-target",
+						"Cond": "default_t()",
+						"targets": []interface{}{
+							map[string]interface{}{"ClusterName": "c1", "Model": "m1", "Weight": 50},
+							map[string]interface{}{"ClusterName": "c1", "Model": "m1", "Weight": 50},
+						},
+					},
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "GRR-1-009 target ClusterName 格式非法",
+			body: map[string]interface{}{
+				"rules": []interface{}{
+					map[string]interface{}{
+						"name":    "bad-cluster",
+						"Cond":    "default_t()",
+						"targets": []interface{}{map[string]interface{}{"ClusterName": "-bad", "Weight": 100}},
+					},
+				},
+			},
+			wantCode: 422,
+		},
 	}
 
 	for _, tt := range tests {

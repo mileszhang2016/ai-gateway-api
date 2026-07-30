@@ -17,7 +17,6 @@ package ai_route
 import (
 	"net/http"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
@@ -81,17 +80,6 @@ func newRuleInfoFromReq(req *http.Request) (*ProductRouteRuleParam, error) {
 	err := xreq.BindJSON(req, rule)
 	if err != nil {
 		return nil, err
-	}
-
-	for _, one := range rule.AdvanceRouteRules {
-		if one == nil {
-			return nil, xerror.WrapParamErrorWithMsg("AdvanceRouteRules element cant be nil")
-		}
-	}
-	for _, one := range rule.BasicRouteRules {
-		if one == nil {
-			return nil, xerror.WrapParamErrorWithMsg("BasicRouteRules element cant be nil")
-		}
 	}
 
 	return rule, err

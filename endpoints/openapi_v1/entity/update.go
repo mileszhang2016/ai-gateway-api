@@ -15,7 +15,6 @@
 package entity
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -68,38 +67,8 @@ func EntityUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	if param.RateLimitPolicy != nil && param.RateLimitPolicy.Enabled != nil && *param.RateLimitPolicy.Enabled {
-		if param.RateLimitPolicy.Rules == nil {
-			return nil, xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, rules must be set")
-		}
-		hasTpm := len(param.RateLimitPolicy.Rules.TpmConfigs) > 0
-		hasRpm := len(param.RateLimitPolicy.Rules.RpmConfigs) > 0
-		hasConcurrency := param.RateLimitPolicy.Rules.MaxConcurrency != nil && *param.RateLimitPolicy.Rules.MaxConcurrency >= 0
-		if !hasTpm && !hasRpm && !hasConcurrency {
-			return nil, xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, at least one of rules.tpm, rules.rpm, or rules.max_concurrency(>=0) must be set")
-		}
-	}
-
-	if param.RateLimitPolicy != nil && param.RateLimitPolicy.Rules != nil {
-		for _, tpm := range param.RateLimitPolicy.Rules.TpmConfigs {
-			if tpm.WindowMinutes < 1 || tpm.WindowMinutes > 360 {
-				return nil, xerror.WrapParamErrorWithMsg(fmt.Sprintf("tpm window_minutes must be between 1 and 360, got %d", tpm.WindowMinutes))
-			}
-
-			if tpm.StepMinutes < 1 || tpm.StepMinutes > 360 {
-				return nil, xerror.WrapParamErrorWithMsg(fmt.Sprintf("tpm step_minutes must be between 1 and 360, got %d", tpm.StepMinutes))
-			}
-
-			if tpm.StepMinutes > tpm.WindowMinutes {
-				return nil, xerror.WrapParamErrorWithMsg(fmt.Sprintf("tpm step_minutes (%d) must be <= window_minutes (%d)", tpm.StepMinutes, tpm.WindowMinutes))
-			}
-		}
-
-		for _, rpm := range param.RateLimitPolicy.Rules.RpmConfigs {
-			if rpm.WindowMinutes < 1 || rpm.WindowMinutes > 360 {
-				return nil, xerror.WrapParamErrorWithMsg(fmt.Sprintf("rpm window_minutes must be between 1 and 360, got %d", rpm.WindowMinutes))
-			}
-		}
+	if err := validateEntityParam(param, false); err != nil {
+		return nil, err
 	}
 
 	if _, err := container.EntityManager.UpdateEntity(req.Context(), &quota.EntityFilter{

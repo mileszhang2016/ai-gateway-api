@@ -31,9 +31,7 @@ type TCertificate struct {
 	Description  string    `db:"description"`
 	IsDefault    bool      `db:"is_default"`
 	ExpiredDate  string    `db:"expired_date"`
-	CertFileName string    `db:"cert_file_name"`
 	CertFilePath string    `db:"cert_file_path"`
-	KeyFileName  string    `db:"key_file_name"`
 	KeyFilePath  string    `db:"key_file_path"`
 	CreatedAt    time.Time `db:"created_at"`
 	UpdatedAt    time.Time `db:"updated_at"`
@@ -76,9 +74,7 @@ type TCertificateParam struct {
 	Description  *string    `db:"description"`
 	IsDefault    *bool      `db:"is_default"`
 	ExpiredDate  *string    `db:"expired_date"`
-	CertFileName *string    `db:"cert_file_name"`
 	CertFilePath *string    `db:"cert_file_path"`
-	KeyFileName  *string    `db:"key_file_name"`
 	KeyFilePath  *string    `db:"key_file_path"`
 	CreatedAt    *time.Time `db:"created_at"`
 	UpdatedAt    *time.Time `db:"updated_at"`

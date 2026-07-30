@@ -17,6 +17,7 @@ package entity_type
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -40,6 +41,9 @@ func EntityTypeUpdateAction(req *http.Request) (interface{}, error) {
 	if err := xreq.BindURI(req, updateReq); err != nil {
 		return nil, err
 	}
+	if err := validate.EntityTypeName(*updateReq.TypeName); err != nil {
+		return nil, err
+	}
 
 	existing, err := container.EntityTypeManager.FetchEntityType(req.Context(), &quota.EntityTypeFilter{
 		TypeName: updateReq.TypeName,
@@ -54,6 +58,16 @@ func EntityTypeUpdateAction(req *http.Request) (interface{}, error) {
 	param := &quota.EntityTypeParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
+	}
+	if param.TypeName != nil {
+		if err := validate.EntityTypeName(*param.TypeName); err != nil {
+			return nil, err
+		}
+	}
+	if param.Description != nil {
+		if err := validate.Description(*param.Description, validate.MaxDescriptionLength, "description"); err != nil {
+			return nil, err
+		}
 	}
 
 	_, err = container.EntityTypeManager.UpdateEntityType(req.Context(), &quota.EntityTypeFilter{
