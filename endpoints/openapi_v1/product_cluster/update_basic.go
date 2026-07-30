@@ -44,7 +44,7 @@ var UpdateBasicEndpoint = &xreq.Endpoint{
 	Path:       "/clusters/{cluster_name}",
 	Method:     http.MethodPatch,
 	Handler:    xreq.Convert(UpdateAction),
-	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionUpdate),
+	Authorizer: iauth.FA(iauth.FeatureProductCluster, iauth.ActionUpdate),
 }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
