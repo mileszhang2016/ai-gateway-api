@@ -54,16 +54,6 @@ func newUpdateParam4Update(req *http.Request) (*UpsertParam, error) {
 		return nil, err
 	}
 
-	if param.Name == nil || *param.Name == "" {
-		return nil, xerror.WrapParamErrorWithMsg("cluster_name is required")
-	}
-
-	if param.LLMConfig != nil {
-		if err := checkLLMConfig(param.LLMConfig); err != nil {
-			return nil, err
-		}
-	}
-
 	return param, nil
 }
 

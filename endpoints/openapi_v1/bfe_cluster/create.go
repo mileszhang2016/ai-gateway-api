@@ -18,6 +18,7 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib"
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
@@ -28,6 +29,14 @@ import (
 type BFEClusterCreateParam struct {
 	Name *string `json:"name" uri:"name" validate:"required,min=1"`
 	Pool *string `json:"pool" uri:"pool" validate:"required,min=1"`
+}
+
+// Validate performs centralized business validation on the request parameters.
+func (p *BFEClusterCreateParam) Validate() error {
+	if err := validate.ClusterName(*p.Name); err != nil {
+		return err
+	}
+	return validate.ClusterName(*p.Pool)
 }
 
 // CreateRoute route

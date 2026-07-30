@@ -15,13 +15,13 @@
 
 **输入参数（Body）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| schema | string | 请求协议 | Y | 取值为 http、https |
-| uri | string | 请求URI | N | 路径前面可以有/，也可以无/。例如：/models 或者 models |
-| hosts | []string | 请求的IP、Port组合或域名 | Y | 支持ipv4、ipv6。ipv4："1.1.1.1:8080"；ipv6："[2001:db8::1]:8080" |
-| headers | map[string]string | 请求的Header参数列表 | N | - |
-| provider_type | string | AI模型提供商类型 | N | 取值如：deepseek、openai、qwen |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| schema | string | 请求协议 | Y | 取值为 http、https | 必填；枚举值：`http`、`https` |
+| uri | string | 请求URI | N | 路径前面可以有/，也可以无/。例如：/models 或者 models | 为空时默认使用 `/v1/models` |
+| hosts | []string | 请求的IP、Port组合或域名 | Y | 支持ipv4、ipv6。ipv4："1.1.1.1:8080"；ipv6："[2001:db8::1]:8080" | 必填；数组长度≥1 |
+| headers | map[string]string | 请求的Header参数列表 | N | - | 无 |
+| provider_type | string | AI模型提供商类型 | N | 取值如：deepseek、openai、qwen | 为空或不支持时按默认解析逻辑处理；`huoshancodeplan`、`bailiantokenplan` 走静态模型列表 |
 
 **HTTP BODY参数示例**
 

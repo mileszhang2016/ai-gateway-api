@@ -161,7 +161,92 @@ func TestClusters_Create(t *testing.T) {
 				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
 			},
 			wantCode: 422,
-			skip:     "implementation does not validate Default port presence",
+		},
+		{
+			name: "CL-1-008 非法 hostname",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"hostname": "-bad",
+						"ip":       "10.0.0.1",
+						"weight":   100,
+						"ports":    map[string]interface{}{"Default": 8080},
+					},
+				},
+				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-009 非法 IP",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"hostname": "backend-1",
+						"ip":       "not-an-ip",
+						"weight":   100,
+						"ports":    map[string]interface{}{"Default": 8080},
+					},
+				},
+				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-010 weight 超过 100",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"hostname": "backend-1",
+						"ip":       "10.0.0.1",
+						"weight":   101,
+						"ports":    map[string]interface{}{"Default": 8080},
+					},
+				},
+				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-011 重复实例 (hostname+ip)",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"hostname": "backend-1",
+						"ip":       "10.0.0.1",
+						"weight":   50,
+						"ports":    map[string]interface{}{"Default": 8080},
+					},
+					map[string]interface{}{
+						"hostname": "backend-1",
+						"ip":       "10.0.0.1",
+						"weight":   50,
+						"ports":    map[string]interface{}{"Default": 8081},
+					},
+				},
+				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-012 llm_config 模型重复",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"hostname": "backend-1",
+						"ip":       "10.0.0.1",
+						"weight":   100,
+						"ports":    map[string]interface{}{"Default": 8080},
+					},
+				},
+				"llm_config": map[string]interface{}{"models": []string{"m", "m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+			},
+			wantCode: 422,
 		},
 	}
 

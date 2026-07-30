@@ -17,6 +17,7 @@ package auth
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -37,6 +38,14 @@ var UserUpdateIsAdminEndpoint = &xreq.Endpoint{
 type UserUpdateIsAdminParam struct {
 	UserName *string `uri:"user_name" validate:"required,min=1"`
 	IsAdmin  bool    `json:"is_admin"`
+}
+
+// Validate performs centralized business validation on the request parameters.
+func (p *UserUpdateIsAdminParam) Validate() error {
+	if err := validate.UserName(*p.UserName); err != nil {
+		return err
+	}
+	return validate.IsAdmin(p.IsAdmin)
 }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED

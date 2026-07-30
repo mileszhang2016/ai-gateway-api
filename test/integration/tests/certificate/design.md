@@ -68,16 +68,16 @@ certificate/
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| cert_name | string | Y | 证书名，必须唯一 |
-| description | string | Y | 证书描述 |
-| is_default | bool | Y | 是否是默认证书 |
-| cert_file_name | string | Y | 主证书文件名 |
-| cert_file_content | string | Y | 主证书文件内容 |
-| key_file_name | string | Y | 主证书密钥名 |
-| key_file_content | string | Y | 主证书密钥文件内容 |
-| expired_date | string | Y | 主证书过期时间，如 `2021-08-23 16:02:31` |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| cert_name | string | Y | 证书名，必须唯一 | 长度 2-64；仅允许字母、数字、`_`、`-`、`.`；不能以 `.`、`-`、`_` 开头或结尾；全局唯一；不能包含空白字符 |
+| description | string | Y | 证书描述 | 必填；长度 2-256；不能包含控制字符 |
+| is_default | bool | Y | 是否是默认证书 | 必填 |
+| cert_file_name | string | Y | 主证书文件名 | - |
+| cert_file_content | string | Y | 主证书文件内容 | 必填；须为合法 PEM X.509 证书 |
+| key_file_name | string | Y | 主证书密钥名 | - |
+| key_file_content | string | Y | 主证书密钥文件内容 | 必填；须为与证书匹配的 PEM 私钥 |
+| expired_date | string | Y | 主证书过期时间，如 `2021-08-23 16:02:31` | - |
 
 #### 6.2.2 返回数据字段
 

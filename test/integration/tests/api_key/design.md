@@ -21,15 +21,15 @@ API-Key 模块负责 API-Key 的管理，包括创建、查询、更新、删除
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建 API-Key | 5 |
+| 创建 API-Key | 10 |
 | 查询 API-Key 列表 | 3 |
 | 查询单个 API-Key | 2 |
-| 全量更新 API-Key | 3 |
-| 部分更新 API-Key | 3 |
+| 全量更新 API-Key | 4 |
+| 部分更新 API-Key | 4 |
 | 删除 API-Key | 2 |
 | 查询配额计划 | 2 |
 | 重置配额余额 | 2 |
-| **合计** | **22** |
+| **合计** | **27** |
 
 ## 4. 认证方式
 
@@ -76,19 +76,19 @@ api_key/
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| key | string | N | API-Key 值，传入则使用该值 |
-| description | string | Y | API-Key 描述 |
-| expired_time | int64 | N | 过期时间，-1 表示永不过期 |
-| enabled | bool | N | 默认 true |
-| unlimited_quota | bool | N | 默认 false |
-| models | []string | N | 默认 ["*"] |
-| subnet | []string | N | 默认 ["*"] |
-| quota_plan | object | N | 配额计划 |
-| rate_limit_policy | object | N | 限流策略 |
-| route_rules | object | N | 路由规则 |
-| entity_id | string | N | 挂载的 Entity ID |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| key | string | N | API-Key 值，传入则使用该值 | 长度 1-128；仅允许字母、数字、`-`、`_`；全局唯一 |
+| description | string | Y | API-Key 描述 | 必填；长度 <512 |
+| expired_time | int64 | N | 过期时间，-1 表示永不过期 | -1 或 Unix 时间戳 ≥ 当前时间 |
+| enabled | bool | N | 默认 true | - |
+| unlimited_quota | bool | N | 默认 false | - |
+| models | []string | N | 默认 ["*"] | 每个元素为 AIModel |
+| subnet | []string | N | 默认 ["*"] | 每个元素为 CIDR 或 `"*"` |
+| quota_plan | object | N | 配额计划 | `quota` ≥0；`unit` 仅 `total_token`；`reset_period` ∈ {never, weekly, monthly} |
+| rate_limit_policy | object | N | 限流策略 | enabled=true 时 rules 必填且至少配置 tpm/rpm/max_concurrency(≥0) 之一 |
+| route_rules | object | N | 路由规则 | 同公共 RouteRules 类型 |
+| entity_id | string | N | 挂载的 Entity ID | 若非空，Entity 必须存在 |
 
 #### 6.2.2 返回数据字段
 
@@ -119,6 +119,11 @@ api_key/
 | AK-1-003 | 导入外部 key | 正常参数 | v0.3.0 新增能力 |
 | AK-1-004 | 导入重复 key | 异常参数 | v0.3.0 全局唯一校验 |
 | AK-1-005 | 缺少 description | 必填校验 | 验证 ErrNum=422 |
+| AK-1-006 | 非法 key 字符 | 合法性条件 | 验证 ErrNum=422 |
+| AK-1-007 | 非法 subnet | 合法性条件 | 验证 ErrNum=422 |
+| AK-1-008 | quota_plan 非法 unit | 合法性条件 | 验证 ErrNum=422 |
+| AK-1-009 | rate_limit_policy 非法 window_minutes | 合法性条件 | 验证 ErrNum=422 |
+| AK-1-010 | route_rules 规则名称重复 | 合法性条件 | 验证 ErrNum=422 |
 
 ### 6.4 测试场景详细设计
 
@@ -329,6 +334,195 @@ api_key/
 
 **ErrNum**：422  
 **ErrMsg**：包含 "description" 的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.6 AK-1-006：非法 key 字符
+
+##### 设计思路
+
+验证导入的 `key` 只能包含字母、数字、`-`、`_`。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`key` 包含非法字符（如 `@`）。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "description": "test-key-bad-char",
+    "key": "invalid@key"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 key 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.7 AK-1-007：非法 subnet
+
+##### 设计思路
+
+验证 `subnet` 数组中的每个元素必须是合法 CIDR 或 `"*"`。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`subnet` 包含非法字符串。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "description": "test-key-bad-subnet",
+    "subnet": ["not-a-cidr"]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 subnet 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.8 AK-1-008：quota_plan 非法 unit
+
+##### 设计思路
+
+验证 `quota_plan.unit` 仅支持 `total_token`。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`quota_plan.unit` 为非法值。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "description": "test-key-bad-unit",
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 100,
+        "unit": "invalid_unit"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 unit 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.9 AK-1-009：rate_limit_policy 非法 window_minutes
+
+##### 设计思路
+
+验证 `rate_limit_policy.rules.tpm[].window_minutes` 取值范围为 1-360。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`window_minutes=0`。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "description": "test-key-bad-window",
+    "rate_limit_policy": {
+        "enabled": true,
+        "rules": {
+            "tpm": [
+                {"name": "t1", "model": "*", "window_minutes": 0, "max_tokens": 100, "step_minutes": 1}
+            ]
+        }
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 window_minutes 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.10 AK-1-010：route_rules 规则名称重复（合法性条件）
+
+##### 设计思路
+
+验证 `route_rules.rules` 内规则名称必须唯一。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`route_rules.rules` 包含两条同名规则。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "description": "test-key-dup-rule",
+    "route_rules": {
+        "enabled": true,
+        "rules": [
+            {
+                "name": "dup",
+                "Cond": "default_t()",
+                "targets": [
+                    {"ClusterName": "c1", "Weight": 100}
+                ]
+            },
+            {
+                "name": "dup",
+                "Cond": "default_t()",
+                "targets": [
+                    {"ClusterName": "c2", "Weight": 100}
+                ]
+            }
+        ]
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含规则名称重复的错误信息  
 **Data**：null
 
 ---
@@ -625,6 +819,7 @@ URI：`non-existent-id`
 | AK-4-001 | 全量更新 quota_plan 触发余额重置 | 正常参数 | 验证级联更新 |
 | AK-4-002 | 全量更新传入 key 被忽略 | 业务规则 | key 保持不变 |
 | AK-4-003 | 全量更新后查询一致性 | 返回数据 | PUT 后立即 GET，验证数据一致 |
+| AK-4-004 | 全量更新非法 quota_plan unit | 合法性条件 | 验证 ErrNum=422 |
 
 ### 9.4 测试场景详细设计
 
@@ -779,6 +974,50 @@ URI：`non-existent-id`
 
 ---
 
+#### 9.4.4 AK-4-004：全量更新非法 quota_plan unit（合法性条件）
+
+##### 设计思路
+
+验证全量更新时 `quota_plan.unit` 仅支持 `total_token`。
+
+##### 前提数据准备
+
+已创建 API-Key。
+
+##### 执行步骤
+
+1. 发送 PUT 请求，`quota_plan.unit` 为非法值。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "description": "test-key-bad-unit-update",
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 100,
+        "unit": "invalid_unit"
+    },
+    "rate_limit_policy": {
+        "enabled": false,
+        "rules": {}
+    },
+    "route_rules": {
+        "enabled": false,
+        "rules": []
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 unit 非法的错误信息  
+**Data**：null
+
+---
+
 ## 10. 部分更新 API-Key
 
 ### 10.1 接口信息
@@ -816,6 +1055,7 @@ URI：`non-existent-id`
 | AK-5-001 | 部分更新 enabled | 正常参数 | enabled 更新，其余不变 |
 | AK-5-002 | 部分更新 route_rules | 正常参数 | route_rules 更新 |
 | AK-5-003 | 部分更新后查询一致性 | 返回数据 | PATCH 后立即 GET，验证数据一致 |
+| AK-5-004 | 部分更新非法 rate_limit_policy | 合法性条件 | 验证 ErrNum=422 |
 
 ### 10.4 测试场景详细设计
 
@@ -942,6 +1182,44 @@ URI：`non-existent-id`
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
 | models | ["gpt-3.5-turbo"] | Equals |
+
+---
+
+#### 10.4.4 AK-5-004：部分更新非法 rate_limit_policy（合法性条件）
+
+##### 设计思路
+
+验证部分更新 `rate_limit_policy` 时同样受 RateLimitPolicy 合法性条件约束。
+
+##### 前提数据准备
+
+已创建 API-Key。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`rate_limit_policy.rules.tpm[].window_minutes=0`。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "rate_limit_policy": {
+        "enabled": true,
+        "rules": {
+            "tpm": [
+                {"name": "t1", "model": "*", "window_minutes": 0, "max_tokens": 100, "step_minutes": 1}
+            ]
+        }
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 window_minutes 非法的错误信息  
+**Data**：null
 
 ---
 

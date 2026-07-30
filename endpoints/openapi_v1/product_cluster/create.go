@@ -32,6 +32,7 @@ import (
 	"net/http"
 
 	"github.com/yf-networks/ai-gateway-api/lib"
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -108,6 +109,25 @@ type StickySessionsParam struct {
 	HashHeader   *string `json:"hash_header"`
 }
 
+// Validate performs centralized business validation on the request parameters.
+func (p *UpsertParam) Validate() error {
+	if p.Name == nil || *p.Name == "" {
+		return xerror.WrapParamErrorWithMsg("name is required")
+	}
+	if err := validate.ClusterName(*p.Name); err != nil {
+		return err
+	}
+	if len(p.InstancePool) > 0 {
+		if err := validate.InstancePool(Instancesc2i(p.InstancePool)); err != nil {
+			return err
+		}
+	}
+	if p.LLMConfig != nil {
+		return validate.LLMConfig(p.LLMConfig)
+	}
+	return nil
+}
+
 // CreateRoute route
 var CreateEndpoint = &xreq.Endpoint{
 	Path:       "/clusters",
@@ -120,7 +140,6 @@ var (
 	clusterHashStrategyClientIDOnly     = "CLIENT_ID_ONLY"
 	clusterHashStrategyClientIPOnly     = "CLIENT_IP_ONLY"
 	clusterHashStrategyClientIDPrefered = "CLIENT_ID_PREFERED"
-	defaultWeight                       = int64(1)
 )
 
 func newCreateParam4Create(req *http.Request) (*UpsertParam, error) {
@@ -129,19 +148,37 @@ func newCreateParam4Create(req *http.Request) (*UpsertParam, error) {
 		return nil, err
 	}
 
-	if param.Name == nil || *param.Name == "" {
-		return nil, xerror.WrapParamErrorWithMsg("name is required")
-	}
-
 	if len(param.InstancePool) == 0 {
 		return nil, xerror.WrapParamErrorWithMsg("instance_pool is required")
 	}
 
-	if err := checkLLMConfig(param.LLMConfig); err != nil {
-		return nil, err
+	if param.LLMConfig == nil {
+		return nil, xerror.WrapParamErrorWithMsg("llm_config is required")
 	}
 
 	return param, nil
+}
+
+func checkInstancePool(instances []*Instance) error {
+	if len(instances) == 0 {
+		return xerror.WrapParamErrorWithMsg("instance_pool is required")
+	}
+
+	hasPositiveWeight := false
+	for i, instance := range instances {
+		if instance.Weight > 0 {
+			hasPositiveWeight = true
+		}
+		if instance.Ports == nil || instance.Ports["Default"] == 0 {
+			return xerror.WrapParamErrorWithMsg("instance_pool[%d].ports must contain Default port", i)
+		}
+	}
+
+	if !hasPositiveWeight {
+		return xerror.WrapParamErrorWithMsg("instance_pool must have at least one instance with weight > 0")
+	}
+
+	return nil
 }
 
 func clusterParamControlModel(param *UpsertParam) *icluster_conf.ClusterParam {
@@ -370,15 +407,10 @@ func Instancesc2i(is []*Instance) []icluster_conf.Instance {
 			port = instance.Ports["Default"]
 		}
 
-		weight := instance.Weight
-		if weight == 0 {
-			weight = defaultWeight
-		}
-
 		rst = append(rst, icluster_conf.Instance{
 			HostName: instance.Hostname,
 			IP:       instance.IP,
-			Weight:   weight,
+			Weight:   instance.Weight,
 			Ports:    instance.Ports,
 			Port:     port,
 		})

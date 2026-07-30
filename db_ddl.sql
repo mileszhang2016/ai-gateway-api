@@ -201,9 +201,7 @@ CREATE TABLE `certificates` (
   `description` varchar(1024) NOT NULL DEFAULT 'no desc',
   `is_default` tinyint(1) NOT NULL DEFAULT '0',
   `expired_date` varchar(255) NOT NULL,
-  `cert_file_name` varchar(255) NOT NULL,
   `cert_file_path` varchar(255) NOT NULL,
-  `key_file_name` varchar(255) NOT NULL,
   `key_file_path` varchar(255) NOT NULL,
 
   `created_at` datetime NOT NULL,

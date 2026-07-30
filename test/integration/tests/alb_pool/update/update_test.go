@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/yf-networks/ai-gateway-api/integration/testutil"
 )
 
@@ -152,7 +153,6 @@ func TestAlbPool_Update(t *testing.T) {
 				},
 			},
 			wantCode: 422,
-			skip:     "implementation does not validate Default port presence",
 		},
 		{
 			name: "BP-2-007 实例权重超出范围",
@@ -169,6 +169,79 @@ func TestAlbPool_Update(t *testing.T) {
 				},
 			},
 			wantCode: 422,
+		},
+		{
+			name: "BP-2-008 非法 hostname",
+			body: map[string]interface{}{
+				"instances": []interface{}{
+					map[string]interface{}{
+						"hostname": "-bad",
+						"ip":       "127.0.0.1",
+						"weight":   1,
+						"ports": map[string]interface{}{
+							"Default": 8080,
+						},
+					},
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "BP-2-009 非法 IP",
+			body: map[string]interface{}{
+				"instances": []interface{}{
+					map[string]interface{}{
+						"hostname": "host-a",
+						"ip":       "not-an-ip",
+						"weight":   1,
+						"ports": map[string]interface{}{
+							"Default": 8080,
+						},
+					},
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "BP-2-010 重复端口值",
+			body: map[string]interface{}{
+				"instances": []interface{}{
+					map[string]interface{}{
+						"hostname": "host-a",
+						"ip":       "10.0.0.1",
+						"weight":   1,
+						"ports": map[string]interface{}{
+							"Default": 8080,
+							"Admin":   8080,
+						},
+					},
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "BP-2-011 weight 为 0 时按默认值 1 处理",
+			body: map[string]interface{}{
+				"instances": []interface{}{
+					map[string]interface{}{
+						"hostname": "host-a",
+						"ip":       "10.0.0.1",
+						"weight":   0,
+						"ports": map[string]interface{}{
+							"Default": 8080,
+						},
+					},
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				insts := data["instances"].([]interface{})
+				require.Len(t, insts, 1)
+				inst := insts[0].(map[string]interface{})
+				assert.Equal(t, float64(1), inst["weight"])
+			},
 		},
 	}
 

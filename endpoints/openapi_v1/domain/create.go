@@ -17,6 +17,7 @@ package domain
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
@@ -26,6 +27,11 @@ import (
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 type CreateParam struct {
 	Name *string `json:"name" uri:"name" validate:"required,min=2"`
+}
+
+// Validate performs centralized business validation on the request parameters.
+func (p *CreateParam) Validate() error {
+	return validate.Hostname(*p.Name)
 }
 
 // CreateRoute route

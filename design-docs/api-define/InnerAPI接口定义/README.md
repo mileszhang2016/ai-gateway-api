@@ -13,6 +13,11 @@
 | 概述 | [00-overview.md](./00-overview.md) |
 | 通用说明 | [01-common.md](./01-common.md) |
 | 现有接口清单 | [02-interface-list.md](./02-interface-list.md) |
+| server_data_conf 接口 | [server-data-conf.md](./server-data-conf.md) |
+| gslb 接口 | [gslb.md](./gslb.md) |
+| cluster_table 接口 | [cluster-table.md](./cluster-table.md) |
+| server_cert_conf 接口 | [server-cert-conf.md](./server-cert-conf.md) |
+| extra_files 接口 | [extra-files.md](./extra-files.md) |
 | mod-api-key 接口 | [mod-api-key.md](./mod-api-key.md) |
 | mod-body-process 接口 | [mod-body-process.md](./mod-body-process.md) |
 | rate-limit-policy 接口 | [rate-limit-policy.md](./rate-limit-policy.md) |

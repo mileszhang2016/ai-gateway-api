@@ -124,9 +124,23 @@ func TestRouteTables_List(t *testing.T) {
 		testutil.AssertSuccess(t, resp)
 		var data map[string]interface{}
 		json.Unmarshal(resp.Data, &data)
-		for _, item := range data["list"].([]interface{}) {
+		list := data["list"].([]interface{})
+		assert.GreaterOrEqual(t, len(list), 1, "按 apiKeyID 过滤应至少返回一条 apikey 路由表")
+		for _, item := range list {
 			assert.Equal(t, apiKeyID, item.(map[string]interface{})["owner"])
 		}
+	})
+
+	t.Run("RT-1-011 按不存在的 owner 过滤", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"owner": "non-existent-owner"})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		json.Unmarshal(resp.Data, &data)
+		list := data["list"].([]interface{})
+		assert.Empty(t, list, "按不存在的 owner 过滤应返回空列表")
 	})
 
 	t.Run("RT-1-006 按 enabled 过滤", func(t *testing.T) {

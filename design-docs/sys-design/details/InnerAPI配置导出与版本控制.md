@@ -128,6 +128,8 @@ type RouteRuleExportData struct {
 
 其中 `RouteTable` 包含产品级高级路由规则（来自 `route_advance_rules`），`ClusterConf` 包含集群转发参数。
 
+> 说明：当管理面 Cluster 配置了 `llm_config` 时，导出后的 `ClusterConf.Config.<cluster_name>.AIConf` 会包含模型映射与认证密钥，供 BFE 侧 AI 转发模块使用。`AIConf` 由 `llm_config.models`/`model_mappings`/`key` 转换而来，字段位置为 `ClusterConf.Config.<cluster_name>.AIConf`。
+
 ### 4.2 GSLB（`/configs/gslb_data/gslb`）
 
 由 `model/icluster_conf/exporter.go` 实现，根据请求的 `bfe_cluster` 参数返回对应 BFE 集群的 GSLB 配置：
@@ -165,7 +167,9 @@ type ClusterTableConf struct {
 4. IPv6 地址自动加 `[]` 包裹；
 5. 输出 BFE 标准的 `cluster_table_conf`。
 
-> 说明：管理面 Cluster 对外模型精简（隐藏 `ready`、`sub_clusters`、`scheduler`）不影响 InnerAPI 导出。数据面仍从 `clusters`、`sub_clusters`、`pools`、`lb_matrices` 等存储模型生成 `cluster_table` 与 `gslb` 配置。
+> 说明：
+> - 管理面 Cluster 对外模型精简（隐藏 `ready`、`sub_clusters`、`scheduler`）不影响 InnerAPI 导出。数据面仍从 `clusters`、`sub_clusters`、`pools`、`lb_matrices` 等存储模型生成 `cluster_table` 与 `gslb` 配置。
+> - 实例 `Weight` 直接透传管理面配置：`Weight=0` 表示该实例不接收流量，不会被后端强制改为默认值。
 
 ### 4.4 Server Cert（`/configs/protocol/server_cert_conf`）
 

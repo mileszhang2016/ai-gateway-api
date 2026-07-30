@@ -38,8 +38,21 @@
     }
   },
   "route_rules": {
-    "enabled": false,
-    "rules": []
+    "enabled": true,
+    "rules": [
+      {
+        "name": "apikey-default",
+        "Cond": "default_t()",
+        "targets": [
+          {
+            "ClusterName": "cluster_apikey",
+            "Model": "",
+            "Weight": 100
+          }
+        ],
+        "fallbacks": []
+      }
+    ]
   },
   "entity_id": "ent-zhangsan-001",
   "entity": {
@@ -64,69 +77,21 @@
 | `unlimited_quota` | bool | 是否无限配额 | `true`：不执行配额检查；`false`：执行配额控制；**默认值为false** |
 | `models` | []string | 允许访问的模型白名单 | 包含"*"表示不限制，**默认值为不限制** |
 | `subnet` | []string | 允许的客户端子网 | 包含"*"表示不限制，**默认值为不限制** |
-| `quota_plan` | object | 配额计划 | 见下方结构，**不会为空** |
-| `rate_limit_policy` | object | 限流策略 | 见下方结构，**不会为空** |
-| `route_rules` | object | 路由规则 | 见下方结构，**不会为空** |
+| `quota_plan` | object | 配额计划 | 类型为 [QuotaPlan](./00-common.md#公共参数类型)，**不会为空** |
+| `rate_limit_policy` | object | 限流策略 | 类型为 [RateLimitPolicy](./00-common.md#公共参数类型)，**不会为空** |
+| `route_rules` | object | 路由规则 | 类型为 [RouteRules](./00-common.md#公共参数类型)，**不会为空** |
 | `entity_id` | string | 挂载到的Entity ID | 为空表示未挂载到任何Entity |
 | `entity` | object | 挂载的Entity摘要（只读） | 包含id、name、type |
 
-**quota_plan结构**
+**公共类型引用**
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `unlimited` | bool | 是否无限配额，**默认true** |
-| `pass_when_no_enough_quota` | bool | 配额不足时是否放行，**默认false** |
-| `quota` | int64 | 配额总量（初始配额） |
-| `unit` | string | 配额单位，默认`total_token`，暂时只支持`total_token` |
-| `reset_period` | string | 配额重置周期，取值：`never`（永不自动重置）、`weekly`（按周重置）、`monthly`（按月重置），**默认`never`**；重置均基于日历周期（如自然周/自然月） |
-| `balance` | object | 余额状态（只读），包含`used`和`remaining` |
+| 字段 | 公共类型 | 说明 |
+|------|----------|------|
+| `quota_plan` | [QuotaPlan](./00-common.md#公共参数类型) | 配额计划；作为输入时无需传入 `balance` |
+| `rate_limit_policy` | [RateLimitPolicy](./00-common.md#公共参数类型) | 限流策略 |
+| `route_rules` | [RouteRules](./00-common.md#公共参数类型) | 路由规则集；`rules` 每个元素类型为 [RouteRule](./00-common.md#公共参数类型) |
 
-**rate_limit_policy结构**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `enabled` | bool | 是否启用，**默认false** |
-| `rules` | object | 限流规则，见下方 |
-
-**rules结构**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `tpm` | []TPMConfig | Token每分钟限制配置，最多3个；为空不做tpm限制 |
-| `rpm` | []RPMConfig | 请求每分钟限制配置，最多3个；为空不做rpm限制 |
-| `max_concurrency` | int | 最大并发数，最小值1；**默认值为-1（不限制）** |
-
-**TPMConfig结构**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `name` | string | 规则名称，同一policy中不能重复 |
-| `model` | string | 适用的模型，选填，默认值为"*"（表示适用于所有模型） |
-| `window_minutes` | int | 统计时间窗口（分钟），取值范围1-360 |
-| `max_tokens` | int | 最大Token数 |
-| `step_minutes` | int | 滑动步长（分钟），取值范围1-360，默认1，必须`<=window_minutes` |
-
-**RPMConfig结构**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `name` | string | 规则名称，同一policy中不能重复 |
-| `model` | string | 适用的模型，选填，默认值为"*"（表示适用于所有模型） |
-| `window_minutes` | int | 统计时间窗口（分钟），取值范围1-360 |
-| `max_requests` | int | 最大请求数 |
-
-**route_rules结构**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `enabled` | bool | 是否启用该路由规则，**默认false** |
-| `rules` | array | 规则列表；为空表示未配置任何规则 |
-
-- `rules` 元素结构、`targets` 元素结构、`fallbacks` 元素结构同 [1. 数据模型](./global-route-rules.md#1-数据模型)。
-
-**约束**
-
-- 若 `rate_limit_policy` 的 `enabled` 为 `true`，则 `rules` 中 `tpm`、`rpm`、`max_concurrency` 三者至少配置其一
+详细字段及合法性条件见 `00-common.md` 中对应公共类型定义。
 
 ---
 
@@ -145,25 +110,29 @@
 
 **输入参数（Body）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| key | string | API-Key值 | N | 可选。若传入则使用该值作为API-Key；若不传则由后台生成。用于从其他系统导入API-Key |
-| description | string | API-Key描述 | Y | - |
-| expired_time | int64 | 过期时间 | N | -1表示永不过期；其他为Unix时间戳（秒） |
-| enabled | bool | 是否启用 | N | 默认true |
-| unlimited_quota | bool | 是否无限配额 | N | 默认false |
-| models | []string | 允许访问的模型白名单 | N | 包含"*"表示不限制，**默认值为不限制** |
-| subnet | []string | 允许的客户端子网 | N | 包含"*"表示不限制，**默认值为不限制** |
-| quota_plan | object | 配额计划 | N | 同2.1中quota_plan结构（不含balance），若未设置则使用默认值 |
-| rate_limit_policy | object | 限流策略 | N | 同2.1中rate_limit_policy结构，若未设置则使用默认值（enabled=false） |
-| route_rules | object | 路由规则 | N | 同2.1中route_rules结构，若未设置则使用默认值（enabled=false, rules为空） |
-| entity_id | string | 挂载的Entity ID | N | 为空表示不挂载 |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| key | string | API-Key值 | N | 可选。若传入则使用该值作为API-Key；若不传则由后台生成。用于从其他系统导入API-Key | 若传入则必填、非空；长度 1-128 字符；仅允许大小写字母、数字、连字符(-)、下划线(_)；须全局唯一 |
+| description | string | API-Key描述 | Y | - | 必填、非空；长度不超过 511 字符 |
+| expired_time | int64 | 过期时间 | N | -1表示永不过期；其他为Unix时间戳（秒） | -1 或 Unix 时间戳秒；非 -1 时必须 >= 当前时间 |
+| enabled | bool | 是否启用 | N | 默认true | - |
+| unlimited_quota | bool | 是否无限配额 | N | 默认false | - |
+| models | []string | 允许访问的模型白名单 | N | 包含"*"表示不限制，**默认值为不限制** | 每个元素类型为 [AIModel](./00-common.md#公共参数类型) |
+| subnet | []string | 允许的客户端子网 | N | 包含"*"表示不限制，**默认值为不限制** | 每个元素类型为 [CIDR](./00-common.md#公共参数类型) |
+| quota_plan | object | 配额计划 | N | 同2.1中quota_plan结构（不含balance），若未设置则使用默认值 | 类型为 [QuotaPlan](./00-common.md#公共参数类型) |
+| rate_limit_policy | object | 限流策略 | N | 同2.1中rate_limit_policy结构，若未设置则使用默认值（enabled=false） | 类型为 [RateLimitPolicy](./00-common.md#公共参数类型) |
+| route_rules | object | 路由规则 | N | 同2.1中route_rules结构，若未设置则使用默认值（enabled=false, rules为空） | 类型为 [RouteRules](./00-common.md#公共参数类型) |
+| entity_id | string | 挂载的Entity ID | N | 为空表示不挂载 | 若传入非空值，该 Entity 必须存在 |
 
 **约束**
 
-- 若传入 `rate_limit_policy` 且 `enabled` 为 `true`，则 `rules` 中 `tpm`、`rpm`、`max_concurrency` 三者至少配置其一
-- 若 `entity_id` 不为空，该Entity必须存在
-- 若传入 `key`，其值需在系统中全局唯一；若与已有API-Key的`key`重复，返回422
+- `quota_plan`、`rate_limit_policy`、`route_rules` 的字段及合法性条件分别见 [QuotaPlan](./00-common.md#公共参数类型)、[RateLimitPolicy](./00-common.md#公共参数类型)、[RouteRules](./00-common.md#公共参数类型) 公共类型定义。
+- 若 `entity_id` 不为空，该Entity必须存在。
+- 若传入 `key`，其值需在系统中全局唯一，长度 1-128 字符，且仅允许大小写字母、数字、连字符(-)、下划线(_)；若重复或格式非法，返回422。
+- `description` 必填，长度必须小于 512 字符。
+- `expired_time` 为 -1 表示永不过期；其他值必须是不小于当前时间的 Unix 时间戳秒。
+- `models` 每个元素类型为 [AIModel](./00-common.md#公共参数类型)；为 `"*"` 时表示不限制。
+- `subnet` 每个元素类型为 [CIDR](./00-common.md#公共参数类型)；为 `"*"` 时表示不限制。
 
 **HTTP BODY参数示例**
 
@@ -304,13 +273,13 @@
 
 **输入参数（Query）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| page | int | 页码 | N | 默认1 |
-| page_size | int | 每页条数 | N | 默认20，最大100 |
-| enabled | bool | 是否启用过滤 | N | - |
-| entity_id | string | 按挂载的Entity ID过滤 | N | - |
-| unlimited_quota | bool | 是否无限配额过滤 | N | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| page | int | 页码 | N | 默认1 | 必须 >0 |
+| page_size | int | 每页条数 | N | 默认20，最大100 | 取值范围 1-100 |
+| enabled | bool | 是否启用过滤 | N | - | - |
+| entity_id | string | 按挂载的Entity ID过滤 | N | - | 长度不超过 64 字符 |
+| unlimited_quota | bool | 是否无限配额过滤 | N | - | - |
 
 
 **返回数据（Data内容）**
@@ -337,9 +306,9 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | API-Key标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | API-Key标识 | Y | - | 必填、非空；长度不超过 255 字符 |
 
 **返回数据（Data内容）**
 
@@ -360,9 +329,9 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | API-Key标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | API-Key标识 | Y | - | 必填、非空；长度不超过 255 字符 |
 
 **输入参数（Body）**
 
@@ -372,8 +341,8 @@
 
 **约束**
 
-- 若传入 `rate_limit_policy` 且 `enabled` 为 `true`，则 `rules` 中 `tpm`、`rpm`、`max_concurrency` 三者至少配置其一
-- 若将 `entity_id` 修改为非空（挂载到新Entity），且 `unlimited_quota` 为 `false` 且 `quota_plan.unlimited` 为 `false`，则要求新Entity或其祖先链上至少存在一个有效的Quota Plan
+- `quota_plan`、`rate_limit_policy`、`route_rules` 的字段及合法性条件分别见 [QuotaPlan](./00-common.md#公共参数类型)、[RateLimitPolicy](./00-common.md#公共参数类型)、[RouteRules](./00-common.md#公共参数类型) 公共类型定义。
+- 若将 `entity_id` 修改为非空（挂载到新Entity），且 `unlimited_quota` 为 `false` 且 `quota_plan.unlimited` 为 `false`，则要求新Entity或其祖先链上至少存在一个有效的Quota Plan。
 
 **执行逻辑**
 
@@ -410,9 +379,9 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | API-Key标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | API-Key标识 | Y | - | 必填、非空；长度不超过 255 字符 |
 
 **输入参数（Body）**
 
@@ -422,10 +391,10 @@
 
 **约束**
 
-- 若传入 `rate_limit_policy` 且 `enabled` 为 `true`，则 `rules` 中 `tpm`、`rpm`、`max_concurrency` 三者至少配置其一
-- 若将 `entity_id` 修改为非空（挂载到新Entity），且 `unlimited_quota` 为 `false` 且 `quota_plan.unlimited` 为 `false`，则要求新Entity或其祖先链上至少存在一个有效的Quota Plan
-- 若修改 `quota_plan.quota`，视为重置配额（同步更新balance.remaining和used）
-- 若修改 `route_rules`，视为全量替换该路由规则配置
+- `quota_plan`、`rate_limit_policy`、`route_rules` 的字段及合法性条件分别见 [QuotaPlan](./00-common.md#公共参数类型)、[RateLimitPolicy](./00-common.md#公共参数类型)、[RouteRules](./00-common.md#公共参数类型) 公共类型定义。
+- 若将 `entity_id` 修改为非空（挂载到新Entity），且 `unlimited_quota` 为 `false` 且 `quota_plan.unlimited` 为 `false`，则要求新Entity或其祖先链上至少存在一个有效的Quota Plan。
+- 若修改 `quota_plan.quota`，视为重置配额（同步更新balance.remaining和used）。
+- 若修改 `route_rules`，视为全量替换该路由规则配置。
 
 **返回数据（Data内容）**
 
@@ -446,9 +415,9 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | API-Key标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | API-Key标识 | Y | - | 必填、非空；长度不超过 255 字符 |
 
 **返回数据（Data内容）**
 
@@ -474,9 +443,9 @@ Data为null。
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | API-Key标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | API-Key标识 | Y | - | 必填、非空；长度不超过 255 字符 |
 
 **返回数据（Data内容）**
 
@@ -533,16 +502,16 @@ Data为null。
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| id | string | API-Key标识 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| id | string | API-Key标识 | Y | - | 必填、非空；长度不超过 255 字符 |
 
 **输入参数（Body）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| quota | int64 | 重置后的配额总量 | N | 若传入则更新quota并同步重置balance；若不传则按当前quota重置 |
-| reason | string | 重置原因 | N | 用于审计 |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| quota | int64 | 重置后的配额总量 | N | 若传入则更新quota并同步重置balance；若不传则按当前quota重置 | - |
+| reason | string | 重置原因 | N | 用于审计 | - |
 
 **执行逻辑**
 

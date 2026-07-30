@@ -109,11 +109,8 @@ func CreateCertificate(certName string, isDefault bool) (string, error) {
 		"cert_name":         certName,
 		"description":       "auto-created by test helper",
 		"is_default":        isDefault,
-		"cert_file_name":    certName + "-cert.pem",
 		"cert_file_content": certPEM,
-		"key_file_name":     certName + "-key.pem",
 		"key_file_content":  keyPEM,
-		"expired_date":      "2026-08-23 16:02:31",
 	})
 	if err != nil {
 		return "", err

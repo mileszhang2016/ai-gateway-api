@@ -18,12 +18,12 @@ Entity-Type 模块用于定义 Entity 的类型及层级级别，是创建 Entit
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建 Entity-Type | 6 |
+| 创建 Entity-Type | 9 |
 | 查询 Entity-Type 列表 | 2 |
 | 查询单个 Entity-Type | 2 |
-| 更新 Entity-Type | 3 |
+| 更新 Entity-Type | 4 |
 | 删除 Entity-Type | 2 |
-| **合计** | **15** |
+| **合计** | **18** |
 
 ## 4. 认证方式
 
@@ -64,11 +64,11 @@ entity_type/
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| type_name | string | Y | 类型名，全局唯一，1-32 字符，仅含小写字母、数字、下划线、连字符 |
-| description | string | N | 类型描述 |
-| level | int | Y | 层级级别，取值范围 1-5 |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| type_name | string | Y | 类型名，全局唯一 | 长度 1-32；仅允许小写字母、数字、`_`、`-`；不能以 `-`、`_` 开头或结尾；全局唯一；不能包含空白字符 |
+| description | string | N | 类型描述 | 长度 ≤255；不能包含控制字符 |
+| level | int | Y | 层级级别 | 取值范围 1-5 |
 
 #### 6.2.2 返回数据字段
 
@@ -89,6 +89,9 @@ entity_type/
 | ET-1-004 | 缺少 level | 必填校验 | 验证 ErrNum=422 |
 | ET-1-005 | 重复创建同名 Entity-Type | 业务规则 | 验证 ErrNum=555/556 |
 | ET-1-006 | level 超出范围 | 边界值 | 验证 ErrNum=422 |
+| ET-1-007 | type_name 包含大写字母 | 合法性条件 | 验证 ErrNum=422 |
+| ET-1-008 | type_name 以 `-` 开头 | 合法性条件 | 验证 ErrNum=422 |
+| ET-1-009 | type_name 包含空白 | 合法性条件 | 验证 ErrNum=422 |
 
 ### 6.4 测试场景详细设计
 
@@ -294,6 +297,102 @@ entity_type/
 
 **ErrNum**：422  
 **ErrMsg**：包含 "level" 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.7 ET-1-007：type_name 包含大写字母（合法性条件）
+
+##### 设计思路
+
+验证 `type_name` 只能包含小写字母、数字、`_`、`-`。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`type_name` 包含大写字母。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "type_name": "BadType",
+    "level": 1
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 type_name 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.8 ET-1-008：type_name 以 `-` 开头（合法性条件）
+
+##### 设计思路
+
+验证 `type_name` 不能以 `-` 或 `_` 开头或结尾。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`type_name` 以 `-` 开头。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "type_name": "-badtype",
+    "level": 1
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 type_name 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.9 ET-1-009：type_name 包含空白（合法性条件）
+
+##### 设计思路
+
+验证 `type_name` 不能包含空白字符。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`type_name` 包含空格。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "type_name": "bad type",
+    "level": 1
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 type_name 不能包含空白的错误信息  
 **Data**：null
 
 ---
@@ -555,6 +654,7 @@ URI：`non_existent`
 | ET-4-001 | 更新 Entity-Type 描述 | 正常参数 | description 更新，其余不变 |
 | ET-4-002 | 更新后查询一致性 | 返回数据 | PATCH 后立即 GET，验证数据一致 |
 | ET-4-003 | 更新不存在的 Entity-Type | 异常参数 | 验证 ErrNum=404 |
+| ET-4-004 | 更新 description 超过最大长度 | 合法性条件 | 验证 ErrNum=422 |
 
 ### 9.4 测试场景详细设计
 
@@ -662,6 +762,37 @@ Body：
 
 **ErrNum**：404  
 **ErrMsg**：类型不存在的错误信息  
+**Data**：null
+
+---
+
+#### 9.4.4 ET-4-004：更新 description 超过最大长度（合法性条件）
+
+##### 设计思路
+
+验证更新 `description` 时长度不能超过允许的最大值。
+
+##### 前提数据准备
+
+已创建 `department`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`description` 为 300 个字符。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "description": "<300 个字符的字符串>"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 description 长度非法的错误信息  
 **Data**：null
 
 ---

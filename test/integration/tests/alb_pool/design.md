@@ -16,8 +16,8 @@ ALB Pool 模块负责 AI 网关实例池的管理，包括获取默认实例池�
 | 接口 | 测试用例数 |
 |------|-----------|
 | 获取默认实例池详情 | 2 |
-| 更新默认实例池 | 6 |
-| **合计** | **8** |
+| 更新默认实例池 | 11 |
+| **合计** | **13** |
 
 ## 4. 认证方式
 
@@ -162,13 +162,13 @@ alb_pool/
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| instances | []Instance | Y | 实例列表，全量替换当前实例池中的实例 |
-| instances[].hostname | string | Y | 实例所在主机名，无 DNS 时可填写 IP 地址 |
-| instances[].ip | string | Y | 实例 IP 地址 |
-| instances[].weight | int | Y | 实例权重，范围 [0,100] |
-| instances[].ports | map[string]int | Y | 实例端口，至少包含 Default 端口 |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| instances | []Instance | Y | 实例列表，全量替换当前实例池中的实例 | 必填，≥1 个元素 |
+| instances[].hostname | string | Y | 实例所在主机名，无 DNS 时可填写 IP 地址 | 符合 Hostname 类型 |
+| instances[].ip | string | Y | 实例 IP 地址 | 符合 IP Address 类型 |
+| instances[].weight | int | Y | 实例权重，范围 [0,100] | 0-100；0 时按 1 处理 |
+| instances[].ports | map[string]int | Y | 实例端口，至少包含 Default 端口 | ≥1 个键值对；必须包含 `Default`；端口值唯一 |
 
 #### 7.2.2 返回数据字段
 
@@ -185,6 +185,10 @@ alb_pool/
 | BP-2-005 | 缺少实例必填字段 | 必填校验 | 验证 ErrNum=422 |
 | BP-2-006 | ports 不含 Default | 异常参数 | 验证 ErrNum=422 |
 | BP-2-007 | 实例权重超出范围 | 边界值 | weight > 100 或 < 0 |
+| BP-2-008 | 非法 hostname | 合法性条件 | 验证 ErrNum=422 |
+| BP-2-009 | 非法 IP | 合法性条件 | 验证 ErrNum=422 |
+| BP-2-010 | 重复端口值 | 合法性条件 | 验证 ErrNum=422 |
+| BP-2-011 | weight 为 0 时按默认值 1 处理 | 正常参数 | 验证返回 weight=1 |
 
 ### 7.4 测试场景详细设计
 
@@ -478,6 +482,176 @@ alb_pool/
 **ErrNum**：422  
 **ErrMsg**：包含 "weight" 的错误信息  
 **Data**：null
+
+---
+
+#### 7.4.8 BP-2-008：非法 hostname（合法性条件）
+
+##### 设计思路
+
+验证实例 `hostname` 必须符合 Hostname 类型。
+
+##### 前提数据准备
+
+- 确保配置文件中 `DefaultAIInstancePoolName` 对应的实例池存在。
+
+##### 执行步骤
+
+1. 构造请求 Body：实例 `hostname` 以 `-` 开头。
+2. 发送 PATCH 请求到 `/open-api/v1/alb-pool`。
+3. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "instances": [
+        {
+            "hostname": "-bad",
+            "ip": "127.0.0.1",
+            "weight": 1,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 hostname 非法的错误信息  
+**Data**：null
+
+---
+
+#### 7.4.9 BP-2-009：非法 IP（合法性条件）
+
+##### 设计思路
+
+验证实例 `ip` 必须是合法 IPv4/IPv6 地址。
+
+##### 前提数据准备
+
+- 确保配置文件中 `DefaultAIInstancePoolName` 对应的实例池存在。
+
+##### 执行步骤
+
+1. 构造请求 Body：实例 `ip` 为非法字符串。
+2. 发送 PATCH 请求到 `/open-api/v1/alb-pool`。
+3. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "instances": [
+        {
+            "hostname": "host-a",
+            "ip": "not-an-ip",
+            "weight": 1,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 ip 非法的错误信息  
+**Data**：null
+
+---
+
+#### 7.4.10 BP-2-010：重复端口值（合法性条件）
+
+##### 设计思路
+
+验证同一实例内端口值不能重复。
+
+##### 前提数据准备
+
+- 确保配置文件中 `DefaultAIInstancePoolName` 对应的实例池存在。
+
+##### 执行步骤
+
+1. 构造请求 Body：实例 `ports` 中两个键对应相同端口值。
+2. 发送 PATCH 请求到 `/open-api/v1/alb-pool`。
+3. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "instances": [
+        {
+            "hostname": "host-a",
+            "ip": "10.0.0.1",
+            "weight": 1,
+            "ports": {
+                "Default": 8080,
+                "Admin": 8080
+            }
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含重复端口值的错误信息  
+**Data**：null
+
+---
+
+#### 7.4.11 BP-2-011：weight 为 0 时按默认值 1 处理（正常参数）
+
+##### 设计思路
+
+验证实例 `weight=0` 时，服务端按 1 处理。
+
+##### 前提数据准备
+
+- 确保配置文件中 `DefaultAIInstancePoolName` 对应的实例池存在。
+
+##### 执行步骤
+
+1. 构造请求 Body：实例 `weight=0`。
+2. 发送 PATCH 请求到 `/open-api/v1/alb-pool`。
+3. 验证返回 `weight=1`。
+
+##### 请求参数
+
+```json
+{
+    "instances": [
+        {
+            "hostname": "host-a",
+            "ip": "10.0.0.1",
+            "weight": 0,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| instances[0].weight | 1 | Equals |
 
 ---
 

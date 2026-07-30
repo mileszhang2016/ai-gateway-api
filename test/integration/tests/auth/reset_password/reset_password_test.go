@@ -44,7 +44,17 @@ func TestAuth_ResetPassword(t *testing.T) {
 		testutil.AssertErrCode(t, resp, 422)
 	})
 
-	t.Run("AUTH-3-003 修改不存在用户的密码", func(t *testing.T) {
+	t.Run("AUTH-3-003 密码过短", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/auth/users/"+userName+"/passwd", map[string]interface{}{
+			"password": "short1",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
+	t.Run("AUTH-3-004 修改不存在用户的密码", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/auth/users/non_existent_user/passwd", map[string]interface{}{
 			"password": "newpassword@456",
 		})

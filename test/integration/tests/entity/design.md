@@ -21,15 +21,15 @@ Entity 模块用于管理组织架构实体（部门、团队、项目、个人�
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建 Entity | 8 |
+| 创建 Entity | 10 |
 | 查询 Entity 列表 | 3 |
 | 查询单个 Entity | 2 |
-| 全量更新 Entity | 4 |
-| 部分更新 Entity | 2 |
+| 全量更新 Entity | 5 |
+| 部分更新 Entity | 3 |
 | 删除 Entity | 3 |
 | 查询配额计划 | 1 |
 | 重置配额余额 | 2 |
-| **合计** | **25** |
+| **合计** | **27** |
 
 ## 4. 认证方式
 
@@ -76,16 +76,16 @@ entity/
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| name | string | Y | Entity 名称，全局唯一 |
-| type | string | Y | Entity 类型，必须引用已定义的 Entity-Type |
-| parent_id | string | N | 父 Entity ID，为空表示根节点 |
-| allow_models | []string | N | 允许访问的模型白名单，默认 ["*"] |
-| block_models | []string | N | 禁止访问的模型黑名单，默认 [] |
-| quota_plan | object | N | 配额计划，同 API-Key quota_plan 结构（不含 balance） |
-| rate_limit_policy | object | N | 限流策略 |
-| route_rules | object | N | 路由规则 |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| name | string | Y | Entity 名称，全局唯一 | 长度 1-64；不能包含控制字符；不能有首尾空白；全局唯一 |
+| type | string | Y | Entity 类型，必须引用已定义的 Entity-Type | 必须为已存在的 EntityTypeName |
+| parent_id | string | N | 父 Entity ID，为空表示根节点 | 若非空，父 Entity 必须存在，且其父类型的 level 必须小于当前类型的 level |
+| allow_models | []string | N | 允许访问的模型白名单，默认 ["*"] | 每个元素为 AIModel |
+| block_models | []string | N | 禁止访问的模型黑名单，默认 [] | 每个元素为非空字符串 |
+| quota_plan | object | N | 配额计划，同 API-Key quota_plan 结构（不含 balance） | 同 QuotaPlan 类型 |
+| rate_limit_policy | object | N | 限流策略 | 同 RateLimitPolicy 类型 |
+| route_rules | object | N | 路由规则 | 同 RouteRules 类型 |
 
 #### 6.2.2 返回数据字段
 
@@ -115,6 +115,8 @@ entity/
 | E-1-006 | 重复 name | 业务规则 | 验证 ErrNum=555/556 |
 | E-1-007 | 创建层级 Entity（合法 parent） | 正常参数 | 父 level 小于子 |
 | E-1-008 | 创建层级 Entity（非法 parent level） | 异常参数 | 父 level 必须小于子 |
+| E-1-009 | type 格式非法（含大写） | 合法性条件 | 验证 ErrNum=422 |
+| E-1-010 | Entity name 包含首尾空白 | 合法性条件 | 验证 ErrNum=422 |
 
 ### 6.4 测试场景详细设计
 
@@ -407,6 +409,70 @@ entity/
 
 **ErrNum**：422  
 **ErrMsg**：父节点层级非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.9 E-1-009：type 格式非法（含大写）
+
+##### 设计思路
+
+验证 `type` 必须是已存在的 EntityTypeName（小写等格式约束）。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`type` 包含大写字母。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": "ent_bad_type_fmt",
+    "type": "BadType"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 type 非法或类型不存在的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.10 E-1-010：Entity name 包含首尾空白（合法性条件）
+
+##### 设计思路
+
+验证 `name` 不能有首尾空白字符。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`name` 包含首尾空格。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": " badname ",
+    "type": "department"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 name 非法的错误信息  
 **Data**：null
 
 ---
@@ -722,6 +788,7 @@ URI：`non_existent_id`
 | E-4-002 | 全量更新后查询一致性 | 返回数据 | PUT 后立即 GET，验证数据一致 |
 | E-4-003 | 全量更新冲突 name | 业务规则 | 验证名称唯一约束 |
 | E-4-004 | 全量更新修改 type | 业务规则 | type 不可修改 |
+| E-4-005 | 全量更新非法 name（含首尾空白） | 合法性条件 | 验证 ErrNum=422 |
 
 ### 9.4 测试场景详细设计
 
@@ -916,6 +983,48 @@ URI：`non_existent_id`
 
 ---
 
+#### 9.4.5 E-4-005：全量更新非法 name（含首尾空白）
+
+##### 设计思路
+
+验证全量更新时 `name` 同样受 EntityName 合法性条件约束。
+
+##### 前提数据准备
+
+已创建 Entity。
+
+##### 执行步骤
+
+1. 发送 PUT 请求，`name` 包含首尾空格。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": " badname ",
+    "type": "department",
+    "quota_plan": {
+        "unlimited": true
+    },
+    "rate_limit_policy": {
+        "enabled": false
+    },
+    "route_rules": {
+        "enabled": false,
+        "rules": []
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 name 非法的错误信息  
+**Data**：null
+
+---
+
 ## 10. 部分更新 Entity
 
 ### 10.1 接口信息
@@ -952,6 +1061,7 @@ URI：`non_existent_id`
 |------|------|---------|---------|
 | E-5-001 | 部分更新 allow_models | 正常参数 | allow_models 更新 |
 | E-5-002 | 部分更新后查询一致性 | 返回数据 | PATCH 后立即 GET，验证数据一致 |
+| E-5-003 | 部分更新非法 route_rules（规则名重复） | 合法性条件 | 验证 ErrNum=422 |
 
 ### 10.4 测试场景详细设计
 
@@ -1026,6 +1136,55 @@ URI：`non_existent_id`
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
 | block_models | ["gpt-4-32k"] | Equals |
+
+---
+
+#### 10.4.3 E-5-003：部分更新非法 route_rules（规则名重复）
+
+##### 设计思路
+
+验证部分更新 `route_rules` 时同样受 RouteRules 合法性条件约束。
+
+##### 前提数据准备
+
+已创建 Entity。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`route_rules.rules` 包含同名规则。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "route_rules": {
+        "enabled": true,
+        "rules": [
+            {
+                "name": "dup",
+                "Cond": "default_t()",
+                "targets": [
+                    {"ClusterName": "c1", "Weight": 100}
+                ]
+            },
+            {
+                "name": "dup",
+                "Cond": "default_t()",
+                "targets": [
+                    {"ClusterName": "c2", "Weight": 100}
+                ]
+            }
+        ]
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含规则名称重复的错误信息  
+**Data**：null
 
 ---
 

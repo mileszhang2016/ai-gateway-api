@@ -17,6 +17,7 @@ package auth
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -28,6 +29,17 @@ type UserCreateParam struct {
 	UserName *string `json:"user_name" validate:"required,min=1"`
 	Password *string `json:"password" validate:"required,min=1"`
 	IsAdmin  bool    `json:"is_admin"`
+}
+
+// Validate performs centralized business validation on the request parameters.
+func (p *UserCreateParam) Validate() error {
+	if err := validate.UserName(*p.UserName); err != nil {
+		return err
+	}
+	if err := validate.Password(*p.Password, *p.UserName); err != nil {
+		return err
+	}
+	return validate.IsAdmin(p.IsAdmin)
 }
 
 // UserCreateRoute route

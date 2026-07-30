@@ -109,6 +109,16 @@ func TestEntity_Create(t *testing.T) {
 			},
 			wantCode: 422,
 		},
+		{
+			name:     "E-1-009 type 格式非法（含大写）",
+			body:     map[string]interface{}{"name": testutil.UniqueEntityName(), "type": "BadType"},
+			wantCode: 422,
+		},
+		{
+			name:     "E-1-010 Entity name 包含首尾空白",
+			body:     map[string]interface{}{"name": " badname ", "type": typeName},
+			wantCode: 422,
+		},
 	}
 
 	for _, tt := range tests {

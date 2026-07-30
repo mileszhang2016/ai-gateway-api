@@ -17,6 +17,7 @@ package subcluster
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
@@ -28,6 +29,14 @@ type CreateParam struct {
 	Name         *string `json:"name" uri:"name" validate:"required,min=2"`
 	InstancePool *string `json:"instance_pool" uri:"instance_pool" validate:"required,min=2"`
 	Description  *string `json:"description" uri:"description" validate:"omitempty,min=2"`
+}
+
+// Validate performs centralized business validation on the request parameters.
+func (p *CreateParam) Validate() error {
+	if err := validate.ClusterName(*p.Name); err != nil {
+		return err
+	}
+	return validate.ClusterName(*p.InstancePool)
 }
 
 // CreateRoute route

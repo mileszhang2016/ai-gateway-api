@@ -15,9 +15,9 @@
 
 | 字段 | 类型 | 说明 | 可能取值 |
 |------|------|------|----------|
-| `type_name` | string | 类型标识 | 全局唯一，1-32字符，仅含小写字母、数字、下划线、连字符 |
-| `description` | string | 类型描述 | 自定义 |
-| `level` | int | 层级级别 | 取值范围1-5，数字越小级别越高 |
+| `type_name` | string | 类型标识 | 全局唯一，1-32字符，仅含小写字母、数字、下划线、连字符 | 必填；类型为 [EntityTypeName](./00-common.md#16-entity-type-名称entitytypename) |
+| `description` | string | 类型描述 | 自定义 | 非必填；若传入，长度 0-255 字符；不能包含控制字符 |
+| `level` | int | 层级级别 | 取值范围1-5，数字越小级别越高 | 必填；取值范围 1-5 的整数 |
 | `create_time` | int64 | 创建时间 | Unix时间戳（秒） |
 
 ---
@@ -37,11 +37,11 @@
 
 **输入参数（Body）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| type_name | string | 类型名 | Y | 全局唯一，1-32字符，仅含小写字母、数字、下划线、连字符 |
-| description | string | 类型描述 | N | - |
-| level | int | 层级级别 | Y | 取值范围1-5，数字越小级别越高 |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| type_name | string | 类型名 | Y | 全局唯一，1-32字符，仅含小写字母、数字、下划线、连字符 | 必填；类型为 [EntityTypeName](./00-common.md#16-entity-type-名称entitytypename)；全局唯一 |
+| description | string | 类型描述 | N | - | 非必填；若传入，长度 0-255 字符；不能包含控制字符 |
+| level | int | 层级级别 | Y | 取值范围1-5，数字越小级别越高 | 必填；取值范围 1-5 的整数 |
 
 **HTTP BODY参数示例**
 
@@ -77,13 +77,13 @@
 
 **输入参数（Query）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| page | int | 页码 | N | 默认1 |
-| page_size | int | 每页条数 | N | 默认20，最大100 |
-| id | int64 | 按Entity-Type内部ID过滤 | N | - |
-| type_name | string | 按类型名过滤 | N | - |
-| level | int | 按层级级别过滤 | N | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| page | int | 页码 | N | 默认1 | 有效值 >0；<=0 按 1 处理 |
+| page_size | int | 每页条数 | N | 默认20，最大100 | 有效范围 1-100；<1 按 20 处理，>100 按 100 处理 |
+| id | int64 | 按Entity-Type内部ID过滤 | N | - | - |
+| type_name | string | 按类型名过滤 | N | - | - |
+| level | int | 按层级级别过滤 | N | - | - |
 
 **返回数据（Data内容）**
 
@@ -109,9 +109,9 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| type_name | string | 类型名 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| type_name | string | 类型名 | Y | - | 必填；类型为 [EntityTypeName](./00-common.md#16-entity-type-名称entitytypename)；必须引用已存在的 Entity-Type |
 
 **返回数据（Data内容）**
 
@@ -132,15 +132,15 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| type_name | string | 类型名 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| type_name | string | 类型名 | Y | - | 必填；类型为 [EntityTypeName](./00-common.md#16-entity-type-名称entitytypename)；必须引用已存在的 Entity-Type |
 
 **输入参数（Body）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| description | string | 类型描述 | N | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| description | string | 类型描述 | N | - | - |
 
 **返回数据（Data内容）**
 
@@ -161,9 +161,9 @@
 
 **输入参数（URI）**
 
-| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 |
-| - | - | - | - | - |
-| type_name | string | 类型名 | Y | - |
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| type_name | string | 类型名 | Y | - | 必填；类型为 [EntityTypeName](./00-common.md#16-entity-type-名称entitytypename)；必须引用已存在的 Entity-Type |
 
 **返回数据（Data内容）**
 

@@ -17,6 +17,7 @@ package auth
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -38,6 +39,14 @@ type UserUpdatePasswordParam struct {
 	UserName    *string `uri:"user_name" validate:"required,min=1"`
 	OldPassword string  `json:"old_password" validate:"omitempty"`
 	Password    *string `json:"password" validate:"required,min=6"`
+}
+
+// Validate performs centralized business validation on the request parameters.
+func (p *UserUpdatePasswordParam) Validate() error {
+	if err := validate.UserName(*p.UserName); err != nil {
+		return err
+	}
+	return validate.Password(*p.Password, *p.UserName)
 }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED

@@ -4,7 +4,7 @@ go 1.22
 
 require (
 	github.com/glebarez/go-sqlite v1.21.2
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/yf-networks/ai-gateway-api v0.0.0
 )
 

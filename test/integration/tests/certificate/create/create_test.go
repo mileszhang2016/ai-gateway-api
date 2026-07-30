@@ -72,11 +72,8 @@ func TestCertificate_Create(t *testing.T) {
 			"cert_name":         testutil.UniqueCertName(),
 			"description":       "不匹配证书",
 			"is_default":        false,
-			"cert_file_name":    testutil.UniqueCertName() + "-cert.pem",
 			"cert_file_content": "-----BEGIN CERTIFICATE-----INVALID-----END CERTIFICATE-----",
-			"key_file_name":     testutil.UniqueCertName() + "-key.pem",
 			"key_file_content":  "-----BEGIN RSA PRIVATE KEY-----INVALID-----END RSA PRIVATE KEY-----",
-			"expired_date":      "2026-08-23 16:02:31",
 		})
 		if err != nil {
 			t.Fatalf("request failed: %v", err)

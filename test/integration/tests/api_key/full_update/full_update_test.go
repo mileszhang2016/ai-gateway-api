@@ -93,6 +93,23 @@ func TestAPIKey_FullUpdate(t *testing.T) {
 		testutil.AssertDataFieldEquals(t, resp, "enabled", false)
 	})
 
+	t.Run("AK-4-004 全量更新非法 quota_plan unit", func(t *testing.T) {
+		resp, err := testutil.GetClient().Put("/open-api/v1/api-keys/"+apiKeyID, map[string]interface{}{
+			"description": "test-key-bad-unit-update",
+			"quota_plan": map[string]interface{}{
+				"unlimited": false,
+				"quota":     100,
+				"unit":      "invalid_unit",
+			},
+			"rate_limit_policy": map[string]interface{}{"enabled": false, "rules": map[string]interface{}{}},
+			"route_rules":     map[string]interface{}{"enabled": false, "rules": []interface{}{}},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteAPIKey(apiKeyID)
 	})

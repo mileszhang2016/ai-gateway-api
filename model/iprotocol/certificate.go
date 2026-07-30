@@ -16,8 +16,10 @@ package iprotocol
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/pem"
 	"strings"
+	"time"
 
 	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
@@ -27,14 +29,14 @@ import (
 	"github.com/bfenetworks/bfe/bfe_tls"
 )
 
+const certificateExpiredDateLayout = "2006-01-02 15:04:05"
+
 type Certificate struct {
 	CertName    string
 	Description string
 	IsDefault   bool
 
-	CertFileName string
 	CertFilePath string
-	KeyFileName  string
 	KeyFilePath  string
 	ExpiredDate  string
 
@@ -51,10 +53,8 @@ type CertificateParam struct {
 	Description *string
 	IsDefault   *bool
 
-	CertFileName    *string
 	CertFilePath    *string
 	CertFileContent *string
-	KeyFileName     *string
 	KeyFileContent  *string
 	KeyFilePath     *string
 	ExpiredDate     *string
@@ -116,7 +116,7 @@ func (pm *CertificateManager) DeleteCertificate(ctx context.Context, certificate
 	})
 }
 
-func validateCertPair(certFileName string, certFileContent string, keyFileName string, keyFileContent string) error {
+func validateCertPair(certFileContent string, keyFileContent string) error {
 	checkCertFileInfo := func(certPEMBlock []byte) error {
 		var certDERBlock *pem.Block
 		for {
@@ -164,24 +164,32 @@ func validateCertPair(certFileName string, certFileContent string, keyFileName s
 	return nil
 }
 
+func parseExpiredDate(certFileContent string) (string, error) {
+	block, _ := pem.Decode([]byte(certFileContent))
+	if block == nil {
+		return "", xerror.WrapParamErrorWithMsg("Certificate File Format Must Be PEM")
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", xerror.WrapParamErrorWithMsg("Certificate File Format Must Be X509")
+	}
+
+	// Reference time package to avoid "imported and not used".
+	_ = time.UTC
+	return cert.NotAfter.UTC().Format(certificateExpiredDateLayout), nil
+}
+
 func (pm *CertificateManager) CreateCertificate(ctx context.Context, param *CertificateParam) (err error) {
-	if err = validateCertPair(*param.CertFileName, *param.CertFileContent, *param.KeyFileName, *param.KeyFileContent); err != nil {
+	if err = validateCertPair(*param.CertFileContent, *param.KeyFileContent); err != nil {
 		return err
 	}
 
-	names := []string{
-		*param.CertFileName,
-		*param.KeyFileName,
+	expiredDate, err := parseExpiredDate(*param.CertFileContent)
+	if err != nil {
+		return err
 	}
-
-	existedNames := map[string]bool{}
-	for _, one := range names {
-		if existedNames[one] {
-			return xerror.WrapParamErrorWithMsg("Certificate File Name %s Existed", one)
-		}
-
-		existedNames[one] = true
-	}
+	param.ExpiredDate = &expiredDate
 
 	err = pm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		list, err := pm.storager.FetchCertificates(ctx, nil)
@@ -194,12 +202,6 @@ func (pm *CertificateManager) CreateCertificate(ctx context.Context, param *Cert
 		for _, one := range list {
 			if one.CertName == *param.CertName {
 				return xerror.WrapRecordExisted("Certification")
-			}
-
-			for _, name := range names {
-				if one.CertFileName == name || one.KeyFileName == name {
-					return xerror.WrapModelErrorWithMsg("Certificate File Name %s By Used By %s", name, one.CertName)
-				}
 			}
 
 			if one.IsDefault {
@@ -219,8 +221,10 @@ func (pm *CertificateManager) CreateCertificate(ctx context.Context, param *Cert
 			}
 		}
 
-		param.CertFilePath = lib.PString(ibasic.ExtraFilePath(tlsConfDir, ibasic.BuildinProduct, *param.CertFileName))
-		param.KeyFilePath = lib.PString(ibasic.ExtraFilePath(tlsConfDir, ibasic.BuildinProduct, *param.KeyFileName))
+		certFileName := *param.CertName + ".crt"
+		keyFileName := *param.CertName + ".key"
+		param.CertFilePath = lib.PString(ibasic.ExtraFilePath(tlsConfDir, ibasic.BuildinProduct, certFileName))
+		param.KeyFilePath = lib.PString(ibasic.ExtraFilePath(tlsConfDir, ibasic.BuildinProduct, keyFileName))
 
 		if err := pm.extraFileStorager.CreateExtraFile(ctx, ibasic.BuildinProduct, &ibasic.ExtraFileParam{
 			Name:    param.CertFilePath,

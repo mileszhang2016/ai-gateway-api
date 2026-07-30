@@ -18,12 +18,12 @@ Cluster 模块负责 AI 网关后端集群的管理，包括创建、查询、�
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建集群 | 7 |
+| 创建集群 | 12 |
 | 查询集群列表 | 1 |
 | 查询集群详情 | 1 |
-| 更新集群 | 4 |
+| 更新集群 | 5 |
 | 删除集群 | 2 |
-| **合计** | **15** |
+| **合计** | **20** |
 
 ## 4. 认证方式
 
@@ -64,24 +64,24 @@ clusters/
 
 ##### Body 参数
 
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| name | string | Y | 集群名，全局唯一 |
-| description | string | N | 集群描述 |
-| instance_pool | []Instance | Y | 实例列表 |
-| instance_pool[].hostname | string | Y | 实例主机名 |
-| instance_pool[].ip | string | Y | 实例 IP 地址 |
-| instance_pool[].weight | int | Y | 实例权重，范围 [0,100] |
-| instance_pool[].ports | map[string]int | Y | 实例端口，至少包含 Default |
-| basic | object | N | 基本参数 |
-| sticky_sessions | object | N | 会话保持 |
-| passive_health_check | object | N | 被动健康检查 |
-| llm_config | object | Y | AI LLM 服务配置 |
-| llm_config.model_endpoint | object | N | 模型列表端点配置 |
-| llm_config.models | []string | Y | 支持的模型名称列表 |
-| llm_config.model_mappings | []object | N | 模型名称映射 |
-| llm_config.key | string | Y | 服务认证密钥 |
-| llm_config.provider_type | string | Y | AI 模型提供商类型 |
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| name | string | Y | 集群名，全局唯一 | 长度 1-64；仅允许字母、数字、`_`、`-`、`.`；不能以 `.`、`-`、`_` 开头或结尾；全局唯一；不能包含空白字符 |
+| description | string | N | 集群描述 | 长度 ≤256；不能包含控制字符 |
+| instance_pool | []Instance | Y | 实例列表 | ≥1 个元素；(hostname, ip) 组合唯一；至少一个实例 weight>0 |
+| instance_pool[].hostname | string | Y | 实例主机名 | 符合 Hostname 类型 |
+| instance_pool[].ip | string | Y | 实例 IP 地址 | 符合 IP Address 类型 |
+| instance_pool[].weight | int | Y | 实例权重，范围 [0,100] | 0-100 |
+| instance_pool[].ports | map[string]int | Y | 实例端口，至少包含 Default | ≥1 个键值对；必须包含 `Default`；端口值唯一 |
+| basic | object | N | 基本参数 | `protocol` ∈ {http, https}；超时 >0；重试/连接数 ≥0 |
+| sticky_sessions | object | N | 会话保持 | `hash_strategy` ∈ {CLIENT_IP_ONLY, CLIENT_ID_ONLY, CLIENT_ID_PREFERED} |
+| passive_health_check | object | N | 被动健康检查 | `uri` 非空且以 `/` 开头；`statuscode` 为 0 或 100-599 |
+| llm_config | object | Y | AI LLM 服务配置 | 必填；`models` ≥1 个非空唯一字符串；`key` ≤512；`model_endpoint.schema` ∈ {http, https}；`model_mappings.source_model` 唯一 |
+| llm_config.model_endpoint | object | N | 模型列表端点配置 | `schema` ∈ {http, https} |
+| llm_config.models | []string | Y | 支持的模型名称列表 | ≥1 个非空唯一字符串 |
+| llm_config.model_mappings | []object | N | 模型名称映射 | `source_model`/`target_model` 必填；`source_model` 唯一 |
+| llm_config.key | string | Y | 服务认证密钥 | 必填；长度 ≤512 |
+| llm_config.provider_type | string | Y | AI 模型提供商类型 | 必填 |
 
 #### 6.2.2 返回数据字段
 
@@ -108,6 +108,11 @@ clusters/
 | CL-1-005 | 重复集群名 | 业务规则 | 验证 ErrNum=555/556 |
 | CL-1-006 | instance_pool 为空数组 | 异常参数 | 验证 ErrNum=422 |
 | CL-1-007 | 实例不含 Default 端口 | 异常参数 | 验证 ErrNum=422 |
+| CL-1-008 | 非法 hostname | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-009 | 非法 IP | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-010 | weight 超过 100 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-011 | 重复实例 (hostname+ip) | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-012 | llm_config 模型重复 | 合法性条件 | 验证 ErrNum=422 |
 
 ### 6.4 测试场景详细设计
 
@@ -489,6 +494,244 @@ clusters/
 
 ---
 
+#### 6.4.8 CL-1-008：非法 hostname（合法性条件）
+
+##### 设计思路
+
+验证实例 `hostname` 必须符合 Hostname 类型（不能以 `-` 开头等）。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，实例 `hostname` 以 `-` 开头。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_bad_hostname",
+    "instance_pool": [
+        {
+            "hostname": "-bad",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "key": "sk-xxx",
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 hostname 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.9 CL-1-009：非法 IP（合法性条件）
+
+##### 设计思路
+
+验证实例 `ip` 必须是合法 IPv4/IPv6 地址。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，实例 `ip` 为非法字符串。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_bad_ip",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "not-an-ip",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "key": "sk-xxx",
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 ip 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.10 CL-1-010：weight 超过 100（合法性条件）
+
+##### 设计思路
+
+验证实例 `weight` 取值范围为 0-100。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，实例 `weight=101`。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_bad_weight",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 101,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "key": "sk-xxx",
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 weight 非法的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.11 CL-1-011：重复实例 (hostname+ip)（合法性条件）
+
+##### 设计思路
+
+验证同一集群内 `(hostname, ip)` 组合不能重复。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`instance_pool` 包含两个相同 `(hostname, ip)` 的实例。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_dup_instance",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 50,
+            "ports": {
+                "Default": 8080
+            }
+        },
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 50,
+            "ports": {
+                "Default": 8081
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "key": "sk-xxx",
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含重复实例的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.12 CL-1-012：llm_config 模型重复（合法性条件）
+
+##### 设计思路
+
+验证 `llm_config.models` 中的模型名称不能重复。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`llm_config.models` 包含重复模型名。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_dup_model",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m", "m"],
+        "key": "sk-xxx",
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含重复 model 的错误信息  
+**Data**：null
+
+---
+
 ## 7. 查询集群列表
 
 ### 7.1 接口信息
@@ -664,6 +907,7 @@ URI：`cluster_full`
 | CL-4-002 | 更新 llm_config | 正常参数 | llm_config.models 更新 |
 | CL-4-003 | 更新后查询一致性 | 返回数据 | PATCH 后立即 GET，验证数据一致 |
 | CL-4-004 | 更新不存在的集群 | 异常参数 | 验证 ErrNum=404 |
+| CL-4-005 | 更新非法 instance_pool（非法 IP） | 合法性条件 | 验证 ErrNum=422 |
 
 ### 9.4 测试场景详细设计
 
@@ -822,6 +1066,46 @@ Body：
 
 **ErrNum**：404  
 **ErrMsg**：集群不存在的错误信息  
+**Data**：null
+
+---
+
+#### 9.4.5 CL-4-005：更新非法 instance_pool（非法 IP）
+
+##### 设计思路
+
+验证更新集群时传入的 `instance_pool` 同样受实例合法性条件约束。
+
+##### 前提数据准备
+
+已创建集群。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`instance_pool` 中实例 `ip` 为非法字符串。
+2. 验证返回错误码。
+
+##### 请求参数
+
+```json
+{
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "not-an-ip",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 ip 非法的错误信息  
 **Data**：null
 
 ---

@@ -107,9 +107,7 @@ func certificateParamI2D(pp *iprotocol.CertificateParam) *dao.TCertificateParam 
 		CertName:     pp.CertName,
 		Description:  pp.Description,
 		IsDefault:    pp.IsDefault,
-		CertFileName: pp.CertFileName,
 		CertFilePath: pp.CertFilePath,
-		KeyFileName:  pp.KeyFileName,
 		KeyFilePath:  pp.KeyFilePath,
 		ExpiredDate:  pp.ExpiredDate,
 	}
@@ -120,9 +118,7 @@ func certificated2i(pp *dao.TCertificate) *iprotocol.Certificate {
 		CertName:     pp.CertName,
 		Description:  pp.Description,
 		IsDefault:    pp.IsDefault,
-		CertFileName: pp.CertFileName,
 		CertFilePath: pp.CertFilePath,
-		KeyFileName:  pp.KeyFileName,
 		KeyFilePath:  pp.KeyFilePath,
 		ExpiredDate:  pp.ExpiredDate,
 	}

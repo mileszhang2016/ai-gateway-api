@@ -17,6 +17,7 @@ package global_route_rules
 import (
 	"net/http"
 
+	"github.com/yf-networks/ai-gateway-api/lib/validate"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/lib/xreq"
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
@@ -60,6 +61,10 @@ func GlobalRouteRulesGetAction(req *http.Request) (interface{}, error) {
 func GlobalRouteRulesUpdateAction(req *http.Request) (interface{}, error) {
 	param := &shared.RouteRulesParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
+		return nil, err
+	}
+
+	if err := validate.RouteRules(param); err != nil {
 		return nil, err
 	}
 
