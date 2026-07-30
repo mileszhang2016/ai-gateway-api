@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/model/itxn"
@@ -389,7 +390,7 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 					return err
 				}
 			} else {
-				routeRulesID, err := rppm.routeRulesStorager.CreateRouteRules(ctx, shared.RouteRulesTypeAPIKey, one.Key, param.RouteRules)
+				routeRulesID, err := rppm.routeRulesStorager.CreateRouteRules(ctx, shared.RouteRulesTypeAPIKey, one.ID, param.RouteRules)
 				if err != nil {
 					return err
 				}
@@ -408,6 +409,12 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 	param *APIKeyParam) (err error) {
 	err = rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		// Generate ID if not provided
+		if param.ID == nil || *param.ID == "" {
+			id := uuid.New().String()
+			param.ID = &id
+		}
+
 		// Check for duplicate API key ID within the same product
 		list, err := rppm.storager.FetchAPIKeyList(ctx, &APIKeyFilter{
 			ID:          param.ID,
@@ -489,7 +496,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 
 		// Create RouteRules if provided
 		if param.RouteRules != nil && rppm.routeRulesStorager != nil {
-			routeRulesID, err := rppm.routeRulesStorager.CreateRouteRules(ctx, shared.RouteRulesTypeAPIKey, param.Key, param.RouteRules)
+			routeRulesID, err := rppm.routeRulesStorager.CreateRouteRules(ctx, shared.RouteRulesTypeAPIKey, param.ID, param.RouteRules)
 			if err != nil {
 				return err
 			}
