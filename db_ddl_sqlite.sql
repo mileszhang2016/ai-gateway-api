@@ -485,3 +485,6 @@ INSERT INTO bfe_clusters (id, name, pool_name, capacity, enabled, gtc_enabled, g
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
 );
+
+-- 初始化默认 global 路由表
+INSERT OR IGNORE INTO route_rules (type, owner, enabled, rules) VALUES ('global', 'global', 0, '[]');

@@ -103,7 +103,9 @@ func main() {
 		config.RedisConf.Init()
 	}
 
-	rdb.Init()
+	if err := rdb.Init(); err != nil {
+		stateful.Exit("rdb.Init", err, -1)
+	}
 
 	serverStartUp()
 }

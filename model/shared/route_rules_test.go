@@ -299,6 +299,43 @@ func TestRouteRulesManager_SetGlobalRouteRules(t *testing.T) {
 	assert.Equal(t, int64(9), *rule.ID)
 }
 
+func TestRouteRulesManager_EnsureGlobalRouteRules(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("creates default global route table when not exists", func(t *testing.T) {
+		store := &fakeRouteRulesStorager{
+			fetchFn: func(ctx context.Context, ruleType string, owner *string) (*RouteRulesParam, error) {
+				return nil, nil
+			},
+			createFn: func(ctx context.Context, ruleType string, owner *string, param *RouteRulesParam) (int64, error) {
+				return 10, nil
+			},
+		}
+		m := NewRouteRulesManager(&fakeTxn{}, store)
+
+		require.NoError(t, m.EnsureGlobalRouteRules(ctx))
+		require.Len(t, store.created, 1)
+		assert.Equal(t, RouteRulesTypeGlobal, store.created[0].ruleType)
+		require.NotNil(t, store.created[0].owner)
+		assert.Equal(t, RouteRulesTypeGlobal, *store.created[0].owner)
+		require.NotNil(t, store.created[0].param.Enabled)
+		assert.False(t, *store.created[0].param.Enabled)
+		assert.Empty(t, store.created[0].param.Rules)
+	})
+
+	t.Run("does nothing when global route table already exists", func(t *testing.T) {
+		store := &fakeRouteRulesStorager{
+			fetchFn: func(ctx context.Context, ruleType string, owner *string) (*RouteRulesParam, error) {
+				return &RouteRulesParam{ID: lib.PInt64(1)}, nil
+			},
+		}
+		m := NewRouteRulesManager(&fakeTxn{}, store)
+
+		require.NoError(t, m.EnsureGlobalRouteRules(ctx))
+		assert.Empty(t, store.created)
+	})
+}
+
 func TestRouteRulesManager_validateRouteRules(t *testing.T) {
 	m := NewRouteRulesManager(&fakeTxn{}, &fakeRouteRulesStorager{})
 
