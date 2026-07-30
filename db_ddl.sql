@@ -485,3 +485,6 @@ INSERT INTO `bfe_clusters` (
     NOW(),
     NOW()
 );
+
+-- 初始化默认 global 路由表
+INSERT IGNORE INTO `route_rules` (`type`, `owner`, `enabled`, `rules`) VALUES ('global', 'global', 0, '[]');

@@ -32,6 +32,24 @@ func hasType(list []interface{}, typ string) bool {
 }
 
 func TestRouteTables_List(t *testing.T) {
+	t.Run("RT-1-012 启动后默认 global 路由表存在", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/route-tables", map[string]string{"type": "global"})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertListFieldLen(t, resp, "list", 1)
+
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal failed: %v", err)
+		}
+		item := data["list"].([]interface{})[0].(map[string]interface{})
+		assert.Equal(t, "global", item["type"])
+		assert.Equal(t, "global", item["owner"])
+		assert.Equal(t, false, item["enabled"])
+	})
+
 	// 准备数据
 	if _, err := testutil.GetClient().Put("/open-api/v1/global-route-rules", map[string]interface{}{
 		"rules": []interface{}{

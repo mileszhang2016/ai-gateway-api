@@ -54,7 +54,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/storage/rdb/version_control"
 )
 
-func Init() {
+func Init() error {
 	container.TxnStoragerSingleton = txn.NewRDBTxnStorager(stateful.NewBFEDBContext)
 	container.VersionControlStoragerSingleton = version_control.NewVersionControllerStorage(stateful.NewBFEDBContext)
 	container.RouteRuleStoragerSingleton = route_conf.NewRouteRuleStorager(
@@ -241,4 +241,11 @@ func Init() {
 		container.BalanceSyncManager)
 
 	container.QuotaResetScheduler.Start()
+
+	// Ensure the global route table exists on startup.
+	if err := container.RouteRulesManager.EnsureGlobalRouteRules(context.Background()); err != nil {
+		return err
+	}
+
+	return nil
 }

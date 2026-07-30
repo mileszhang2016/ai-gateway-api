@@ -150,6 +150,29 @@ func (m *RouteRulesManager) SetGlobalRouteRules(ctx context.Context, param *Rout
 	return m.storager.FetchRouteRulesByID(ctx, id)
 }
 
+// EnsureGlobalRouteRules ensures the global route table exists.
+// If it does not exist, a default global route table (disabled, empty rules) is created.
+func (m *RouteRulesManager) EnsureGlobalRouteRules(ctx context.Context) error {
+	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		owner := RouteRulesTypeGlobal
+		existing, err := m.storager.FetchRouteRules(ctx, RouteRulesTypeGlobal, &owner)
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			return nil
+		}
+
+		enabled := false
+		param := &RouteRulesParam{
+			Enabled: &enabled,
+			Rules:   []*AiRouteRuleParam{},
+		}
+		_, err = m.storager.CreateRouteRules(ctx, RouteRulesTypeGlobal, &owner, param)
+		return err
+	})
+}
+
 // FetchRouteRulesByID fetches route rules by id
 func (m *RouteRulesManager) FetchRouteRulesByID(ctx context.Context, id int64) (*RouteRulesParam, error) {
 	var result *RouteRulesParam

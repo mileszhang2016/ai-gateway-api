@@ -1,9 +1,11 @@
 package global_route_rules_test
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/yf-networks/ai-gateway-api/integration/testutil"
 )
 
@@ -21,6 +23,26 @@ func TestMain(m *testing.M) {
 }
 
 func TestGlobalRouteRules_Get(t *testing.T) {
+	t.Run("GRR-2-003 查询系统默认 Global 路由表", func(t *testing.T) {
+		resp, err := testutil.GetClient().Get("/open-api/v1/global-route-rules")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataNotEmpty(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "enabled", false)
+
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal failed: %v", err)
+		}
+		rules, ok := data["rules"].([]interface{})
+		if !ok {
+			t.Fatalf("rules is not an array")
+		}
+		assert.Empty(t, rules)
+	})
+
 	t.Run("GRR-2-001 查询已更新的 Global 路由表", func(t *testing.T) {
 		_, err := testutil.GetClient().Put("/open-api/v1/global-route-rules", map[string]interface{}{
 			"rules": []interface{}{
