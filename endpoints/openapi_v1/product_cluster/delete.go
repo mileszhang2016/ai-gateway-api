@@ -30,7 +30,7 @@ var DeleteEndpoint = &xreq.Endpoint{
 	Path:       "/clusters/{cluster_name}",
 	Method:     http.MethodDelete,
 	Handler:    xreq.Convert(DeleteAction),
-	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionDelete),
+	Authorizer: iauth.FA(iauth.FeatureProductCluster, iauth.ActionDelete),
 }
 
 func deleteActionProcess(req *http.Request, param *OneParam) (*ClusterData, error) {

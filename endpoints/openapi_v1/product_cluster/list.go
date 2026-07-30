@@ -29,7 +29,7 @@ var ListEndpoint = &xreq.Endpoint{
 	Path:       "/clusters",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(ListAction),
-	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionRead),
+	Authorizer: iauth.FA(iauth.FeatureProductCluster, iauth.ActionRead),
 }
 
 func listActionProcess(req *http.Request) ([]*ClusterData, error) {

@@ -133,7 +133,7 @@ var CreateEndpoint = &xreq.Endpoint{
 	Path:       "/clusters",
 	Method:     http.MethodPost,
 	Handler:    xreq.Convert(CreateAction),
-	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionCreate),
+	Authorizer: iauth.FA(iauth.FeatureProductCluster, iauth.ActionCreate),
 }
 
 var (

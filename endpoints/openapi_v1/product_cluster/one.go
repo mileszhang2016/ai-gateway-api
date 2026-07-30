@@ -181,7 +181,7 @@ var OneEndpoint = &xreq.Endpoint{
 	Path:       "/clusters/{cluster_name}",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(OneAction),
-	Authorizer: iauth.FAP(iauth.FeatureProductCluster, iauth.ActionRead),
+	Authorizer: iauth.FA(iauth.FeatureProductCluster, iauth.ActionRead),
 }
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
