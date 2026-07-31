@@ -66,7 +66,7 @@ func endpoints() []*xreq.Endpoint {
 		entity.Endpoints,
 		global_route_rules.Endpoints,
 		route_tables.Endpoints,
-		model_provider_type.Endpoints,
+		model_provider_type.NewEndpoints(nil),
 		tool.Endpoints,
 	)
 }
