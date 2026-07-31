@@ -30,7 +30,7 @@ var ListRoute = &xreq.Endpoint{
 	Path:       "/api-keys",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(ListAction),
-	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionReadAll),
+	Authorizer: iauth.FA(iauth.FeatureAPIKey, iauth.ActionReadAll),
 }
 
 var _ xreq.Handler = OneAction

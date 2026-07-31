@@ -18,7 +18,7 @@ var ResetQuotaRoute = &xreq.Endpoint{
 	Path:       "/api-keys/{id}/quota-plan/reset",
 	Method:     http.MethodPost,
 	Handler:    xreq.Convert(ResetQuotaAction),
-	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionUpdate),
+	Authorizer: iauth.FA(iauth.FeatureAPIKey, iauth.ActionUpdate),
 }
 
 type ResetQuotaReq struct {

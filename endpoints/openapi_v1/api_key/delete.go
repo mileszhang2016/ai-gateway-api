@@ -29,7 +29,7 @@ var DeleteRoute = &xreq.Endpoint{
 	Path:       "/api-keys/{id}",
 	Method:     http.MethodDelete,
 	Handler:    xreq.Convert(DeleteAction),
-	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionDelete),
+	Authorizer: iauth.FA(iauth.FeatureAPIKey, iauth.ActionDelete),
 }
 
 var _ xreq.Handler = DeleteAction

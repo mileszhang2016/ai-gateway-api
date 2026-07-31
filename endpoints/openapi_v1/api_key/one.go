@@ -30,7 +30,7 @@ var OneRoute = &xreq.Endpoint{
 	Path:       "/api-keys/{id}",
 	Method:     http.MethodGet,
 	Handler:    xreq.Convert(OneAction),
-	Authorizer: iauth.FAP(iauth.FeatureAPIKey, iauth.ActionRead),
+	Authorizer: iauth.FA(iauth.FeatureAPIKey, iauth.ActionRead),
 }
 
 type OneReq struct {
