@@ -1,16 +1,16 @@
 // Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
 //
-//Licensed under the Apache License, Version 2.0 (the "License");
-//you may not use this file except in compliance with the License.
-//You may obtain a copy of the License at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
-//Unless required by applicable law or agreed to in writing, software
-//distributed under the License is distributed on an "AS IS" BASIS,
-//WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//See the License for the specific language governing permissions and
-//limitations under the License.
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package model_provider_type
 
@@ -26,17 +26,37 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/iauth"
 )
 
-var _ xreq.Handler = ListModelProviderTypesAction
+const DefaultModelProviderConfigPath = "conf/ai/models.json"
 
-var ListModelProviderTypesRoute = &xreq.Endpoint{
-	Path:       "/model-provider-types",
-	Method:     http.MethodGet,
-	Handler:    xreq.Convert(ListModelProviderTypesAction),
-	Authorizer: iauth.FA(iauth.FeatureProductCluster, iauth.ActionRead),
+// modelProviderConfigReader abstracts the config source so tests can inject
+// fake readers without touching the file system.
+type modelProviderConfigReader func() ([]byte, error)
+
+// DefaultModelProviderConfigReader returns a reader that loads the provider
+// type configuration from the default file path.
+func DefaultModelProviderConfigReader() modelProviderConfigReader {
+	return func() ([]byte, error) {
+		return os.ReadFile(DefaultModelProviderConfigPath)
+	}
 }
 
-var Endpoints = []*xreq.Endpoint{
-	ListModelProviderTypesRoute,
+// NewEndpoints creates the model-provider-types endpoints using the given
+// config reader. Passing nil falls back to the default file-based reader.
+func NewEndpoints(reader modelProviderConfigReader) []*xreq.Endpoint {
+	if reader == nil {
+		reader = DefaultModelProviderConfigReader()
+	}
+
+	action := func(req *http.Request) (interface{}, error) {
+		return listModelProviderTypesProcess(req.Context(), reader)
+	}
+
+	return []*xreq.Endpoint{{
+		Path:       "/model-provider-types",
+		Method:     http.MethodGet,
+		Handler:    xreq.Convert(action),
+		Authorizer: iauth.FA(iauth.FeatureProductCluster, iauth.ActionRead),
+	}}
 }
 
 type ModelProvider struct {
@@ -44,19 +64,15 @@ type ModelProvider struct {
 	ID   string `json:"id"`
 }
 
-func ListModelProviderTypesAction(req *http.Request) (interface{}, error) {
-	return listModelProviderTypesProcess(req.Context())
-}
-
-func listModelProviderTypesProcess(ctx context.Context) (interface{}, error) {
-	data, err := os.ReadFile("conf/ai/models.json")
+func listModelProviderTypesProcess(ctx context.Context, reader modelProviderConfigReader) (interface{}, error) {
+	data, err := reader()
 	if err != nil {
-		return nil, xerror.WrapParamError(fmt.Errorf("failed to read config conf/ai/models.json: %w", err))
+		return nil, xerror.WrapParamError(fmt.Errorf("failed to read config %s: %w", DefaultModelProviderConfigPath, err))
 	}
 
 	var providers []ModelProvider
 	if err := json.Unmarshal(data, &providers); err != nil {
-		return nil, xerror.WrapParamError(fmt.Errorf("failed to parse config conf/ai/models.json: %w", err))
+		return nil, xerror.WrapParamError(fmt.Errorf("failed to parse config %s: %w", DefaultModelProviderConfigPath, err))
 	}
 
 	types := make([]string, 0, len(providers))
