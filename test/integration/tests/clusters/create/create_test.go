@@ -3,6 +3,7 @@ package clusters_test
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,12 +28,10 @@ func minClusterBody(name string) map[string]interface{} {
 		"name": name,
 		"instance_pool": []interface{}{
 			map[string]interface{}{
-				"hostname": "backend-1",
-				"ip":       "10.0.0.1",
-				"weight":   100,
-				"ports": map[string]interface{}{
-					"Default": 8080,
-				},
+				"name":   "backend-1",
+				"addr":   "10.0.0.1",
+				"weight": 100,
+				"port":   8080,
 			},
 		},
 		"llm_config": map[string]interface{}{
@@ -79,16 +78,16 @@ func TestClusters_Create(t *testing.T) {
 				"description": "完整集群",
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"hostname": "backend-1",
-						"ip":       "10.0.0.1",
-						"weight":   50,
-						"ports":    map[string]interface{}{"Default": 8080},
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 50,
+						"port":   8080,
 					},
 					map[string]interface{}{
-						"hostname": "backend-2",
-						"ip":       "10.0.0.2",
-						"weight":   50,
-						"ports":    map[string]interface{}{"Default": 8080},
+						"name":   "backend-2",
+						"addr":   "10.0.0.2",
+						"weight": 50,
+						"port":   8080,
 					},
 				},
 				"llm_config": map[string]interface{}{
@@ -113,10 +112,10 @@ func TestClusters_Create(t *testing.T) {
 				"name": testutil.UniqueClusterName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"hostname": "backend-1",
-						"ip":       "10.0.0.1",
-						"weight":   100,
-						"ports":    map[string]interface{}{"Default": 8080},
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
 					},
 				},
 			},
@@ -147,15 +146,15 @@ func TestClusters_Create(t *testing.T) {
 			wantCode: 422,
 		},
 		{
-			name: "CL-1-007 实例不含 Default 端口",
+			name: "CL-1-007 实例 port 非法",
 			body: map[string]interface{}{
 				"name": testutil.UniqueClusterName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"hostname": "backend-1",
-						"ip":       "10.0.0.1",
-						"weight":   100,
-						"ports":    map[string]interface{}{"Other": 8080},
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   0,
 					},
 				},
 				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
@@ -163,15 +162,15 @@ func TestClusters_Create(t *testing.T) {
 			wantCode: 422,
 		},
 		{
-			name: "CL-1-008 非法 hostname",
+			name: "CL-1-008 非法 name",
 			body: map[string]interface{}{
 				"name": testutil.UniqueClusterName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"hostname": "-bad",
-						"ip":       "10.0.0.1",
-						"weight":   100,
-						"ports":    map[string]interface{}{"Default": 8080},
+						"name":   strings.Repeat("a", 129),
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
 					},
 				},
 				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
@@ -179,15 +178,15 @@ func TestClusters_Create(t *testing.T) {
 			wantCode: 422,
 		},
 		{
-			name: "CL-1-009 非法 IP",
+			name: "CL-1-009 非法 addr",
 			body: map[string]interface{}{
 				"name": testutil.UniqueClusterName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"hostname": "backend-1",
-						"ip":       "not-an-ip",
-						"weight":   100,
-						"ports":    map[string]interface{}{"Default": 8080},
+						"name":   "backend-1",
+						"addr":   "-bad",
+						"weight": 100,
+						"port":   8080,
 					},
 				},
 				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
@@ -200,10 +199,10 @@ func TestClusters_Create(t *testing.T) {
 				"name": testutil.UniqueClusterName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"hostname": "backend-1",
-						"ip":       "10.0.0.1",
-						"weight":   101,
-						"ports":    map[string]interface{}{"Default": 8080},
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 101,
+						"port":   8080,
 					},
 				},
 				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
@@ -211,21 +210,21 @@ func TestClusters_Create(t *testing.T) {
 			wantCode: 422,
 		},
 		{
-			name: "CL-1-011 重复实例 (hostname+ip)",
+			name: "CL-1-011 重复实例 (name+addr)",
 			body: map[string]interface{}{
 				"name": testutil.UniqueClusterName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"hostname": "backend-1",
-						"ip":       "10.0.0.1",
-						"weight":   50,
-						"ports":    map[string]interface{}{"Default": 8080},
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 50,
+						"port":   8080,
 					},
 					map[string]interface{}{
-						"hostname": "backend-1",
-						"ip":       "10.0.0.1",
-						"weight":   50,
-						"ports":    map[string]interface{}{"Default": 8081},
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 50,
+						"port":   8081,
 					},
 				},
 				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
@@ -238,10 +237,10 @@ func TestClusters_Create(t *testing.T) {
 				"name": testutil.UniqueClusterName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"hostname": "backend-1",
-						"ip":       "10.0.0.1",
-						"weight":   100,
-						"ports":    map[string]interface{}{"Default": 8080},
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
 					},
 				},
 				"llm_config": map[string]interface{}{"models": []string{"m", "m"}, "key": "sk-xxx", "provider_type": "deepseek"},

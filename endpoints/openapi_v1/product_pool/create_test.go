@@ -21,6 +21,7 @@ import (
 )
 
 func TestUpsertParamValidate(t *testing.T) {
+	longName := string(make([]byte, 129))
 	cases := []struct {
 		name    string
 		param   *UpsertParam
@@ -41,19 +42,19 @@ func TestUpsertParamValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid hostname",
+			name: "name too long",
 			param: &UpsertParam{
 				Instances: []*Instance{
-					{Hostname: "a", IP: "192.0.2.1", Weight: 100, Ports: map[string]int{"Default": 8080}},
+					{Hostname: longName, IP: "192.0.2.1", Weight: 100, Ports: map[string]int{"Default": 8080}},
 				},
 			},
 			wantErr: true,
 		},
 		{
-			name: "invalid ip",
+			name: "invalid ip/addr",
 			param: &UpsertParam{
 				Instances: []*Instance{
-					{Hostname: "host1", IP: "invalid", Weight: 100, Ports: map[string]int{"Default": 8080}},
+					{Hostname: "host1", IP: "-invalid", Weight: 100, Ports: map[string]int{"Default": 8080}},
 				},
 			},
 			wantErr: true,

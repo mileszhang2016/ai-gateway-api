@@ -30,10 +30,10 @@ func TestClusters_Update(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
 			"instance_pool": []interface{}{
 				map[string]interface{}{
-					"hostname": "backend-2",
-					"ip":       "10.0.0.2",
-					"weight":   100,
-					"ports":    map[string]interface{}{"Default": 9090},
+					"name":   "backend-2",
+					"addr":   "10.0.0.2",
+					"weight": 100,
+					"port":   9090,
 				},
 			},
 		})
@@ -84,14 +84,14 @@ func TestClusters_Update(t *testing.T) {
 		testutil.AssertErrCode(t, resp, 404)
 	})
 
-	t.Run("CL-4-005 更新非法 instance_pool（非法 IP）", func(t *testing.T) {
+	t.Run("CL-4-005 更新非法 instance_pool（非法 addr）", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
 			"instance_pool": []interface{}{
 				map[string]interface{}{
-					"hostname": "backend-1",
-					"ip":       "not-an-ip",
-					"weight":   100,
-					"ports":    map[string]interface{}{"Default": 8080},
+					"name":   "backend-1",
+					"addr":   "-bad",
+					"weight": 100,
+					"port":   8080,
 				},
 			},
 		})

@@ -48,20 +48,30 @@ func TestUpsertParamValidate(t *testing.T) {
 			param: &UpsertParam{
 				Name: lib.PString("cluster_1"),
 				InstancePool: []*Instance{
-					{Hostname: "host1", IP: "192.0.2.1", Weight: 100, Ports: map[string]int{"Default": 8080}},
+					{Name: "host1", Addr: "192.0.2.1", Port: 8080, Weight: 100},
 				},
 			},
 			wantErr: false,
 		},
 		{
-			name: "invalid instance pool ip",
+			name: "invalid instance pool addr",
 			param: &UpsertParam{
 				Name: lib.PString("cluster_1"),
 				InstancePool: []*Instance{
-					{Hostname: "host1", IP: "invalid-ip", Weight: 100, Ports: map[string]int{"Default": 8080}},
+					{Name: "host1", Addr: "-invalid", Port: 8080, Weight: 100},
 				},
 			},
 			wantErr: true,
+		},
+		{
+			name: "default name from addr",
+			param: &UpsertParam{
+				Name: lib.PString("cluster_1"),
+				InstancePool: []*Instance{
+					{Addr: "192.0.2.1", Port: 8080, Weight: 100},
+				},
+			},
+			wantErr: false,
 		},
 		{
 			name: "valid with llm config",

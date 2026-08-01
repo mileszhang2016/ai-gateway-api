@@ -595,35 +595,25 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 	return nil
 }
 
+const (
+	MaxInstanceNameLength = 128
+)
+
 // Instance validates a single instance (used by cluster/alb-pool).
 func Instance(inst icluster_conf.Instance) error {
-	if err := Hostname(inst.HostName); err != nil {
-		return xerror.WrapParamErrorWithMsg("instance hostname: %v", err)
+	if inst.Name != "" {
+		if len(inst.Name) < 1 || len(inst.Name) > MaxInstanceNameLength {
+			return xerror.WrapParamErrorWithMsg("instance name length must be between 1 and %d", MaxInstanceNameLength)
+		}
 	}
-	if err := IPAddress(inst.IP); err != nil {
-		return xerror.WrapParamErrorWithMsg("instance ip: %v", err)
+	if err := Hostname(inst.Addr); err != nil {
+		return xerror.WrapParamErrorWithMsg("instance addr: %v", err)
+	}
+	if err := Port(inst.Port); err != nil {
+		return xerror.WrapParamErrorWithMsg("instance port: %v", err)
 	}
 	if inst.Weight < 0 || inst.Weight > 100 {
 		return xerror.WrapParamErrorWithMsg("instance weight must be between 0 and 100")
-	}
-	if len(inst.Ports) == 0 {
-		return xerror.WrapParamErrorWithMsg("instance ports cannot be empty")
-	}
-	if _, ok := inst.Ports["Default"]; !ok {
-		return xerror.WrapParamErrorWithMsg("instance ports must contain Default")
-	}
-	portValueSet := map[int]struct{}{}
-	for name, port := range inst.Ports {
-		if len(name) == 0 {
-			return xerror.WrapParamErrorWithMsg("instance port name cannot be empty")
-		}
-		if err := Port(port); err != nil {
-			return xerror.WrapParamErrorWithMsg("instance port %s: %v", name, err)
-		}
-		if _, ok := portValueSet[port]; ok {
-			return xerror.WrapParamErrorWithMsg("duplicate port value %d in instance ports", port)
-		}
-		portValueSet[port] = struct{}{}
 	}
 	return nil
 }
@@ -633,7 +623,8 @@ func InstancePool(instances []icluster_conf.Instance) error {
 	if len(instances) == 0 {
 		return xerror.WrapParamErrorWithMsg("instance_pool is required")
 	}
-	seen := map[string]struct{}{}
+	nameSet := map[string]struct{}{}
+	comboSet := map[string]struct{}{}
 	hasPositiveWeight := false
 	for i, inst := range instances {
 		if err := Instance(inst); err != nil {
@@ -642,11 +633,17 @@ func InstancePool(instances []icluster_conf.Instance) error {
 		if inst.Weight > 0 {
 			hasPositiveWeight = true
 		}
-		key := fmt.Sprintf("%s|%s", inst.HostName, inst.IP)
-		if _, ok := seen[key]; ok {
-			return xerror.WrapParamErrorWithMsg("duplicate instance (hostname=%s, ip=%s)", inst.HostName, inst.IP)
+		if inst.Name != "" {
+			if _, ok := nameSet[inst.Name]; ok {
+				return xerror.WrapParamErrorWithMsg("duplicate instance name: %s", inst.Name)
+			}
+			nameSet[inst.Name] = struct{}{}
 		}
-		seen[key] = struct{}{}
+		key := fmt.Sprintf("%s|%s", inst.Name, inst.Addr)
+		if _, ok := comboSet[key]; ok {
+			return xerror.WrapParamErrorWithMsg("duplicate instance (name=%s, addr=%s)", inst.Name, inst.Addr)
+		}
+		comboSet[key] = struct{}{}
 	}
 	if !hasPositiveWeight {
 		return xerror.WrapParamErrorWithMsg("instance_pool must have at least one instance with weight > 0")

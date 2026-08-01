@@ -65,10 +65,10 @@ func NewOneData(pool *icluster_conf.Pool) *OneData {
 	is := []*Instance{}
 	for _, one := range pool.Instances {
 		is = append(is, &Instance{
-			Hostname: one.HostName,
-			IP:       one.IP,
+			Hostname: one.Name,
+			IP:       one.Addr,
 			Weight:   one.Weight,
-			Ports:    one.Ports,
+			Ports:    map[string]int{"Default": one.Port},
 		})
 	}
 

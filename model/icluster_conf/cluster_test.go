@@ -85,7 +85,7 @@ func newTestClusterBase() *Cluster {
 					ID:   1,
 					Name: "p1",
 					Instances: []Instance{
-						{HostName: "rs1", IP: "127.0.0.1", Port: 80, Weight: 10},
+						{Name: "rs1", Addr: "127.0.0.1", Port: 80, Weight: 10},
 					},
 				},
 			},
@@ -110,7 +110,7 @@ func newTestClusterEPP() *Cluster {
 
 func newTestClusterDomain() *Cluster {
 	c := newTestClusterBase()
-	c.SubClusters[0].InstancePool.Instances[0].IP = "example.com"
+	c.SubClusters[0].InstancePool.Instances[0].Addr = "example.com"
 	return c
 }
 
@@ -324,7 +324,7 @@ func TestClusterManager_CreateCluster(t *testing.T) {
 		err := m.CreateCluster(ctx, product, &ClusterParam{
 			Name: lib.PString("c1"),
 			InstancePool: []Instance{
-				{HostName: "rs1", IP: "127.0.0.1", Port: 80, Weight: 10},
+				{Name: "rs1", Addr: "127.0.0.1", Port: 80, Weight: 10},
 			},
 		})
 		require.NoError(t, err)
@@ -587,7 +587,7 @@ func TestClusterManager_UpdateCluster(t *testing.T) {
 		err := m.UpdateCluster(ctx, product, newTestClusterBase(), &ClusterParam{
 			Name: lib.PString("c1"),
 			InstancePool: []Instance{
-				{HostName: "rs2", IP: "127.0.0.2", Port: 80, Weight: 10},
+				{Name: "rs2", Addr: "127.0.0.2", Port: 80, Weight: 10},
 			},
 		})
 		require.NoError(t, err)

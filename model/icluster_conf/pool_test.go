@@ -16,6 +16,7 @@ package icluster_conf
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -27,13 +28,28 @@ import (
 
 func TestInstance_IPWithPort(t *testing.T) {
 	t.Run("port set", func(t *testing.T) {
-		i := &Instance{IP: "127.0.0.1", Port: 8080}
+		i := &Instance{Addr: "127.0.0.1", Port: 8080}
 		assert.Equal(t, "127.0.0.1:8080", i.IPWithPort())
 	})
+}
 
-	t.Run("port from map", func(t *testing.T) {
-		i := &Instance{IP: "127.0.0.1", Ports: map[string]int{"Default": 9090}}
-		assert.Equal(t, "127.0.0.1:9090", i.IPWithPort())
+func TestInstance_UnmarshalJSON(t *testing.T) {
+	t.Run("new format", func(t *testing.T) {
+		var i Instance
+		require.NoError(t, json.Unmarshal([]byte(`{"name":"rs1","addr":"127.0.0.1","port":8080,"weight":10}`), &i))
+		assert.Equal(t, Instance{Name: "rs1", Addr: "127.0.0.1", Port: 8080, Weight: 10}, i)
+	})
+
+	t.Run("legacy format", func(t *testing.T) {
+		var i Instance
+		require.NoError(t, json.Unmarshal([]byte(`{"Name":"rs1","Addr":"127.0.0.1","Port":8080,"Weight":10}`), &i))
+		assert.Equal(t, Instance{Name: "rs1", Addr: "127.0.0.1", Port: 8080, Weight: 10}, i)
+	})
+
+	t.Run("legacy format with ports map", func(t *testing.T) {
+		var i Instance
+		require.NoError(t, json.Unmarshal([]byte(`{"Name":"rs1","Addr":"127.0.0.1","Ports":{"Default":9090},"Weight":10}`), &i))
+		assert.Equal(t, Instance{Name: "rs1", Addr: "127.0.0.1", Port: 9090, Weight: 10}, i)
 	})
 }
 

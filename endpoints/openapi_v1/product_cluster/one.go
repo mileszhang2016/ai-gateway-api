@@ -93,14 +93,23 @@ type PassiveHealthCheck struct {
 	Uri        string `json:"uri"`
 }
 
+// InstanceData is the response shape of a single instance in instance_pool.
+// It intentionally omits internal fields such as "disable" to match the public API doc.
+type InstanceData struct {
+	Name   string `json:"name"`
+	Addr   string `json:"addr"`
+	Port   int    `json:"port"`
+	Weight int64  `json:"weight"`
+}
+
 // ClusterData Request Param
 type ClusterData struct {
-	Name               string                   `json:"name"`
-	Description        string                   `json:"description"`
-	Basic              *Basic                   `json:"basic"`
-	StickySessions     *StickySessions          `json:"sticky_sessions"`
-	PassiveHealthCheck *PassiveHealthCheck      `json:"passive_health_check"`
-	InstancePool       []icluster_conf.Instance `json:"instance_pool"`
+	Name               string              `json:"name"`
+	Description        string              `json:"description"`
+	Basic              *Basic              `json:"basic"`
+	StickySessions     *StickySessions     `json:"sticky_sessions"`
+	PassiveHealthCheck *PassiveHealthCheck `json:"passive_health_check"`
+	InstancePool       []InstanceData      `json:"instance_pool"`
 	LLMConfig          *icluster_conf.LLMConfig `json:"llm_config"`
 }
 
@@ -150,11 +159,19 @@ func clusterModel2Control(cluster *icluster_conf.Cluster) *ClusterData {
 		LLMConfig: cluster.LLMConfig,
 	}
 
-	// Populate InstancePool from sub-clusters' instance pools
+	// Populate InstancePool from sub-clusters' instance pools.
+	// Use InstanceData to hide internal fields (e.g. disable) from the public response.
 	if len(cluster.SubClusters) > 0 {
 		for _, sc := range cluster.SubClusters {
 			if sc.InstancePool != nil {
-				rsp.InstancePool = append(rsp.InstancePool, sc.InstancePool.Instances...)
+				for _, inst := range sc.InstancePool.Instances {
+					rsp.InstancePool = append(rsp.InstancePool, InstanceData{
+						Name:   inst.Name,
+						Addr:   inst.Addr,
+						Port:   inst.Port,
+						Weight: inst.Weight,
+					})
+				}
 			}
 		}
 	}

@@ -57,13 +57,13 @@ func (rm *ClusterManager) clusterTableConfGenerator(ctx context.Context) (*ivers
 
 			subClusterBackend := make(cluster_table_conf.SubClusterBackend, 0, len(subCluster.InstancePool.Instances))
 			for _, instance := range subCluster.InstancePool.Instances {
-				addr := instance.IP
+				addr := instance.Addr
 				// IPv6 地址需要加 [] 包裹
 				if ip := net.ParseIP(addr); ip != nil && ip.To4() == nil {
 					addr = "[" + addr + "]"
 				}
 				subClusterBackend = append(subClusterBackend, &cluster_table_conf.BackendConf{
-					Name:   lib.PString(instance.HostName),
+					Name:   lib.PString(instance.Name),
 					Addr:   lib.PString(addr),
 					Port:   lib.PInt(instance.Port),
 					Weight: lib.PInt(int(instance.Weight)),

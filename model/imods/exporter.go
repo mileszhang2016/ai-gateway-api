@@ -338,6 +338,12 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 		tokenFile.QuotaPlans = quotaPlanIDs
 		tokenFile.Tags = tags
 
+		// Defense: if all related quota plans are unlimited and QuotaPlans is empty,
+		// treat this token as unlimited to avoid BFE load failure.
+		if !tokenFile.UnlimitedQuota && len(tokenFile.QuotaPlans) == 0 {
+			tokenFile.UnlimitedQuota = true
+		}
+
 		items[*one.Key] = tokenFile
 		apiKey2Config[*one.ProductName] = items
 	}

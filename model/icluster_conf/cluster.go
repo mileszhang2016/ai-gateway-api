@@ -868,7 +868,7 @@ func isDomainPool(subClusters []*SubCluster) bool {
 	for _, subCluster := range subClusters {
 		if subCluster.InstancePool != nil {
 			for _, instance := range subCluster.InstancePool.Instances {
-				ip := net.ParseIP(instance.IP)
+				ip := net.ParseIP(instance.Addr)
 				if ip == nil {
 					return true
 				}

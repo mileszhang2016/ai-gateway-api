@@ -1,6 +1,7 @@
 package validate
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -104,6 +105,11 @@ func TestAPIKeyValue(t *testing.T) {
 	assert.NoError(t, APIKeyValue("ak-123_test"))
 	assert.Error(t, APIKeyValue(""))
 	assert.Error(t, APIKeyValue("ak@123"))
+
+	// 1-128 characters are allowed; 129 characters should be rejected to match
+	// the api-keys.md definition and the MySQL DDL (varchar(128)).
+	assert.NoError(t, APIKeyValue(strings.Repeat("a", 128)))
+	assert.Error(t, APIKeyValue(strings.Repeat("a", 129)))
 }
 
 func TestQuotaPlan(t *testing.T) {
@@ -171,12 +177,31 @@ func TestLLMConfig(t *testing.T) {
 
 func TestInstancePool(t *testing.T) {
 	instances := []icluster_conf.Instance{
-		{HostName: "backend-1", IP: "10.0.0.1", Weight: 100, Ports: map[string]int{"Default": 8080}},
+		{Name: "backend-1", Addr: "10.0.0.1", Port: 8080, Weight: 100},
 	}
 	assert.NoError(t, InstancePool(instances))
 
 	instances[0].Weight = 0
 	assert.Error(t, InstancePool(instances))
+
+	// duplicate name
+	instances[0].Weight = 50
+	assert.Error(t, InstancePool([]icluster_conf.Instance{
+		{Name: "backend-1", Addr: "10.0.0.1", Port: 8080, Weight: 50},
+		{Name: "backend-1", Addr: "10.0.0.2", Port: 8080, Weight: 50},
+	}))
+
+	// duplicate (name, addr)
+	assert.Error(t, InstancePool([]icluster_conf.Instance{
+		{Name: "backend-1", Addr: "10.0.0.1", Port: 8080, Weight: 50},
+		{Name: "backend-1", Addr: "10.0.0.1", Port: 8081, Weight: 50},
+	}))
+
+	// same addr with empty name is not allowed
+	assert.Error(t, InstancePool([]icluster_conf.Instance{
+		{Addr: "10.0.0.1", Port: 8080, Weight: 50},
+		{Addr: "10.0.0.1", Port: 8081, Weight: 50},
+	}))
 }
 
 func TestExpiredTime(t *testing.T) {
