@@ -36,7 +36,7 @@ func TestExportClusterTableAction(t *testing.T) {
 							Name: "sub1",
 							InstancePool: &icluster_conf.Pool{
 								Instances: []icluster_conf.Instance{
-									{HostName: "host1", IP: "10.0.0.1", Port: 8080, Weight: 100},
+									{Name: "host1", Addr: "10.0.0.1", Port: 8080, Weight: 100},
 								},
 							},
 						},
@@ -73,7 +73,7 @@ func TestExportClusterTableAction_VersionNotChanged(t *testing.T) {
 							Name: "sub1",
 							InstancePool: &icluster_conf.Pool{
 								Instances: []icluster_conf.Instance{
-									{HostName: "host1", IP: "10.0.0.1", Port: 8080, Weight: 100},
+									{Name: "host1", Addr: "10.0.0.1", Port: 8080, Weight: 100},
 								},
 							},
 						},

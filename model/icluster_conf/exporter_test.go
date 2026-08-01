@@ -155,7 +155,7 @@ func TestClusterTableConf_clusterWithIPv6(t *testing.T) {
 		},
 	})
 	c := newTestClusterBase()
-	c.SubClusters[0].InstancePool.Instances[0].IP = "2001:db8::1"
+	c.SubClusters[0].InstancePool.Instances[0].Addr = "2001:db8::1"
 	clusterStore := &fakeClusterStorager{
 		fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
 			return []*Cluster{c}, nil

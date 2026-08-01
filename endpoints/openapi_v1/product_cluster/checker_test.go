@@ -225,31 +225,31 @@ func TestCheckInstancePool(t *testing.T) {
 			wantErr:   true,
 		},
 		{
-			name: "missing default port",
+			name: "missing port",
 			instances: []*Instance{
-				{Hostname: "host1", IP: "192.0.2.1", Weight: 100, Ports: map[string]int{}},
+				{Name: "host1", Addr: "192.0.2.1", Weight: 100},
 			},
 			wantErr: true,
 		},
 		{
 			name: "all weights zero",
 			instances: []*Instance{
-				{Hostname: "host1", IP: "192.0.2.1", Weight: 0, Ports: map[string]int{"Default": 8080}},
+				{Name: "host1", Addr: "192.0.2.1", Weight: 0, Port: 8080},
 			},
 			wantErr: true,
 		},
 		{
 			name: "valid single instance",
 			instances: []*Instance{
-				{Hostname: "host1", IP: "192.0.2.1", Weight: 100, Ports: map[string]int{"Default": 8080}},
+				{Name: "host1", Addr: "192.0.2.1", Weight: 100, Port: 8080},
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid multiple instances",
 			instances: []*Instance{
-				{Hostname: "host1", IP: "192.0.2.1", Weight: 50, Ports: map[string]int{"Default": 8080}},
-				{Hostname: "host2", IP: "192.0.2.2", Weight: 50, Ports: map[string]int{"Default": 8080}},
+				{Name: "host1", Addr: "192.0.2.1", Weight: 50, Port: 8080},
+				{Name: "host2", Addr: "192.0.2.2", Weight: 50, Port: 8080},
 			},
 			wantErr: false,
 		},

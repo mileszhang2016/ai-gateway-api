@@ -60,21 +60,38 @@ func (p *UpsertParam) Validate() error {
 		return nil
 	}
 
-	instances := make([]icluster_conf.Instance, len(p.Instances))
 	for i, inst := range p.Instances {
-		weight := inst.Weight
-		if weight == 0 {
-			weight = defaultWeight
+		if err := validate.Hostname(inst.Hostname); err != nil {
+			return xerror.WrapParamErrorWithMsg("instances[%d].hostname: %v", i, err)
 		}
-		instances[i] = icluster_conf.Instance{
-			HostName: inst.Hostname,
-			IP:       inst.IP,
-			Weight:   weight,
-			Ports:    inst.Ports,
+		if err := validate.IPAddress(inst.IP); err != nil {
+			return xerror.WrapParamErrorWithMsg("instances[%d].ip: %v", i, err)
+		}
+		if inst.Weight < 0 || inst.Weight > 100 {
+			return xerror.WrapParamErrorWithMsg("instances[%d].weight must be between 0 and 100", i)
+		}
+		if len(inst.Ports) == 0 {
+			return xerror.WrapParamErrorWithMsg("instances[%d].ports cannot be empty", i)
+		}
+		if _, ok := inst.Ports["Default"]; !ok {
+			return xerror.WrapParamErrorWithMsg("instances[%d].ports must contain Default", i)
+		}
+		portValueSet := map[int]struct{}{}
+		for name, port := range inst.Ports {
+			if len(name) == 0 {
+				return xerror.WrapParamErrorWithMsg("instances[%d].ports port name cannot be empty", i)
+			}
+			if err := validate.Port(port); err != nil {
+				return xerror.WrapParamErrorWithMsg("instances[%d].ports.%s: %v", i, name, err)
+			}
+			if _, ok := portValueSet[port]; ok {
+				return xerror.WrapParamErrorWithMsg("instances[%d].ports duplicate port value %d", i, port)
+			}
+			portValueSet[port] = struct{}{}
 		}
 	}
 
-	return validate.InstancePool(instances)
+	return validate.InstancePool(Instancesc2i(p.Instances))
 }
 
 // CreateRoute route
@@ -157,12 +174,16 @@ func Instancesc2i(is []*Instance) []icluster_conf.Instance {
 			weight = defaultWeight
 		}
 
+		name := instance.Hostname
+		if name == "" {
+			name = instance.IP
+		}
+
 		rst = append(rst, icluster_conf.Instance{
-			HostName: instance.Hostname,
-			IP:       instance.IP,
-			Weight:   weight,
-			Ports:    instance.Ports,
-			Port:     port,
+			Name:   name,
+			Addr:   instance.IP,
+			Weight: weight,
+			Port:   port,
 		})
 	}
 

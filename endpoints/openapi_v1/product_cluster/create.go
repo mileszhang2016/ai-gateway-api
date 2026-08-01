@@ -51,10 +51,10 @@ type PassiveHealthCheckParam struct {
 
 // Instance Request Param
 type Instance struct {
-	Hostname string         `json:"hostname" validate:"required,min=2"`
-	IP       string         `json:"ip" validate:"required"`
-	Weight   int64          `json:"weight" validate:"min=0,max=100"`
-	Ports    map[string]int `json:"ports" validate:"required,min=1"`
+	Name   string `json:"name"`
+	Addr   string `json:"addr" validate:"required"`
+	Port   int    `json:"port" validate:"required"`
+	Weight int64  `json:"weight" validate:"min=0,max=100"`
 }
 
 // UpsertParam Request Param
@@ -118,6 +118,12 @@ func (p *UpsertParam) Validate() error {
 		return err
 	}
 	if len(p.InstancePool) > 0 {
+		// Default instance name to addr when not provided.
+		for _, inst := range p.InstancePool {
+			if inst.Name == "" {
+				inst.Name = inst.Addr
+			}
+		}
 		if err := validate.InstancePool(Instancesc2i(p.InstancePool)); err != nil {
 			return err
 		}
@@ -169,8 +175,8 @@ func checkInstancePool(instances []*Instance) error {
 		if instance.Weight > 0 {
 			hasPositiveWeight = true
 		}
-		if instance.Ports == nil || instance.Ports["Default"] == 0 {
-			return xerror.WrapParamErrorWithMsg("instance_pool[%d].ports must contain Default port", i)
+		if instance.Port == 0 {
+			return xerror.WrapParamErrorWithMsg("instance_pool[%d].port is required", i)
 		}
 	}
 
@@ -239,13 +245,13 @@ func normalizeBasic(basic *BasicParam) *BasicParam {
 	}
 
 	if basic.Protocol == nil {
-		basic.Protocol = lib.PString("http")
+		basic.Protocol = lib.PString("https")
 	}
 
 	switch *basic.Protocol {
 	case "http", "https":
 	default:
-		basic.Protocol = lib.PString("http")
+		basic.Protocol = lib.PString("https")
 	}
 
 	if basic.Connection == nil {
@@ -328,7 +334,7 @@ func normalizePassiveHealthCheck(phc *PassiveHealthCheckParam, instances []*Inst
 	}
 	if phc.Host == nil {
 		if len(instances) > 0 {
-			phc.Host = &instances[0].Hostname
+			phc.Host = &instances[0].Addr
 		} else {
 			empty := ""
 			phc.Host = &empty
@@ -402,17 +408,16 @@ func PassiveHealthCheckParamC2M(passiveHealthCheck *PassiveHealthCheckParam) *ic
 func Instancesc2i(is []*Instance) []icluster_conf.Instance {
 	rst := []icluster_conf.Instance{}
 	for _, instance := range is {
-		port := 0
-		if instance.Ports != nil {
-			port = instance.Ports["Default"]
+		name := instance.Name
+		if name == "" {
+			name = instance.Addr
 		}
 
 		rst = append(rst, icluster_conf.Instance{
-			HostName: instance.Hostname,
-			IP:       instance.IP,
-			Weight:   instance.Weight,
-			Ports:    instance.Ports,
-			Port:     port,
+			Name:   name,
+			Addr:   instance.Addr,
+			Port:   instance.Port,
+			Weight: instance.Weight,
 		})
 	}
 

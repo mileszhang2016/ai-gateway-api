@@ -385,6 +385,7 @@ for _, apiKey := range apiKeys {
 | Entity 层级成环 | 创建/更新时通过层级校验阻止 |
 | 父 Entity 被删除 | 需先删除所有子 Entity |
 | 多个配额计划 | API-Key 同时受多个 Redis Key 控制，BFE 侧需支持多配额校验 |
+| API-Key `unlimited_quota=false` 但所有相关 quota plan 均为 `unlimited=true` | 导出到 BFE 的 `QuotaPlans` 为空，BFE 视 `UnlimitedQuota=false & QuotaPlans=[]` 为非法；导出层会兜底将该 token 的 `UnlimitedQuota` 修正为 `true`，保证配置可加载。该兜底**不修改**数据库中 `api_keys.unlimited_quota` 的原始值 |
 | 路由规则未启用 | 不加入绑定列表 |
 
 ---

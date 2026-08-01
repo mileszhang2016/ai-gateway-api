@@ -76,12 +76,10 @@ func CreateCluster(name string) (string, error) {
 		"name": name,
 		"instance_pool": []interface{}{
 			map[string]interface{}{
-				"hostname": "backend-1",
-				"ip":       "10.0.0.1",
-				"weight":   100,
-				"ports": map[string]interface{}{
-					"Default": 8080,
-				},
+				"name":   "backend-1",
+				"addr":   "10.0.0.1",
+				"weight": 100,
+				"port":   8080,
 			},
 		},
 		"llm_config": map[string]interface{}{

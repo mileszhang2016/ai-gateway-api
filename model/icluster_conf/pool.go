@@ -29,6 +29,7 @@ package icluster_conf
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -73,12 +74,56 @@ type Pool struct {
 }
 
 type Instance struct {
-	HostName string         `json:"Name"`
-	IP       string         `json:"Addr"`
-	Port     int            `json:"Port"`
-	Ports    map[string]int `json:"Ports,omitempty"`
-	Weight   int64          `json:"Weight"`
-	Disable  bool           `json:"Disable"`
+	Name    string `json:"name"`
+	Addr    string `json:"addr"`
+	Port    int    `json:"port"`
+	Weight  int64  `json:"weight"`
+	Disable bool   `json:"disable"`
+}
+
+// instanceCompat is used to decode both the new lowercase JSON format and the
+// legacy PascalCase JSON stored in the database.
+type instanceCompat struct {
+	Name    string `json:"name"`
+	Addr    string `json:"addr"`
+	Port    int    `json:"port"`
+	Weight  int64  `json:"weight"`
+	Disable bool   `json:"disable"`
+
+	OldName    string         `json:"Name"`
+	OldAddr    string         `json:"Addr"`
+	OldPort    int            `json:"Port"`
+	OldPorts   map[string]int `json:"Ports,omitempty"`
+	OldWeight  int64          `json:"Weight"`
+	OldDisable bool           `json:"Disable"`
+}
+
+func (i *Instance) UnmarshalJSON(data []byte) error {
+	var c instanceCompat
+	if err := json.Unmarshal(data, &c); err != nil {
+		return err
+	}
+
+	// Prefer the new lowercase fields; fallback to the legacy PascalCase fields
+	// so that historical data in pools.instance_detail remains readable.
+	if c.Name != "" || c.Addr != "" {
+		i.Name = c.Name
+		i.Addr = c.Addr
+		i.Port = c.Port
+		i.Weight = c.Weight
+		i.Disable = c.Disable
+	} else {
+		i.Name = c.OldName
+		i.Addr = c.OldAddr
+		i.Port = c.OldPort
+		i.Weight = c.OldWeight
+		i.Disable = c.OldDisable
+		if i.Port == 0 {
+			i.Port = c.OldPorts["Default"]
+		}
+	}
+
+	return nil
 }
 
 const (
@@ -98,11 +143,7 @@ type EPPEndpoint struct {
 }
 
 func (i *Instance) IPWithPort() string {
-	if i.Port == 0 {
-		i.Port = i.Ports["Default"]
-	}
-
-	return fmt.Sprintf("%s:%d", i.IP, i.Port)
+	return fmt.Sprintf("%s:%d", i.Addr, i.Port)
 }
 
 type PoolStorager interface {

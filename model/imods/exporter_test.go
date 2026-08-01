@@ -408,8 +408,154 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Unlimited(t *testing.T) {
 	assert.True(t, token.UnlimitedQuota)
 }
 
-func TestAPIKeyRuleManager_APIKeyRuleGenerator_Expired(t *testing.T) {
+func TestAPIKeyRuleManager_APIKeyRuleGenerator_FalseUnlimitedWithEmptyQuotaPlans(t *testing.T) {
 	setupState()
+	ctx := context.Background()
+
+	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+	quotaPlanID := int64(1)
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:             lib.PString("key-1"),
+					Key:            lib.PString("ak-key-1"),
+					ProductName:    lib.PString("AI_product"),
+					Enable:         lib.PBool(true),
+					UnlimitedQuota: lib.PBool(false),
+					QuotaPlanID:    &quotaPlanID,
+					KeyCreateAt:    lib.PTime(keyCreateAt),
+				},
+			}, nil
+		},
+	}
+
+	quotaPlanStore := &fakeQuotaPlanStorager{
+		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
+			if filter.ID != nil && *filter.ID == quotaPlanID {
+				return &quota.QuotaPlanParam{
+					ID:        filter.ID,
+					Unlimited: lib.PBool(true),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.apiKeyStorager = apiKeyStore
+	m.quotaPlanStorager = quotaPlanStore
+	m.aiRouteStorager = aiRouteStore
+
+	data, err := m.APIKeyRuleGenerator(ctx)
+	require.NoError(t, err)
+	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
+	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, TokenStatusEnabled, token.Status)
+	assert.Empty(t, token.QuotaPlans)
+	assert.True(t, token.UnlimitedQuota)
+}
+
+func TestAPIKeyRuleManager_APIKeyRuleGenerator_MinimalParamsWithNoQuotaPlan(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:          lib.PString("key-1"),
+					Key:         lib.PString("ak-key-1"),
+					ProductName: lib.PString("AI_product"),
+					Enable:      lib.PBool(true),
+					KeyCreateAt: lib.PTime(keyCreateAt),
+				},
+			}, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.apiKeyStorager = apiKeyStore
+	m.aiRouteStorager = aiRouteStore
+
+	data, err := m.APIKeyRuleGenerator(ctx)
+	require.NoError(t, err)
+	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
+	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, TokenStatusEnabled, token.Status)
+	assert.Empty(t, token.QuotaPlans)
+	assert.True(t, token.UnlimitedQuota)
+}
+
+func TestAPIKeyRuleManager_APIKeyRuleGenerator_FalseUnlimitedWithNonUnlimitedQuotaPlan(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
+	quotaPlanID := int64(1)
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			return []*icluster_conf.APIKeyParam{
+				{
+					ID:             lib.PString("key-1"),
+					Key:            lib.PString("ak-key-1"),
+					ProductName:    lib.PString("AI_product"),
+					Enable:         lib.PBool(true),
+					UnlimitedQuota: lib.PBool(false),
+					QuotaPlanID:    &quotaPlanID,
+					KeyCreateAt:    lib.PTime(keyCreateAt),
+				},
+			}, nil
+		},
+	}
+
+	quotaPlanStore := &fakeQuotaPlanStorager{
+		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
+			if filter.ID != nil && *filter.ID == quotaPlanID {
+				return &quota.QuotaPlanParam{
+					ID:        filter.ID,
+					Unlimited: lib.PBool(false),
+					Quota:     lib.PInt64(100),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	m := newTestAPIKeyRuleManager()
+	m.apiKeyStorager = apiKeyStore
+	m.quotaPlanStorager = quotaPlanStore
+	m.aiRouteStorager = aiRouteStore
+
+	data, err := m.APIKeyRuleGenerator(ctx)
+	require.NoError(t, err)
+	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
+	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, TokenStatusEnabled, token.Status)
+	assert.False(t, token.UnlimitedQuota)
+	assert.NotEmpty(t, token.QuotaPlans)
+}
+
+func TestAPIKeyRuleManager_APIKeyRuleGenerator_Expired(t *testing.T) {
 	ctx := context.Background()
 
 	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)

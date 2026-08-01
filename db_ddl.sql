@@ -271,7 +271,7 @@ CREATE TABLE api_keys (
   `inner_id` bigint(20) NOT NULL AUTO_INCREMENT comment "内部id",
   `id` varchar(255) NOT NULL DEFAULT '' comment "API-Key标识",
   `enable` boolean NOT NULL DEFAULT false comment "api keys开关",
-  `api_key` varchar(1024) NOT NULL default '' comment "具体的key",
+  `api_key` varchar(128) NOT NULL default '' comment "具体的key",
   `description` varchar(512) DEFAULT '' comment "API-Key描述",
   `unlimited_quota` tinyint(1) DEFAULT 0 comment "是否无限配额：0-有限，1-无限",
   `product_name` varchar(255) NOT NULL DEFAULT '' comment "产品线名称",
@@ -298,7 +298,7 @@ CREATE TABLE api_keys (
 DROP TABLE IF EXISTS `api_key_tokens`;
 CREATE TABLE api_key_tokens (
   `id` bigint NOT NULL AUTO_INCREMENT comment "表ID",
-  `api_key` varchar(1024) NOT NULL DEFAULT '' comment "存储的api_key",
+  `api_key` varchar(128) NOT NULL DEFAULT '' comment "存储的api_key",
   `created_at` datetime NOT NULL DEFAULT '0000-01-01 00:00:00' COMMENT '创建时间',
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  comment "更新时间",
   PRIMARY KEY (`id`),
