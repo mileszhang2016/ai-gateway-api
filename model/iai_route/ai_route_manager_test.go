@@ -170,3 +170,55 @@ func TestAIRouteRuleManager_FetchAIRouteRules(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestAIRouteRuleManager_ClusterDeleteChecker(t *testing.T) {
+	ctx := context.Background()
+	product := &ibasic.Product{Name: "AI"}
+	cluster := &icluster_conf.Cluster{Name: "c1"}
+
+	t.Run("no rule", func(t *testing.T) {
+		aiStore := &fakeAIRouteRuleStorager{
+			fetchFn: func(ctx context.Context, filter *AIRouteFilter) ([]*Rule, error) {
+				return nil, nil
+			},
+		}
+		m := NewAIRouteRuleManager(&fakeTxn{}, aiStore, nil, &fakeRouteRuleStorager{})
+		require.NoError(t, m.ClusterDeleteChecker(ctx, product, cluster))
+	})
+
+	t.Run("ai route rule refers", func(t *testing.T) {
+		aiStore := &fakeAIRouteRuleStorager{
+			fetchFn: func(ctx context.Context, filter *AIRouteFilter) ([]*Rule, error) {
+				return []*Rule{{
+					Name: "rule1",
+					Basic: &BasicInfo{
+						ExpectAction: &RouteAction{
+							Forward: &ActionForward{ClusterName: "c1"},
+						},
+					},
+				}}, nil
+			},
+		}
+		m := NewAIRouteRuleManager(&fakeTxn{}, aiStore, nil, &fakeRouteRuleStorager{})
+		err := m.ClusterDeleteChecker(ctx, product, cluster)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "AI Route Rule rule1 Refer To This Cluster")
+	})
+
+	t.Run("ai route rule refers other cluster", func(t *testing.T) {
+		aiStore := &fakeAIRouteRuleStorager{
+			fetchFn: func(ctx context.Context, filter *AIRouteFilter) ([]*Rule, error) {
+				return []*Rule{{
+					Name: "rule1",
+					Basic: &BasicInfo{
+						ExpectAction: &RouteAction{
+							Forward: &ActionForward{ClusterName: "c2"},
+						},
+					},
+				}}, nil
+			},
+		}
+		m := NewAIRouteRuleManager(&fakeTxn{}, aiStore, nil, &fakeRouteRuleStorager{})
+		require.NoError(t, m.ClusterDeleteChecker(ctx, product, cluster))
+	})
+}

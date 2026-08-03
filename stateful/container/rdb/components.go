@@ -132,7 +132,8 @@ func Init() error {
 		container.PoolStoragerSingleton,
 		container.VersionControlManager,
 		map[string]func(context.Context, *ibasic.Product, *icluster_conf.Cluster) error{
-			"rules": container.RouteRuleManager.ClusterDeleteChecker,
+			"rules":    container.RouteRuleManager.ClusterDeleteChecker,
+			"ai_rules": container.AIRouteRuleManager.ClusterDeleteChecker,
 		})
 
 	container.SubClusterManager = icluster_conf.NewSubClusterManager(
