@@ -18,7 +18,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/yf-networks/ai-gateway-api/lib/xerror"
 	"github.com/yf-networks/ai-gateway-api/model/ibasic"
+	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 	"github.com/yf-networks/ai-gateway-api/model/itxn"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
@@ -81,6 +83,24 @@ func (rlm *AIRouteRuleManager) FetchAIRouteRules(ctx context.Context, filter *AI
 	})
 
 	return
+}
+
+// ClusterDeleteChecker checks whether the cluster is referenced by any AI route rule.
+func (rlm *AIRouteRuleManager) ClusterDeleteChecker(ctx context.Context, product *ibasic.Product, cluster *icluster_conf.Cluster) error {
+	rules, err := rlm.FetchAIRouteRules(ctx, &AIRouteFilter{ProductName: &product.Name})
+	if err != nil {
+		return err
+	}
+
+	for _, rule := range rules {
+		if rule.Basic != nil && rule.Basic.ExpectAction != nil &&
+			rule.Basic.ExpectAction.Forward != nil &&
+			rule.Basic.ExpectAction.Forward.ClusterName == cluster.Name {
+			return xerror.WrapModelErrorWithMsg("AI Route Rule %s Refer To This Cluster", rule.Name)
+		}
+	}
+
+	return nil
 }
 
 func BuildAIRouteCond(ctx context.Context, basicInfo *BasicInfo) string {

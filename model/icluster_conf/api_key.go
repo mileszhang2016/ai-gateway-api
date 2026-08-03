@@ -248,15 +248,17 @@ func (rppm *APIKeyManager) populateAssociatedData(ctx context.Context, one *APIK
 			return err
 		}
 
-		if rppm.quotaBalanceStorager != nil {
-			balance, err := rppm.quotaBalanceStorager.FetchQuotaBalance(ctx, *one.QuotaPlanID)
-			if err != nil {
-				return err
+		if quotaPlan != nil {
+			if rppm.quotaBalanceStorager != nil {
+				balance, err := rppm.quotaBalanceStorager.FetchQuotaBalance(ctx, *one.QuotaPlanID)
+				if err != nil {
+					return err
+				}
+				quotaPlan.Balance = balance
 			}
-			quotaPlan.Balance = balance
-		}
 
-		one.QuotaPlan = quotaPlan
+			one.QuotaPlan = quotaPlan
+		}
 	}
 
 	if one.RateLimitPolicyID != nil && rppm.rateLimitPolicyStorager != nil {
@@ -264,7 +266,9 @@ func (rppm *APIKeyManager) populateAssociatedData(ctx context.Context, one *APIK
 		if err != nil {
 			return err
 		}
-		one.RateLimitPolicy = rateLimitPolicy
+		if rateLimitPolicy != nil {
+			one.RateLimitPolicy = rateLimitPolicy
+		}
 	}
 
 	if one.RouteRulesID != nil && rppm.routeRulesStorager != nil {

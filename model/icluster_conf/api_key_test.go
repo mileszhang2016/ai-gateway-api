@@ -107,6 +107,26 @@ func TestAPIKeyManager_FetchAPIKeyList(t *testing.T) {
 	assert.Equal(t, expected, got)
 }
 
+func TestAPIKeyManager_FetchAPIKeyList_MissingAssociatedData(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeAPIKeyStorager{
+		fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
+			return []*APIKeyParam{{
+				Key:               ptrString("k1"),
+				QuotaPlanID:       ptrInt64(1),
+				RateLimitPolicyID: ptrInt64(2),
+			}}, nil
+		},
+	}
+	m := newAPIKeyManager(store)
+	got, err := m.FetchAPIKeyList(ctx, &APIKeyFilter{})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "k1", *got[0].Key)
+	assert.NotNil(t, got[0].QuotaPlan)
+	assert.NotNil(t, got[0].RateLimitPolicy)
+}
+
 func TestAPIKeyManager_FetchAPIKey(t *testing.T) {
 	ctx := context.Background()
 
