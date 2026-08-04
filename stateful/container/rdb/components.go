@@ -40,7 +40,7 @@ import (
 	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
 	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
 	"github.com/yf-networks/ai-gateway-api/model/quota"
-	"github.com/yf-networks/ai-gateway-api/model/shared"
+	"github.com/yf-networks/ai-gateway-api/model/route_rules"
 	"github.com/yf-networks/ai-gateway-api/stateful"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 	"github.com/yf-networks/ai-gateway-api/storage/rdb/ai_route"
@@ -132,8 +132,8 @@ func Init() error {
 		container.PoolStoragerSingleton,
 		container.VersionControlManager,
 		map[string]func(context.Context, *ibasic.Product, *icluster_conf.Cluster) error{
-			"rules":    container.RouteRuleManager.ClusterDeleteChecker,
-			"ai_rules": container.AIRouteRuleManager.ClusterDeleteChecker,
+			"rules":       container.RouteRuleManager.ClusterDeleteChecker,
+			"route_rules": container.RouteRulesManager.ClusterDeleteChecker,
 		})
 
 	container.SubClusterManager = icluster_conf.NewSubClusterManager(
@@ -170,7 +170,7 @@ func Init() error {
 	container.QuotaBalanceStorager = quotaStorage.NewQuotaBalanceStorager(stateful.NewBFEDBContext)
 	container.RateLimitPolicyStorager = quotaStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
 	container.RouteRulesStorager = quotaStorage.NewRouteRulesStorager(stateful.NewBFEDBContext)
-	container.RouteRulesManager = shared.NewRouteRulesManager(
+	container.RouteRulesManager = route_rules.NewRouteRulesManager(
 		container.TxnStoragerSingleton,
 		container.RouteRulesStorager)
 

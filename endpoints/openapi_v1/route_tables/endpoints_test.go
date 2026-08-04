@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/internal/testutil"
+	"github.com/yf-networks/ai-gateway-api/model/route_rules"
 	"github.com/yf-networks/ai-gateway-api/model/shared"
 	"github.com/yf-networks/ai-gateway-api/stateful/container"
 )
@@ -60,7 +61,7 @@ func (f *fakeRouteRulesStoragerForTables) FetchRouteRulesByID(ctx context.Contex
 
 func setupRouteRulesManagerForTables(storager shared.RouteRulesStorager) func() {
 	old := container.RouteRulesManager
-	container.RouteRulesManager = shared.NewRouteRulesManager(&testutil.FakeTxn{}, storager)
+	container.RouteRulesManager = route_rules.NewRouteRulesManager(&testutil.FakeTxn{}, storager)
 	return func() {
 		container.RouteRulesManager = old
 	}

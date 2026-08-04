@@ -92,9 +92,37 @@ type RouteRulesParam struct {
 }
 
 type RouteTableParam struct {
+	ID      *int64 `json:"id,omitempty"`
 	Type    string `json:"type"`
 	Owner   string `json:"owner"`
 	Enabled bool   `json:"enabled"`
+}
+
+const (
+	RouteRulesTypeAPIKey = "apikey"
+	RouteRulesTypeEntity = "entity"
+	RouteRulesTypeGlobal = "global"
+)
+
+// RouteRulesFilter defines filters for querying route rules
+type RouteRulesFilter struct {
+	Type      *string `form:"type"`
+	Owner     *string `form:"owner"`
+	Enabled   *bool   `form:"enabled"`
+	Page      *int    `form:"page"`
+	PageSize  *int    `form:"page_size"`
+	SortBy    *string `form:"sort_by"`
+	SortOrder *string `form:"sort_order"`
+}
+
+// RouteRulesStorager defines storage operations for route rules
+type RouteRulesStorager interface {
+	CreateRouteRules(ctx context.Context, ruleType string, owner *string, param *RouteRulesParam) (int64, error)
+	FetchRouteRules(ctx context.Context, ruleType string, owner *string) (*RouteRulesParam, error)
+	FetchRouteRulesList(ctx context.Context, filter *RouteRulesFilter) ([]*RouteTableParam, int64, error)
+	UpdateRouteRules(ctx context.Context, id int64, param *RouteRulesParam) (int64, error)
+	DeleteRouteRules(ctx context.Context, id int64) error
+	FetchRouteRulesByID(ctx context.Context, id int64) (*RouteRulesParam, error)
 }
 
 type QuotaPlanStorager interface {
