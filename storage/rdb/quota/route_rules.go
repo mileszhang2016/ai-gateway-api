@@ -170,6 +170,7 @@ func (s *RouteRulesStorager) FetchRouteRulesList(ctx context.Context, filter *sh
 	result := make([]*shared.RouteTableParam, 0, len(list))
 	for _, one := range list {
 		result = append(result, &shared.RouteTableParam{
+			ID:      &one.ID,
 			Type:    one.Type,
 			Owner:   one.Owner,
 			Enabled: one.Enabled,
