@@ -176,48 +176,53 @@ func (m *RouteRulesManager) ListRouteTables(ctx context.Context, filter *shared.
 
 // ClusterDeleteChecker checks whether the cluster is referenced by any route rule
 // in the route_rules table (global/entity/api-key level).
+// Note: this checker is invoked inside a transaction by the cluster manager, so
+// it should not start another transaction here to avoid premature commit of the
+// outer transaction.
 func (m *RouteRulesManager) ClusterDeleteChecker(ctx context.Context, product *ibasic.Product, cluster *icluster_conf.Cluster) error {
-	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		routeTables, _, err := m.storager.FetchRouteRulesList(ctx, &shared.RouteRulesFilter{})
+	routeTables, _, err := m.storager.FetchRouteRulesList(ctx, &shared.RouteRulesFilter{})
+	if err != nil {
+		return err
+	}
+
+	for _, table := range routeTables {
+		if table == nil || table.ID == nil {
+			continue
+		}
+
+		routeRulesParam, err := m.storager.FetchRouteRulesByID(ctx, *table.ID)
 		if err != nil {
 			return err
 		}
+		if routeRulesParam == nil {
+			continue
+		}
 
-		for _, table := range routeTables {
-			if table.ID == nil {
+		for _, rule := range routeRulesParam.Rules {
+			if rule == nil {
 				continue
 			}
 
-			routeRulesParam, err := m.storager.FetchRouteRulesByID(ctx, *table.ID)
-			if err != nil {
-				return err
-			}
-			if routeRulesParam == nil {
-				continue
+			ruleName := ""
+			if rule.Name != nil {
+				ruleName = *rule.Name
 			}
 
-			for _, rule := range routeRulesParam.Rules {
-				ruleName := ""
-				if rule.Name != nil {
-					ruleName = *rule.Name
+			for _, target := range rule.Targets {
+				if target != nil && target.ClusterName != nil && *target.ClusterName == cluster.Name {
+					return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
 				}
+			}
 
-				for _, target := range rule.Targets {
-					if target.ClusterName != nil && *target.ClusterName == cluster.Name {
-						return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
-					}
-				}
-
-				for _, fallback := range rule.Fallbacks {
-					if fallback.ClusterName != nil && *fallback.ClusterName == cluster.Name {
-						return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
-					}
+			for _, fallback := range rule.Fallbacks {
+				if fallback != nil && fallback.ClusterName != nil && *fallback.ClusterName == cluster.Name {
+					return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
 				}
 			}
 		}
+	}
 
-		return nil
-	})
+	return nil
 }
 
 func (m *RouteRulesManager) validateRouteRules(param *shared.RouteRulesParam) error {

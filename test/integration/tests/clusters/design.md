@@ -4,6 +4,8 @@
 
 Cluster 模块负责 AI 网关后端集群的管理，包括创建、查询、更新、删除。v0.3.0 是本次变更最大模块：删除 `ready`、`sub_clusters`、`scheduler` 等内部字段对外暴露；`Instance` 删除 `tags`；`llm_config` 必填；`llm_config.models` 为字符串数组；`llm_config.key` 为必填敏感字段；不再通过 OpenAPI 设置/获取 `DefaultAIClusterName`。
 
+另外，删除集群时会检查 `route_rules` 表中的全局、Entity、API-Key 路由规则：若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则删除被拒绝。
+
 ## 2. 接口列表
 
 | 编号 | 接口名称 | 方法 | 路径 | 说明 |
@@ -12,7 +14,7 @@ Cluster 模块负责 AI 网关后端集群的管理，包括创建、查询、�
 | CL-2 | 查询集群列表 | GET | `/open-api/v1/clusters` | 数组 |
 | CL-3 | 查询集群详情 | GET | `/open-api/v1/clusters/{cluster_name}` | - |
 | CL-4 | 更新集群 | PATCH | `/open-api/v1/clusters/{cluster_name}` | 可更新描述、实例池、各配置段 |
-| CL-5 | 删除集群 | DELETE | `/open-api/v1/clusters/{cluster_name}` | 级联清理实例池、子集群 |
+| CL-5 | 删除集群 | DELETE | `/open-api/v1/clusters/{cluster_name}` | 级联清理实例池、子集群；删除前检查 global/entity/apikey 路由规则引用 |
 
 ## 3. 测试用例统计
 
@@ -22,8 +24,8 @@ Cluster 模块负责 AI 网关后端集群的管理，包括创建、查询、�
 | 查询集群列表 | 1 |
 | 查询集群详情 | 1 |
 | 更新集群 | 5 |
-| 删除集群 | 2 |
-| **合计** | **20** |
+| 删除集群 | 8 |
+| **合计** | **26** |
 
 ## 4. 认证方式
 
@@ -1120,7 +1122,7 @@ Body：
 | 接口名称 | 删除集群 |
 | 方法 | DELETE |
 | 路径 | `/open-api/v1/clusters/{cluster_name}` |
-| 说明 | 删除集群，自动级联清理关联的实例池和子集群 |
+| 说明 | 删除集群，自动级联清理关联的实例池和子集群；若集群被 global/entity/apikey 路由规则引用，则拒绝删除 |
 
 ### 10.2 接口参数说明
 
@@ -1142,6 +1144,12 @@ Body：
 |------|------|---------|---------|
 | CL-5-001 | 删除集群 | 正常参数 | 级联清理，再次查询返回 404 |
 | CL-5-002 | 删除不存在的集群 | 异常参数 | 验证 ErrNum=404 |
+| CL-5-003 | 删除被 global 路由规则 target 引用的集群 | 业务规则 | 验证 ErrNum=500，错误信息包含规则名 |
+| CL-5-004 | 删除被 global 路由规则 fallback 引用的集群 | 业务规则 | 验证 ErrNum=500，fallback 同样会拦截删除 |
+| CL-5-005 | 删除被 entity 路由规则 target 引用的集群 | 业务规则 | 验证 ErrNum=500 |
+| CL-5-006 | 删除被 apikey 路由规则 target 引用的集群 | 业务规则 | 验证 ErrNum=500 |
+| CL-5-007 | 解除引用后可删除集群 | 正常参数 | 更新 global 路由规则移除引用后删除成功 |
+| CL-5-008 | 路由规则引用其他集群时可删除 | 正常参数 | 规则引用 cluster_other，删除 cluster_unref 成功 |
 
 ### 10.4 测试场景详细设计
 
@@ -1205,11 +1213,297 @@ URI：`non_existent_cluster`
 
 ---
 
+#### 10.4.3 CL-5-003：删除被 global 路由规则 target 引用的集群
+
+##### 设计思路
+
+验证 global 路由规则的 `targets` 引用集群时，删除该集群会被拒绝。
+
+##### 前提数据准备
+
+1. 创建集群 `cluster_global_ref`。
+2. 创建另一集群 `cluster_other` 用于后续解除引用场景。
+3. 通过 `PUT /open-api/v1/global-route-rules` 设置 global 路由规则，使其 `targets` 引用 `cluster_global_ref`。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求到 `/open-api/v1/clusters/cluster_global_ref`。
+2. 验证返回业务异常。
+
+##### 请求参数
+
+URI：`cluster_global_ref`
+
+Global 路由规则准备请求：
+
+```json
+{
+    "rules": [
+        {
+            "name": "global-ref",
+            "Cond": "default_t()",
+            "targets": [
+                {"ClusterName": "cluster_global_ref", "Model": "", "Weight": 100}
+            ],
+            "fallbacks": []
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：500  
+**ErrMsg**：包含 "Rule global-ref Refer To This Cluster" 或本地化的“集群被转发规则 global-ref 引用”  
+**Data**：null
+
+---
+
+#### 10.4.4 CL-5-004：删除被 global 路由规则 fallback 引用的集群
+
+##### 设计思路
+
+验证 global 路由规则的 `fallbacks` 引用集群时，删除该集群同样会被拒绝。
+
+##### 前提数据准备
+
+1. 创建集群 `cluster_global_fb`。
+2. 创建另一集群 `cluster_target`。
+3. 通过 `PUT /open-api/v1/global-route-rules` 设置 global 路由规则，target 指向 `cluster_target`，fallback 指向 `cluster_global_fb`。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求到 `/open-api/v1/clusters/cluster_global_fb`。
+2. 验证返回业务异常。
+
+##### 请求参数
+
+URI：`cluster_global_fb`
+
+Global 路由规则准备请求：
+
+```json
+{
+    "rules": [
+        {
+            "name": "global-fb-ref",
+            "Cond": "default_t()",
+            "targets": [
+                {"ClusterName": "cluster_target", "Model": "", "Weight": 100}
+            ],
+            "fallbacks": [
+                {"ClusterName": "cluster_global_fb", "Model": ""}
+            ]
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：500  
+**ErrMsg**：包含 "Rule global-fb-ref Refer To This Cluster" 或本地化的“集群被转发规则 global-fb-ref 引用”  
+**Data**：null
+
+---
+
+#### 10.4.5 CL-5-005：删除被 entity 路由规则 target 引用的集群
+
+##### 设计思路
+
+验证 Entity 级别的路由规则引用集群时，删除该集群会被拒绝。
+
+##### 前提数据准备
+
+1. 创建 Entity-Type `type_entity_ref`。
+2. 创建 Entity `entity_ref`。
+3. 创建集群 `cluster_entity_ref`。
+4. 通过 `PATCH /open-api/v1/entities/{id}` 为 Entity 设置路由规则，target 引用 `cluster_entity_ref`。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求到 `/open-api/v1/clusters/cluster_entity_ref`。
+2. 验证返回业务异常。
+
+##### 请求参数
+
+URI：`cluster_entity_ref`
+
+Entity 路由规则准备请求：
+
+```json
+{
+    "route_rules": {
+        "enabled": true,
+        "rules": [
+            {
+                "name": "entity-ref",
+                "Cond": "default_t()",
+                "targets": [
+                    {"ClusterName": "cluster_entity_ref", "Model": "", "Weight": 100}
+                ],
+                "fallbacks": []
+            }
+        ]
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：500  
+**ErrMsg**：包含 "Rule entity-ref Refer To This Cluster" 或本地化的“集群被转发规则 entity-ref 引用”  
+**Data**：null
+
+---
+
+#### 10.4.6 CL-5-006：删除被 apikey 路由规则 target 引用的集群
+
+##### 设计思路
+
+验证 API-Key 级别的路由规则引用集群时，删除该集群会被拒绝。
+
+##### 前提数据准备
+
+1. 创建 API-Key `apikey_ref`（不绑定 Entity）。
+2. 创建集群 `cluster_apikey_ref`。
+3. 通过 `PATCH /open-api/v1/api-keys/{id}` 为 API-Key 设置路由规则，target 引用 `cluster_apikey_ref`。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求到 `/open-api/v1/clusters/cluster_apikey_ref`。
+2. 验证返回业务异常。
+
+##### 请求参数
+
+URI：`cluster_apikey_ref`
+
+API-Key 路由规则准备请求：
+
+```json
+{
+    "route_rules": {
+        "enabled": true,
+        "rules": [
+            {
+                "name": "apikey-ref",
+                "Cond": "default_t()",
+                "targets": [
+                    {"ClusterName": "cluster_apikey_ref", "Model": "", "Weight": 100}
+                ],
+                "fallbacks": []
+            }
+        ]
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：500  
+**ErrMsg**：包含 "Rule apikey-ref Refer To This Cluster" 或本地化的“集群被转发规则 apikey-ref 引用”  
+**Data**：null
+
+---
+
+#### 10.4.7 CL-5-007：解除引用后可删除集群
+
+##### 设计思路
+
+验证当路由规则不再引用目标集群后，删除可以成功。
+
+##### 前提数据准备
+
+1. 创建集群 `cluster_after_unref` 和 `cluster_other2`。
+2. 通过 `PUT /open-api/v1/global-route-rules` 设置 global 路由规则引用 `cluster_after_unref`。
+3. 确认删除 `cluster_after_unref` 被拒绝。
+4. 更新 global 路由规则，将 target 改为引用 `cluster_other2`（或清空 rules）。
+
+##### 执行步骤
+
+1. 再次发送 DELETE 请求到 `/open-api/v1/clusters/cluster_after_unref`。
+2. 验证返回 200，并再次查询返回 404。
+
+##### 请求参数
+
+URI：`cluster_after_unref`
+
+更新后的 Global 路由规则（示例）：
+
+```json
+{
+    "rules": [
+        {
+            "name": "global-ref",
+            "Cond": "default_t()",
+            "targets": [
+                {"ClusterName": "cluster_other2", "Model": "", "Weight": 100}
+            ],
+            "fallbacks": []
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success  
+**Data**：返回被删除集群对象
+
+---
+
+#### 10.4.8 CL-5-008：路由规则引用其他集群时可删除
+
+##### 设计思路
+
+验证路由规则引用的是其他集群时，不会误拦截当前集群的删除。
+
+##### 前提数据准备
+
+1. 创建集群 `cluster_unref` 和 `cluster_referred`。
+2. 通过 `PUT /open-api/v1/global-route-rules` 设置 global 路由规则引用 `cluster_referred`。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求到 `/open-api/v1/clusters/cluster_unref`。
+2. 验证返回 200，并再次查询返回 404。
+
+##### 请求参数
+
+URI：`cluster_unref`
+
+Global 路由规则准备请求：
+
+```json
+{
+    "rules": [
+        {
+            "name": "global-other-ref",
+            "Cond": "default_t()",
+            "targets": [
+                {"ClusterName": "cluster_referred", "Model": "", "Weight": 100}
+            ],
+            "fallbacks": []
+        }
+    ]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success  
+**Data**：返回被删除集群对象
+
+---
+
 ## 11. 依赖与数据准备
 
 1. 模型提供商类型 `provider_type` 取值可参考 `/model-provider-types`。
 2. 创建集群会级联写入实例池、子集群、lb_matrices，测试后需清理。
 3. 测试环境数据库需包含产品线初始化数据，以支持 `{product_name}.{cluster_name}` 实例池命名。
+4. 涉及 global/entity/apikey 路由规则的用例，需先通过对应接口写入规则，测试结束后清理规则或清空 `rules` 数组，避免影响其他用例。
 
 ## 12. 注意事项
 

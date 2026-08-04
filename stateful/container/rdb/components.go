@@ -124,6 +124,13 @@ func Init() error {
 		container.VersionControlManager,
 		container.DomainStoragerSingleton)
 
+	// Initialize route rules components before cluster manager because the
+	// cluster delete checker depends on RouteRulesManager.
+	container.RouteRulesStorager = quotaStorage.NewRouteRulesStorager(stateful.NewBFEDBContext)
+	container.RouteRulesManager = route_rules.NewRouteRulesManager(
+		container.TxnStoragerSingleton,
+		container.RouteRulesStorager)
+
 	container.ClusterManager = icluster_conf.NewClusterManager(
 		container.TxnStoragerSingleton,
 		container.ClusterStoragerSingleton,
@@ -169,10 +176,6 @@ func Init() error {
 	container.QuotaPlanStorager = quotaStorage.NewQuotaPlanStorager(stateful.NewBFEDBContext)
 	container.QuotaBalanceStorager = quotaStorage.NewQuotaBalanceStorager(stateful.NewBFEDBContext)
 	container.RateLimitPolicyStorager = quotaStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
-	container.RouteRulesStorager = quotaStorage.NewRouteRulesStorager(stateful.NewBFEDBContext)
-	container.RouteRulesManager = route_rules.NewRouteRulesManager(
-		container.TxnStoragerSingleton,
-		container.RouteRulesStorager)
 
 	container.EntityTypeManager = quota.NewEntityTypeManager(
 		container.TxnStoragerSingleton,
