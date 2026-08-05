@@ -44,6 +44,13 @@ func TestClusters_Detail(t *testing.T) {
 	assert.NotContains(t, data, "scheduler")
 	assert.Contains(t, data, "llm_config")
 
+	sticky, ok := data["sticky_sessions"].(map[string]interface{})
+	if assert.True(t, ok, "sticky_sessions should be an object") {
+		assert.Equal(t, false, sticky["enabled"])
+		assert.Equal(t, "CLIENT_IP_ONLY", sticky["hash_strategy"])
+		assert.Equal(t, "", sticky["hash_header"])
+	}
+
 	t.Cleanup(func() {
 		testutil.DeleteCluster(clusterName)
 	})

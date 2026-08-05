@@ -767,6 +767,23 @@ func AppendAdvancedRuleCluster(list []*Cluster) []*Cluster {
 	})
 }
 
+func normalizeBFEHashStrategy(sticky *ClusterStickySessions) int32 {
+	if sticky == nil {
+		return ClusterHashStrategyClientIPOnlyI
+	}
+
+	// BFE requires HashHeader to be non-empty when HashStrategy is CLIENT_ID_ONLY
+	// or CLIENT_ID_PREFERRED. If session sticky is disabled and no HashHeader is
+	// provided, fall back to CLIENT_IP_ONLY to keep the generated config valid.
+	if !sticky.SessionSticky && sticky.HashHeader == "" &&
+		(sticky.HashStrategy == ClusterHashStrategyClientIDOnlyI ||
+			sticky.HashStrategy == ClusterHashStrategyClientIDPreferedI) {
+		return ClusterHashStrategyClientIPOnlyI
+	}
+
+	return sticky.HashStrategy
+}
+
 func NewBfeClusterConf(version string, clusters []*Cluster) *cluster_conf.BfeClusterConf {
 	clusterConfMap := cluster_conf.ClusterToConf{}
 
@@ -800,7 +817,7 @@ func NewBfeClusterConf(version string, clusters []*Cluster) *cluster_conf.BfeClu
 				CrossRetry: int82intp(cluster.Basic.Retries.MaxRetryCrossSubcluster),
 				RetryMax:   int82intp(cluster.Basic.Retries.MaxRetryInSubcluster),
 				HashConf: &cluster_conf.HashConf{
-					HashStrategy:  int322intp(cluster.StickySessions.HashStrategy),
+					HashStrategy:  int322intp(normalizeBFEHashStrategy(cluster.StickySessions)),
 					HashHeader:    &cluster.StickySessions.HashHeader,
 					SessionSticky: &cluster.StickySessions.SessionSticky,
 				},
