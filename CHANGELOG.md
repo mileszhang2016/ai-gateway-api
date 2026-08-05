@@ -9,6 +9,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.0.6] - 2026-08-05
+
+### Added
+- OpenAPI v0.3.0 upgrade: converged OpenAPI interfaces to API design v0.3.0.
+- New endpoint `GET /route-tables` for route table listing.
+- OpenAPI request parameter validation across endpoints.
+- Auto-creation of the global route table during system initialization.
+- Unit tests for `stateful`, `storage`, and all `model` packages with CI coverage gate.
+- Integration test fixtures for `model_provider_type` and tool endpoints.
+
+### Changed
+- Refactored cluster model: aligned `instance_pool` model and related endpoints.
+- Restructured test directory layout and updated integration test infrastructure.
+- Split OpenAPI and InnerAPI design documents by module.
+- Updated Chinese API design documents to v0.3.0.
+
+### Fixed
+- Fixed OpenAPI authorization flags: use `iauth.FA` instead of `iauth.FAP` for `/api-keys` and `/clusters` endpoints.
+- Fixed concurrent map write in APIKey export.
+- Fixed InnerAPI export issues for quota, routing, and rate-limiting policies.
+- Fixed cluster deletion to check references from route rules.
+- Fixed `sticky_sessions` default value to `CLIENT_IP_ONLY` and added validation for `hash_header` when `enabled=true`.
+- Fixed API-Key, cluster, and AI-route issues (#42, #43, #44).
+- Fixed integration tests: return JSON 404 for unmatched API paths and repaired failing test infrastructure.
+
 ## [0.0.4] - 2026-07-07
 
 ### Added
