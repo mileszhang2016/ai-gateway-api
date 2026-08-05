@@ -240,8 +240,8 @@ clusters/
     },
     "sticky_sessions": {
         "enabled": false,
-        "hash_strategy": "CLIENT_ID_ONLY",
-        "hash_header": "Cookie:USERID"
+        "hash_strategy": "CLIENT_IP_ONLY",
+        "hash_header": ""
     },
     "passive_health_check": {
         "interval": 1000,

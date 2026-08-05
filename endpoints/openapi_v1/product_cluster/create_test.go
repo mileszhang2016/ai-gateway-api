@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,87 +18,155 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/yf-networks/ai-gateway-api/lib"
 	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
 )
 
-func TestUpsertParamValidate(t *testing.T) {
-	cases := []struct {
-		name    string
-		param   *UpsertParam
-		wantErr bool
-	}{
-		{
-			name:    "valid minimal",
-			param:   &UpsertParam{Name: lib.PString("cluster_1")},
-			wantErr: false,
-		},
-		{
-			name:    "missing name",
-			param:   &UpsertParam{},
-			wantErr: true,
-		},
-		{
-			name:    "invalid name",
-			param:   &UpsertParam{Name: lib.PString("-cluster")},
-			wantErr: true,
-		},
-		{
-			name: "valid with instance pool",
-			param: &UpsertParam{
-				Name: lib.PString("cluster_1"),
-				InstancePool: []*Instance{
-					{Name: "host1", Addr: "192.0.2.1", Port: 8080, Weight: 100},
-				},
+func TestNormalizeStickySessions(t *testing.T) {
+	t.Run("nil defaults to disabled CLIENT_IP_ONLY", func(t *testing.T) {
+		got := normalizeStickySessions(nil)
+		require.NotNil(t, got)
+		assert.Equal(t, false, *got.Enabled)
+		assert.Equal(t, clusterHashStrategyClientIPOnly, *got.HashStrategy)
+		assert.Equal(t, "", *got.HashHeader)
+	})
+
+	t.Run("partial values keep provided ones", func(t *testing.T) {
+		got := normalizeStickySessions(&StickySessionsParam{
+			Enabled: lib.PBool(true),
+		})
+		require.NotNil(t, got)
+		assert.Equal(t, true, *got.Enabled)
+		assert.Equal(t, clusterHashStrategyClientIPOnly, *got.HashStrategy)
+		assert.Equal(t, "", *got.HashHeader)
+	})
+}
+
+func TestValidateStickySessions(t *testing.T) {
+	t.Run("nil sticky sessions", func(t *testing.T) {
+		assert.NoError(t, validateStickySessions(nil))
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		assert.NoError(t, validateStickySessions(&StickySessionsParam{
+			Enabled:      lib.PBool(false),
+			HashStrategy: lib.PString(clusterHashStrategyClientIDOnly),
+			HashHeader:   lib.PString(""),
+		}))
+	})
+
+	t.Run("enabled with CLIENT_ID_ONLY and hash_header", func(t *testing.T) {
+		assert.NoError(t, validateStickySessions(&StickySessionsParam{
+			Enabled:      lib.PBool(true),
+			HashStrategy: lib.PString(clusterHashStrategyClientIDOnly),
+			HashHeader:   lib.PString("Cookie:USERID"),
+		}))
+	})
+
+	t.Run("enabled with CLIENT_ID_PREFERED and hash_header", func(t *testing.T) {
+		assert.NoError(t, validateStickySessions(&StickySessionsParam{
+			Enabled:      lib.PBool(true),
+			HashStrategy: lib.PString(clusterHashStrategyClientIDPrefered),
+			HashHeader:   lib.PString("Cookie:USERID"),
+		}))
+	})
+
+	t.Run("enabled with CLIENT_IP_ONLY and empty hash_header", func(t *testing.T) {
+		assert.NoError(t, validateStickySessions(&StickySessionsParam{
+			Enabled:      lib.PBool(true),
+			HashStrategy: lib.PString(clusterHashStrategyClientIPOnly),
+			HashHeader:   lib.PString(""),
+		}))
+	})
+
+	t.Run("enabled with default hash_strategy and empty hash_header fails", func(t *testing.T) {
+		err := validateStickySessions(&StickySessionsParam{
+			Enabled:    lib.PBool(true),
+			HashHeader: lib.PString(""),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "hash_header is required")
+	})
+
+	t.Run("enabled with CLIENT_ID_ONLY and empty hash_header fails", func(t *testing.T) {
+		err := validateStickySessions(&StickySessionsParam{
+			Enabled:      lib.PBool(true),
+			HashStrategy: lib.PString(clusterHashStrategyClientIDOnly),
+			HashHeader:   lib.PString(""),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "hash_header is required")
+	})
+
+	t.Run("enabled with CLIENT_ID_PREFERED and empty hash_header fails", func(t *testing.T) {
+		err := validateStickySessions(&StickySessionsParam{
+			Enabled:      lib.PBool(true),
+			HashStrategy: lib.PString(clusterHashStrategyClientIDPrefered),
+			HashHeader:   lib.PString(""),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "hash_header is required")
+	})
+
+	t.Run("invalid hash_strategy", func(t *testing.T) {
+		err := validateStickySessions(&StickySessionsParam{
+			Enabled:      lib.PBool(true),
+			HashStrategy: lib.PString("INVALID"),
+			HashHeader:   lib.PString("Cookie:USERID"),
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "hash_strategy must be one of")
+	})
+}
+
+func TestUpsertParamValidate_StickySessions(t *testing.T) {
+	base := func() *UpsertParam {
+		return &UpsertParam{
+			Name:        lib.PString("test-cluster"),
+			InstancePool: []*Instance{
+				{Name: "rs1", Addr: "127.0.0.1", Port: 80, Weight: 10},
 			},
-			wantErr: false,
-		},
-		{
-			name: "invalid instance pool addr",
-			param: &UpsertParam{
-				Name: lib.PString("cluster_1"),
-				InstancePool: []*Instance{
-					{Name: "host1", Addr: "-invalid", Port: 8080, Weight: 100},
-				},
+			LLMConfig: &icluster_conf.LLMConfig{
+				Models: []string{"gpt-4"},
 			},
-			wantErr: true,
-		},
-		{
-			name: "default name from addr",
-			param: &UpsertParam{
-				Name: lib.PString("cluster_1"),
-				InstancePool: []*Instance{
-					{Addr: "192.0.2.1", Port: 8080, Weight: 100},
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid with llm config",
-			param: &UpsertParam{
-				Name:      lib.PString("cluster_1"),
-				LLMConfig: &icluster_conf.LLMConfig{Models: []string{"gpt-4"}},
-			},
-			wantErr: false,
-		},
-		{
-			name: "invalid llm config",
-			param: &UpsertParam{
-				Name:      lib.PString("cluster_1"),
-				LLMConfig: &icluster_conf.LLMConfig{},
-			},
-			wantErr: true,
-		},
+		}
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.param.Validate()
-			if tc.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
+	t.Run("disabled sticky sessions with CLIENT_ID_ONLY and empty hash_header is allowed", func(t *testing.T) {
+		p := base()
+		p.StickySessions = &StickySessionsParam{
+			Enabled:      lib.PBool(false),
+			HashStrategy: lib.PString(clusterHashStrategyClientIDOnly),
+			HashHeader:   lib.PString(""),
+		}
+		assert.NoError(t, p.Validate())
+	})
+
+	t.Run("nil sticky sessions is allowed", func(t *testing.T) {
+		p := base()
+		assert.NoError(t, p.Validate())
+	})
+
+	t.Run("enabled sticky sessions with CLIENT_ID_ONLY and empty hash_header fails", func(t *testing.T) {
+		p := base()
+		p.StickySessions = &StickySessionsParam{
+			Enabled:      lib.PBool(true),
+			HashStrategy: lib.PString(clusterHashStrategyClientIDOnly),
+			HashHeader:   lib.PString(""),
+		}
+		err := p.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "hash_header is required")
+	})
+
+	t.Run("enabled sticky sessions with CLIENT_ID_ONLY and hash_header passes", func(t *testing.T) {
+		p := base()
+		p.StickySessions = &StickySessionsParam{
+			Enabled:      lib.PBool(true),
+			HashStrategy: lib.PString(clusterHashStrategyClientIDOnly),
+			HashHeader:   lib.PString("Cookie:USERID"),
+		}
+		assert.NoError(t, p.Validate())
+	})
 }

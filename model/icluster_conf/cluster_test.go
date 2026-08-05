@@ -794,6 +794,67 @@ func TestNewBfeClusterConf(t *testing.T) {
 		require.NotNil(t, cConf.AIConf.ModelMapping)
 		assert.Equal(t, "new", (*cConf.AIConf.ModelMapping)["old"])
 	})
+
+	t.Run("disabled sticky sessions with empty hash_header falls back to CLIENT_IP_ONLY", func(t *testing.T) {
+		c := newTestClusterBase()
+		c.StickySessions = &ClusterStickySessions{
+			SessionSticky: false,
+			HashStrategy:  ClusterHashStrategyClientIDOnlyI,
+			HashHeader:    "",
+		}
+		conf := NewBfeClusterConf("v1", []*Cluster{c})
+		cConf := (*conf.Config)["c1"]
+		require.NotNil(t, cConf.GslbBasic)
+		require.NotNil(t, cConf.GslbBasic.HashConf)
+		require.NotNil(t, cConf.GslbBasic.HashConf.HashStrategy)
+		assert.Equal(t, ClusterHashStrategyClientIPOnlyI, int32(*cConf.GslbBasic.HashConf.HashStrategy))
+	})
+}
+
+func TestNormalizeBFEHashStrategy(t *testing.T) {
+	t.Run("nil sticky sessions", func(t *testing.T) {
+		assert.Equal(t, ClusterHashStrategyClientIPOnlyI, normalizeBFEHashStrategy(nil))
+	})
+
+	t.Run("disabled CLIENT_ID_ONLY with empty header", func(t *testing.T) {
+		assert.Equal(t, ClusterHashStrategyClientIPOnlyI, normalizeBFEHashStrategy(&ClusterStickySessions{
+			SessionSticky: false,
+			HashStrategy:  ClusterHashStrategyClientIDOnlyI,
+			HashHeader:    "",
+		}))
+	})
+
+	t.Run("disabled CLIENT_ID_PREFERRED with empty header", func(t *testing.T) {
+		assert.Equal(t, ClusterHashStrategyClientIPOnlyI, normalizeBFEHashStrategy(&ClusterStickySessions{
+			SessionSticky: false,
+			HashStrategy:  ClusterHashStrategyClientIDPreferedI,
+			HashHeader:    "",
+		}))
+	})
+
+	t.Run("disabled CLIENT_ID_ONLY with non-empty header stays", func(t *testing.T) {
+		assert.Equal(t, ClusterHashStrategyClientIDOnlyI, normalizeBFEHashStrategy(&ClusterStickySessions{
+			SessionSticky: false,
+			HashStrategy:  ClusterHashStrategyClientIDOnlyI,
+			HashHeader:    "Cookie:USERID",
+		}))
+	})
+
+	t.Run("enabled CLIENT_ID_ONLY stays", func(t *testing.T) {
+		assert.Equal(t, ClusterHashStrategyClientIDOnlyI, normalizeBFEHashStrategy(&ClusterStickySessions{
+			SessionSticky: true,
+			HashStrategy:  ClusterHashStrategyClientIDOnlyI,
+			HashHeader:    "Cookie:USERID",
+		}))
+	})
+
+	t.Run("disabled CLIENT_IP_ONLY stays", func(t *testing.T) {
+		assert.Equal(t, ClusterHashStrategyClientIPOnlyI, normalizeBFEHashStrategy(&ClusterStickySessions{
+			SessionSticky: false,
+			HashStrategy:  ClusterHashStrategyClientIPOnlyI,
+			HashHeader:    "",
+		}))
+	})
 }
 
 func TestConvertToBFEModelMapping(t *testing.T) {

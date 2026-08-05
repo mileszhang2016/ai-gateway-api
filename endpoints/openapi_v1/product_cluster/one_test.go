@@ -52,7 +52,7 @@ func TestClusterModel2ControlInstancePoolFields(t *testing.T) {
 		},
 		StickySessions: &icluster_conf.ClusterStickySessions{
 			SessionSticky: false,
-			HashStrategy:  icluster_conf.ClusterHashStrategyClientIDOnlyI,
+			HashStrategy:  icluster_conf.ClusterHashStrategyClientIPOnlyI,
 			HashHeader:    "",
 		},
 		PassiveHealthCheck: &icluster_conf.ClusterPassiveHealthCheck{

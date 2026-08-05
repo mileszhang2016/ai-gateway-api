@@ -128,6 +128,9 @@ func (p *UpsertParam) Validate() error {
 			return err
 		}
 	}
+	if err := validateStickySessions(p.StickySessions); err != nil {
+		return err
+	}
 	if p.LLMConfig != nil {
 		return validate.LLMConfig(p.LLMConfig)
 	}
@@ -147,6 +150,30 @@ var (
 	clusterHashStrategyClientIPOnly     = "CLIENT_IP_ONLY"
 	clusterHashStrategyClientIDPrefered = "CLIENT_ID_PREFERED"
 )
+
+func validateStickySessions(ss *StickySessionsParam) error {
+	if ss == nil || ss.Enabled == nil || !*ss.Enabled {
+		return nil
+	}
+
+	hashStrategy := clusterHashStrategyClientIDOnly
+	if ss.HashStrategy != nil && *ss.HashStrategy != "" {
+		hashStrategy = *ss.HashStrategy
+	}
+
+	switch hashStrategy {
+	case clusterHashStrategyClientIDOnly, clusterHashStrategyClientIDPrefered:
+		if ss.HashHeader == nil || *ss.HashHeader == "" {
+			return xerror.WrapParamErrorWithMsg("sticky_sessions.hash_header is required when enabled and hash_strategy is %s", hashStrategy)
+		}
+	case clusterHashStrategyClientIPOnly:
+	default:
+		return xerror.WrapParamErrorWithMsg("sticky_sessions.hash_strategy must be one of %s, %s, %s",
+			clusterHashStrategyClientIPOnly, clusterHashStrategyClientIDOnly, clusterHashStrategyClientIDPrefered)
+	}
+
+	return nil
+}
 
 func newCreateParam4Create(req *http.Request) (*UpsertParam, error) {
 	param := &UpsertParam{}
@@ -308,7 +335,8 @@ func normalizeStickySessions(ss *StickySessionsParam) *StickySessionsParam {
 		ss.Enabled = lib.PBool(false)
 	}
 	if ss.HashStrategy == nil {
-		ss.HashStrategy = lib.PString(clusterHashStrategyClientIDOnly)
+		// CLIENT_IP_ONLY does not require hash_header, so it is safe as the default.
+		ss.HashStrategy = lib.PString(clusterHashStrategyClientIPOnly)
 	}
 	if ss.HashHeader == nil {
 		ss.HashHeader = lib.PString("")
