@@ -253,6 +253,7 @@
 | block_models | []string | 禁止访问的模型黑名单 | - |
 | quota_plan | object | 配额计划 | 不含balance字段 |
 | rate_limit_policy | object | 限流策略 | - |
+| route_rules | object | 路由规则 | 类型为 [RouteRules](./00-common.md#公共参数类型) |
 | create_time | int64 | 创建时间 | Unix时间戳（秒） |
 | update_time | int64 | 更新时间 | Unix时间戳（秒） |
 
