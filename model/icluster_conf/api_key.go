@@ -53,9 +53,9 @@ type APIKeyParam struct {
 	Models            []string `json:"models,omitempty"`
 	Subnet            []string `json:"subnet,omitempty"`
 	EntityID          *string  `json:"entity_id,omitempty"`
-	QuotaPlanID       *int64   `json:"quota_plan_id,omitempty"`
-	RateLimitPolicyID *int64   `json:"rate_limit_policy_id,omitempty"`
-	RouteRulesID      *int64   `json:"route_rules_id,omitempty"`
+	QuotaPlanID       *int64   `json:"-"`
+	RateLimitPolicyID *int64   `json:"-"`
+	RouteRulesID      *int64   `json:"-"`
 	ProductName       *string  `json:"-"`
 	InnerID           *int64   `json:"-"`
 	RemainingQuota    *int64   `json:"remaining_quota,omitempty"`
