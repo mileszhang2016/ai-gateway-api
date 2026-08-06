@@ -86,7 +86,7 @@ type AiRouteRuleParam struct {
 }
 
 type RouteRulesParam struct {
-	ID      *int64              `json:"id,omitempty"`
+	ID      *int64              `json:"-"`
 	Enabled *bool               `json:"enabled"`
 	Rules   []*AiRouteRuleParam `json:"rules"`
 }
