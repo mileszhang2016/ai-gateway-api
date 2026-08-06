@@ -287,6 +287,22 @@
                         "max_concurrency": 50
                     }
                 },
+                "route_rules": {
+                    "enabled": true,
+                    "rules": [
+                        {
+                            "name": "entity-default",
+                            "Cond": "default_t()",
+                            "targets": [
+                                {
+                                    "ClusterName": "cluster_entity",
+                                    "Model": "",
+                                    "Weight": 100
+                                }
+                            ]
+                        }
+                    ]
+                },
                 "create_time": 1716883200,
                 "update_time": 1716883200
             },
@@ -302,6 +318,10 @@
                 },
                 "rate_limit_policy": {
                     "enabled": false
+                },
+                "route_rules": {
+                    "enabled": false,
+                    "rules": []
                 },
                 "create_time": 1716883200,
                 "update_time": 1716883200
