@@ -22,16 +22,16 @@ import (
 
 // EntityParam 定义 Entity 参数
 type EntityParam struct {
-	InnerID           *int64   `json:"inner_id"`
+	InnerID           *int64   `json:"-"`
 	EntityID          *string  `json:"id"`
 	Name              *string  `json:"name"`
 	Type              *string  `json:"type"`
 	ParentID          *string  `json:"parent_id"`
 	AllowModels       []string `json:"allow_models"`
 	BlockModels       []string `json:"block_models"`
-	QuotaPlanID       *int64   `json:"quota_plan_id"`
-	RateLimitPolicyID *int64   `json:"rate_limit_policy_id"`
-	RouteRulesID      *int64   `json:"route_rules_id"`
+	QuotaPlanID       *int64   `json:"-"`
+	RateLimitPolicyID *int64   `json:"-"`
+	RouteRulesID      *int64   `json:"-"`
 	CreateTime        *int64   `json:"create_time,omitempty"`
 	UpdateTime        *int64   `json:"update_time,omitempty"`
 
