@@ -131,8 +131,7 @@
                         "Model": "",
                         "Weight": 100
                     }
-                ],
-                "fallbacks": []
+                ]
             }
         ]
     }
@@ -195,8 +194,7 @@
                             "Model": "",
                             "Weight": 100
                         }
-                    ],
-                    "fallbacks": []
+                    ]
                 }
             ]
         },
