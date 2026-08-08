@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yf-networks/ai-gateway-api/lib"
-	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
-	"github.com/yf-networks/ai-gateway-api/model/itxn"
-	"github.com/yf-networks/ai-gateway-api/stateful"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 )
 
 // BalanceSyncManager 配额余额同步管理器

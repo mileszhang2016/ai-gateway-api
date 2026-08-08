@@ -1,4 +1,4 @@
-# Copyright(c) 2024 Beijing Yingfei Networks Technology Co.Ltd. All rights reserved.
+# Copyright(c) 2024 The Infinity AI Gateway Authors. All rights reserved.
 # Copyright (c) 2019 The BFE Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

@@ -1,4 +1,4 @@
-// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+// Copyright(c) 2026 The Infinity AI Gateway Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xerror"
-	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 )
 
 const DefaultModelProviderConfigPath = "conf/ai/models.json"

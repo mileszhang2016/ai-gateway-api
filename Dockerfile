@@ -1,4 +1,4 @@
-# Copyright(c) 2024 Beijing Yingfei Networks Technology Co.Ltd. All rights reserved.
+# Copyright(c) 2024 The Infinity AI Gateway Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ RUN set -ex; \
   fi; \
   apk add --no-cache curl tar; \
   curl -fsSL -o /tmp/dashboard.tar.gz \
-    "https://github.com/yf-networks/ai-gateway-web/releases/download/${DASHBOARD_VERSION}/ai-gateway-web_${DASHBOARD_VERSION#v}.tar.gz"; \
+    "https://github.com/infinity-ai-gateway/ai-gateway-web/releases/download/${DASHBOARD_VERSION}/ai-gateway-web_${DASHBOARD_VERSION#v}.tar.gz"; \
 
   mkdir -p /dashboard; \
   tar -C /dashboard -zxf /tmp/dashboard.tar.gz; \

@@ -19,7 +19,7 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 )
 
 func convert(handler func(*http.Request) (*http.Request, error)) mux.MiddlewareFunc {

@@ -17,16 +17,16 @@ package innerapi_v1
 import (
 	"github.com/gorilla/mux"
 
-	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/ai_route"
-	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/extra_file"
-	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/gslb_data"
-	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/mod_api_key"
-	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/mod_body_process"
-	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/protocol"
-	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/rate_limit_policy"
-	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1/server_data"
-	"github.com/yf-networks/ai-gateway-api/endpoints/middleware"
-	"github.com/yf-networks/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/ai_route"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/extra_file"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/gslb_data"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/mod_api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/mod_body_process"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/protocol"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/rate_limit_policy"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/server_data"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/middleware"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 )
 
 func endpoints() []*xreq.Endpoint {

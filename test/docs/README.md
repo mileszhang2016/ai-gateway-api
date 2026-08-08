@@ -140,7 +140,7 @@ ai-gateway-api/test/
 `integration/go.mod` 内容：
 
 ```go
-module github.com/yf-networks/ai-gateway-api/integration
+module github.com/infinity-ai-gateway/ai-gateway-api/integration
 
 go 1.22
 
@@ -148,17 +148,17 @@ require (
     github.com/glebarez/go-sqlite v1.21.2        // 纯 Go SQLite 驱动，无 CGO
     github.com/gorilla/mux v1.8.0                 // HTTP 路由
     github.com/stretchr/testify v1.10.0           // 测试断言库
-    github.com/yf-networks/ai-gateway-api v0.0.0  // 主项目
+    github.com/infinity-ai-gateway/ai-gateway-api v0.0.0  // 主项目
     gopkg.in/tylerb/graceful.v1 v1.2.15           // 优雅关闭
 )
 
-replace github.com/yf-networks/ai-gateway-api => ../../
+replace github.com/infinity-ai-gateway/ai-gateway-api => ../../
 ```
 
 **说明**：
 - `integration` 作为独立 Go module，通过 `replace` 指令引用主项目源码
-- 必须引入 `github.com/yf-networks/ai-gateway-api` 以触发 `stateful` 包的 `init()` 注册 `sqlite-strip` 驱动
-- 测试用例代码通过 `import "github.com/yf-networks/ai-gateway-api/integration/testutil"` 使用测试工具包
+- 必须引入 `github.com/infinity-ai-gateway/ai-gateway-api` 以触发 `stateful` 包的 `init()` 注册 `sqlite-strip` 驱动
+- 测试用例代码通过 `import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"` 使用测试工具包
 
 ### 3.2 测试配置文件
 
@@ -378,7 +378,7 @@ package api_key_test
 import (
     "os"
     "testing"
-    "github.com/yf-networks/ai-gateway-api/integration/testutil"
+    "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
 var sm *testutil.ServerManager

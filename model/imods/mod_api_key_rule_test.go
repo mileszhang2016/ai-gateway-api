@@ -1,4 +1,4 @@
-// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+// Copyright(c) 2026 The Infinity AI Gateway Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/yf-networks/ai-gateway-api/model/iai_route"
-	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
-	"github.com/yf-networks/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 )
 
 func TestNewAPIKeyRuleManager(t *testing.T) {
