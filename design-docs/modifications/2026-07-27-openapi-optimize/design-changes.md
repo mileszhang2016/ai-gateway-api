@@ -19,7 +19,7 @@
 | 变更日期 | 2026-07-27 |
 | 目标版本 | **OpenAPI v0.3.0** |
 | 基线文档 | `design-docs/api-define/OpenAPI接口定义.md` |
-| 优化文档 | `design-docs/modifications/2026-07-27-openapi-optimize/瑛菲AI网关-OpenAPI接口定义v0.3.0.md` |
+| 优化文档 | `design-docs/modifications/2026-07-27-openapi-optimize/OpenAPI接口定义v0.3.0.md` |
 
 ### 1.3 设计原则
 
@@ -62,7 +62,7 @@ API-Key 仍是请求链路的直接凭证。v0.3.0 在保持“API-Key → Quota
 
 #### 2.1.4 与代码/文档不一致的说明
 
-- **列表返回结构**：`api-changes.md` 明确新版为“分页结构”；但 `瑛菲AI网关-OpenAPI接口定义v0.3.0.md` 第 2.2.2 节写成“Data为数组”。当前代码实现（`endpoints/openapi_v1/api_key/list.go`）实际返回分页结构。设计建议：**以代码实现和 api-changes.md 为准**，v0.3.0 接口文档应修正为分页结构。
+- **列表返回结构**：`api-changes.md` 明确新版为“分页结构”；但 `OpenAPI接口定义v0.3.0.md` 第 2.2.2 节写成“Data为数组”。当前代码实现（`endpoints/openapi_v1/api_key/list.go`）实际返回分页结构。设计建议：**以代码实现和 api-changes.md 为准**，v0.3.0 接口文档应修正为分页结构。
 - **URI 参数名**：`GET /api-keys/{id}/quota-plan` 的接口定义正文中 URI 参数名为 `id`，但参数表格中写为 `key`。历史版本记录中残留 `/api-keys/{key}/quota-plan` 为笔误。设计建议：**统一使用 `{id}` 作为 URI 参数名**，与代码中 `GetQuotaPlanRoute` 保持一致。
 
 ---
@@ -753,7 +753,7 @@ DELETE /clusters/{cluster_name}
 | Cluster 创建失败回滚 | 一键创建涉及多个表，若中间步骤失败需保证事务回滚 | 确保整个流程包裹在 `TxnStorager.AtomExecute` 中 |
 | `passive_health_check` 默认值 | 旧版数据库字段默认 `failnum=10`，v0.3.0 推荐默认 `failnum=3` | 接口层默认值与数据库默认值需统一，避免混淆 |
 | `quota_plan.balance` 时效性 | 列表/详情返回的 balance 来自数据库，非 Redis 实时值 | 文档明确说明；高实时性场景建议网关层暴露独立接口 |
-| 文档与实现不一致 | `瑛菲AI网关-OpenAPI接口定义v0.3.0.md` 中 API-Key 列表返回写成“Data为数组”，与代码实现的分页结构冲突 | 以代码实现和 `api-changes.md` 为准，修正接口文档 |
+| 文档与实现不一致 | `OpenAPI接口定义v0.3.0.md` 中 API-Key 列表返回写成“Data为数组”，与代码实现的分页结构冲突 | 以代码实现和 `api-changes.md` 为准，修正接口文档 |
 | Auth Product 路径遗留代码 | `user_products` 相关接口与表保留但不再使用 | 建议在 v0.4.0 中彻底清理，避免维护负担 |
 
 ---
@@ -781,7 +781,7 @@ DELETE /clusters/{cluster_name}
 | 文档 | 路径 |
 |------|------|
 | API 变更说明 | `design-docs/modifications/2026-07-27-openapi-optimize/api-changes.md` |
-| v0.3.0 接口定义 | `design-docs/modifications/2026-07-27-openapi-optimize/瑛菲AI网关-OpenAPI接口定义v0.3.0.md` |
+| v0.3.0 接口定义 | `design-docs/modifications/2026-07-27-openapi-optimize/OpenAPI接口定义v0.3.0.md` |
 | 旧版 OpenAPI 接口定义 | `design-docs/api-define/OpenAPI接口定义.md` |
 | InnerAPI 接口定义 | `design-docs/api-define/InnerAPI接口定义.md` |
 | 总体设计文档 | `design-docs/sys-design/总体设计文档.md` |
