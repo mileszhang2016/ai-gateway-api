@@ -6,7 +6,7 @@
 |------|------|
 | 变更日期 | 2026-07-27 |
 | 旧版本文件 | `ai-gateway-api/design-docs/api-define/OpenAPI接口定义.md` |
-| 新版本文件 | `ai-gateway-api/design-docs/modifications/2026-07-27-openapi-optimize/瑛菲AI网关-OpenAPI接口定义v0.3.0.md` |
+| 新版本文件 | `ai-gateway-api/design-docs/modifications/2026-07-27-openapi-optimize/OpenAPI接口定义v0.3.0.md` |
 
 > 注：本次变更是对当前基线文档的一次优化收敛，目标版本号为 **v0.3.0**。下文以“旧版”指代基线文档，“新版”指代 v0.3.0 优化稿。
 

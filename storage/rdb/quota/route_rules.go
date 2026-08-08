@@ -1,4 +1,4 @@
-// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+// Copyright(c) 2026 The Infinity AI Gateway Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
@@ -18,9 +18,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/yf-networks/ai-gateway-api/lib"
-	"github.com/yf-networks/ai-gateway-api/model/shared"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/internal/dao"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
 type RouteRulesStorager struct {

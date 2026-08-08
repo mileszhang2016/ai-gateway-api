@@ -18,9 +18,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xerror"
-	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 )
 
 var _ xreq.Handler = ProductOneAction

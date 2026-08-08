@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yf-networks/ai-gateway-api/integration/testutil"
+	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
 var sm *testutil.ServerManager

@@ -1,4 +1,4 @@
-// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+// Copyright(c) 2026 The Infinity AI Gateway Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ import (
 	"github.com/bfenetworks/bfe/bfe_util/redis_client"
 	"github.com/go-playground/validator/v10"
 	"github.com/go-sql-driver/mysql"
-	"github.com/yf-networks/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 )
 
 type ServerConfig struct {

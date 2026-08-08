@@ -36,7 +36,7 @@ BFE控制面包含如下组件：
 1. 初始化数据库： 执行 `mysql -u{user} -p{password} < db_ddl.sql`
 1. 获取API Server可执行程序
     - 方式一：通过源码编译：clone本仓库后进入项目根目录，执行 `make`，output文件夹包括了可执行文件和初始配置文件
-    - 方式二：直接进入 [releases](https://github.com/yf-networks/ai-gateway-api/releases) 页面下载相应的编译产出
+    - 方式二：直接进入 [releases](https://github.com/infinity-ai-gateway/ai-gateway-api/releases) 页面下载相应的编译产出
 1. 修改初始配置文件，详见[配置文件说明](./config_param.md)
 - 特别注意：绝大多数配置可以使用默认配置，最小修改集合为 **数据库用户名和密码**
 1. 启动 API Server。执行`./ai-gateway-api -c ./conf -sc ai_gateway_api.toml -l ./log `。如果不需要指定启动参数，直接执行 `./ai-gateway-api` 即可

@@ -16,7 +16,7 @@ AI Gateway consists of the following core components:
 | Component | Role | Description | Repository |
 |---|---|---|---|
 | **AI Gateway API** | Control plane | Exposes Open APIs to manage policies/configurations and distribute them | This repo |
-| **Dashboard** | Admin console | Web UI for visual management | [yf-networks/ai-gateway-web](https://github.com/yf-networks/ai-gateway-web) |
+| **Dashboard** | Admin console | Web UI for visual management | [infinity-ai-gateway/ai-gateway-web](https://github.com/infinity-ai-gateway/ai-gateway-web) |
 | **BFE** | Data plane | Traffic forwarding and access control | [bfenetworks/bfe](https://github.com/bfenetworks/bfe) |
 | **Conf Agent** | Config agent | Fetches the latest config and triggers BFE hot reload | [bfenetworks/conf-agent](https://github.com/bfenetworks/conf-agent) |
 | **Service Controller** | Service discovery | Discovers and syncs Kubernetes backend services | [bfenetworks/service-controller](https://github.com/bfenetworks/service-controller) |
@@ -44,7 +44,7 @@ AI Gateway consists of the following core components:
 
 ```bash
 # Clone repo
-git clone https://github.com/yf-networks/ai-gateway-api.git
+git clone https://github.com/infinity-ai-gateway/ai-gateway-api.git
 cd ai-gateway-api
 
 # Download deps and build
@@ -86,8 +86,8 @@ After startup:
 
 ## Container Images & Kubernetes Deployment Example
 
-See the [ai-gateway-demo](https://github.com/yf-networks/ai-gateway-demo/tree/main) repository:
-- https://github.com/yf-networks/ai-gateway-demo
+See the [ai-gateway-demo](https://github.com/infinity-ai-gateway/ai-gateway-demo/tree/main) repository:
+- https://github.com/infinity-ai-gateway/ai-gateway-demo
 
 ## Contributing
 

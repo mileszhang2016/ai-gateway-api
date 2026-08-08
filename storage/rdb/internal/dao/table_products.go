@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yf-networks/ai-gateway-api/lib"
-	"github.com/yf-networks/ai-gateway-api/lib/xerror"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/internal/dao/internal"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao/internal"
 )
 
 const tProductTableName = "products"

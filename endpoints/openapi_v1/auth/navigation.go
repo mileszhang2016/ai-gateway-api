@@ -17,8 +17,8 @@ package auth
 import (
 	"net/http"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/stateful"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 )
 
 var NavigationEndpoint = &xreq.Endpoint{

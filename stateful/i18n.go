@@ -20,7 +20,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/yf-networks/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 )
 
 var langs2languagePacks = map[string]map[string]*LangMapping{}
