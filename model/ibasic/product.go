@@ -18,8 +18,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xerror"
-	"github.com/yf-networks/ai-gateway-api/model/itxn"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 )
 
 const (

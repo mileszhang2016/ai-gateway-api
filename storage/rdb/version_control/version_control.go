@@ -17,9 +17,9 @@ package version_control
 import (
 	"context"
 
-	"github.com/yf-networks/ai-gateway-api/lib"
-	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/internal/dao"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
 var _ iversion_control.VersionControlStorager = &VersionControlStorager{}

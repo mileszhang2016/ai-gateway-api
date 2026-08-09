@@ -1,7 +1,7 @@
 # Contribute Code
 
 You are welcome to contribute to project ai-gateway. To contribute to ai-gateway, you have to agree with the 
-[Contributor License Agreement](https://cla-assistant.io/yf-networks/ai-gateway-api).
+[Contributor License Agreement](https://cla-assistant.io/infinity-ai-gateway/ai-gateway-api).
 
 We sincerely appreciate your contribution. This document explains our workflow and work style.
 
@@ -44,7 +44,7 @@ ai-gateway uses this [Git branching model](http://nvie.com/posts/a-successful-gi
    An experienced Git user pulls from the official repo often -- daily or even hourly, so they notice conflicts with others work early, and it's easier to resolve smaller conflicts.
 
    ```bash
-   git remote add upstream https://github.com/yf-networks/ai-gateway-api
+   git remote add upstream https://github.com/infinity-ai-gateway/ai-gateway-api
    git pull upstream develop
    ```
 
@@ -56,7 +56,7 @@ ai-gateway uses this [Git branching model](http://nvie.com/posts/a-successful-gi
    git push origin my-cool-stuff
    ```
 
-   The push allows you to create a pull request, requesting owners of this [official repo](https://github.com/yf-networks/ai-gateway-api) to pull your change into the official one.
+   The push allows you to create a pull request, requesting owners of this [official repo](https://github.com/infinity-ai-gateway/ai-gateway-api) to pull your change into the official one.
 
    To create a pull request, please follow [these steps](https://help.github.com/articles/creating-a-pull-request/).
 

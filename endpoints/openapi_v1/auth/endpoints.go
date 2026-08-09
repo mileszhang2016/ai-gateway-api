@@ -14,7 +14,7 @@
 
 package auth
 
-import "github.com/yf-networks/ai-gateway-api/lib/xreq"
+import "github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 
 var Endpoints = []*xreq.Endpoint{
 	SessionKeyByPasswordEndpoint,

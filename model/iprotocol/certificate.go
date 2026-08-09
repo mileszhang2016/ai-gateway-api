@@ -21,11 +21,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yf-networks/ai-gateway-api/lib"
-	"github.com/yf-networks/ai-gateway-api/lib/xerror"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
-	"github.com/yf-networks/ai-gateway-api/model/itxn"
-	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/bfenetworks/bfe/bfe_tls"
 )
 

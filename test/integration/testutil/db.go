@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	_ "github.com/glebarez/go-sqlite"
-	_ "github.com/yf-networks/ai-gateway-api/stateful"
+	_ "github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 )
 
 // InitTestDB 初始化 SQLite 测试数据库

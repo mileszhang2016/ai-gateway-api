@@ -18,7 +18,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
-	"github.com/yf-networks/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 )
 
 type DependsConfig struct {

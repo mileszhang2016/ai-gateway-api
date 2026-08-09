@@ -1,4 +1,4 @@
-// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+// Copyright(c) 2026 The Infinity AI Gateway Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
@@ -31,27 +31,27 @@ package rdb
 import (
 	"context"
 
-	"github.com/yf-networks/ai-gateway-api/model/iai_route"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
-	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
-	"github.com/yf-networks/ai-gateway-api/model/imods"
-	"github.com/yf-networks/ai-gateway-api/model/iprotocol"
-	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
-	"github.com/yf-networks/ai-gateway-api/model/iversion_control"
-	"github.com/yf-networks/ai-gateway-api/model/quota"
-	"github.com/yf-networks/ai-gateway-api/model/route_rules"
-	"github.com/yf-networks/ai-gateway-api/stateful"
-	"github.com/yf-networks/ai-gateway-api/stateful/container"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/ai_route"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/auth"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/basic"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/cluster_conf"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/protocol"
-	quotaStorage "github.com/yf-networks/ai-gateway-api/storage/rdb/quota"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/route_conf"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/txn"
-	"github.com/yf-networks/ai-gateway-api/storage/rdb/version_control"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/imods"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iprotocol"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iroute_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/route_rules"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/auth"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/basic"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/protocol"
+	quotaStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/txn"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/version_control"
 )
 
 func Init() error {

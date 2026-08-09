@@ -17,9 +17,9 @@ package domain
 import (
 	"net/http"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iroute_conf"
-	"github.com/yf-networks/ai-gateway-api/stateful/container"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iroute_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 // ListRsp Request Param

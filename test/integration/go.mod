@@ -1,11 +1,11 @@
-module github.com/yf-networks/ai-gateway-api/integration
+module github.com/infinity-ai-gateway/ai-gateway-api/integration
 
 go 1.22
 
 require (
 	github.com/glebarez/go-sqlite v1.21.2
+	github.com/infinity-ai-gateway/ai-gateway-api v0.0.0
 	github.com/stretchr/testify v1.11.1
-	github.com/yf-networks/ai-gateway-api v0.0.0
 )
 
 require (
@@ -50,4 +50,4 @@ require (
 	modernc.org/sqlite v1.23.1 // indirect
 )
 
-replace github.com/yf-networks/ai-gateway-api => ../../
+replace github.com/infinity-ai-gateway/ai-gateway-api => ../../

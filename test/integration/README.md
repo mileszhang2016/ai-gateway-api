@@ -218,7 +218,7 @@ package create
 import (
     "os"
     "testing"
-    "github.com/yf-networks/ai-gateway-api/integration/testutil"
+    "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
 var sm *testutil.ServerManager
@@ -290,4 +290,4 @@ func TestCreate(t *testing.T) {
 |------|------|
 | 测试设计方案 | [../docs/README.md](../docs/README.md) |
 | OpenAPI 接口文档 | [ai-gateway-api/docs/zh_cn/open_api/](../../docs/zh_cn/open_api/) |
-| InnerAPI 接口设计 | [docs/瑛菲AI网关配额控制与限流-InnerAPI接口设计.md](../../../docs/瑛菲AI网关配额控制与限流-InnerAPI接口设计.md) |
+| InnerAPI 接口设计 | [design-docs/api-define/InnerAPI接口定义/README.md](../../../design-docs/api-define/InnerAPI接口定义/README.md) |

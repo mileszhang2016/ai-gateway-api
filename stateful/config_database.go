@@ -22,7 +22,7 @@ import (
 
 	_ "github.com/glebarez/go-sqlite"
 	"github.com/go-sql-driver/mysql"
-	"github.com/yf-networks/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 )
 
 const (

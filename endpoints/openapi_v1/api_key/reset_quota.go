@@ -4,13 +4,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xerror"
-	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/icluster_conf"
-	"github.com/yf-networks/ai-gateway-api/model/quota"
-	"github.com/yf-networks/ai-gateway-api/stateful"
-	"github.com/yf-networks/ai-gateway-api/stateful/container"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 // ResetQuotaRoute 重置配额路由

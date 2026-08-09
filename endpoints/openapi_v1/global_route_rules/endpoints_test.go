@@ -1,4 +1,4 @@
-// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+// Copyright(c) 2026 The Infinity AI Gateway Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,11 +23,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1/internal/testutil"
-	"github.com/yf-networks/ai-gateway-api/lib"
-	"github.com/yf-networks/ai-gateway-api/model/route_rules"
-	"github.com/yf-networks/ai-gateway-api/model/shared"
-	"github.com/yf-networks/ai-gateway-api/stateful/container"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/internal/testutil"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/route_rules"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 type fakeRouteRulesStorager struct {

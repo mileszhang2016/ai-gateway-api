@@ -22,9 +22,9 @@ import (
 
 	"github.com/bfenetworks/bfe/bfe_config/bfe_route_conf/host_rule_conf"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xerror"
-	"github.com/yf-networks/ai-gateway-api/model/ibasic"
-	"github.com/yf-networks/ai-gateway-api/model/itxn"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 )
 
 type Domain struct {

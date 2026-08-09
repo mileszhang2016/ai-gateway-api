@@ -23,11 +23,11 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/yf-networks/ai-gateway-api/endpoints/innerapi_v1"
-	"github.com/yf-networks/ai-gateway-api/endpoints/middleware"
-	"github.com/yf-networks/ai-gateway-api/endpoints/openapi_v1"
-	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/stateful"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/middleware"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 )
 
 func fileHandler(root http.Dir, fs http.Handler) func(rw http.ResponseWriter, r *http.Request) {

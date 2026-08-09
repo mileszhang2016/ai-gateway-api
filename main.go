@@ -1,4 +1,4 @@
-// Copyright(c) 2026 Beijing Yingfei Networks Technology Co.Ltd.
+// Copyright(c) 2026 The Infinity AI Gateway Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
@@ -39,10 +39,10 @@ import (
 	"github.com/gorilla/mux"
 	"gopkg.in/tylerb/graceful.v1"
 
-	"github.com/yf-networks/ai-gateway-api/endpoints"
-	"github.com/yf-networks/ai-gateway-api/stateful"
-	"github.com/yf-networks/ai-gateway-api/stateful/container/rdb"
-	"github.com/yf-networks/ai-gateway-api/version"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container/rdb"
+	"github.com/infinity-ai-gateway/ai-gateway-api/version"
 )
 
 var (

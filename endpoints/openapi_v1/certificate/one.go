@@ -17,11 +17,11 @@ package certificate
 import (
 	"net/http"
 
-	"github.com/yf-networks/ai-gateway-api/lib/xerror"
-	"github.com/yf-networks/ai-gateway-api/lib/xreq"
-	"github.com/yf-networks/ai-gateway-api/model/iauth"
-	"github.com/yf-networks/ai-gateway-api/model/iprotocol"
-	"github.com/yf-networks/ai-gateway-api/stateful/container"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iprotocol"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 // OneEndpoint route
