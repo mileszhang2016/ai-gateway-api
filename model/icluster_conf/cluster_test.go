@@ -134,7 +134,16 @@ func newTestClusterLLM() *Cluster {
 		ModelMappings: []*Mapping{
 			{SourceModel: lib.PString("old"), TargetModel: lib.PString("new")},
 		},
-		Key:          lib.PString("key"),
+		Keys: []APIKey{
+			{Name: lib.PString("key-primary"), Key: lib.PString("sk-aaaaaaaaaaaa"), Weight: lib.PInt(70)},
+			{Name: lib.PString("key-secondary"), Key: lib.PString("sk-bbbbbbbbbbbb"), Weight: lib.PInt(30)},
+		},
+		KeyPolicy: &KeyPolicy{
+			Strategy:            lib.PString("weighted_random"),
+			MaxRetries:          lib.PInt(3),
+			RetryBackoffInitial: lib.PInt(500),
+			RetryBackoffMax:     lib.PInt(5000),
+		},
 		ProviderType: lib.PString("openai"),
 	}
 	return c
@@ -790,7 +799,18 @@ func TestNewBfeClusterConf(t *testing.T) {
 		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterLLM()})
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.AIConf)
-		assert.Equal(t, lib.PString("key"), cConf.AIConf.Key)
+		require.Len(t, cConf.AIConf.Keys, 2)
+		assert.Equal(t, "key-primary", cConf.AIConf.Keys[0].Name)
+		assert.Equal(t, "sk-aaaaaaaaaaaa", cConf.AIConf.Keys[0].Key)
+		assert.Equal(t, 70, cConf.AIConf.Keys[0].Weight)
+		assert.Equal(t, "key-secondary", cConf.AIConf.Keys[1].Name)
+		assert.Equal(t, "sk-bbbbbbbbbbbb", cConf.AIConf.Keys[1].Key)
+		assert.Equal(t, 30, cConf.AIConf.Keys[1].Weight)
+		require.NotNil(t, cConf.AIConf.KeyPolicy)
+		assert.Equal(t, "weighted_random", cConf.AIConf.KeyPolicy.Strategy)
+		assert.Equal(t, 3, cConf.AIConf.KeyPolicy.MaxRetries)
+		assert.Equal(t, 500, cConf.AIConf.KeyPolicy.RetryBackoffInitial)
+		assert.Equal(t, 5000, cConf.AIConf.KeyPolicy.RetryBackoffMax)
 		require.NotNil(t, cConf.AIConf.ModelMapping)
 		assert.Equal(t, "new", (*cConf.AIConf.ModelMapping)["old"])
 	})

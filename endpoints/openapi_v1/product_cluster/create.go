@@ -379,8 +379,12 @@ func normalizeLLMConfig(llm *icluster_conf.LLMConfig) *icluster_conf.LLMConfig {
 	rst := &icluster_conf.LLMConfig{
 		Models:        llm.Models,
 		ModelMappings: llm.ModelMappings,
-		Key:           llm.Key,
+		Keys:          llm.Keys,
+		KeyPolicy:     llm.KeyPolicy,
 		ProviderType:  llm.ProviderType,
+	}
+	if rst.Keys == nil {
+		rst.Keys = []icluster_conf.APIKey{}
 	}
 
 	if llm.ModelEndpoint != nil {

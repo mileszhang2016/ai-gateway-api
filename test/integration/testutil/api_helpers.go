@@ -84,7 +84,6 @@ func CreateCluster(name string) (string, error) {
 		},
 		"llm_config": map[string]interface{}{
 			"models":        []string{"deepseek-chat"},
-			"key":           "sk-test",
 			"provider_type": "deepseek",
 		},
 	})

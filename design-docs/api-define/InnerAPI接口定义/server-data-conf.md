@@ -136,7 +136,24 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
                     "ModelMapping": {
                         "gpt-4": "deepseek-chat"
                     },
-                    "Key": "sk-xxxxxxxxxxxx"
+                    "Keys": [
+                        {
+                            "Name": "key-primary",
+                            "Key": "sk-aaaaaaaaaaaa",
+                            "Weight": 70
+                        },
+                        {
+                            "Name": "key-secondary",
+                            "Key": "sk-bbbbbbbbbbbb",
+                            "Weight": 30
+                        }
+                    ],
+                    "KeyPolicy": {
+                        "Strategy": "weighted_random",
+                        "MaxRetries": 3,
+                        "RetryBackoffInitial": 500,
+                        "RetryBackoffMax": 5000
+                    }
                 }
             }
         }
@@ -148,7 +165,15 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
 |------|------|------|
 | Type | int | 固定为 0，保留字段 |
 | ModelMapping | object | 模型名称映射，key 为请求模型名，value 为后端实际模型名 |
-| Key | string | 后端 AI 服务的认证密钥 |
+| Keys | array | API-Key 列表；为空数组时表示该 cluster 不配置 API-Key |
+| Keys[].Name | string | Key 名称/标识（必填） |
+| Keys[].Key | string | API-Key 值 |
+| Keys[].Weight | int | 权重，范围 `[0,100]` |
+| KeyPolicy | object | Key 路由策略 |
+| KeyPolicy.Strategy | string | 本版仅支持 `weighted_random` |
+| KeyPolicy.MaxRetries | int | 请求内总额外重试次数 |
+| KeyPolicy.RetryBackoffInitial | int | 初始退避时间，单位毫秒 |
+| KeyPolicy.RetryBackoffMax | int | 最大退避时间，单位毫秒 |
 
 ## 4. 配置未变化返回示例
 

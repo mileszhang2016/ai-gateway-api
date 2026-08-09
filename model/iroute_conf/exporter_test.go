@@ -19,7 +19,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/cluster_conf"
 	"github.com/bfenetworks/bfe/bfe_config/bfe_route_conf/host_rule_conf"
 	"github.com/bfenetworks/bfe/bfe_config/bfe_route_conf/route_rule_conf"
 	"github.com/stretchr/testify/assert"
@@ -34,7 +33,7 @@ func TestRouteRuleExportData_UpdateVersion(t *testing.T) {
 	data := &RouteRuleExportData{
 		RouteTable:  &route_rule_conf.RouteTableFile{},
 		HostTable:   &host_rule_conf.HostTableConf{},
-		ClusterConf: &cluster_conf.BfeClusterConf{},
+		ClusterConf: &icluster_conf.ServerDataBfeClusterConf{},
 	}
 	require.NoError(t, data.UpdateVersion("v1"))
 	assert.Equal(t, "v1", data.Version)

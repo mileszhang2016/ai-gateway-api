@@ -566,10 +566,6 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 		modelSet[model] = struct{}{}
 	}
 
-	if c.Key != nil && len(*c.Key) > MaxLLMKeyLength {
-		return xerror.WrapParamErrorWithMsg("llm_config.key length must be <= %d", MaxLLMKeyLength)
-	}
-
 	if c.ModelEndpoint != nil {
 		switch c.ModelEndpoint.Schema {
 		case "", "http", "https":
@@ -590,6 +586,71 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 			return xerror.WrapParamErrorWithMsg("duplicate source_model in llm_config.model_mappings: %s", *mapping.SourceModel)
 		}
 		sourceSet[*mapping.SourceModel] = struct{}{}
+	}
+
+	// Validate keys
+	if len(c.Keys) > 0 {
+		nameSet := map[string]struct{}{}
+		totalWeight := 0
+		for i, key := range c.Keys {
+			if key.Name == nil || *key.Name == "" {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].name is required", i)
+			}
+			if len(*key.Name) < 1 || len(*key.Name) > 128 {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].name length must be between 1 and 128", i)
+			}
+			if _, ok := nameSet[*key.Name]; ok {
+				return xerror.WrapParamErrorWithMsg("duplicate name in llm_config.keys: %s", *key.Name)
+			}
+			nameSet[*key.Name] = struct{}{}
+
+			if key.Key == nil || *key.Key == "" {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].key is required", i)
+			}
+			if len(*key.Key) > MaxLLMKeyLength {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].key length must be <= %d", i, MaxLLMKeyLength)
+			}
+
+			if key.Weight == nil {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].weight is required", i)
+			}
+			if *key.Weight < 0 || *key.Weight > 100 {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].weight must be between 0 and 100", i)
+			}
+			totalWeight += *key.Weight
+		}
+		if totalWeight != 100 {
+			return xerror.WrapParamErrorWithMsg("llm_config.keys total weight must be 100, got %d", totalWeight)
+		}
+	}
+
+	// Validate key_policy
+	if c.KeyPolicy != nil {
+		if c.KeyPolicy.Strategy != nil && *c.KeyPolicy.Strategy != "" && *c.KeyPolicy.Strategy != "weighted_random" {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.strategy must be weighted_random")
+		}
+		if c.KeyPolicy.MaxRetries != nil && *c.KeyPolicy.MaxRetries < 0 {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.max_retries must be >= 0")
+		}
+		if c.KeyPolicy.RetryBackoffInitial != nil && *c.KeyPolicy.RetryBackoffInitial < 0 {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.retry_backoff_initial must be >= 0")
+		}
+		if c.KeyPolicy.RetryBackoffMax != nil && *c.KeyPolicy.RetryBackoffMax < 0 {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.retry_backoff_max must be >= 0")
+		}
+		if c.KeyPolicy.RetryBackoffInitial != nil && c.KeyPolicy.RetryBackoffMax != nil &&
+			*c.KeyPolicy.RetryBackoffMax < *c.KeyPolicy.RetryBackoffInitial {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.retry_backoff_max must be >= retry_backoff_initial")
+		}
+	}
+
+	// Validate API_KEY placeholder
+	if c.ModelEndpoint != nil && len(c.ModelEndpoint.Headers) > 0 && len(c.Keys) == 0 {
+		for _, value := range c.ModelEndpoint.Headers {
+			if strings.Contains(value, "${API_KEY}") {
+				return xerror.WrapParamErrorWithMsg("llm_config.model_endpoint.headers contains ${API_KEY} but keys is empty")
+			}
+		}
 	}
 
 	return nil

@@ -19,7 +19,7 @@ import (
 	"net"
 	"regexp"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/validate"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 )
 
@@ -34,23 +34,7 @@ func (e *ValidationError) Error() string {
 }
 
 func checkLLMConfig(llmConfig *icluster_conf.LLMConfig) error {
-	if llmConfig == nil {
-		return xerror.WrapParamErrorWithMsg("llm_config is required")
-	}
-
-	if len(llmConfig.Models) == 0 {
-		return xerror.WrapParamErrorWithMsg("llm_config.models is required")
-	}
-
-	if llmConfig.ModelEndpoint != nil {
-		switch llmConfig.ModelEndpoint.Schema {
-		case "", "http", "https":
-		default:
-			return xerror.WrapParamErrorWithMsg("llm_config.model_endpoint.schema must be http or https")
-		}
-	}
-
-	return nil
+	return validate.LLMConfig(llmConfig)
 }
 
 // CheckEPPServer validates EPP server configuration.

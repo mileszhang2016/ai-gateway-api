@@ -48,7 +48,6 @@ func TestClusters_Update(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
 			"llm_config": map[string]interface{}{
 				"models":        []string{"qwen-turbo"},
-				"key":           "sk-xxx",
 				"provider_type": "qwen",
 			},
 		})
@@ -99,6 +98,104 @@ func TestClusters_Update(t *testing.T) {
 			t.Fatalf("request failed: %v", err)
 		}
 		testutil.AssertErrCode(t, resp, 422)
+	})
+
+	t.Run("CL-4-006 更新 keys（全量替换）", func(t *testing.T) {
+		clusterUpdateKeys := testutil.UniqueClusterName()
+		if _, err := testutil.CreateCluster(clusterUpdateKeys); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterUpdateKeys)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterUpdateKeys, map[string]interface{}{
+			"llm_config": map[string]interface{}{
+				"models": []string{"deepseek-chat"},
+				"keys": []interface{}{
+					map[string]interface{}{
+						"name":   "new-primary",
+						"key":    "sk-new-primary",
+						"weight": 60,
+					},
+					map[string]interface{}{
+						"name":   "new-secondary",
+						"key":    "sk-new-secondary",
+						"weight": 40,
+					},
+				},
+				"key_policy": map[string]interface{}{
+					"strategy":    "weighted_random",
+					"max_retries": 5,
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		resp, err = testutil.GetClient().Get("/open-api/v1/clusters/" + clusterUpdateKeys)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "name", clusterUpdateKeys)
+	})
+
+	t.Run("CL-4-007 更新 key_policy", func(t *testing.T) {
+		clusterUpdatePolicy := testutil.UniqueClusterName()
+		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterUpdatePolicy,
+			"instance_pool": []interface{}{
+				map[string]interface{}{
+					"name":   "backend-1",
+					"addr":   "10.0.0.1",
+					"weight": 100,
+					"port":   8080,
+				},
+			},
+			"llm_config": map[string]interface{}{
+				"models": []string{"deepseek-chat"},
+				"keys": []interface{}{
+					map[string]interface{}{
+						"name":   "primary",
+						"key":    "sk-primary",
+						"weight": 60,
+					},
+					map[string]interface{}{
+						"name":   "secondary",
+						"key":    "sk-secondary",
+						"weight": 40,
+					},
+				},
+				"provider_type": "deepseek",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterUpdatePolicy)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterUpdatePolicy, map[string]interface{}{
+			"llm_config": map[string]interface{}{
+				"models": []string{"deepseek-chat"},
+				"key_policy": map[string]interface{}{
+					"strategy":              "weighted_random",
+					"retry_backoff_initial": 200,
+					"retry_backoff_max":     2000,
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		resp, err = testutil.GetClient().Get("/open-api/v1/clusters/" + clusterUpdatePolicy)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "name", clusterUpdatePolicy)
 	})
 
 	t.Cleanup(func() {
