@@ -27,9 +27,9 @@ API-Key 模块负责 API-Key 的管理，包括创建、查询、更新、删除
 | 全量更新 API-Key | 4 |
 | 部分更新 API-Key | 4 |
 | 删除 API-Key | 2 |
-| 查询配额计划 | 2 |
+| 查询配额计划 | 3 |
 | 重置配额余额 | 2 |
-| **合计** | **27** |
+| **合计** | **28** |
 
 ## 4. 认证方式
 
@@ -1357,6 +1357,7 @@ URI：`non-existent-id`
 |------|------|---------|---------|
 | AK-7-001 | 查询配额计划含 balance | 正常参数 | 返回完整 quota_plan |
 | AK-7-002 | 查询无限配额 API-Key 的 quota-plan | 边界场景 | 验证行为 |
+| AK-7-003 | 配额计划余额反映真实使用情况 | 正常参数 | balance 与 quota_balances 表一致 |
 
 ### 12.4 测试场景详细设计
 
@@ -1426,6 +1427,43 @@ URI：`id`
 |------|--------|---------|
 | unlimited | true（若为 200） | Equals |
 | balance | 不存在（若为 200） | NotExists |
+
+---
+
+#### 12.4.3 AK-7-003：配额计划余额反映真实使用情况（正常参数）
+
+##### 设计思路
+
+验证独立 quota-plan 接口返回的 `balance` 与 `quota_balances` 表中的真实余额一致，而非固定返回总量。
+
+##### 前提数据准备
+
+已创建非无限配额 API-Key，并直接更新其 `quota_balances` 记录。
+
+##### 执行步骤
+
+1. 创建 API-Key 并 PATCH 为非无限配额，`quota=100`。
+2. 在测试数据库中将该 API-Key 对应 `quota_balances` 的 `used` 更新为 10，`remaining` 更新为 90。
+3. 发送 GET 请求到 `/open-api/v1/api-keys/{id}/quota-plan`。
+4. 验证返回 `balance.used=10`、`balance.remaining=90`。
+
+##### 请求参数
+
+URI：`id`
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota | 100 | Equals |
+| balance | 非空对象 | IsObject |
+| balance.used | 10 | Equals |
+| balance.remaining | 90 | Equals |
 
 ---
 

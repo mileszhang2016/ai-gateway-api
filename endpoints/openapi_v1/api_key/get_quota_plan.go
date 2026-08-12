@@ -75,10 +75,35 @@ func GetQuotaPlanProcess(ctx context.Context, id string, product *ibasic.Product
 		return nil, nil
 	}
 
-	// TODO: Get balance from quota balance storage
-	balance := &Balance{
-		Used:      0,
-		Remaining: *apiKey.QuotaPlan.Quota,
+	var balance *Balance
+	if apiKey.QuotaPlanID != nil {
+		balanceData, err := container.QuotaPlanManager.FetchQuotaBalance(ctx, *apiKey.QuotaPlanID)
+		if err != nil {
+			return nil, err
+		}
+		if balanceData != nil {
+			used := int64(0)
+			if balanceData.Used != nil {
+				used = *balanceData.Used
+			}
+			remaining := int64(0)
+			if balanceData.Remaining != nil {
+				remaining = *balanceData.Remaining
+			}
+			balance = &Balance{
+				Used:      used,
+				Remaining: remaining,
+			}
+		} else {
+			remaining := int64(0)
+			if apiKey.QuotaPlan.Quota != nil {
+				remaining = *apiKey.QuotaPlan.Quota
+			}
+			balance = &Balance{
+				Used:      0,
+				Remaining: remaining,
+			}
+		}
 	}
 
 	return &GetQuotaPlanResponse{

@@ -1,6 +1,7 @@
 package api_key_test
 
 import (
+	"database/sql"
 	"os"
 	"testing"
 
@@ -58,7 +59,72 @@ func TestAPIKey_QuotaQuery(t *testing.T) {
 		})
 	})
 
+	t.Run("AK-7-003 配额计划余额反映真实使用情况", func(t *testing.T) {
+		limitedID, err := testutil.CreateAPIKey("limited-key", "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+limitedID, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited": false,
+				"quota":     100,
+				"unit":      "total_token",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		if err := updateAPIKeyBalance(limitedID, 10, 90); err != nil {
+			t.Fatalf("update balance failed: %v", err)
+		}
+
+		resp, err := testutil.GetClient().Get("/open-api/v1/api-keys/" + limitedID + "/quota-plan")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "quota", float64(100))
+		testutil.AssertDataFieldNotEmpty(t, resp, "balance")
+
+		balance, err := testutil.GetDataField(resp, "balance")
+		if err != nil {
+			t.Fatalf("get balance failed: %v", err)
+		}
+		balanceMap, ok := balance.(map[string]interface{})
+		if !ok {
+			t.Fatalf("balance is not an object")
+		}
+		if used, ok := balanceMap["used"].(float64); !ok || used != 10 {
+			t.Errorf("expected balance.used=10, got %v", balanceMap["used"])
+		}
+		if remaining, ok := balanceMap["remaining"].(float64); !ok || remaining != 90 {
+			t.Errorf("expected balance.remaining=90, got %v", balanceMap["remaining"])
+		}
+
+		t.Cleanup(func() {
+			testutil.DeleteAPIKey(limitedID)
+		})
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteAPIKey(apiKeyID)
 	})
+}
+
+func updateAPIKeyBalance(apiKeyID string, used, remaining int64) error {
+	db, err := sql.Open("sqlite-strip", sm.DBPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	var planID int64
+	err = db.QueryRow("SELECT quota_plan_id FROM api_keys WHERE id = ?", apiKeyID).Scan(&planID)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec("UPDATE quota_balances SET used = ?, remaining = ? WHERE quota_plan_id = ?", used, remaining, planID)
+	return err
 }
