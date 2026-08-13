@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
@@ -98,7 +99,7 @@ func (m *BalanceSyncManager) syncPlanBalance(ctx context.Context, plan *QuotaPla
 			continue
 		}
 
-		totalRemaining += lib.RedisValueToQuota(remaining, &unit)
+		totalRemaining += golibquota.PtrFromRedisValue(remaining, &unit)
 	}
 
 	// 4. 从 Redis 读取每个 Entity 的剩余量
@@ -113,7 +114,7 @@ func (m *BalanceSyncManager) syncPlanBalance(ctx context.Context, plan *QuotaPla
 			continue
 		}
 
-		totalRemaining += lib.RedisValueToQuota(remaining, &unit)
+		totalRemaining += golibquota.PtrFromRedisValue(remaining, &unit)
 	}
 
 	// 5. 计算已使用量
@@ -254,7 +255,7 @@ func (m *BalanceSyncManager) resetAPIKeysRedisUsage(ctx context.Context, planID 
 	if plan == nil || plan.Quota == nil {
 		return fmt.Errorf("plan %d not found or quota is nil", planID)
 	}
-	targetRedisValue := lib.QuotaToRedisValue(plan.Quota, plan.Unit)
+	targetRedisValue := golibquota.PtrToRedisValue(plan.Quota, plan.Unit)
 
 	// 2. 获取该配额计划下的所有 API-Key
 	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{

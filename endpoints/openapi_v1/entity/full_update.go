@@ -18,7 +18,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
@@ -84,7 +84,7 @@ func EntityFullUpdateAction(req *http.Request) (interface{}, error) {
 
 		if updated.EntityID != nil {
 			redisKey := stateful.AIUsedQuotaKey(*updated.EntityID)
-			targetValue := lib.QuotaToRedisValue(param.QuotaPlan.Quota, param.QuotaPlan.Unit)
+			targetValue := golibquota.PtrToRedisValue(param.QuotaPlan.Quota, param.QuotaPlan.Unit)
 			currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
 			if errGet != nil {
 				if strings.Contains(errGet.Error(), "redigo: nil returned") {

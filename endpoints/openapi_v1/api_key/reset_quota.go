@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
@@ -117,7 +117,7 @@ func ResetQuotaAction(req *http.Request) (interface{}, error) {
 		if plan != nil && plan.Unit != nil {
 			unit = *plan.Unit
 		}
-		targetRedisValue := lib.QuotaToRedisValue(&resetQuota, &unit)
+		targetRedisValue := golibquota.PtrToRedisValue(&resetQuota, &unit)
 
 		currentValue, err := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
 		if err != nil {

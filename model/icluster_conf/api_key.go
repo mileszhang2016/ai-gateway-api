@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/google/uuid"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
@@ -56,9 +57,9 @@ type APIKeyParam struct {
 	QuotaPlanID       *int64   `json:"-"`
 	RateLimitPolicyID *int64   `json:"-"`
 	RouteRulesID      *int64   `json:"-"`
-	ProductName       *string   `json:"-"`
-	InnerID           *int64    `json:"-"`
-	RemainingQuota    *float64  `json:"remaining_quota,omitempty"`
+	ProductName       *string  `json:"-"`
+	InnerID           *int64   `json:"-"`
+	RemainingQuota    *float64 `json:"remaining_quota,omitempty"`
 
 	QuotaPlan       *shared.QuotaPlanParam       `json:"quota_plan,omitempty"`
 	RateLimitPolicy *shared.RateLimitPolicyParam `json:"rate_limit_policy,omitempty"`
@@ -80,19 +81,19 @@ type APIKeyTokenFilter struct {
 
 // APIKeyFilter defines filters for querying API keys
 type APIKeyFilter struct {
-	ProductName     *string
-	ProductNames    []string
-	ALBGroupName    *string
-	ID              *string
-	Key             *string
-	InnerID         *int64
-	QuotaPlanID     *int64
-	RouteRulesID    *int64
-	Page            *int
-	PageSize        *int
-	Enabled         *bool
-	EntityID        *string
-	UnlimitedQuota  *bool
+	ProductName    *string
+	ProductNames   []string
+	ALBGroupName   *string
+	ID             *string
+	Key            *string
+	InnerID        *int64
+	QuotaPlanID    *int64
+	RouteRulesID   *int64
+	Page           *int
+	PageSize       *int
+	Enabled        *bool
+	EntityID       *string
+	UnlimitedQuota *bool
 }
 
 // APIKeyStorager interface defines storage operations for API keys
@@ -185,7 +186,7 @@ func GetRemainingQuota(param *APIKeyParam) (*float64, error) {
 		remain = 0
 	}
 
-	remainFloat := lib.RedisValueToQuota(remain, param.QuotaPlan.Unit)
+	remainFloat := golibquota.PtrFromRedisValue(remain, param.QuotaPlan.Unit)
 	return &remainFloat, nil
 }
 

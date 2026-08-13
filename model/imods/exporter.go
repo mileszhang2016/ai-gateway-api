@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
@@ -580,7 +580,7 @@ func convertQuotaPlanToExport(qp *quota.QuotaPlanParam, id string, redisKeyID st
 		ExpiredTime: -1,
 	}
 	if qp.Quota != nil {
-		result.Quota = lib.QuotaToRedisValue(qp.Quota, qp.Unit)
+		result.Quota = golibquota.PtrToRedisValue(qp.Quota, qp.Unit)
 	}
 	if qp.ResetPeriod != nil {
 		if *qp.ResetPeriod == "weekly" || *qp.ResetPeriod == "monthly" {

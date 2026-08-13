@@ -9,6 +9,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.4.0
 	github.com/baidu/go-lib v0.0.0-20210316014414-55daa983069e
 	github.com/bfenetworks/bfe v1.8.1-0.20260427052401-8d3a8cd44d98
+	github.com/bfenetworks/go-lib v0.0.2
 	github.com/codegangsta/negroni v1.0.0
 	github.com/didi/gendry v1.7.0
 	github.com/glebarez/go-sqlite v1.21.2
@@ -21,9 +22,11 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
 	github.com/rs/cors v1.8.0
+	github.com/shopspring/decimal v1.4.0
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/gcfg.v1 v1.2.3
 	gopkg.in/tylerb/graceful.v1 v1.2.15
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -48,7 +51,6 @@ require (
 	github.com/prometheus/common v0.26.0 // indirect
 	github.com/prometheus/procfs v0.6.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -61,7 +63,6 @@ require (
 	golang.org/x/text v0.21.0 // indirect
 	google.golang.org/protobuf v1.35.2 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect

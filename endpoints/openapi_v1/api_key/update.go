@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strings"
 
+	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
@@ -127,7 +128,7 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 
 		if updated.Key != nil && stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
 			redisKey := stateful.AIUsedQuotaKey(*updated.Key)
-			targetValue := lib.QuotaToRedisValue(param.QuotaPlan.Quota, param.QuotaPlan.Unit)
+			targetValue := golibquota.PtrToRedisValue(param.QuotaPlan.Quota, param.QuotaPlan.Unit)
 			currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
 			if errGet != nil {
 				if strings.Contains(errGet.Error(), "redigo: nil returned") {

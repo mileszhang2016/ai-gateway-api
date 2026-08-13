@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 
+	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
@@ -127,7 +128,7 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 		param.QuotaPlan.Quota != nil &&
 		stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
 		redisKey := stateful.AIUsedQuotaKey(*param.EntityID)
-		targetValue := lib.QuotaToRedisValue(param.QuotaPlan.Quota, param.QuotaPlan.Unit)
+		targetValue := golibquota.PtrToRedisValue(param.QuotaPlan.Quota, param.QuotaPlan.Unit)
 		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
 		if errGet != nil {
 			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, targetValue)
@@ -142,7 +143,7 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 		stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
 		redisKey := stateful.AIUsedQuotaKey(*param.EntityID)
 		defaultQuota := float64(100000000)
-		targetValue := lib.QuotaToRedisValue(&defaultQuota, param.QuotaPlan.Unit)
+		targetValue := golibquota.PtrToRedisValue(&defaultQuota, param.QuotaPlan.Unit)
 		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
 		if errGet != nil {
 			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, targetValue)
