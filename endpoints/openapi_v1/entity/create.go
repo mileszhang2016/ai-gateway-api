@@ -19,14 +19,12 @@ import (
 	"fmt"
 	"net/http"
 
-	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -121,36 +119,6 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 
 	if _, err := container.EntityManager.CreateEntity(req.Context(), param); err != nil {
 		return nil, err
-	}
-
-	if param.EntityID != nil && param.QuotaPlan != nil &&
-		(param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
-		param.QuotaPlan.Quota != nil &&
-		stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
-		redisKey := stateful.AIUsedQuotaKey(*param.EntityID)
-		targetValue := golibquota.PtrToRedisValue(param.QuotaPlan.Quota, param.QuotaPlan.Unit)
-		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if errGet != nil {
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, targetValue)
-		} else {
-			delta := targetValue - currentValue
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-	}
-
-	if param.EntityID != nil && param.QuotaPlan != nil &&
-		param.QuotaPlan.Unlimited != nil && *param.QuotaPlan.Unlimited &&
-		stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
-		redisKey := stateful.AIUsedQuotaKey(*param.EntityID)
-		defaultQuota := float64(100000000)
-		targetValue := golibquota.PtrToRedisValue(&defaultQuota, param.QuotaPlan.Unit)
-		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if errGet != nil {
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, targetValue)
-		} else {
-			delta := targetValue - currentValue
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
 	}
 
 	return container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{EntityID: param.EntityID})

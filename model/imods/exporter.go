@@ -236,7 +236,7 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 			isUnlimited := one.UnlimitedQuota != nil && *one.UnlimitedQuota
 			if !isUnlimited {
 				status = TokenStatusEnabled
-				remainingQuota, err := icluster_conf.GetRemainingQuota(one)
+				remainingQuota, err := icluster_conf.GetRemainingQuota(ctx, rlm.quotaCache, one)
 				if err != nil {
 					return nil, err
 				}

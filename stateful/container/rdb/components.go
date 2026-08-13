@@ -41,6 +41,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iroute_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/route_rules"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
@@ -187,6 +188,10 @@ func Init() error {
 	container.QuotaBalanceStorager = quotaStorage.NewQuotaBalanceStorager(stateful.NewBFEDBContext)
 	container.RateLimitPolicyStorager = quotaStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
 
+	container.QuotaCacheSingleton = quotacache.NewRedisQuotaCache(
+		stateful.DefaultClientSet.RedisClient,
+	)
+
 	container.EntityTypeManager = quota.NewEntityTypeManager(
 		container.TxnStoragerSingleton,
 		container.EntityTypeStorager)
@@ -198,7 +203,8 @@ func Init() error {
 		quota.NewQuotaPlanStoragerAdapter(container.QuotaPlanStorager),
 		quota.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
 		container.RouteRulesStorager,
-		container.QuotaBalanceStorager)
+		container.QuotaBalanceStorager,
+		container.QuotaCacheSingleton)
 
 	container.APIKeyRuleManager = imods.NewAPIKeyRuleManager(
 		container.TxnStoragerSingleton,
@@ -207,6 +213,7 @@ func Init() error {
 		container.AIRouteRuleStorager,
 		container.QuotaPlanStorager,
 		container.EntityStorager,
+		container.QuotaCacheSingleton,
 	)
 
 	container.ModBodyProcessManager = imods.NewModBodyProcessManager(
@@ -216,7 +223,10 @@ func Init() error {
 	container.QuotaPlanManager = quota.NewQuotaPlanManager(
 		container.TxnStoragerSingleton,
 		container.QuotaPlanStorager,
-		container.QuotaBalanceStorager)
+		container.QuotaBalanceStorager,
+		container.APIKeyStorager,
+		container.EntityStorager,
+		container.QuotaCacheSingleton)
 
 	container.RateLimitPolicyManager = quota.NewRateLimitPolicyManager(
 		container.TxnStoragerSingleton,
@@ -240,6 +250,7 @@ func Init() error {
 		container.RouteRulesStorager,
 		quota.NewEntityStoragerAdapter(container.EntityStorager),
 		quota.NewQuotaBalanceStoragerAdapter(container.QuotaBalanceStorager),
+		container.QuotaCacheSingleton,
 	)
 
 	// Initialize quota balance sync and reset components
@@ -248,7 +259,8 @@ func Init() error {
 		container.APIKeyStorager,
 		container.QuotaBalanceStorager,
 		container.QuotaPlanStorager,
-		container.EntityStorager)
+		container.EntityStorager,
+		container.QuotaCacheSingleton)
 
 	container.QuotaResetScheduler = quota.NewQuotaResetScheduler(
 		container.TxnStoragerSingleton,

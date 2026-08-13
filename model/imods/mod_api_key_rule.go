@@ -20,6 +20,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 )
 
 type APIKeyRuleManager struct {
@@ -29,6 +30,7 @@ type APIKeyRuleManager struct {
 	aiRouteStorager       iai_route.AIRouteRuleStorager
 	quotaPlanStorager     quota.QuotaPlanStorager
 	entityStorager        quota.EntityStorager
+	quotaCache            quotacache.QuotaCache
 }
 
 const (
@@ -66,7 +68,8 @@ func NewAPIKeyRuleManager(txn itxn.TxnStorager,
 	apiKeyStorager icluster_conf.APIKeyStorager,
 	aiRouteStorager iai_route.AIRouteRuleStorager,
 	quotaPlanStorager quota.QuotaPlanStorager,
-	entityStorager quota.EntityStorager) *APIKeyRuleManager {
+	entityStorager quota.EntityStorager,
+	quotaCache quotacache.QuotaCache) *APIKeyRuleManager {
 	return &APIKeyRuleManager{
 		txn:                   txn,
 		versionControlManager: versionControlManager,
@@ -74,5 +77,6 @@ func NewAPIKeyRuleManager(txn itxn.TxnStorager,
 		aiRouteStorager:       aiRouteStorager,
 		quotaPlanStorager:     quotaPlanStorager,
 		entityStorager:        entityStorager,
+		quotaCache:            quotaCache,
 	}
 }

@@ -22,7 +22,9 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 )
 
 // EntityManager 定义 Entity 管理器
@@ -34,6 +36,7 @@ type EntityManager struct {
 	rateLimitPolicyStorager shared.RateLimitPolicyStorager
 	routeRulesStorager      shared.RouteRulesStorager
 	quotaBalanceStorager    QuotaBalanceStorager
+	quotaCache              quotacache.QuotaCache
 }
 
 // NewEntityManager 创建 Entity 管理器
@@ -42,7 +45,8 @@ func NewEntityManager(txn itxn.TxnStorager, storager EntityStorager,
 	quotaPlanStorager shared.QuotaPlanStorager,
 	rateLimitPolicyStorager shared.RateLimitPolicyStorager,
 	routeRulesStorager shared.RouteRulesStorager,
-	quotaBalanceStorager QuotaBalanceStorager) *EntityManager {
+	quotaBalanceStorager QuotaBalanceStorager,
+	quotaCache quotacache.QuotaCache) *EntityManager {
 	return &EntityManager{
 		txn:                     txn,
 		storager:                storager,
@@ -51,6 +55,7 @@ func NewEntityManager(txn itxn.TxnStorager, storager EntityStorager,
 		rateLimitPolicyStorager: rateLimitPolicyStorager,
 		routeRulesStorager:      routeRulesStorager,
 		quotaBalanceStorager:    quotaBalanceStorager,
+		quotaCache:              quotaCache,
 	}
 }
 
@@ -134,8 +139,25 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 
 		return nil
 	})
+	if err != nil {
+		return 0, err
+	}
 
-	return id, err
+	// Sync Redis remaining quota after DB transaction commits (best-effort).
+	if param.EntityID != nil && param.QuotaPlan != nil && m.quotaCache != nil {
+		if param.QuotaPlan.Unlimited != nil && *param.QuotaPlan.Unlimited {
+			defaultQuota := float64(100000000)
+			if cacheErr := m.quotaCache.SetRemaining(ctx, *param.EntityID, &defaultQuota, param.QuotaPlan.Unit); cacheErr != nil {
+				stateful.AccessLogger.Warn("failed to set quota cache for entity %s: %v", *param.EntityID, cacheErr)
+			}
+		} else if param.QuotaPlan.Quota != nil {
+			if cacheErr := m.quotaCache.SetRemaining(ctx, *param.EntityID, param.QuotaPlan.Quota, param.QuotaPlan.Unit); cacheErr != nil {
+				stateful.AccessLogger.Warn("failed to set quota cache for entity %s: %v", *param.EntityID, cacheErr)
+			}
+		}
+	}
+
+	return id, nil
 }
 
 // FetchEntity 查询单个 Entity
@@ -178,6 +200,9 @@ func (m *EntityManager) FetchEntityList(ctx context.Context, filter *EntityFilte
 
 // UpdateEntity 更新 Entity
 func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+	var updatedEntityID *string
+	var updatedQuotaPlan *shared.QuotaPlanParam
+
 	if param.ParentID != nil && *param.ParentID != "" && param.Type != nil && m.entityTypeStorager != nil {
 		if err := m.checkEntityLevel(ctx, *param.Type, *param.ParentID); err != nil {
 			return 0, err
@@ -270,10 +295,34 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 		}
 
 		affected, err = m.storager.UpdateEntity(ctx, &EntityFilter{EntityID: one.EntityID}, param)
-		return err
+		if err != nil {
+			return err
+		}
+		updatedEntityID = one.EntityID
+		if param.QuotaPlan != nil {
+			updatedQuotaPlan = param.QuotaPlan
+		}
+		return nil
 	})
+	if err != nil {
+		return affected, err
+	}
 
-	return affected, err
+	// Sync Redis remaining quota after DB transaction commits (best-effort).
+	if updatedEntityID != nil && updatedQuotaPlan != nil && m.quotaCache != nil {
+		if updatedQuotaPlan.Unlimited != nil && *updatedQuotaPlan.Unlimited {
+			defaultQuota := float64(100000000)
+			if cacheErr := m.quotaCache.SetRemaining(ctx, *updatedEntityID, &defaultQuota, updatedQuotaPlan.Unit); cacheErr != nil {
+				stateful.AccessLogger.Warn("failed to set quota cache for entity %s: %v", *updatedEntityID, cacheErr)
+			}
+		} else if updatedQuotaPlan.Quota != nil {
+			if cacheErr := m.quotaCache.SetRemaining(ctx, *updatedEntityID, updatedQuotaPlan.Quota, updatedQuotaPlan.Unit); cacheErr != nil {
+				stateful.AccessLogger.Warn("failed to set quota cache for entity %s: %v", *updatedEntityID, cacheErr)
+			}
+		}
+	}
+
+	return affected, nil
 }
 
 // DeleteEntity 删除 Entity

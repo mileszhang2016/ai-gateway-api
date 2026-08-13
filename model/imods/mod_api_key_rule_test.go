@@ -31,8 +31,7 @@ func TestNewAPIKeyRuleManager(t *testing.T) {
 		&fakeAPIKeyStorager{},
 		&fakeAIRouteRuleStorager{},
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{},
-	)
+		&fakeEntityStorager{}, nil)
 	assert.NotNil(t, m)
 	assert.NotNil(t, m.txn)
 	assert.NotNil(t, m.versionControlManager)
@@ -167,8 +166,7 @@ func TestBuildAIRouteAPIKeyRules(t *testing.T) {
 		&fakeAPIKeyStorager{},
 		aiRouteStore,
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{},
-	)
+		&fakeEntityStorager{}, nil)
 
 	product2config, err := m.buildAIRouteAPIKeyRules(ctx)
 	assert.NoError(t, err)
@@ -195,8 +193,7 @@ func TestBuildAIRouteAPIKeyRules_Error(t *testing.T) {
 		&fakeAPIKeyStorager{},
 		aiRouteStore,
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{},
-	)
+		&fakeEntityStorager{}, nil)
 
 	product2config, err := m.buildAIRouteAPIKeyRules(ctx)
 	assert.Error(t, err)

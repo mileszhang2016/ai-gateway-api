@@ -40,6 +40,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/route_rules"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 )
@@ -84,6 +85,7 @@ var (
 	QuotaBalanceStorager    quota.QuotaBalanceStorager
 	RateLimitPolicyStorager quota.RateLimitPolicyStorager
 	RouteRulesStorager      shared.RouteRulesStorager
+	QuotaCacheSingleton     quotacache.QuotaCache
 
 	// Model pricing
 	ModelPriceStorager imodel_price.ModelPriceStorager

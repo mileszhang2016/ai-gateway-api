@@ -25,7 +25,7 @@
 | API-Key 与 Entity 关联及模型继承 | [details/API-Key与Entity关联及模型继承.md](./details/API-Key与Entity关联及模型继承.md) | 描述 API-Key 与 Entity 的挂载关系、Entity 层级树约束、模型白名单交集与黑名单继承、配额计划层级合并、限流策略与路由规则的层级收集，以及导出到 BFE 时的最终生效规则。 |
 | 限流策略与导出 | [details/限流策略与导出.md](./details/限流策略与导出.md) | 描述限流策略的数据模型（TPM/RPM/并发数）、JSON 配置结构、CRUD 校验、API-Key/Entity 引用关系、按 Entity 层级向上合并导出到 BFE 的流程，以及 BFE 侧预期行为与边界情况。 |
 | 路由规则管理 | [details/路由规则管理.md](./details/路由规则管理.md) | 区分产品级 BFE 路由规则与 AI 路由规则，描述 `route_rules` 表的三级（Global/Entity/API-Key）管理、校验规则、与 API-Key/Entity 生命周期的一致性、导出到 BFE 的绑定顺序与文件格式。 |
-| 配额余额同步机制 | [details/配额余额同步机制.md](./details/配额余额同步机制.md) | 描述 Redis 实时计数与数据库定时同步的混合架构，包括 `QuotaResetScheduler` 调度器、`BalanceSyncManager` 的余额同步与过期重置、自然周/月重置逻辑、Redis Key 生命周期以及 OpenAPI 查询余额的处理；包含 RMB 配额定点精度设计。 |
+| 配额余额同步机制 | [details/配额余额同步机制.md](./details/配额余额同步机制.md) | 描述 Redis 实时计数与数据库定时同步的混合架构，包括 `QuotaResetScheduler` 调度器、`BalanceSyncManager` 的余额同步与过期重置、`model/quotacache` 对 Redis 操作的封装、自然周/月重置逻辑、Redis Key 生命周期以及 OpenAPI 查询余额的处理；包含 RMB 配额定点精度设计。 |
 | 模型定价管理 | [api-define/OpenAPI接口定义/model-prices.md](../api-define/OpenAPI接口定义/model-prices.md) | 描述 `/model-prices` 管理接口、`model-list.yaml` 导入格式、`ModelPrice` 数据模型与校验规则，是 InnerAPI `AIConf.ModelTable` 的数据源。 |
 
 ---

@@ -16,14 +16,11 @@ package entity
 
 import (
 	"net/http"
-	"strings"
 
-	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -106,40 +103,6 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 	err = container.QuotaPlanManager.ResetBalance(req.Context(), *entity.QuotaPlanID, bodyReq.Quota, false)
 	if err != nil {
 		return nil, err
-	}
-
-	// 重置 Redis 中的值为 quota 总量（RMB 配额按 1e8 定点整数存储）
-	if entity.EntityID != nil {
-		redisKey := stateful.AIUsedQuotaKey(*entity.EntityID)
-
-		var resetQuota float64
-		if bodyReq.Quota != nil {
-			resetQuota = *bodyReq.Quota
-		} else if plan != nil && plan.Quota != nil {
-			resetQuota = *plan.Quota
-		} else {
-			return nil, xerror.WrapParamErrorWithMsg("quota is required")
-		}
-
-		unit := ""
-		if plan != nil && plan.Unit != nil {
-			unit = *plan.Unit
-		}
-		targetRedisValue := golibquota.PtrToRedisValue(&resetQuota, &unit)
-
-		currentValue, err := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if err != nil {
-			if !strings.Contains(err.Error(), "redigo: nil returned") {
-				return nil, err
-			}
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, targetRedisValue)
-		} else {
-			delta := targetRedisValue - currentValue
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	newPlan, err := container.QuotaPlanManager.FetchQuotaPlan(req.Context(), &quota.QuotaPlanFilter{

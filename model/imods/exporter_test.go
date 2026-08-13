@@ -40,8 +40,7 @@ func newTestAPIKeyRuleManager() *APIKeyRuleManager {
 		&fakeAPIKeyStorager{},
 		&fakeAIRouteRuleStorager{},
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{},
-	)
+		&fakeEntityStorager{}, nil)
 }
 
 func TestAPIKeyRuleManager_ConfigExport(t *testing.T) {
@@ -80,8 +79,7 @@ func TestAPIKeyRuleManager_ConfigExport(t *testing.T) {
 		apiKeyStore,
 		aiRouteStore,
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{},
-	)
+		&fakeEntityStorager{}, nil)
 
 	conf, err := m.ConfigExport(ctx, "")
 	require.NoError(t, err)
@@ -187,8 +185,7 @@ func TestAPIKeyRuleManager_ConfigExport_Concurrent(t *testing.T) {
 		apiKeyStore,
 		aiRouteStore,
 		quotaPlanStore,
-		entityStore,
-	)
+		entityStore, nil)
 
 	// Increase concurrency to maximize the chance of triggering the race.
 	prevMaxProcs := runtime.GOMAXPROCS(runtime.NumCPU())
@@ -349,8 +346,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator(t *testing.T) {
 		apiKeyStore,
 		aiRouteStore,
 		quotaPlanStore,
-		entityStore,
-	)
+		entityStore, nil)
 
 	data, err := m.APIKeyRuleGenerator(ctx)
 	require.NoError(t, err)

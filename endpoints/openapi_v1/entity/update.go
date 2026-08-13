@@ -16,14 +16,11 @@ package entity
 
 import (
 	"net/http"
-	"strings"
 
-	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -75,28 +72,11 @@ func EntityUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	// 当 quota_plan 发生变更且非无限制时，重置 quota_balance 并同步 Redis
+	// 当 quota_plan 发生变更且非无限制时，重置 quota_balance（Redis 同步由 Manager 在事务外完成）
 	if param.QuotaPlan != nil && (param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
 		updated != nil && updated.QuotaPlanID != nil {
 		if err := container.QuotaPlanManager.ResetBalance(req.Context(), *updated.QuotaPlanID, param.QuotaPlan.Quota, false); err != nil {
 			return nil, err
-		}
-
-		if updated.EntityID != nil {
-			redisKey := stateful.AIUsedQuotaKey(*updated.EntityID)
-			targetValue := golibquota.PtrToRedisValue(param.QuotaPlan.Quota, param.QuotaPlan.Unit)
-			currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-			if errGet != nil {
-				if strings.Contains(errGet.Error(), "redigo: nil returned") {
-					currentValue = 0
-				} else {
-					return nil, errGet
-				}
-			}
-			delta := targetValue - currentValue
-			if _, err := stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta); err != nil {
-				return nil, err
-			}
 		}
 	}
 

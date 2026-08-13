@@ -59,7 +59,7 @@ func OneAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapRecordNotExist("API-Key")
 	}
 
-	response, err := newResponse([]*icluster_conf.APIKeyParam{one})
+	response, err := newResponse(req.Context(), []*icluster_conf.APIKeyParam{one})
 	if err != nil {
 		return nil, err
 	}

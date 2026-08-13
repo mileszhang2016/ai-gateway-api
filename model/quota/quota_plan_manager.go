@@ -20,7 +20,10 @@ import (
 	"time"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
+	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 )
 
 // QuotaPlanManager 定义配额计划管理器
@@ -28,14 +31,21 @@ type QuotaPlanManager struct {
 	txn             itxn.TxnStorager
 	storager        QuotaPlanStorager
 	balanceStorager QuotaBalanceStorager
+	apiKeyStorager  icluster_conf.APIKeyStorager
+	entityStorager  EntityStorager
+	quotaCache      quotacache.QuotaCache
 }
 
 // NewQuotaPlanManager 创建配额计划管理器
-func NewQuotaPlanManager(txn itxn.TxnStorager, storager QuotaPlanStorager, balanceStorager QuotaBalanceStorager) *QuotaPlanManager {
+func NewQuotaPlanManager(txn itxn.TxnStorager, storager QuotaPlanStorager, balanceStorager QuotaBalanceStorager,
+	apiKeyStorager icluster_conf.APIKeyStorager, entityStorager EntityStorager, quotaCache quotacache.QuotaCache) *QuotaPlanManager {
 	return &QuotaPlanManager{
 		txn:             txn,
 		storager:        storager,
 		balanceStorager: balanceStorager,
+		apiKeyStorager:  apiKeyStorager,
+		entityStorager:  entityStorager,
+		quotaCache:      quotaCache,
 	}
 }
 
@@ -69,7 +79,10 @@ func (m *QuotaPlanManager) DeleteQuotaPlan(ctx context.Context, filter *QuotaPla
 // - true: 用于定期重置调度，会更新 last_reset_at，影响下次重置判断
 // - false: 用于手动重置接口，不更新 last_reset_at，避免影响定期重置调度
 func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQuota *float64, updateLastResetAt bool) error {
-	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+	var resetQuota *float64
+	var planUnit *string
+
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		// 1. 获取 QuotaPlan
 		plan, err := m.storager.FetchQuotaPlan(ctx, &QuotaPlanFilter{ID: &planID})
 		if err != nil {
@@ -85,7 +98,7 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 		}
 
 		// 3. 确定重置后的配额总量
-		resetQuota := plan.Quota
+		resetQuota = plan.Quota
 		if newQuota != nil {
 			resetQuota = newQuota
 
@@ -96,6 +109,7 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 				return err
 			}
 		}
+		planUnit = plan.Unit
 
 		// 4. 获取或创建 Balance
 		balance, err := m.balanceStorager.FetchQuotaBalance(ctx, &QuotaBalanceFilter{QuotaPlanID: &planID})
@@ -131,6 +145,46 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 
 		return err
 	})
+	if err != nil {
+		return err
+	}
+
+	// 8. 重置该 quota_plan 下所有 API-Key / Entity 的 Redis 剩余量（事务外，最终一致）
+	if m.quotaCache == nil || resetQuota == nil {
+		return nil
+	}
+
+	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{QuotaPlanID: &planID})
+	if err != nil {
+		stateful.AccessLogger.Warn("failed to fetch api keys for quota plan %d: %v", planID, err)
+		return nil
+	}
+	for _, apiKey := range apiKeys {
+		if apiKey.Key == nil {
+			continue
+		}
+		if cacheErr := m.quotaCache.ResetToQuota(ctx, *apiKey.Key, resetQuota, planUnit); cacheErr != nil {
+			stateful.AccessLogger.Warn("failed to reset quota cache for api_key %s: %v", *apiKey.Key, cacheErr)
+		}
+	}
+
+	if m.entityStorager != nil {
+		entities, err := m.entityStorager.FetchEntityList(ctx, &EntityFilter{QuotaPlanID: &planID})
+		if err != nil {
+			stateful.AccessLogger.Warn("failed to fetch entities for quota plan %d: %v", planID, err)
+			return nil
+		}
+		for _, entity := range entities {
+			if entity.EntityID == nil {
+				continue
+			}
+			if cacheErr := m.quotaCache.ResetToQuota(ctx, *entity.EntityID, resetQuota, planUnit); cacheErr != nil {
+				stateful.AccessLogger.Warn("failed to reset quota cache for entity %s: %v", *entity.EntityID, cacheErr)
+			}
+		}
+	}
+
+	return nil
 }
 
 // FetchQuotaBalance 获取配额余额

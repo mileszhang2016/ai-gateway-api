@@ -21,6 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 )
@@ -31,14 +32,16 @@ func ptrFloat64(f float64) *float64 { return &f }
 func ptrString(s string) *string { return &s }
 
 func TestGetRemainingQuota(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("unlimited quota", func(t *testing.T) {
-		remain, err := GetRemainingQuota(&APIKeyParam{UnlimitedQuota: ptrBool(true)})
+		remain, err := GetRemainingQuota(ctx, nil, &APIKeyParam{UnlimitedQuota: ptrBool(true)})
 		require.NoError(t, err)
 		assert.Nil(t, remain)
 	})
 
 	t.Run("unlimited plan", func(t *testing.T) {
-		remain, err := GetRemainingQuota(&APIKeyParam{
+		remain, err := GetRemainingQuota(ctx, nil, &APIKeyParam{
 			QuotaPlan: &shared.QuotaPlanParam{Unlimited: ptrBool(true)},
 		})
 		require.NoError(t, err)
@@ -46,14 +49,13 @@ func TestGetRemainingQuota(t *testing.T) {
 	})
 
 	t.Run("nil quota plan", func(t *testing.T) {
-		remain, err := GetRemainingQuota(&APIKeyParam{})
+		remain, err := GetRemainingQuota(ctx, nil, &APIKeyParam{})
 		require.NoError(t, err)
 		assert.Nil(t, remain)
 	})
 
-	t.Run("no redis", func(t *testing.T) {
-		stateful.DefaultClientSet = nil
-		remain, err := GetRemainingQuota(&APIKeyParam{
+	t.Run("no cache", func(t *testing.T) {
+		remain, err := GetRemainingQuota(ctx, nil, &APIKeyParam{
 			Key:       ptrString("key"),
 			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
@@ -64,10 +66,9 @@ func TestGetRemainingQuota(t *testing.T) {
 	t.Run("redis returns remain", func(t *testing.T) {
 		redisClient := stateful.NewMockRedisClient()
 		redisClient.IncrBy(stateful.AIUsedQuotaKey("key"), 30)
-		stateful.DefaultClientSet = &stateful.ClientSet{RedisClient: redisClient}
-		defer func() { stateful.DefaultClientSet = nil }()
+		cache := quotacache.NewRedisQuotaCache(redisClient)
 
-		remain, err := GetRemainingQuota(&APIKeyParam{
+		remain, err := GetRemainingQuota(ctx, cache, &APIKeyParam{
 			Key:       ptrString("key"),
 			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
@@ -78,10 +79,9 @@ func TestGetRemainingQuota(t *testing.T) {
 	t.Run("redis negative remain", func(t *testing.T) {
 		redisClient := stateful.NewMockRedisClient()
 		redisClient.IncrBy(stateful.AIUsedQuotaKey("key"), -5)
-		stateful.DefaultClientSet = &stateful.ClientSet{RedisClient: redisClient}
-		defer func() { stateful.DefaultClientSet = nil }()
+		cache := quotacache.NewRedisQuotaCache(redisClient)
 
-		remain, err := GetRemainingQuota(&APIKeyParam{
+		remain, err := GetRemainingQuota(ctx, cache, &APIKeyParam{
 			Key:       ptrString("key"),
 			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
@@ -91,7 +91,7 @@ func TestGetRemainingQuota(t *testing.T) {
 }
 
 func newAPIKeyManager(storager *fakeAPIKeyStorager) *APIKeyManager {
-	return NewAPIKeyManager(&fakeTxn{}, storager, &fakeClusterStorager{}, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, &fakeQuotaBalanceStorager{})
+	return NewAPIKeyManager(&fakeTxn{}, storager, &fakeClusterStorager{}, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, &fakeQuotaBalanceStorager{}, nil)
 }
 
 func TestAPIKeyManager_FetchAPIKeyList(t *testing.T) {
@@ -217,8 +217,7 @@ func TestAPIKeyManager_DeleteAPIKey(t *testing.T) {
 					balanceDeleted = true
 					return nil
 				},
-			},
-		)
+			}, nil)
 		err := m.DeleteAPIKey(ctx, &APIKeyFilter{})
 		require.NoError(t, err)
 		assert.True(t, deleted)
@@ -287,7 +286,7 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 				return 1, nil
 			},
 		}
-		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeClusterStorager{}, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, &fakeQuotaBalanceStorager{})
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeClusterStorager{}, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, &fakeQuotaBalanceStorager{}, nil)
 		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
 			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
@@ -322,7 +321,7 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 				return nil
 			},
 		}
-		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeClusterStorager{}, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, balanceStore)
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeClusterStorager{}, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, balanceStore, nil)
 		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
 			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
@@ -381,7 +380,7 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 				return nil, nil
 			},
 		}
-		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeClusterStorager{}, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, entityStore, &fakeQuotaBalanceStorager{})
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeClusterStorager{}, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, entityStore, &fakeQuotaBalanceStorager{}, nil)
 		err := m.CreateAPIKey(ctx, &APIKeyParam{
 			ID:          ptrString("id1"),
 			ProductName: ptrString("test"),
@@ -456,7 +455,7 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 				return nil
 			},
 		}
-		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeClusterStorager{}, quotaPlanStore, rateLimitStore, routeRulesStore, &fakeEntityStorager{}, balanceStore)
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeClusterStorager{}, quotaPlanStore, rateLimitStore, routeRulesStore, &fakeEntityStorager{}, balanceStore, nil)
 		err := m.CreateAPIKey(ctx, &APIKeyParam{
 			ID:              ptrString("id1"),
 			ProductName:     ptrString("test"),

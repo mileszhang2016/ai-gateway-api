@@ -33,7 +33,7 @@ func TestQuotaPlanManager_ResetBalance(t *testing.T) {
 				return nil, nil
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{})
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{}, nil, nil, nil)
 
 		err := m.ResetBalance(ctx, 1, nil, true)
 		require.Error(t, err)
@@ -46,7 +46,7 @@ func TestQuotaPlanManager_ResetBalance(t *testing.T) {
 				return &QuotaPlanParam{Unlimited: lib.PBool(true)}, nil
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{})
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{}, nil, nil, nil)
 
 		err := m.ResetBalance(ctx, 1, nil, true)
 		require.Error(t, err)
@@ -70,7 +70,7 @@ func TestQuotaPlanManager_ResetBalance(t *testing.T) {
 				return 1, nil
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, balanceStore)
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, balanceStore, nil, nil, nil)
 
 		err := m.ResetBalance(ctx, 1, nil, true)
 		require.NoError(t, err)
@@ -96,7 +96,7 @@ func TestQuotaPlanManager_ResetBalance(t *testing.T) {
 				return 1, nil
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, balanceStore)
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, balanceStore, nil, nil, nil)
 
 		err := m.ResetBalance(ctx, 1, nil, false)
 		require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestQuotaPlanManager_ResetBalance(t *testing.T) {
 				return 20, nil
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, balanceStore)
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, balanceStore, nil, nil, nil)
 
 		err := m.ResetBalance(ctx, 1, nil, false)
 		require.NoError(t, err)
@@ -148,7 +148,7 @@ func TestQuotaPlanManager_ResetBalance(t *testing.T) {
 				return 1, nil
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, balanceStore)
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, balanceStore, nil, nil, nil)
 
 		newQuota := float64(2000)
 		err := m.ResetBalance(ctx, 1, &newQuota, false)
@@ -175,7 +175,7 @@ func TestQuotaPlanManager_ResetBalance(t *testing.T) {
 				return 0, errors.New("balance update failed")
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, balanceStore)
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, balanceStore, nil, nil, nil)
 
 		err := m.ResetBalance(ctx, 1, nil, false)
 		require.Error(t, err)
@@ -192,7 +192,7 @@ func TestQuotaPlanManager_CRUD(t *testing.T) {
 				return 7, nil
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{})
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{}, nil, nil, nil)
 
 		id, err := m.CreateQuotaPlan(ctx, &QuotaPlanParam{Quota: lib.PFloat64(100)})
 		require.NoError(t, err)
@@ -205,7 +205,7 @@ func TestQuotaPlanManager_CRUD(t *testing.T) {
 				return &QuotaPlanParam{ID: lib.PInt64(7), Quota: lib.PFloat64(100)}, nil
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{})
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{}, nil, nil, nil)
 
 		plan, err := m.FetchQuotaPlan(ctx, &QuotaPlanFilter{ID: lib.PInt64(7)})
 		require.NoError(t, err)
@@ -219,7 +219,7 @@ func TestQuotaPlanManager_CRUD(t *testing.T) {
 				return []*QuotaPlanParam{{ID: lib.PInt64(7)}}, nil
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{})
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{}, nil, nil, nil)
 
 		list, err := m.FetchQuotaPlanList(ctx, &QuotaPlanFilter{})
 		require.NoError(t, err)
@@ -232,7 +232,7 @@ func TestQuotaPlanManager_CRUD(t *testing.T) {
 				return nil
 			},
 		}
-		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{})
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, &fakeQuotaBalanceStorager{}, nil, nil, nil)
 
 		require.NoError(t, m.DeleteQuotaPlan(ctx, &QuotaPlanFilter{ID: lib.PInt64(7)}))
 		assert.Len(t, planStore.deleted, 1)
@@ -247,7 +247,7 @@ func TestQuotaPlanManager_UpdateQuotaPlan(t *testing.T) {
 			return 1, nil
 		},
 	}
-	m := NewQuotaPlanManager(&fakeTxn{}, store, &fakeQuotaBalanceStorager{})
+	m := NewQuotaPlanManager(&fakeTxn{}, store, &fakeQuotaBalanceStorager{}, nil, nil, nil)
 
 	affected, err := m.UpdateQuotaPlan(ctx, &QuotaPlanFilter{ID: lib.PInt64(7)}, &QuotaPlanParam{Quota: lib.PFloat64(500)})
 	require.NoError(t, err)
@@ -262,7 +262,7 @@ func TestQuotaPlanManager_FetchQuotaBalance(t *testing.T) {
 			return &QuotaBalanceParam{Used: lib.PFloat64(10), Remaining: lib.PFloat64(90)}, nil
 		},
 	}
-	m := NewQuotaPlanManager(&fakeTxn{}, &fakeQuotaPlanStorager{}, store)
+	m := NewQuotaPlanManager(&fakeTxn{}, &fakeQuotaPlanStorager{}, store, nil, nil, nil)
 
 	balance, err := m.FetchQuotaBalance(ctx, 7)
 	require.NoError(t, err)
@@ -282,7 +282,7 @@ func TestQuotaPlanManager_CreateQuotaBalance(t *testing.T) {
 			return 9, nil
 		},
 	}
-	m := NewQuotaPlanManager(&fakeTxn{}, &fakeQuotaPlanStorager{}, store)
+	m := NewQuotaPlanManager(&fakeTxn{}, &fakeQuotaPlanStorager{}, store, nil, nil, nil)
 
 	require.NoError(t, m.CreateQuotaBalance(ctx, 7, lib.PFloat64(100)))
 }

@@ -2,15 +2,12 @@ package api_key
 
 import (
 	"net/http"
-	"strings"
 
-	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -94,44 +91,10 @@ func ResetQuotaAction(req *http.Request) (interface{}, error) {
 		previousRemaining = *balance.Remaining
 	}
 
-	// 重置配额余额（不更新 last_reset_at，避免影响定期重置调度）
+	// 重置配额余额（不更新 last_reset_at，避免影响定期重置调度；Redis 同步由 Manager 在事务外完成）
 	err = container.QuotaPlanManager.ResetBalance(req.Context(), *apiKey.QuotaPlanID, resetReq.Quota, false)
 	if err != nil {
 		return nil, err
-	}
-
-	// 重置 Redis 中的值为 quota 总量（RMB 配额按 1e8 定点整数存储）
-	if apiKey.Key != nil && stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
-		redisKey := stateful.AIUsedQuotaKey(*apiKey.Key)
-
-		var resetQuota float64
-		if resetReq.Quota != nil {
-			resetQuota = *resetReq.Quota
-		} else if plan != nil && plan.Quota != nil {
-			resetQuota = *plan.Quota
-		} else {
-			return nil, xerror.WrapParamErrorWithMsg("quota is required")
-		}
-
-		unit := ""
-		if plan != nil && plan.Unit != nil {
-			unit = *plan.Unit
-		}
-		targetRedisValue := golibquota.PtrToRedisValue(&resetQuota, &unit)
-
-		currentValue, err := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if err != nil {
-			if !strings.Contains(err.Error(), "redigo: nil returned") {
-				return nil, err
-			}
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, targetRedisValue)
-		} else {
-			delta := targetRedisValue - currentValue
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// 获取更新后的配额计划信息

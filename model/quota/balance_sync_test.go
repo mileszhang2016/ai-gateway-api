@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 )
 
@@ -152,7 +153,7 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 		_, err = mockRedis.IncrBy(stateful.AIUsedQuotaKey(entityID), 100)
 		require.NoError(t, err)
 
-		m := NewBalanceSyncManager(&fakeTxn{}, apiKeyStorager, balanceStorager, planStorager, entityStorager)
+		m := NewBalanceSyncManager(&fakeTxn{}, apiKeyStorager, balanceStorager, planStorager, entityStorager, quotacache.NewRedisQuotaCache(mockRedis))
 		require.NoError(t, m.SyncAllBalances(ctx))
 
 		require.Len(t, balanceStorager.updated, 1)
@@ -217,7 +218,7 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 		_, err = mockRedis.IncrBy(stateful.AIUsedQuotaKey(entityID), 0)
 		require.NoError(t, err)
 
-		m := NewBalanceSyncManager(&fakeTxn{}, apiKeyStorager, balanceStorager, planStorager, entityStorager)
+		m := NewBalanceSyncManager(&fakeTxn{}, apiKeyStorager, balanceStorager, planStorager, entityStorager, quotacache.NewRedisQuotaCache(mockRedis))
 		require.NoError(t, m.ResetExpiredBalances(ctx))
 
 		require.Len(t, balanceStorager.updated, 1)
@@ -253,7 +254,7 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 				return &QuotaBalanceParam{QuotaPlanID: &planID, LastResetAt: &lastReset}, nil
 			},
 		}
-		m := NewBalanceSyncManager(&fakeTxn{}, &fakeAPIKeyStorager{}, balanceStorager, planStorager, &fakeEntityStorager{})
+		m := NewBalanceSyncManager(&fakeTxn{}, &fakeAPIKeyStorager{}, balanceStorager, planStorager, &fakeEntityStorager{}, quotacache.NewRedisQuotaCache(mockRedis))
 
 		require.NoError(t, m.ResetExpiredBalances(ctx))
 		assert.Empty(t, balanceStorager.updated)
@@ -279,7 +280,7 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 				return nil, nil
 			},
 		}
-		m := NewBalanceSyncManager(&fakeTxn{}, &fakeAPIKeyStorager{}, balanceStorager, planStorager, &fakeEntityStorager{})
+		m := NewBalanceSyncManager(&fakeTxn{}, &fakeAPIKeyStorager{}, balanceStorager, planStorager, &fakeEntityStorager{}, quotacache.NewRedisQuotaCache(mockRedis))
 
 		require.NoError(t, m.ResetExpiredBalances(ctx))
 		assert.Empty(t, balanceStorager.updated)

@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net/http"
 
-	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
@@ -29,7 +28,6 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -130,21 +128,6 @@ func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 		RateLimitPolicy: param.RateLimitPolicy,
 		RouteRules:      param.RouteRules,
 	})
-
-	if err == nil && param.Key != nil && param.QuotaPlan != nil &&
-		(param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
-		param.QuotaPlan.Quota != nil &&
-		stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
-		redisKey := stateful.AIUsedQuotaKey(*param.Key)
-		targetValue := golibquota.PtrToRedisValue(param.QuotaPlan.Quota, param.QuotaPlan.Unit)
-		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if errGet != nil {
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, targetValue)
-		} else {
-			delta := targetValue - currentValue
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-	}
 
 	if err != nil {
 		return nil, err
