@@ -25,7 +25,6 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
@@ -73,15 +72,6 @@ func APIKeyFullUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyPar
 		return nil, xerror.WrapRecordNotExist("API-Key")
 	}
 
-	// 从最早获取的 existing 中取旧配额值
-	var oldQuota int64
-	if existing.QuotaPlanID != nil {
-		oldPlan, errPlan := container.QuotaPlanManager.FetchQuotaPlan(ctx, &quota.QuotaPlanFilter{ID: existing.QuotaPlanID})
-		if errPlan == nil && oldPlan != nil && oldPlan.Quota != nil {
-			oldQuota = *oldPlan.Quota
-		}
-	}
-
 	err = container.APIKeyManager.UpdateAPIKey(ctx, &icluster_conf.APIKeyFilter{
 		ID:          param.ID,
 		ProductName: &product.Name,
@@ -113,43 +103,27 @@ func APIKeyFullUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyPar
 		return nil, err
 	}
 
-	// 检查配额计划，如果非无限制则需要确保 quota_balance 和 Redis key 存在
+	// 当 quota_plan 发生变更且非无限制时，重置 quota_balance 并同步 Redis
 	if param.QuotaPlan != nil && (param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
 		updated != nil && updated.QuotaPlanID != nil {
-		// 检查 quota_balance 是否存在，不存在则创建
-		balance, err := container.QuotaPlanManager.FetchQuotaBalance(ctx, *updated.QuotaPlanID)
-		if err != nil {
+		if err := container.QuotaPlanManager.ResetBalance(ctx, *updated.QuotaPlanID, param.QuotaPlan.Quota, false); err != nil {
 			return nil, err
 		}
-		if balance == nil {
-			if err := container.QuotaPlanManager.CreateQuotaBalance(ctx, *updated.QuotaPlanID, param.QuotaPlan.Quota); err != nil {
-				return nil, err
-			}
-		}
 
-		// 检查 Redis key 是否存在，不存在则创建，存在则更新差值（新请求参数 quota - existing 旧 quota）
 		if updated.Key != nil && stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
 			redisKey := stateful.AIUsedQuotaKey(*updated.Key)
-			_, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
+			targetValue := lib.QuotaToRedisValue(param.QuotaPlan.Quota, param.QuotaPlan.Unit)
+			currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
 			if errGet != nil {
 				if strings.Contains(errGet.Error(), "redigo: nil returned") {
-					quotaVal := int64(0)
-					if param.QuotaPlan.Quota != nil {
-						quotaVal = *param.QuotaPlan.Quota
-					}
-					_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, quotaVal)
-					if err != nil {
-						return nil, err
-					}
+					currentValue = 0
 				} else {
 					return nil, errGet
 				}
-			} else if param.QuotaPlan.Quota != nil {
-				delta := *param.QuotaPlan.Quota - oldQuota
-				_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-				if err != nil {
-					return nil, err
-				}
+			}
+			delta := targetValue - currentValue
+			if _, err := stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta); err != nil {
+				return nil, err
 			}
 		}
 	}

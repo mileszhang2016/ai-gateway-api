@@ -17,6 +17,8 @@ package dao
 import (
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao/internal"
@@ -25,13 +27,13 @@ import (
 const tQuotaBalanceTableName = "quota_balances"
 
 type TQuotaBalance struct {
-	ID          int64      `db:"id"`
-	QuotaPlanID int64      `db:"quota_plan_id"`
-	Used        int64      `db:"used"`
-	Remaining   int64      `db:"remaining"`
-	LastResetAt *time.Time `db:"last_reset_at"`
-	CreatedAt   time.Time  `db:"created_at"`
-	UpdatedAt   time.Time  `db:"updated_at"`
+	ID          int64           `db:"id"`
+	QuotaPlanID int64           `db:"quota_plan_id"`
+	Used        decimal.Decimal `db:"used"`
+	Remaining   decimal.Decimal `db:"remaining"`
+	LastResetAt *time.Time      `db:"last_reset_at"`
+	CreatedAt   time.Time       `db:"created_at"`
+	UpdatedAt   time.Time       `db:"updated_at"`
 }
 
 // TQuotaBalanceOne Query One
@@ -62,13 +64,13 @@ func TQuotaBalanceList(dbCtx lib.DBContexter, where *TQuotaBalanceParam) ([]*TQu
 }
 
 type TQuotaBalanceParam struct {
-	ID          *int64     `db:"id"`
-	QuotaPlanID *int64     `db:"quota_plan_id"`
-	Used        *int64     `db:"used"`
-	Remaining   *int64     `db:"remaining"`
-	LastResetAt *time.Time `db:"last_reset_at"`
-	CreatedAt   *time.Time `db:"created_at"`
-	UpdatedAt   *time.Time `db:"updated_at"`
+	ID          *int64           `db:"id"`
+	QuotaPlanID *int64           `db:"quota_plan_id"`
+	Used        *decimal.Decimal `db:"used"`
+	Remaining   *decimal.Decimal `db:"remaining"`
+	LastResetAt *time.Time       `db:"last_reset_at"`
+	CreatedAt   *time.Time       `db:"created_at"`
+	UpdatedAt   *time.Time       `db:"updated_at"`
 
 	OrderBy *string `db:"_orderby"`
 }

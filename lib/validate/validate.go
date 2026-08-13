@@ -16,6 +16,7 @@ package validate
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"regexp"
 	"strings"
@@ -345,12 +346,30 @@ func QuotaPlan(p *shared.QuotaPlanParam) error {
 	if p == nil {
 		return nil
 	}
-	if p.Quota != nil && *p.Quota < 0 {
-		return xerror.WrapParamErrorWithMsg("quota must be >= 0")
+
+	unit := "total_token"
+	if p.Unit != nil && *p.Unit != "" {
+		unit = *p.Unit
 	}
-	if p.Unit != nil && *p.Unit != "" && *p.Unit != "total_token" {
-		return xerror.WrapParamErrorWithMsg("unit must be total_token")
+	if unit != "total_token" && unit != "RMB" {
+		return xerror.WrapParamErrorWithMsg("unit must be total_token or RMB")
 	}
+
+	if p.Quota != nil {
+		if *p.Quota < 0 {
+			return xerror.WrapParamErrorWithMsg("quota must be >= 0")
+		}
+		if unit == "total_token" {
+			if math.Mod(*p.Quota, 1) != 0 {
+				return xerror.WrapParamErrorWithMsg("quota must be an integer when unit is total_token")
+			}
+		} else {
+			if !validDecimalPlaces(*p.Quota, 8) {
+				return xerror.WrapParamErrorWithMsg("quota can have at most 8 decimal places when unit is RMB")
+			}
+		}
+	}
+
 	if p.ResetPeriod != nil && *p.ResetPeriod != "" {
 		switch *p.ResetPeriod {
 		case "never", "weekly", "monthly":
@@ -359,6 +378,12 @@ func QuotaPlan(p *shared.QuotaPlanParam) error {
 		}
 	}
 	return nil
+}
+
+func validDecimalPlaces(v float64, maxPlaces int) bool {
+	mult := math.Pow(10, float64(maxPlaces))
+	scaled := v * mult
+	return math.Abs(scaled-math.Round(scaled)) < 1e-9
 }
 
 // RateLimitPolicy validates a rate limit policy configuration.

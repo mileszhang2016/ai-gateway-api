@@ -33,6 +33,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/imods"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iprotocol"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iroute_conf"
@@ -83,6 +84,10 @@ var (
 	QuotaBalanceStorager    quota.QuotaBalanceStorager
 	RateLimitPolicyStorager quota.RateLimitPolicyStorager
 	RouteRulesStorager      shared.RouteRulesStorager
+
+	// Model pricing
+	ModelPriceStorager imodel_price.ModelPriceStorager
+	ModelPriceManager  *imodel_price.Manager
 
 	EntityTypeManager      *quota.EntityTypeManager
 	EntityManager          *quota.EntityManager

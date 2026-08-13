@@ -40,6 +40,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
@@ -189,6 +190,13 @@ type RouteRuleManager struct {
 	clusterStorager       icluster_conf.ClusterStorager
 	productStorager       ibasic.ProductStorager
 	domainStorager        DomainStorager
+	modelPriceStorager    imodel_price.ModelPriceStorager
+}
+
+// SetModelPriceStorager sets the optional model price storager used to enrich
+// exported cluster conf with AIConf.ModelTable.
+func (rm *RouteRuleManager) SetModelPriceStorager(storager imodel_price.ModelPriceStorager) {
+	rm.modelPriceStorager = storager
 }
 
 func (rm *RouteRuleManager) ExpressionVerify(ctx context.Context, expression string) (err error) {

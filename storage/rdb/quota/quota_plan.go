@@ -17,6 +17,8 @@ package quota
 import (
 	"context"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
@@ -120,7 +122,7 @@ func quotaPlanDataToParam(param *quota.QuotaPlanParam) *dao.TQuotaPlanParam {
 	return &dao.TQuotaPlanParam{
 		Unlimited:             param.Unlimited,
 		PassWhenNoEnoughQuota: param.PassWhenNoEnoughQuota,
-		Quota:                 param.Quota,
+		Quota:                 float64PtrToDecimalPtr(param.Quota),
 		Unit:                  param.Unit,
 		ResetPeriod:           param.ResetPeriod,
 	}
@@ -132,9 +134,21 @@ func quotaPlanParamToData(one *dao.TQuotaPlan) *quota.QuotaPlanParam {
 		ID:                    &one.ID,
 		Unlimited:             &one.Unlimited,
 		PassWhenNoEnoughQuota: &one.PassWhenNoEnoughQuota,
-		Quota:                 &one.Quota,
+		Quota:                 decimalToFloat64Ptr(one.Quota),
 		Unit:                  &one.Unit,
 		ResetPeriod:           &one.ResetPeriod,
 		CreateTime:            &createTime,
 	}
+}
+
+func float64PtrToDecimalPtr(v *float64) *decimal.Decimal {
+	if v == nil {
+		return nil
+	}
+	d := decimal.NewFromFloat(*v)
+	return &d
+}
+
+func decimalToFloat64Ptr(d decimal.Decimal) *float64 {
+	return lib.PFloat64(d.InexactFloat64())
 }

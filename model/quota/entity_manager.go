@@ -117,13 +117,13 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 
 		if param.QuotaPlanID != nil && m.quotaBalanceStorager != nil {
 			now := time.Now()
-			remaining := lib.PInt64(0)
+			remaining := lib.PFloat64(0)
 			if param.QuotaPlan != nil && param.QuotaPlan.Quota != nil {
 				remaining = param.QuotaPlan.Quota
 			}
 			_, err = m.quotaBalanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
 				QuotaPlanID: param.QuotaPlanID,
-				Used:        lib.PInt64(0),
+				Used:        lib.PFloat64(0),
 				Remaining:   remaining,
 				LastResetAt: &now,
 			})
@@ -228,7 +228,7 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 					now := time.Now()
 					_, err = m.quotaBalanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
 						QuotaPlanID: &quotaPlanID,
-						Used:        lib.PInt64(0),
+						Used:        lib.PFloat64(0),
 						Remaining:   param.QuotaPlan.Quota,
 						LastResetAt: &now,
 					})
@@ -516,11 +516,11 @@ func (a *quotaBalanceStoragerAdapter) FetchQuotaBalance(ctx context.Context, quo
 	}, nil
 }
 
-func (a *quotaBalanceStoragerAdapter) CreateQuotaBalance(ctx context.Context, quotaPlanID int64, remaining *int64) error {
+func (a *quotaBalanceStoragerAdapter) CreateQuotaBalance(ctx context.Context, quotaPlanID int64, remaining *float64) error {
 	now := time.Now()
 	_, err := a.balanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
 		QuotaPlanID: &quotaPlanID,
-		Used:        lib.PInt64(0),
+		Used:        lib.PFloat64(0),
 		Remaining:   remaining,
 		LastResetAt: &now,
 	})

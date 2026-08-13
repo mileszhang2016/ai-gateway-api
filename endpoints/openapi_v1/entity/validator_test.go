@@ -140,7 +140,7 @@ func TestValidateEntityParam(t *testing.T) {
 			name: "update invalid quota plan unit",
 			param: &quota.EntityParam{
 				QuotaPlan: &shared.QuotaPlanParam{
-					Quota: lib.PInt64(100),
+					Quota: lib.PFloat64(100),
 					Unit:  lib.PString("invalid"),
 				},
 			},

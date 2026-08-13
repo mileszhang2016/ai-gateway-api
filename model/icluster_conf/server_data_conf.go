@@ -35,13 +35,34 @@ type ServerDataAIKeyPolicy struct {
 	RetryBackoffMax     int    `json:"RetryBackoffMax"`
 }
 
+// ServerDataModelPriceEntry is a single model pricing entry exported to BFE.
+type ServerDataModelPriceEntry struct {
+	Provider            string                 `json:"Provider"`
+	Model               string                 `json:"Model"`
+	BaseModel           string                 `json:"BaseModel"`
+	Mode                string                 `json:"Mode"`
+	Capabilities        []string               `json:"Capabilities,omitempty"`
+	SupportedParameters []string               `json:"SupportedParameters,omitempty"`
+	Limits              map[string]interface{} `json:"Limits,omitempty"`
+	Prices              map[string]float64     `json:"Prices,omitempty"`
+	Metadata            map[string]interface{} `json:"Metadata,omitempty"`
+}
+
+// ServerDataModelTable is the cost/pricing table exported to BFE for a cluster.
+type ServerDataModelTable struct {
+	Currency string                      `json:"Currency"`
+	Models   []ServerDataModelPriceEntry `json:"Models"`
+}
+
 // ServerDataAIConf is the exported AI conf for BFE server_data_conf.
 // It extends the BFE cluster_conf.AIConf with multi API-Key support (Keys + KeyPolicy).
 type ServerDataAIConf struct {
-	Type         int                `json:"Type"`
-	ModelMapping *map[string]string `json:"ModelMapping"`
-	Keys         []ServerDataAIKey  `json:"Keys"`
+	Type         int                   `json:"Type"`
+	ModelMapping *map[string]string    `json:"ModelMapping"`
+	Provider     string                `json:"Provider"`
+	Keys         []ServerDataAIKey     `json:"Keys"`
 	KeyPolicy    *ServerDataAIKeyPolicy `json:"KeyPolicy"`
+	ModelTable   *ServerDataModelTable  `json:"ModelTable,omitempty"`
 }
 
 // ServerDataClusterConf is the exported cluster conf for BFE server_data_conf.

@@ -120,8 +120,8 @@ func quotaBalanceFilterToParam(filter *quota.QuotaBalanceFilter) *dao.TQuotaBala
 func quotaBalanceDataToParam(param *quota.QuotaBalanceParam) *dao.TQuotaBalanceParam {
 	return &dao.TQuotaBalanceParam{
 		QuotaPlanID: param.QuotaPlanID,
-		Used:        param.Used,
-		Remaining:   param.Remaining,
+		Used:        float64PtrToDecimalPtr(param.Used),
+		Remaining:   float64PtrToDecimalPtr(param.Remaining),
 		LastResetAt: param.LastResetAt,
 	}
 }
@@ -130,8 +130,8 @@ func quotaBalanceParamToData(one *dao.TQuotaBalance) *quota.QuotaBalanceParam {
 	return &quota.QuotaBalanceParam{
 		ID:          &one.ID,
 		QuotaPlanID: &one.QuotaPlanID,
-		Used:        &one.Used,
-		Remaining:   &one.Remaining,
+		Used:        decimalToFloat64Ptr(one.Used),
+		Remaining:   decimalToFloat64Ptr(one.Remaining),
 		LastResetAt: one.LastResetAt,
 	}
 }

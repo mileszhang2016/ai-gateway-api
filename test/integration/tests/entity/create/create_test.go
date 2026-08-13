@@ -1,10 +1,12 @@
 package entity_test
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 var sm *testutil.ServerManager
@@ -51,10 +53,11 @@ func TestEntity_Create(t *testing.T) {
 		name     string
 		body     map[string]interface{}
 		wantCode int
+		check    func(t *testing.T, resp *testutil.APIResponse)
 	}{
 		{
-			name: "E-1-001 创建 Entity（仅必填）",
-			body: map[string]interface{}{"name": entRoot, "type": typeName},
+			name:     "E-1-001 创建 Entity（仅必填）",
+			body:     map[string]interface{}{"name": entRoot, "type": typeName},
 			wantCode: 200,
 		},
 		{
@@ -63,9 +66,9 @@ func TestEntity_Create(t *testing.T) {
 				"name": entQuota,
 				"type": typeName,
 				"quota_plan": map[string]interface{}{
-					"unlimited":   false,
-					"quota":       1000000,
-					"unit":        "total_token",
+					"unlimited":    false,
+					"quota":        1000000,
+					"unit":         "total_token",
 					"reset_period": "monthly",
 				},
 			},
@@ -119,6 +122,49 @@ func TestEntity_Create(t *testing.T) {
 			body:     map[string]interface{}{"name": " badname ", "type": typeName},
 			wantCode: 422,
 		},
+		{
+			name: "E-1-011 创建 Entity 并指定 RMB 配额",
+			body: map[string]interface{}{
+				"name": testutil.UniqueEntityName(),
+				"type": typeName,
+				"quota_plan": map[string]interface{}{
+					"unlimited":    false,
+					"quota":        5555.5555,
+					"unit":         "RMB",
+					"reset_period": "monthly",
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				if err := json.Unmarshal(resp.Data, &data); err != nil {
+					t.Fatalf("unmarshal data: %v", err)
+				}
+				qp, ok := data["quota_plan"].(map[string]interface{})
+				if !assert.True(t, ok, "quota_plan should be an object") {
+					return
+				}
+				assert.Equal(t, "RMB", qp["unit"])
+				assert.InDelta(t, float64(5555.5555), qp["quota"], 0.00001)
+
+				id, _ := data["id"].(string)
+				qpResp, err := testutil.GetClient().Get("/open-api/v1/entities/" + id + "/quota-plan")
+				if err != nil {
+					t.Fatalf("query quota-plan failed: %v", err)
+				}
+				testutil.AssertSuccess(t, qpResp)
+				var qpData map[string]interface{}
+				if err := json.Unmarshal(qpResp.Data, &qpData); err != nil {
+					t.Fatalf("unmarshal quota-plan data: %v", err)
+				}
+				balance, ok := qpData["balance"].(map[string]interface{})
+				if !assert.True(t, ok, "balance should be an object") {
+					return
+				}
+				assert.InDelta(t, float64(5555.5555), balance["remaining"], 0.00001)
+				assert.InDelta(t, float64(0), balance["used"], 0.00001)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -129,6 +175,9 @@ func TestEntity_Create(t *testing.T) {
 			}
 			if resp.ErrNum != tt.wantCode {
 				t.Errorf("expected ErrNum=%d, got ErrNum=%d, ErrMsg=%s", tt.wantCode, resp.ErrNum, resp.ErrMsg)
+			}
+			if tt.check != nil && resp.ErrNum == 200 {
+				tt.check(t, resp)
 			}
 		})
 	}

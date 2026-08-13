@@ -173,12 +173,19 @@
 |------|------|------|------|------------|
 | `unlimited` | bool | N | 是否无限配额 | 默认 `true` |
 | `pass_when_no_enough_quota` | bool | N | 配额不足时是否放行 | 默认 `false` |
-| `quota` | int64 | N | 配额总量 | 非负整数（>=0） |
-| `unit` | string | N | 配额单位 | 默认 `total_token`，暂时只支持 `total_token` |
+| `quota` | number | N | 配额总量 | 非负数；`unit=total_token` 时必须为整数；`unit=RMB` 时内部最多保留 8 位小数，对外统一按 4 位小数展示 |
+| `unit` | string | N | 配额单位 | 默认 `total_token`；可选值：`total_token`、`RMB` |
 | `reset_period` | string | N | 配额重置周期 | 默认 `never`；可选值：`never`、`weekly`、`monthly` |
 | `balance` | object | N | 余额状态（只读），包含 `used` 和 `remaining` | 作为输入时无需传入 |
 
-示例：
+**balance 结构**
+
+| 字段 | 类型 | 说明 | 合法性条件 |
+|------|------|------|------------|
+| `used` | number | 已用量 | 非负数；内部最多 8 位小数，对外统一按 4 位小数展示 |
+| `remaining` | number | 剩余量 | 非负数；内部最多 8 位小数，对外统一按 4 位小数展示 |
+
+示例（Token 配额）：
 
 ```json
 {
@@ -190,6 +197,22 @@
   "balance": {
     "used": 50000000,
     "remaining": 50000000
+  }
+}
+```
+
+示例（RMB 配额）：
+
+```json
+{
+  "unlimited": false,
+  "pass_when_no_enough_quota": false,
+  "quota": 10000.00,
+  "unit": "RMB",
+  "reset_period": "monthly",
+  "balance": {
+    "used": 1234.56,
+    "remaining": 8765.44
   }
 }
 ```

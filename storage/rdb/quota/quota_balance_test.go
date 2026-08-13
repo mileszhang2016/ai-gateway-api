@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
@@ -41,8 +42,8 @@ func TestQuotaBalanceFilterToParam(t *testing.T) {
 
 func TestQuotaBalanceDataToParam(t *testing.T) {
 	planID := int64(10)
-	used := int64(5)
-	remaining := int64(95)
+	used := float64(5)
+	remaining := float64(95)
 	lastReset := time.Now()
 
 	param := quotaBalanceDataToParam(&quota.QuotaBalanceParam{
@@ -53,8 +54,10 @@ func TestQuotaBalanceDataToParam(t *testing.T) {
 	})
 
 	assert.Equal(t, &planID, param.QuotaPlanID)
-	assert.Equal(t, &used, param.Used)
-	assert.Equal(t, &remaining, param.Remaining)
+	assert.NotNil(t, param.Used)
+	assert.True(t, decimal.NewFromFloat(used).Equal(*param.Used))
+	assert.NotNil(t, param.Remaining)
+	assert.True(t, decimal.NewFromFloat(remaining).Equal(*param.Remaining))
 	assert.Equal(t, &lastReset, param.LastResetAt)
 }
 
@@ -63,8 +66,8 @@ func TestQuotaBalanceParamToData(t *testing.T) {
 	data := &dao.TQuotaBalance{
 		ID:          1,
 		QuotaPlanID: 2,
-		Used:        3,
-		Remaining:   4,
+		Used:        decimal.NewFromInt(3),
+		Remaining:   decimal.NewFromInt(4),
 		LastResetAt: &now,
 	}
 
@@ -72,7 +75,7 @@ func TestQuotaBalanceParamToData(t *testing.T) {
 
 	assert.Equal(t, int64(1), *param.ID)
 	assert.Equal(t, int64(2), *param.QuotaPlanID)
-	assert.Equal(t, int64(3), *param.Used)
-	assert.Equal(t, int64(4), *param.Remaining)
+	assert.Equal(t, float64(3), *param.Used)
+	assert.Equal(t, float64(4), *param.Remaining)
 	assert.Equal(t, &now, param.LastResetAt)
 }

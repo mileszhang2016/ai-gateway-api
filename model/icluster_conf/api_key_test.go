@@ -27,6 +27,7 @@ import (
 
 func ptrBool(b bool) *bool       { return &b }
 func ptrInt64(i int64) *int64    { return &i }
+func ptrFloat64(f float64) *float64 { return &f }
 func ptrString(s string) *string { return &s }
 
 func TestGetRemainingQuota(t *testing.T) {
@@ -54,10 +55,10 @@ func TestGetRemainingQuota(t *testing.T) {
 		stateful.DefaultClientSet = nil
 		remain, err := GetRemainingQuota(&APIKeyParam{
 			Key:       ptrString("key"),
-			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrInt64(100)},
+			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
 		require.NoError(t, err)
-		assert.Equal(t, int64(100), *remain)
+		assert.Equal(t, float64(100), *remain)
 	})
 
 	t.Run("redis returns remain", func(t *testing.T) {
@@ -68,10 +69,10 @@ func TestGetRemainingQuota(t *testing.T) {
 
 		remain, err := GetRemainingQuota(&APIKeyParam{
 			Key:       ptrString("key"),
-			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrInt64(100)},
+			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
 		require.NoError(t, err)
-		assert.Equal(t, int64(30), *remain)
+		assert.Equal(t, float64(30), *remain)
 	})
 
 	t.Run("redis negative remain", func(t *testing.T) {
@@ -82,10 +83,10 @@ func TestGetRemainingQuota(t *testing.T) {
 
 		remain, err := GetRemainingQuota(&APIKeyParam{
 			Key:       ptrString("key"),
-			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrInt64(100)},
+			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
 		require.NoError(t, err)
-		assert.Equal(t, int64(0), *remain)
+		assert.Equal(t, float64(0), *remain)
 	})
 }
 
@@ -288,7 +289,7 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 		}
 		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeClusterStorager{}, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, &fakeQuotaBalanceStorager{})
 		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
-			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrInt64(100)},
+			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
 		require.NoError(t, err)
 		assert.True(t, updated)
@@ -315,15 +316,15 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 			},
 		}
 		balanceStore := &fakeQuotaBalanceStorager{
-			createQuotaBalanceFn: func(ctx context.Context, quotaPlanID int64, remaining *int64) error {
+			createQuotaBalanceFn: func(ctx context.Context, quotaPlanID int64, remaining *float64) error {
 				assert.Equal(t, int64(20), quotaPlanID)
-				assert.Equal(t, int64(100), *remaining)
+				assert.Equal(t, float64(100), *remaining)
 				return nil
 			},
 		}
 		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeClusterStorager{}, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, balanceStore)
 		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
-			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrInt64(100)},
+			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
 		require.NoError(t, err)
 		assert.True(t, created)
@@ -450,7 +451,7 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 			},
 		}
 		balanceStore := &fakeQuotaBalanceStorager{
-			createQuotaBalanceFn: func(ctx context.Context, quotaPlanID int64, remaining *int64) error {
+			createQuotaBalanceFn: func(ctx context.Context, quotaPlanID int64, remaining *float64) error {
 				balanceCreated = true
 				return nil
 			},
@@ -460,7 +461,7 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 			ID:              ptrString("id1"),
 			ProductName:     ptrString("test"),
 			Key:             ptrString("key1"),
-			QuotaPlan:       &shared.QuotaPlanParam{Quota: ptrInt64(100)},
+			QuotaPlan:       &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 			RateLimitPolicy: &shared.RateLimitPolicyParam{Enabled: ptrBool(true)},
 			RouteRules:      &shared.RouteRulesParam{Enabled: ptrBool(true)},
 		})

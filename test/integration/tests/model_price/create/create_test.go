@@ -1,0 +1,184 @@
+package model_price_test
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"testing"
+
+	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
+)
+
+var sm *testutil.ServerManager
+
+func TestMain(m *testing.M) {
+	var err error
+	sm, err = testutil.StartServer()
+	if err != nil {
+		panic("failed to start server: " + err.Error())
+	}
+	code := m.Run()
+	sm.Shutdown()
+	os.Exit(code)
+}
+
+func TestModelPrice_Create(t *testing.T) {
+	t.Run("MP-2-001 最小参数创建", func(t *testing.T) {
+		provider := testutil.UniqueName("provider")
+		model := testutil.UniqueName("model")
+
+		id, err := testutil.CreateModelPrice(map[string]interface{}{
+			"provider":   provider,
+			"model":      model,
+			"base_model": model,
+			"mode":       "chat",
+			"prices": map[string]interface{}{
+				"input_cost_per_token": 0.001,
+			},
+		})
+		if err != nil {
+			t.Fatalf("create model price failed: %v", err)
+		}
+		defer testutil.DeleteModelPrice(id)
+
+		assert.Greater(t, id, int64(0))
+
+		resp, err := testutil.GetClient().Get("/open-api/v1/model-prices/" + int64ToStr(id))
+		if err != nil {
+			t.Fatalf("get model price failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "provider", provider)
+		testutil.AssertDataFieldEquals(t, resp, "price_currency", "RMB")
+		testutil.AssertDataFieldNotEmpty(t, resp, "created_at")
+	})
+
+	t.Run("MP-2-002 完整参数创建", func(t *testing.T) {
+		provider := testutil.UniqueName("provider")
+		model := testutil.UniqueName("model")
+
+		id, err := testutil.CreateModelPrice(map[string]interface{}{
+			"provider":             provider,
+			"model":                model,
+			"base_model":           model,
+			"mode":                 "chat",
+			"capabilities":         []string{"chat", "reasoning", "tools"},
+			"supported_parameters": []string{"temperature", "max_tokens"},
+			"limits": map[string]interface{}{
+				"context_window":    128000,
+				"max_input_tokens":  128000,
+				"max_output_tokens": 8192,
+			},
+			"prices": map[string]interface{}{
+				"input_cost_per_token":  0.000002,
+				"output_cost_per_token": 0.000008,
+			},
+			"metadata": map[string]interface{}{
+				"source": "https://example.com/pricing",
+				"notes":  "test model",
+			},
+		})
+		if err != nil {
+			t.Fatalf("create model price failed: %v", err)
+		}
+		defer testutil.DeleteModelPrice(id)
+
+		resp, err := testutil.GetClient().Get("/open-api/v1/model-prices/" + int64ToStr(id))
+		if err != nil {
+			t.Fatalf("get model price failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal data: %v", err)
+		}
+		assert.Equal(t, provider, data["provider"])
+		assert.Equal(t, model, data["model"])
+		assert.Equal(t, "chat", data["mode"])
+		assert.Equal(t, "RMB", data["price_currency"])
+
+		caps := data["capabilities"].([]interface{})
+		assert.Len(t, caps, 3)
+	})
+
+	t.Run("MP-2-003 缺少 provider", func(t *testing.T) {
+		resp, err := testutil.GetClient().Post("/open-api/v1/model-prices", map[string]interface{}{
+			"model":      "test-model",
+			"base_model": "test-model",
+			"mode":       "chat",
+			"prices": map[string]interface{}{
+				"input_cost_per_token": 0.001,
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
+	t.Run("MP-2-004 非法 mode", func(t *testing.T) {
+		resp, err := testutil.GetClient().Post("/open-api/v1/model-prices", map[string]interface{}{
+			"provider":   testutil.UniqueName("provider"),
+			"model":      "test-model",
+			"base_model": "test-model",
+			"mode":       "invalid_mode",
+			"prices": map[string]interface{}{
+				"input_cost_per_token": 0.001,
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
+	t.Run("MP-2-005 prices 包含负数", func(t *testing.T) {
+		resp, err := testutil.GetClient().Post("/open-api/v1/model-prices", map[string]interface{}{
+			"provider":   testutil.UniqueName("provider"),
+			"model":      "test-model",
+			"base_model": "test-model",
+			"mode":       "chat",
+			"prices": map[string]interface{}{
+				"input_cost_per_token": -0.001,
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
+	t.Run("MP-2-006 重复三元组", func(t *testing.T) {
+		provider := testutil.UniqueName("provider")
+		model := testutil.UniqueName("model")
+		body := map[string]interface{}{
+			"provider":   provider,
+			"model":      model,
+			"base_model": model,
+			"mode":       "chat",
+			"prices": map[string]interface{}{
+				"input_cost_per_token": 0.001,
+			},
+		}
+
+		id, err := testutil.CreateModelPrice(body)
+		if err != nil {
+			t.Fatalf("create first model price failed: %v", err)
+		}
+		defer testutil.DeleteModelPrice(id)
+
+		resp, err := testutil.GetClient().Post("/open-api/v1/model-prices", body)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 422 && resp.ErrNum != 500 {
+			t.Errorf("expected ErrNum=422 or 500, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+	})
+}
+
+func int64ToStr(v int64) string {
+	return fmt.Sprintf("%d", v)
+}

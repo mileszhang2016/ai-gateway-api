@@ -35,6 +35,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/imods"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iprotocol"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iroute_conf"
@@ -47,6 +48,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/auth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/basic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/model_price"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/protocol"
 	quotaStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
@@ -116,6 +118,13 @@ func Init() error {
 		container.VersionControlManager,
 		container.RouteRuleStoragerSingleton,
 	)
+	// Initialize model pricing before route rule manager so InnerAPI exports can
+	// attach ModelTable to AIConf.
+	container.ModelPriceStorager = model_price.NewRDBModelPriceStorager(stateful.NewBFEDBContext)
+	container.ModelPriceManager = imodel_price.NewManager(
+		container.TxnStoragerSingleton,
+		container.ModelPriceStorager)
+
 	container.RouteRuleManager = iroute_conf.NewRouteRuleManager(
 		container.TxnStoragerSingleton,
 		container.RouteRuleStoragerSingleton,
@@ -123,6 +132,7 @@ func Init() error {
 		container.ProductStoragerSingleton,
 		container.VersionControlManager,
 		container.DomainStoragerSingleton)
+	container.RouteRuleManager.SetModelPriceStorager(container.ModelPriceStorager)
 
 	// Initialize route rules components before cluster manager because the
 	// cluster delete checker depends on RouteRulesManager.

@@ -68,7 +68,7 @@ func (m *QuotaPlanManager) DeleteQuotaPlan(ctx context.Context, filter *QuotaPla
 // updateLastResetAt: 是否更新 last_reset_at 字段
 // - true: 用于定期重置调度，会更新 last_reset_at，影响下次重置判断
 // - false: 用于手动重置接口，不更新 last_reset_at，避免影响定期重置调度
-func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQuota *int64, updateLastResetAt bool) error {
+func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQuota *float64, updateLastResetAt bool) error {
 	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		// 1. 获取 QuotaPlan
 		plan, err := m.storager.FetchQuotaPlan(ctx, &QuotaPlanFilter{ID: &planID})
@@ -105,7 +105,7 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 
 		// 5. 准备更新参数
 		updateParam := &QuotaBalanceParam{
-			Used:      lib.PInt64(0),
+			Used:      lib.PFloat64(0),
 			Remaining: resetQuota,
 		}
 
@@ -120,7 +120,7 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 			// 创建新的余额记录，LastResetAt 初始化为当前时间
 			_, err = m.balanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
 				QuotaPlanID: &planID,
-				Used:        lib.PInt64(0),
+				Used:        lib.PFloat64(0),
 				Remaining:   resetQuota,
 				LastResetAt: &now,
 			})
@@ -139,11 +139,11 @@ func (m *QuotaPlanManager) FetchQuotaBalance(ctx context.Context, planID int64) 
 }
 
 // CreateQuotaBalance 创建配额余额
-func (m *QuotaPlanManager) CreateQuotaBalance(ctx context.Context, planID int64, quota *int64) error {
+func (m *QuotaPlanManager) CreateQuotaBalance(ctx context.Context, planID int64, quota *float64) error {
 	now := time.Now()
 	_, err := m.balanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
 		QuotaPlanID: &planID,
-		Used:        lib.PInt64(0),
+		Used:        lib.PFloat64(0),
 		Remaining:   quota,
 		LastResetAt: &now,
 	})

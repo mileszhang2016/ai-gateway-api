@@ -32,12 +32,12 @@ func TestQuotaPlanStoragerAdapter(t *testing.T) {
 		inner := &fakeQuotaPlanStorager{
 			createFn: func(ctx context.Context, param *QuotaPlanParam) (int64, error) {
 				require.NotNil(t, param.Quota)
-				assert.Equal(t, int64(100), *param.Quota)
+				assert.Equal(t, float64(100), *param.Quota)
 				return 7, nil
 			},
 		}
 		adapter := NewQuotaPlanStoragerAdapter(inner)
-		id, err := adapter.CreateQuotaPlan(ctx, &shared.QuotaPlanParam{Quota: lib.PInt64(100)})
+		id, err := adapter.CreateQuotaPlan(ctx, &shared.QuotaPlanParam{Quota: lib.PFloat64(100)})
 		require.NoError(t, err)
 		assert.Equal(t, int64(7), id)
 	})
@@ -46,12 +46,12 @@ func TestQuotaPlanStoragerAdapter(t *testing.T) {
 		inner := &fakeQuotaPlanStorager{
 			updateFn: func(ctx context.Context, filter *QuotaPlanFilter, param *QuotaPlanParam) (int64, error) {
 				assert.Equal(t, int64(7), *filter.ID)
-				assert.Equal(t, int64(200), *param.Quota)
+				assert.Equal(t, float64(200), *param.Quota)
 				return 1, nil
 			},
 		}
 		adapter := NewQuotaPlanStoragerAdapter(inner)
-		affected, err := adapter.UpdateQuotaPlan(ctx, 7, &shared.QuotaPlanParam{Quota: lib.PInt64(200)})
+		affected, err := adapter.UpdateQuotaPlan(ctx, 7, &shared.QuotaPlanParam{Quota: lib.PFloat64(200)})
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), affected)
 	})
@@ -71,14 +71,14 @@ func TestQuotaPlanStoragerAdapter(t *testing.T) {
 		inner := &fakeQuotaPlanStorager{
 			fetchFn: func(ctx context.Context, filter *QuotaPlanFilter) (*QuotaPlanParam, error) {
 				assert.Equal(t, int64(7), *filter.ID)
-				return &QuotaPlanParam{Quota: lib.PInt64(300)}, nil
+				return &QuotaPlanParam{Quota: lib.PFloat64(300)}, nil
 			},
 		}
 		adapter := NewQuotaPlanStoragerAdapter(inner)
 		result, err := adapter.FetchQuotaPlan(ctx, 7)
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.Equal(t, int64(300), *result.Quota)
+		assert.Equal(t, float64(300), *result.Quota)
 	})
 
 	t.Run("FetchQuotaPlan not found", func(t *testing.T) {
@@ -244,15 +244,15 @@ func TestQuotaBalanceStoragerAdapter(t *testing.T) {
 		inner := &fakeQuotaBalanceStorager{
 			fetchFn: func(ctx context.Context, filter *QuotaBalanceFilter) (*QuotaBalanceParam, error) {
 				assert.Equal(t, int64(7), *filter.QuotaPlanID)
-				return &QuotaBalanceParam{Used: lib.PInt64(10), Remaining: lib.PInt64(90)}, nil
+				return &QuotaBalanceParam{Used: lib.PFloat64(10), Remaining: lib.PFloat64(90)}, nil
 			},
 		}
 		adapter := NewQuotaBalanceStoragerAdapter(inner)
 		result, err := adapter.FetchQuotaBalance(ctx, 7)
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.Equal(t, int64(10), *result.Used)
-		assert.Equal(t, int64(90), *result.Remaining)
+		assert.Equal(t, float64(10), *result.Used)
+		assert.Equal(t, float64(90), *result.Remaining)
 	})
 
 	t.Run("FetchQuotaBalance not found", func(t *testing.T) {
@@ -271,14 +271,14 @@ func TestQuotaBalanceStoragerAdapter(t *testing.T) {
 		inner := &fakeQuotaBalanceStorager{
 			createFn: func(ctx context.Context, param *QuotaBalanceParam) (int64, error) {
 				assert.Equal(t, int64(7), *param.QuotaPlanID)
-				assert.Equal(t, int64(0), *param.Used)
-				assert.Equal(t, int64(100), *param.Remaining)
+				assert.Equal(t, float64(0), *param.Used)
+				assert.Equal(t, float64(100), *param.Remaining)
 				assert.NotNil(t, param.LastResetAt)
 				return 9, nil
 			},
 		}
 		adapter := NewQuotaBalanceStoragerAdapter(inner)
-		require.NoError(t, adapter.CreateQuotaBalance(ctx, 7, lib.PInt64(100)))
+		require.NoError(t, adapter.CreateQuotaBalance(ctx, 7, lib.PFloat64(100)))
 	})
 
 	t.Run("DeleteQuotaBalance", func(t *testing.T) {

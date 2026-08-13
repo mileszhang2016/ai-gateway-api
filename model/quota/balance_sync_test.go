@@ -113,7 +113,7 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 	t.Run("SyncAllBalances calculates used from Redis", func(t *testing.T) {
 		mockRedis.Reset()
 		planID := int64(1)
-		quota := int64(1000)
+		quota := float64(1000)
 		apiKey := "ak-1"
 		entityID := "ent-1"
 
@@ -156,14 +156,14 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 		require.NoError(t, m.SyncAllBalances(ctx))
 
 		require.Len(t, balanceStorager.updated, 1)
-		assert.Equal(t, int64(100), *balanceStorager.updated[0].param.Used)      // 1000 - 900
-		assert.Equal(t, int64(900), *balanceStorager.updated[0].param.Remaining) // 800 + 100
+		assert.Equal(t, float64(100), *balanceStorager.updated[0].param.Used)      // 1000 - 900
+		assert.Equal(t, float64(900), *balanceStorager.updated[0].param.Remaining) // 800 + 100
 	})
 
 	t.Run("ResetExpiredBalances resets balance and Redis", func(t *testing.T) {
 		mockRedis.Reset()
 		planID := int64(1)
-		quota := int64(1000)
+		quota := float64(1000)
 		apiKey := "ak-1"
 		entityID := "ent-1"
 
@@ -201,8 +201,8 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 				return &QuotaBalanceParam{
 					ID:          lib.PInt64(1),
 					QuotaPlanID: &planID,
-					Used:        lib.PInt64(500),
-					Remaining:   lib.PInt64(500),
+					Used:        lib.PFloat64(500),
+					Remaining:   lib.PFloat64(500),
 					LastResetAt: &lastReset,
 				}, nil
 			},
@@ -221,8 +221,8 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 		require.NoError(t, m.ResetExpiredBalances(ctx))
 
 		require.Len(t, balanceStorager.updated, 1)
-		assert.Equal(t, int64(0), *balanceStorager.updated[0].param.Used)
-		assert.Equal(t, int64(1000), *balanceStorager.updated[0].param.Remaining)
+		assert.Equal(t, float64(0), *balanceStorager.updated[0].param.Used)
+		assert.Equal(t, float64(1000), *balanceStorager.updated[0].param.Remaining)
 		assert.NotNil(t, balanceStorager.updated[0].param.LastResetAt)
 
 		// Redis 应该被重置为配额总量
@@ -235,7 +235,7 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 	t.Run("ResetExpiredBalances skips when not expired", func(t *testing.T) {
 		mockRedis.Reset()
 		planID := int64(1)
-		quota := int64(1000)
+		quota := float64(1000)
 
 		planStorager := &fakeQuotaPlanStorager{
 			listFn: func(ctx context.Context, filter *QuotaPlanFilter) ([]*QuotaPlanParam, error) {
@@ -262,7 +262,7 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 	t.Run("ResetExpiredBalances skips when balance not found", func(t *testing.T) {
 		mockRedis.Reset()
 		planID := int64(1)
-		quota := int64(1000)
+		quota := float64(1000)
 
 		planStorager := &fakeQuotaPlanStorager{
 			listFn: func(ctx context.Context, filter *QuotaPlanFilter) ([]*QuotaPlanParam, error) {

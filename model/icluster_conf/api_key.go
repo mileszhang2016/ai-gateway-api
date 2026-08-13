@@ -56,9 +56,9 @@ type APIKeyParam struct {
 	QuotaPlanID       *int64   `json:"-"`
 	RateLimitPolicyID *int64   `json:"-"`
 	RouteRulesID      *int64   `json:"-"`
-	ProductName       *string  `json:"-"`
-	InnerID           *int64   `json:"-"`
-	RemainingQuota    *int64   `json:"remaining_quota,omitempty"`
+	ProductName       *string   `json:"-"`
+	InnerID           *int64    `json:"-"`
+	RemainingQuota    *float64  `json:"remaining_quota,omitempty"`
 
 	QuotaPlan       *shared.QuotaPlanParam       `json:"quota_plan,omitempty"`
 	RateLimitPolicy *shared.RateLimitPolicyParam `json:"rate_limit_policy,omitempty"`
@@ -152,8 +152,9 @@ func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager, clusterStor
 	}
 }
 
-// GetRemainingQuota calculates the remaining quota for an API key
-func GetRemainingQuota(param *APIKeyParam) (*int64, error) {
+// GetRemainingQuota calculates the remaining quota for an API key.
+// Redis stores RMB quotas as fixed-point integers (quota * 1e8) to avoid Lua floating point errors.
+func GetRemainingQuota(param *APIKeyParam) (*float64, error) {
 	if param.UnlimitedQuota != nil && *param.UnlimitedQuota {
 		return nil, nil
 	}
@@ -184,7 +185,8 @@ func GetRemainingQuota(param *APIKeyParam) (*int64, error) {
 		remain = 0
 	}
 
-	return &remain, nil
+	remainFloat := lib.RedisValueToQuota(remain, param.QuotaPlan.Unit)
+	return &remainFloat, nil
 }
 
 // FetchAPIKeyList retrieves API keys based on filter criteria

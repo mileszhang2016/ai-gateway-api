@@ -80,7 +80,7 @@ func TestConvertAPIKeyRulesToBfeRules_EmptyActions(t *testing.T) {
 func TestConvertQuotaPlanToExport(t *testing.T) {
 	unlimited := false
 	passNoQuota := true
-	quotaVal := int64(1000)
+	quotaVal := float64(1000)
 	period := "monthly"
 	createTime := int64(1234567890)
 

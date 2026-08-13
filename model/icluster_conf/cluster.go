@@ -39,6 +39,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
@@ -203,6 +204,7 @@ type LLMConfig struct {
 	Keys          []APIKey   `json:"keys"`           // multi API-Key list; empty means no API-Key
 	KeyPolicy     *KeyPolicy `json:"key_policy"`     // key routing policy
 	ProviderType  *string    `json:"provider_type"`
+	Provider      *string    `json:"provider"`       // provider name in model_prices
 }
 
 type Mapping struct {
@@ -798,7 +800,7 @@ func normalizeBFEHashStrategy(sticky *ClusterStickySessions) int32 {
 	return sticky.HashStrategy
 }
 
-func NewBfeClusterConf(version string, clusters []*Cluster) *ServerDataBfeClusterConf {
+func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable map[string][]*imodel_price.ModelPrice) *ServerDataBfeClusterConf {
 	clusterConfMap := map[string]ServerDataClusterConf{}
 
 	int322intp := func(i int32) *int {
@@ -868,7 +870,36 @@ func NewBfeClusterConf(version string, clusters []*Cluster) *ServerDataBfeCluste
 		}
 
 		if cluster.LLMConfig != nil {
-			clusterConf.AIConf = newServerDataAIConf(cluster.LLMConfig)
+			var modelTable *ServerDataModelTable
+			provider := ""
+			if cluster.LLMConfig.Provider != nil {
+				provider = *cluster.LLMConfig.Provider
+			}
+			if provider != "" {
+				if entries, ok := providerModelTable[provider]; ok && len(entries) > 0 {
+					models := make([]ServerDataModelPriceEntry, 0, len(entries))
+					for _, e := range entries {
+						if e != nil {
+							models = append(models, ServerDataModelPriceEntry{
+								Provider:            e.Provider,
+								Model:               e.Model,
+								BaseModel:           e.BaseModel,
+								Mode:                e.Mode,
+								Capabilities:        e.Capabilities,
+								SupportedParameters: e.SupportedParameters,
+								Limits:              e.Limits,
+								Prices:              e.Prices,
+								Metadata:            e.Metadata,
+							})
+						}
+					}
+					modelTable = &ServerDataModelTable{
+						Currency: "RMB",
+						Models:   models,
+					}
+				}
+			}
+			clusterConf.AIConf = newServerDataAIConf(cluster.LLMConfig, modelTable)
 		}
 
 		clusterConfMap[cluster.Name] = clusterConf
@@ -879,11 +910,18 @@ func NewBfeClusterConf(version string, clusters []*Cluster) *ServerDataBfeCluste
 	}
 }
 
-func newServerDataAIConf(llmConfig *LLMConfig) *ServerDataAIConf {
+func newServerDataAIConf(llmConfig *LLMConfig, modelTable *ServerDataModelTable) *ServerDataAIConf {
 	aiConf := &ServerDataAIConf{
 		Type:         0,
 		ModelMapping: convertToBFEModelMapping(llmConfig.ModelMappings),
 		Keys:         []ServerDataAIKey{},
+	}
+
+	if llmConfig.Provider != nil {
+		aiConf.Provider = *llmConfig.Provider
+	}
+	if modelTable != nil {
+		aiConf.ModelTable = modelTable
 	}
 
 	for _, k := range llmConfig.Keys {

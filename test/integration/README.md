@@ -34,6 +34,7 @@ integration/
     ├── clusters/
     ├── certificate/
     ├── model_provider/
+    ├── model_price/
     └── innerapi/
 ```
 

@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 var sm *testutil.ServerManager
@@ -126,6 +126,98 @@ func TestInnerAPI_TlsConf(t *testing.T) {
 		assert.Equal(t, float64(3), policy["MaxRetries"])
 		assert.Equal(t, float64(100), policy["RetryBackoffInitial"])
 		assert.Equal(t, float64(5000), policy["RetryBackoffMax"])
+	})
+
+	t.Run("IN-1-003 导出 ClusterConf 含模型定价表", func(t *testing.T) {
+		yamlContent := []byte(`version: v1.0
+default_currency: RMB
+models:
+  - provider: openai
+    model: gpt-4o
+    base_model: gpt-4o
+    mode: chat
+    prices:
+      input_cost_per_token: 0.0001
+  - provider: openai
+    model: gpt-4o-mini
+    base_model: gpt-4o-mini
+    mode: chat
+    prices:
+      input_cost_per_token: 0.00001
+`)
+		if err := testutil.ImportModelPrices(yamlContent, "replace"); err != nil {
+			t.Fatalf("import model prices failed: %v", err)
+		}
+
+		clusterName := testutil.UniqueClusterName()
+		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
+			"instance_pool": []interface{}{
+				map[string]interface{}{
+					"name":   "backend-1",
+					"addr":   "10.0.0.1",
+					"weight": 100,
+					"port":   8080,
+				},
+			},
+			"llm_config": map[string]interface{}{
+				"models":        []string{"gpt-4o"},
+				"provider_type": "openai",
+				"provider":      "openai",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterName)
+
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal failed: %v", err)
+		}
+		clusterConf, ok := data["ClusterConf"].(map[string]interface{})
+		if !assert.True(t, ok, "ClusterConf should be an object") {
+			return
+		}
+		config, ok := clusterConf["Config"].(map[string]interface{})
+		if !assert.True(t, ok, "ClusterConf.Config should be an object") {
+			return
+		}
+		cluster, ok := config[clusterName].(map[string]interface{})
+		if !assert.True(t, ok, "target cluster should exist in ClusterConf.Config") {
+			return
+		}
+		aiconf, ok := cluster["AIConf"].(map[string]interface{})
+		if !assert.True(t, ok, "AIConf should be an object") {
+			return
+		}
+		modelTable, ok := aiconf["ModelTable"].(map[string]interface{})
+		if !assert.True(t, ok, "AIConf.ModelTable should be an object") {
+			return
+		}
+		assert.Equal(t, "RMB", modelTable["Currency"])
+		models, ok := modelTable["Models"].([]interface{})
+		if !assert.True(t, ok, "ModelTable.Models should be an array") {
+			return
+		}
+		assert.Len(t, models, 2)
+
+		modelNames := make([]string, 0, len(models))
+		for _, m := range models {
+			mm, ok := m.(map[string]interface{})
+			if assert.True(t, ok, "model entry should be an object") {
+				modelNames = append(modelNames, mm["Model"].(string))
+				assert.Equal(t, "openai", mm["Provider"])
+			}
+		}
+		assert.Contains(t, modelNames, "gpt-4o")
+		assert.Contains(t, modelNames, "gpt-4o-mini")
 	})
 
 	t.Cleanup(func() {

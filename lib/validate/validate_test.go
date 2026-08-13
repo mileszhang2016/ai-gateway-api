@@ -114,7 +114,7 @@ func TestAPIKeyValue(t *testing.T) {
 
 func TestQuotaPlan(t *testing.T) {
 	assert.NoError(t, QuotaPlan(nil))
-	q := int64(-1)
+	q := float64(-1)
 	assert.Error(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q}))
 	q = 100
 	unit := "invalid"

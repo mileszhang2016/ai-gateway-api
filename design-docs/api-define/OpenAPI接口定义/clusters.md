@@ -76,7 +76,8 @@
             "retry_backoff_initial": 500,
             "retry_backoff_max": 5000
         },
-        "provider_type": "deepseek"
+        "provider_type": "deepseek",
+        "provider": "deepseek"
     }
 }
 ```
@@ -153,8 +154,11 @@
 | keys| []APIKey |  API-Key 列表 | N | 一个 cluster 支持配置多个 Key，按权重做路由；为空数组表示不配置 API-Key | 非必填；默认值为空数组 `[]`；元素须满足 表：API-Key 结构 |
 | key_policy| object |  Key 路由策略 | N | 多 Key 时的选择策略、重试与退避配置 | 非必填；默认见下方 表：Key 路由策略；`strategy` 本版仅支持 `weighted_random` |
 | provider_type| string |  AI模型提供商类型 | N | 取值如：deepseek、openai、qwen 等。数据来自 `/model-provider-types` | 非必填；若传入，须为 `/model-provider-types` 中已存在的类型 |
+| provider| string |  该 cluster 在 `model_prices` 中对应的 provider | N | 用于 InnerAPI 自动填充 `AIConf.ModelTable`；为空时 `ModelTable` 为空列表 | 非必填；默认空字符串；OpenAPI 可读写 |
 
 > **说明**：`model_endpoint.headers` 中的 `${API_KEY}` 占位符，当 `keys` 非空时由当前选中的 Key 替换；当 `keys` 为空时，不允许出现该占位符，否则在校验阶段返回 `422`。
+>
+> **注意：** `model_table` 不在 OpenAPI `/clusters` 端点中展示，仅通过 InnerAPI 根据 `provider` 自动填充后下发给 BFE。
 >
 > **注意：** `enable` 字段已移除，设置 `llm_config` 时默认开启 AI 网关能力。
 
@@ -208,6 +212,8 @@
   - `retry_backoff_initial`、`retry_backoff_max` 须为 `>=0` 的整数，且 `retry_backoff_max >= retry_backoff_initial`。
 - `llm_config.model_endpoint.headers` 中若包含 `${API_KEY}` 占位符，则 `keys` 不能为空，否则返回 `422`。
 - `llm_config.provider_type` 若传入，须为 `/model-provider-types` 中已存在的类型。
+- `llm_config.provider` 若传入，表示该 cluster 在 `model_prices` 中对应的 provider；为空时 InnerAPI 下发的 `AIConf.ModelTable` 为空列表。
+- `llm_config.model_table` 不在 OpenAPI `/clusters` 端点中展示，调用方传入时忽略或返回 `422`；该字段由 InnerAPI 根据 `provider` 自动填充后下发给 BFE。
 - `basic`、`sticky_sessions`、`passive_health_check` 若未传则使用 AI 网关场景默认值。
 - `basic.protocol` 有效值为 `http`、`https`。
 - `basic.connection.max_idle_conn_per_rs` 须为 >=0 的整数。
@@ -338,7 +344,8 @@
             "retry_backoff_initial": 500,
             "retry_backoff_max": 5000
         },
-        "provider_type": "deepseek"
+        "provider_type": "deepseek",
+        "provider": "deepseek"
     }
 }
 ```
@@ -371,7 +378,8 @@
             "retry_backoff_initial": 500,
             "retry_backoff_max": 5000
         },
-        "provider_type": "deepseek"
+        "provider_type": "deepseek",
+        "provider": "deepseek"
     }
 }
 ```
@@ -557,7 +565,8 @@
             "retry_backoff_initial": 500,
             "retry_backoff_max": 5000
         },
-        "provider_type": "deepseek"
+        "provider_type": "deepseek",
+        "provider": "deepseek"
     }
 }
 ```

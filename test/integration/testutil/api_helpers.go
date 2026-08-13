@@ -96,6 +96,83 @@ func CreateCluster(name string) (string, error) {
 	return name, nil
 }
 
+// ImportModelPrices 通过 /model-prices/import 导入模型定价 YAML
+func ImportModelPrices(yamlContent []byte, mode string) error {
+	_, _, err := ImportModelPricesWithResult(yamlContent, mode)
+	return err
+}
+
+// ImportModelPricesWithResult 导入模型定价 YAML，并返回导入结果计数
+type ImportModelPricesResult struct {
+	ImportedCount int `json:"imported_count"`
+	SkippedCount  int `json:"skipped_count"`
+}
+
+func ImportModelPricesWithResult(yamlContent []byte, mode string) (ImportModelPricesResult, *APIResponse, error) {
+	resp, err := GetClient().PostMultipartFile("/open-api/v1/model-prices/import", "file", "model-list.yaml", yamlContent, map[string]string{
+		"mode": mode,
+	})
+	if err != nil {
+		return ImportModelPricesResult{}, nil, err
+	}
+	if resp.ErrNum != 200 {
+		return ImportModelPricesResult{}, resp, fmt.Errorf("import model prices failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	var result ImportModelPricesResult
+	if err := UnmarshalData(resp, &result); err != nil {
+		return ImportModelPricesResult{}, resp, err
+	}
+	return result, resp, nil
+}
+
+// CreateModelPrice 创建模型定价记录，返回记录 id
+func CreateModelPrice(body map[string]interface{}) (int64, error) {
+	resp, err := GetClient().Post("/open-api/v1/model-prices", body)
+	if err != nil {
+		return 0, err
+	}
+	if resp.ErrNum != 200 {
+		return 0, fmt.Errorf("create model price failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	idVal, err := GetDataField(resp, "id")
+	if err != nil {
+		return 0, err
+	}
+	id, ok := idVal.(float64)
+	if !ok {
+		return 0, fmt.Errorf("id is not a number: %v", idVal)
+	}
+	return int64(id), nil
+}
+
+// DeleteModelPrice 按 id 删除模型定价记录
+func DeleteModelPrice(id int64) error {
+	resp, err := GetClient().Delete(fmt.Sprintf("/open-api/v1/model-prices/%d", id))
+	if err != nil {
+		return err
+	}
+	if resp.ErrNum != 200 && resp.ErrNum != 404 {
+		return fmt.Errorf("delete model price failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	return nil
+}
+
+// DeleteModelPriceByQuery 按组合键删除模型定价记录
+func DeleteModelPriceByQuery(provider, model, mode string) error {
+	resp, err := GetClient().DeleteWithQuery("/open-api/v1/model-prices", map[string]string{
+		"provider": provider,
+		"model":    model,
+		"mode":     mode,
+	})
+	if err != nil {
+		return err
+	}
+	if resp.ErrNum != 200 && resp.ErrNum != 404 {
+		return fmt.Errorf("delete model price by query failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	return nil
+}
+
 // CreateCertificate 创建证书，返回 cert_name
 func CreateCertificate(certName string, isDefault bool) (string, error) {
 	certPEM, keyPEM, err := GenerateTestCert(certName)

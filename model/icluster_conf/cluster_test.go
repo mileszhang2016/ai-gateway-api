@@ -754,7 +754,7 @@ func TestAppendAdvancedRuleCluster(t *testing.T) {
 
 func TestNewBfeClusterConf(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterBase()})
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterBase()}, nil)
 		require.NotNil(t, conf)
 		require.NotNil(t, conf.Config)
 		assert.Equal(t, "v1", *conf.Version)
@@ -770,33 +770,33 @@ func TestNewBfeClusterConf(t *testing.T) {
 		conf := NewBfeClusterConf("v1", []*Cluster{
 			newTestClusterBase(),
 			{ID: RouteAdvancedModeClusterID, Name: RouteAdvancedModeClusterName},
-		})
+		}, nil)
 		require.Len(t, *conf.Config, 1)
 	})
 
 	t.Run("EPP addrs", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterEPP()})
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterEPP()}, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic.EPPAddr)
 		assert.Equal(t, []string{"epp.example.com:8080"}, *cConf.GslbBasic.EPPAddr)
 	})
 
 	t.Run("https conf", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterHTTPS()})
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterHTTPS()}, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.HTTPSConf)
 		assert.True(t, *cConf.HTTPSConf.RSInsecureSkipVerify)
 	})
 
 	t.Run("domain pool disable checks", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterDomain()})
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterDomain()}, nil)
 		cConf := (*conf.Config)["c1"]
 		assert.True(t, *cConf.ClusterBasic.DisableHealthCheck)
 		assert.True(t, *cConf.ClusterBasic.DisableHostHeader)
 	})
 
 	t.Run("LLM config", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterLLM()})
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterLLM()}, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.AIConf)
 		require.Len(t, cConf.AIConf.Keys, 2)
@@ -822,7 +822,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 			HashStrategy:  ClusterHashStrategyClientIDOnlyI,
 			HashHeader:    "",
 		}
-		conf := NewBfeClusterConf("v1", []*Cluster{c})
+		conf := NewBfeClusterConf("v1", []*Cluster{c}, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic)
 		require.NotNil(t, cConf.GslbBasic.HashConf)

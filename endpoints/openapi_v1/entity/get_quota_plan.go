@@ -34,15 +34,15 @@ var EntityGetQuotaPlanRoute = &xreq.Endpoint{
 type EntityGetQuotaPlanResponse struct {
 	Unlimited             *bool     `json:"unlimited"`
 	PassWhenNoEnoughQuota *bool     `json:"pass_when_no_enough_quota"`
-	Quota                 *int64    `json:"quota"`
+	Quota                 *float64  `json:"quota"`
 	Unit                  *string   `json:"unit"`
 	ResetPeriod           *string   `json:"reset_period"`
 	Balance               *Balance  `json:"balance"`
 }
 
 type Balance struct {
-	Used      int64 `json:"used"`
-	Remaining int64 `json:"remaining"`
+	Used      float64 `json:"used"`
+	Remaining float64 `json:"remaining"`
 }
 
 type GetQuotaPlanReq struct {
@@ -77,11 +77,11 @@ func EntityGetQuotaPlanAction(req *http.Request) (interface{}, error) {
 			return nil, err
 		}
 		if balanceData != nil {
-			used := int64(0)
+			used := float64(0)
 			if balanceData.Used != nil {
 				used = *balanceData.Used
 			}
-			remaining := int64(0)
+			remaining := float64(0)
 			if balanceData.Remaining != nil {
 				remaining = *balanceData.Remaining
 			}
@@ -90,7 +90,7 @@ func EntityGetQuotaPlanAction(req *http.Request) (interface{}, error) {
 				Remaining: remaining,
 			}
 		} else {
-			remaining := int64(0)
+			remaining := float64(0)
 			if entity.QuotaPlan.Quota != nil {
 				remaining = *entity.QuotaPlan.Quota
 			}

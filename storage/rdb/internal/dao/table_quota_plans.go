@@ -17,6 +17,8 @@ package dao
 import (
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao/internal"
@@ -25,14 +27,14 @@ import (
 const tQuotaPlanTableName = "quota_plans"
 
 type TQuotaPlan struct {
-	ID                    int64     `db:"id"`
-	Unlimited             bool      `db:"unlimited"`
-	PassWhenNoEnoughQuota bool      `db:"pass_when_no_enough_quota"`
-	Quota                 int64     `db:"quota"`
-	Unit                  string    `db:"unit"`
-	ResetPeriod           string    `db:"reset_period"`
-	CreatedAt             time.Time `db:"created_at"`
-	UpdatedAt             time.Time `db:"updated_at"`
+	ID                    int64           `db:"id"`
+	Unlimited             bool            `db:"unlimited"`
+	PassWhenNoEnoughQuota bool            `db:"pass_when_no_enough_quota"`
+	Quota                 decimal.Decimal `db:"quota"`
+	Unit                  string          `db:"unit"`
+	ResetPeriod           string          `db:"reset_period"`
+	CreatedAt             time.Time       `db:"created_at"`
+	UpdatedAt             time.Time       `db:"updated_at"`
 }
 
 // TQuotaPlanOne Query One
@@ -63,14 +65,14 @@ func TQuotaPlanList(dbCtx lib.DBContexter, where *TQuotaPlanParam) ([]*TQuotaPla
 }
 
 type TQuotaPlanParam struct {
-	ID                    *int64     `db:"id"`
-	Unlimited             *bool      `db:"unlimited"`
-	PassWhenNoEnoughQuota *bool      `db:"pass_when_no_enough_quota"`
-	Quota                 *int64     `db:"quota"`
-	Unit                  *string    `db:"unit"`
-	ResetPeriod           *string    `db:"reset_period"`
-	CreatedAt             *time.Time `db:"created_at"`
-	UpdatedAt             *time.Time `db:"updated_at"`
+	ID                    *int64           `db:"id"`
+	Unlimited             *bool            `db:"unlimited"`
+	PassWhenNoEnoughQuota *bool            `db:"pass_when_no_enough_quota"`
+	Quota                 *decimal.Decimal `db:"quota"`
+	Unit                  *string          `db:"unit"`
+	ResetPeriod           *string          `db:"reset_period"`
+	CreatedAt             *time.Time       `db:"created_at"`
+	UpdatedAt             *time.Time       `db:"updated_at"`
 
 	OrderBy *string `db:"_orderby"`
 }
