@@ -71,6 +71,7 @@ type QuotaPlan struct {
 	ExpiredTime int64 // -1 means never expired
 	Quota       int64 // 配额总量
 	ResetMode   int   // 0 – 非周期性；1 – 周期性的配额包
+	Unit        string
 }
 
 type TokenFile struct {
@@ -581,6 +582,9 @@ func convertQuotaPlanToExport(qp *quota.QuotaPlanParam, id string, redisKeyID st
 	}
 	if qp.Quota != nil {
 		result.Quota = golibquota.PtrToRedisValue(qp.Quota, qp.Unit)
+	}
+	if qp.Unit != nil {
+		result.Unit = *qp.Unit
 	}
 	if qp.ResetPeriod != nil {
 		if *qp.ResetPeriod == "weekly" || *qp.ResetPeriod == "monthly" {

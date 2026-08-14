@@ -149,7 +149,8 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
                 "CreateTime": 1716883200,
                 "ExpiredTime": -1,
                 "Quota": 100000000,
-                "ResetMode": 1
+                "ResetMode": 1,
+                "Unit": "RMB"
             }
         ]
     }
@@ -166,8 +167,9 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
 | RedisKey | string | Redis 中存储配额余额的 Key | 格式 `QUOTA_{id}` |
 | CreateTime | int64 | 创建时间 | Unix 时间戳（秒） |
 | ExpiredTime | int64 | 过期时间 | `-1`: 永不过期 |
-| Quota | int64 | 配额总量 | 初始配额值 |
+| Quota | int64 | 配额总量 | 初始配额值；`Unit=RMB` 时为定点整数，精度 `1e-8` 元 |
 | ResetMode | int | 重置模式 | `0`: 非周期性；`1`: 周期性（weekly/monthly） |
+| Unit | string | 配额单位，`RMB` 同时隐含货币类型 | `total_token` / `RMB` |
 
 ## 4. 状态码说明
 
