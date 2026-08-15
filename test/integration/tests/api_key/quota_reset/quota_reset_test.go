@@ -101,6 +101,35 @@ func TestAPIKey_QuotaReset(t *testing.T) {
 		assert.InDelta(t, float64(200.8888), balance["new_remaining"], 0.00001)
 	})
 
+	t.Run("AK-8-004 重置 RMB 配额超过 9000 万元上限", func(t *testing.T) {
+		rmbID, err := testutil.CreateAPIKey("rmb-reset-limit-key", "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(rmbID)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+rmbID, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        100.5,
+				"unit":         "RMB",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		resp, err := testutil.GetClient().Post("/open-api/v1/api-keys/"+rmbID+"/quota-plan/reset", map[string]interface{}{
+			"quota":  90000000.01,
+			"reason": "exceed rmb quota limit",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteAPIKey(apiKeyID)
 	})

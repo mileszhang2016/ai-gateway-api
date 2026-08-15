@@ -3,6 +3,7 @@ package api_key
 import (
 	"net/http"
 
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/validate"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
@@ -81,6 +82,15 @@ func ResetQuotaAction(req *http.Request) (interface{}, error) {
 	}
 	if plan != nil {
 		previousQuota = plan.Quota
+	}
+
+	// 校验重置配额值
+	unit := "total_token"
+	if plan != nil && plan.Unit != nil && *plan.Unit != "" {
+		unit = *plan.Unit
+	}
+	if err := validate.QuotaValue(resetReq.Quota, unit); err != nil {
+		return nil, err
 	}
 
 	balance, err := container.QuotaPlanManager.FetchQuotaBalance(req.Context(), *apiKey.QuotaPlanID)

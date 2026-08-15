@@ -24,6 +24,7 @@ import (
 	"unicode"
 
 	"github.com/bfenetworks/bfe/bfe_basic/condition"
+	golibquota "github.com/bfenetworks/go-lib/quota"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
@@ -357,19 +358,8 @@ func QuotaPlan(p *shared.QuotaPlanParam) error {
 		return xerror.WrapParamErrorWithMsg("unit must be total_token or RMB")
 	}
 
-	if p.Quota != nil {
-		if *p.Quota < 0 {
-			return xerror.WrapParamErrorWithMsg("quota must be >= 0")
-		}
-		if unit == "total_token" {
-			if math.Mod(*p.Quota, 1) != 0 {
-				return xerror.WrapParamErrorWithMsg("quota must be an integer when unit is total_token")
-			}
-		} else {
-			if !validDecimalPlaces(*p.Quota, 8) {
-				return xerror.WrapParamErrorWithMsg("quota can have at most 8 decimal places when unit is RMB")
-			}
-		}
+	if err := QuotaValue(p.Quota, unit); err != nil {
+		return err
 	}
 
 	if p.ResetPeriod != nil && *p.ResetPeriod != "" {
@@ -377,6 +367,30 @@ func QuotaPlan(p *shared.QuotaPlanParam) error {
 		case "never", "weekly", "monthly":
 		default:
 			return xerror.WrapParamErrorWithMsg("reset_period must be never, weekly or monthly")
+		}
+	}
+	return nil
+}
+
+// QuotaValue validates a single quota value for the given unit.
+// A nil quota is treated as valid (not provided).
+func QuotaValue(quota *float64, unit string) error {
+	if quota == nil {
+		return nil
+	}
+	if *quota < 0 {
+		return xerror.WrapParamErrorWithMsg("quota must be >= 0")
+	}
+	if unit == "total_token" {
+		if math.Mod(*quota, 1) != 0 {
+			return xerror.WrapParamErrorWithMsg("quota must be an integer when unit is total_token")
+		}
+	} else if unit == "RMB" {
+		if !validDecimalPlaces(*quota, 8) {
+			return xerror.WrapParamErrorWithMsg("quota can have at most 8 decimal places when unit is RMB")
+		}
+		if *quota > golibquota.MaxRMBQuota {
+			return xerror.WrapParamErrorWithMsg("quota must be <= %v when unit is RMB", golibquota.MaxRMBQuota)
 		}
 	}
 	return nil

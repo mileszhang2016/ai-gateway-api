@@ -9,7 +9,7 @@ require (
 	github.com/DATA-DOG/go-sqlmock v1.4.0
 	github.com/baidu/go-lib v0.0.0-20210316014414-55daa983069e
 	github.com/bfenetworks/bfe v1.8.5-0.20260815094932-927738429881
-	github.com/bfenetworks/go-lib v0.0.2
+	github.com/bfenetworks/go-lib v0.0.3
 	github.com/codegangsta/negroni v1.0.0
 	github.com/didi/gendry v1.7.0
 	github.com/glebarez/go-sqlite v1.21.2
