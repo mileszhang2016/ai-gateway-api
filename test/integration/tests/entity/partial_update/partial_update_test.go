@@ -66,16 +66,16 @@ func TestEntity_PartialUpdate(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name": "dup",
-						"Cond": "default_t()",
+						"cond": "default_t()",
 						"targets": []interface{}{
-							map[string]interface{}{"ClusterName": "c1", "Weight": 100},
+							map[string]interface{}{"cluster_name": "c1", "weight": 100},
 						},
 					},
 					map[string]interface{}{
 						"name": "dup",
-						"Cond": "default_t()",
+						"cond": "default_t()",
 						"targets": []interface{}{
-							map[string]interface{}{"ClusterName": "c2", "Weight": 100},
+							map[string]interface{}{"cluster_name": "c2", "weight": 100},
 						},
 					},
 				},

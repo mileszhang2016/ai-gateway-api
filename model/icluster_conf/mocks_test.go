@@ -229,12 +229,12 @@ func (f *fakeSubClusterStorager) UpdateSubCluster(ctx context.Context, one *SubC
 }
 
 type fakeAPIKeyStorager struct {
-	fetchAPIKeyListFn     func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error)
-	createAPIKeyFn        func(ctx context.Context, param *APIKeyParam) (int64, error)
-	updateAPIKeyFn        func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error)
-	deleteAPIKeyFn        func(ctx context.Context, filter *APIKeyFilter) error
-	createAPIKeyTokenFn   func(ctx context.Context, param *APIKeyTokenParam) (int64, error)
-	updateAPIKeyTokenFn   func(ctx context.Context, filter *APIKeyTokenFilter, param *APIKeyTokenParam) error
+	fetchAPIKeyListFn      func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error)
+	createAPIKeyFn         func(ctx context.Context, param *APIKeyParam) (int64, error)
+	updateAPIKeyFn         func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error)
+	deleteAPIKeyFn         func(ctx context.Context, filter *APIKeyFilter) error
+	createAPIKeyTokenFn    func(ctx context.Context, param *APIKeyTokenParam) (int64, error)
+	updateAPIKeyTokenFn    func(ctx context.Context, filter *APIKeyTokenFilter, param *APIKeyTokenParam) error
 	fetchAPIKeyTokenListFn func(ctx context.Context, filter *APIKeyTokenFilter) ([]*APIKeyTokenParam, error)
 }
 
@@ -369,11 +369,11 @@ func (f *fakeRateLimitPolicyStorager) FetchRateLimitPolicy(ctx context.Context, 
 }
 
 type fakeRouteRulesStorager struct {
-	createRouteRulesFn   func(ctx context.Context, ruleType string, owner *string, param *shared.RouteRulesParam) (int64, error)
-	fetchRouteRulesFn    func(ctx context.Context, ruleType string, owner *string) (*shared.RouteRulesParam, error)
+	createRouteRulesFn    func(ctx context.Context, ruleType string, owner *string, param *shared.RouteRulesParam) (int64, error)
+	fetchRouteRulesFn     func(ctx context.Context, ruleType string, owner *string) (*shared.RouteRulesParam, error)
 	fetchRouteRulesListFn func(ctx context.Context, filter *shared.RouteRulesFilter) ([]*shared.RouteTableParam, int64, error)
-	updateRouteRulesFn   func(ctx context.Context, id int64, param *shared.RouteRulesParam) (int64, error)
-	deleteRouteRulesFn   func(ctx context.Context, id int64) error
+	updateRouteRulesFn    func(ctx context.Context, id int64, param *shared.RouteRulesParam) (int64, error)
+	deleteRouteRulesFn    func(ctx context.Context, id int64) error
 	fetchRouteRulesByIDFn func(ctx context.Context, id int64) (*shared.RouteRulesParam, error)
 }
 
@@ -416,6 +416,10 @@ func (f *fakeRouteRulesStorager) FetchRouteRulesByID(ctx context.Context, id int
 	if f.fetchRouteRulesByIDFn != nil {
 		return f.fetchRouteRulesByIDFn(ctx, id)
 	}
+	return nil, nil
+}
+
+func (f *fakeRouteRulesStorager) FetchAllRouteRules(ctx context.Context) ([]*shared.RouteRulesParam, error) {
 	return nil, nil
 }
 

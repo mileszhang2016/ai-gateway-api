@@ -42,12 +42,12 @@
     "rules": [
       {
         "name": "apikey-default",
-        "Cond": "default_t()",
+        "cond": "default_t()",
         "targets": [
           {
-            "ClusterName": "cluster_apikey",
-            "Model": "",
-            "Weight": 100
+            "cluster_name": "cluster_apikey",
+            "model": "",
+            "weight": 100
           }
         ],
         "fallbacks": []
@@ -169,12 +169,12 @@
         "rules": [
             {
                 "name": "apikey-default",
-                "Cond": "default_t()",
+                "cond": "default_t()",
                 "targets": [
                     {
-                        "ClusterName": "cluster_apikey",
-                        "Model": "",
-                        "Weight": 100
+                        "cluster_name": "cluster_apikey",
+                        "model": "",
+                        "weight": 100
                     }
                 ],
                 "fallbacks": []
@@ -238,12 +238,12 @@
             "rules": [
                 {
                     "name": "apikey-default",
-                    "Cond": "default_t()",
+                    "cond": "default_t()",
                     "targets": [
                         {
-                            "ClusterName": "cluster_apikey",
-                            "Model": "",
-                            "Weight": 100
+                            "cluster_name": "cluster_apikey",
+                            "model": "",
+                            "weight": 100
                         }
                     ],
                     "fallbacks": []

@@ -43,6 +43,24 @@
 | PATCH | 部分更新 |
 | DELETE | 删除 |
 
+# 字段命名规范
+
+为保证 OpenAPI 接口风格一致，所有 JSON 字段名须遵循以下规范：
+
+1. **统一使用小写 + 下划线（snake_case）**
+   - 例如：`inner_id`、`allow_models`、`quota_plan`、`cluster_name`、`route_rules`。
+   - 禁止在 OpenAPI 的请求/响应字段中使用大写开头或驼峰命名，如 `Cond`、`ClusterName`、`Model`、`Weight` 等。
+
+2. **已全局固化的响应包装字段维持不变**
+   - `ErrNum`、`ErrMsg`、`Data` 为所有接口统一的响应包装字段，属于历史约定，继续保留。
+
+3. **外部系统强制要求的字段可为例外，但须显式说明**
+   - 若字段名由下游系统（如 BFE）强制规定，可在特定场景下使用非 snake_case 命名，但必须在文档中标注为例外并说明原因。
+   - 例如：`alb-pool.md` 中 `ports` 的 `Default` 键为 BFE 实例池端口名称；InnerAPI 导出给 BFE 的路由配置保持 `Cond`、`ClusterName`、`Model`、`Weight` 不变。
+
+4. **新增字段须先行核对本规范**
+   - 新增公共类型、请求体或响应体字段时，须先检查是否与本规范冲突；若冲突，应采用 snake_case 命名。
+
 # 通用Query参数（列表接口）
 
 | 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
@@ -94,7 +112,7 @@
 | 字段 | 类型 | 必填 | 说明 | 合法性条件 |
 |------|------|------|------|------------|
 | `name` | string | Y | 规则名称，用于日志和监控 | 必填、非空；在同一组 `route_rules` 内唯一 |
-| `Cond` | string | Y | BFE 条件表达式；命中则使用该规则 | 必填、非空；须为合法 BFE 条件表达式 |
+| `cond` | string | Y | BFE 条件表达式；命中则使用该规则 | 必填、非空；须为合法 BFE 条件表达式 |
 | `targets` | array | Y | 转发目标列表 | 必填，至少 1 个元素；每个元素类型见下表 |
 | `fallbacks` | array | N | 降级目标列表 | 可选；允许为空；每个元素类型见下表 |
 
@@ -102,32 +120,32 @@
 
 | 字段 | 类型 | 必填 | 说明 | 合法性条件 |
 |------|------|------|------|------------|
-| `ClusterName` | string | Y | 后端集群名称 | 必填；类型为 [ClusterName](#15-集群名称clustername)；须为 `/clusters` 中已存在的集群名称 |
-| `Model` | string | N | 模型名称；空字符串表示透传原始模型 | 非空时，须为对应集群 `llm_config.models` 中已配置的模型名称 |
-| `Weight` | int | Y | 权重 | 取值范围 [0,100]；同一规则内所有 `Weight` 之和必须等于 100 |
+| `cluster_name` | string | Y | 后端集群名称 | 必填；类型为 [ClusterName](#15-集群名称clustername)；须为 `/clusters` 中已存在的集群名称 |
+| `model` | string | N | 模型名称；空字符串表示透传原始模型 | 非空时，须为对应集群 `llm_config.models` 中已配置的模型名称 |
+| `weight` | int | Y | 权重 | 取值范围 [0,100]；同一规则内所有 `weight` 之和必须等于 100 |
 
 `targets` 跨元素约束：
 
-- 同一 `targets` 数组内，`(ClusterName, Model)` 组合不能重复。
+- 同一 `targets` 数组内，`(cluster_name, model)` 组合不能重复。
 
 `fallbacks` 元素结构：
 
 | 字段 | 类型 | 必填 | 说明 | 合法性条件 |
 |------|------|------|------|------------|
-| `ClusterName` | string | Y | 后端集群名称 | 必填；类型为 [ClusterName](#15-集群名称clustername)；须为 `/clusters` 中已存在的集群名称 |
-| `Model` | string | N | 模型名称；空字符串表示透传原始模型 | 非空时，须为对应集群 `llm_config.models` 中已配置的模型名称 |
+| `cluster_name` | string | Y | 后端集群名称 | 必填；类型为 [ClusterName](#15-集群名称clustername)；须为 `/clusters` 中已存在的集群名称 |
+| `model` | string | N | 模型名称；空字符串表示透传原始模型 | 非空时，须为对应集群 `llm_config.models` 中已配置的模型名称 |
 
 示例：
 
 ```json
 {
   "name": "apikey-default",
-  "Cond": "default_t()",
+  "cond": "default_t()",
   "targets": [
     {
-      "ClusterName": "cluster_apikey",
-      "Model": "",
-      "Weight": 100
+      "cluster_name": "cluster_apikey",
+      "model": "",
+      "weight": 100
     }
   ],
   "fallbacks": []
@@ -151,12 +169,12 @@
   "rules": [
     {
       "name": "apikey-default",
-      "Cond": "default_t()",
+      "cond": "default_t()",
       "targets": [
         {
-          "ClusterName": "cluster_apikey",
-          "Model": "",
-          "Weight": 100
+          "cluster_name": "cluster_apikey",
+          "model": "",
+          "weight": 100
         }
       ],
       "fallbacks": []

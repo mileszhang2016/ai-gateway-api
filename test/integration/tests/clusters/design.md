@@ -14,7 +14,9 @@ v0.0.7 起，`llm_config` 支持多 API-Key：
   - `strip_prefix` 非必填，默认 `false`；为 `true` 时 `match_prefix` 必填且非空；
   - 两个字段透传到 InnerAPI 导出的 `AIConf.MatchPrefix` / `StripPrefix`，由 BFE 在转发前执行前缀裁剪。
 
-另外，删除集群时会检查 `route_rules` 表中的全局、Entity、API-Key 路由规则：若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则删除被拒绝。
+另外：
+- 删除集群时会扫描全部 `route_rules` 表中的全局、Entity、API-Key 路由规则（不经过分页）：若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则删除被拒绝。
+- 更新集群的 `llm_config.models` 时，会检查被移除的模型是否仍被 global/Entity/API-Key 路由规则的 `targets` 或 `fallbacks` 引用（匹配 `ClusterName` + `Model`），若存在引用则更新被拒绝。
 
 ## 2. 接口列表
 
@@ -33,9 +35,9 @@ v0.0.7 起，`llm_config` 支持多 API-Key：
 | 创建集群 | 25 |
 | 查询集群列表 | 1 |
 | 查询集群详情 | 1 |
-| 更新集群 | 8 |
+| 更新集群 | 10 |
 | 删除集群 | 8 |
-| **合计** | **43** |
+| **合计** | **45** |
 
 ## 4. 认证方式
 
@@ -1615,6 +1617,8 @@ URI：`cluster_full`
 | CL-4-006 | 更新 keys（全量替换） | 正常参数 | 验证 PATCH 后 keys 被完整替换 |
 | CL-4-007 | 更新 key_policy | 正常参数 | 验证 PATCH 后 key_policy 更新生效 |
 | CL-4-008 | 更新 match_prefix / strip_prefix | 正常参数 | 验证 PATCH 后前缀配置更新生效，InnerAPI 导出一致 |
+| CL-4-009 | 删除被路由引用的模型 | 业务规则 | `llm_config.models` 移除仍被路由规则引用的模型，验证 ErrNum=500 |
+| CL-4-010 | 清理路由引用后可删除模型 | 正常参数 | 移除 API-Key 路由规则引用后，可成功删除集群模型 |
 
 ### 9.4 测试场景详细设计
 
@@ -1981,6 +1985,99 @@ URI：`cluster_update_prefix`
 
 ---
 
+#### 9.4.9 CL-4-009：删除被路由引用的模型（业务规则）
+
+##### 设计思路
+
+验证更新集群时，若 `llm_config.models` 中移除的模型仍被 global/Entity/API-Key 路由规则的 `targets` 或 `fallbacks` 引用（同时匹配 `ClusterName` 与 `Model`），则更新应被拒绝，返回 500 业务错误。
+
+##### 前提数据准备
+
+已创建集群 `cluster_ref_model`，`llm_config.models` 包含 `test-model`；已创建 API-Key `model-ref-key`，其 `route_rules` 中存在规则 `rule-ref-model`，`targets` 引用该集群的 `test-model`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求到 `/open-api/v1/clusters/{cluster_name}`，将 `llm_config.models` 从 `["test-model"]` 改为 `["other-model"]`。
+2. 验证返回错误码与错误信息。
+
+##### 请求参数
+
+URI：`cluster_ref_model`
+
+```json
+{
+    "llm_config": {
+        "models": ["other-model"],
+        "provider_type": "test-provider"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：500  
+**ErrMsg**：包含 `Rule rule-ref-model Refer To Model test-model In Cluster`  
+**Data**：null
+
+---
+
+#### 9.4.10 CL-4-010：清理路由引用后可删除模型（正常参数）
+
+##### 设计思路
+
+验证当被移除的模型不再被任何路由规则引用时，更新集群 `llm_config.models` 可以成功执行。
+
+##### 前提数据准备
+
+已完成 CL-4-009 的场景，即集群 `cluster_ref_model` 与 API-Key `model-ref-key` 均存在，且路由规则引用 `test-model`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求到 `/open-api/v1/api-keys/{api_key_id}`，将 API-Key 的 `route_rules` 清空或禁用，移除对 `test-model` 的引用。
+2. 再次发送 PATCH 请求到 `/open-api/v1/clusters/{cluster_name}`，将 `llm_config.models` 改为 `["other-model"]`。
+3. 验证返回 200，且 `llm_config.models` 已更新。
+
+##### 请求参数
+
+**步骤 1：清空 API-Key 路由规则**
+
+URI：`model-ref-key` 的 id
+
+```json
+{
+    "route_rules": {
+        "enabled": false,
+        "rules": []
+    }
+}
+```
+
+**步骤 2：更新集群模型列表**
+
+URI：`cluster_ref_model`
+
+```json
+{
+    "llm_config": {
+        "models": ["other-model"],
+        "provider_type": "test-provider"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| llm_config.models | ["other-model"] | Equals |
+
+---
+
 ## 10. 删除集群
 
 ### 10.1 接口信息
@@ -1991,7 +2088,7 @@ URI：`cluster_update_prefix`
 | 接口名称 | 删除集群 |
 | 方法 | DELETE |
 | 路径 | `/open-api/v1/clusters/{cluster_name}` |
-| 说明 | 删除集群，自动级联清理关联的实例池和子集群；若集群被 global/entity/apikey 路由规则引用，则拒绝删除 |
+| 说明 | 删除集群，自动级联清理关联的实例池和子集群；删除前会扫描全部 global/entity/apikey 路由规则（不经过分页），若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则拒绝删除 |
 
 ### 10.2 接口参数说明
 

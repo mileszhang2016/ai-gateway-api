@@ -19,13 +19,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // fakeTxn implements itxn.TxnStorager for unit tests
@@ -45,12 +45,14 @@ type fakeRouteRulesStorager struct {
 	updateFn    func(ctx context.Context, id int64, param *shared.RouteRulesParam) (int64, error)
 	deleteFn    func(ctx context.Context, id int64) error
 	fetchByIDFn func(ctx context.Context, id int64) (*shared.RouteRulesParam, error)
+	allFn       func(ctx context.Context) ([]*shared.RouteRulesParam, error)
 
 	created     []createRouteRulesCall
 	fetched     []fetchRouteRulesCall
 	updated     []updateRouteRulesCall
 	deleted     []int64
 	fetchedByID []int64
+	fetchedAll  int
 }
 
 type createRouteRulesCall struct {
@@ -112,6 +114,14 @@ func (s *fakeRouteRulesStorager) FetchRouteRulesByID(ctx context.Context, id int
 	s.fetchedByID = append(s.fetchedByID, id)
 	if s.fetchByIDFn != nil {
 		return s.fetchByIDFn(ctx, id)
+	}
+	return nil, nil
+}
+
+func (s *fakeRouteRulesStorager) FetchAllRouteRules(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+	s.fetchedAll++
+	if s.allFn != nil {
+		return s.allFn(ctx)
 	}
 	return nil, nil
 }
@@ -346,8 +356,8 @@ func TestRouteRulesManager_ClusterDeleteChecker(t *testing.T) {
 
 	t.Run("no route rules", func(t *testing.T) {
 		store := &fakeRouteRulesStorager{
-			listFn: func(ctx context.Context, filter *shared.RouteRulesFilter) ([]*shared.RouteTableParam, int64, error) {
-				return nil, 0, nil
+			allFn: func(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+				return nil, nil
 			},
 		}
 		m := NewRouteRulesManager(&fakeTxn{}, store)
@@ -357,19 +367,18 @@ func TestRouteRulesManager_ClusterDeleteChecker(t *testing.T) {
 
 	t.Run("route rule target refers cluster", func(t *testing.T) {
 		store := &fakeRouteRulesStorager{
-			listFn: func(ctx context.Context, filter *shared.RouteRulesFilter) ([]*shared.RouteTableParam, int64, error) {
-				return []*shared.RouteTableParam{{ID: lib.PInt64(1), Type: shared.RouteRulesTypeGlobal, Owner: "global"}}, 1, nil
-			},
-			fetchByIDFn: func(ctx context.Context, id int64) (*shared.RouteRulesParam, error) {
-				return &shared.RouteRulesParam{
-					ID:      lib.PInt64(1),
-					Enabled: lib.PBool(true),
-					Rules: []*shared.AiRouteRuleParam{
-						{
-							Name: lib.PString("rule1"),
-							Cond: lib.PString("default_t()"),
-							Targets: []*shared.AiRouteTargetParam{
-								{ClusterName: lib.PString("c1"), Weight: lib.PInt(100)},
+			allFn: func(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+				return []*shared.RouteRulesParam{
+					{
+						ID:      lib.PInt64(1),
+						Enabled: lib.PBool(true),
+						Rules: []*shared.AiRouteRuleParam{
+							{
+								Name: lib.PString("rule1"),
+								Cond: lib.PString("default_t()"),
+								Targets: []*shared.AiRouteTargetParam{
+									{ClusterName: lib.PString("c1"), Weight: lib.PInt(100)},
+								},
 							},
 						},
 					},
@@ -385,22 +394,21 @@ func TestRouteRulesManager_ClusterDeleteChecker(t *testing.T) {
 
 	t.Run("route rule fallback refers cluster", func(t *testing.T) {
 		store := &fakeRouteRulesStorager{
-			listFn: func(ctx context.Context, filter *shared.RouteRulesFilter) ([]*shared.RouteTableParam, int64, error) {
-				return []*shared.RouteTableParam{{ID: lib.PInt64(2), Type: shared.RouteRulesTypeEntity, Owner: "ent-1"}}, 1, nil
-			},
-			fetchByIDFn: func(ctx context.Context, id int64) (*shared.RouteRulesParam, error) {
-				return &shared.RouteRulesParam{
-					ID:      lib.PInt64(2),
-					Enabled: lib.PBool(true),
-					Rules: []*shared.AiRouteRuleParam{
-						{
-							Name: lib.PString("rule2"),
-							Cond: lib.PString("default_t()"),
-							Targets: []*shared.AiRouteTargetParam{
-								{ClusterName: lib.PString("c2"), Weight: lib.PInt(100)},
-							},
-							Fallbacks: []*shared.AiRouteFallbackParam{
-								{ClusterName: lib.PString("c1")},
+			allFn: func(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+				return []*shared.RouteRulesParam{
+					{
+						ID:      lib.PInt64(2),
+						Enabled: lib.PBool(true),
+						Rules: []*shared.AiRouteRuleParam{
+							{
+								Name: lib.PString("rule2"),
+								Cond: lib.PString("default_t()"),
+								Targets: []*shared.AiRouteTargetParam{
+									{ClusterName: lib.PString("c2"), Weight: lib.PInt(100)},
+								},
+								Fallbacks: []*shared.AiRouteFallbackParam{
+									{ClusterName: lib.PString("c1")},
+								},
 							},
 						},
 					},
@@ -416,19 +424,18 @@ func TestRouteRulesManager_ClusterDeleteChecker(t *testing.T) {
 
 	t.Run("route rule refers other cluster", func(t *testing.T) {
 		store := &fakeRouteRulesStorager{
-			listFn: func(ctx context.Context, filter *shared.RouteRulesFilter) ([]*shared.RouteTableParam, int64, error) {
-				return []*shared.RouteTableParam{{ID: lib.PInt64(3), Type: shared.RouteRulesTypeAPIKey, Owner: "ak-1"}}, 1, nil
-			},
-			fetchByIDFn: func(ctx context.Context, id int64) (*shared.RouteRulesParam, error) {
-				return &shared.RouteRulesParam{
-					ID:      lib.PInt64(3),
-					Enabled: lib.PBool(true),
-					Rules: []*shared.AiRouteRuleParam{
-						{
-							Name: lib.PString("rule3"),
-							Cond: lib.PString("default_t()"),
-							Targets: []*shared.AiRouteTargetParam{
-								{ClusterName: lib.PString("c2"), Weight: lib.PInt(100)},
+			allFn: func(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+				return []*shared.RouteRulesParam{
+					{
+						ID:      lib.PInt64(3),
+						Enabled: lib.PBool(true),
+						Rules: []*shared.AiRouteRuleParam{
+							{
+								Name: lib.PString("rule3"),
+								Cond: lib.PString("default_t()"),
+								Targets: []*shared.AiRouteTargetParam{
+									{ClusterName: lib.PString("c2"), Weight: lib.PInt(100)},
+								},
 							},
 						},
 					},
@@ -438,6 +445,173 @@ func TestRouteRulesManager_ClusterDeleteChecker(t *testing.T) {
 		m := NewRouteRulesManager(&fakeTxn{}, store)
 
 		require.NoError(t, m.ClusterDeleteChecker(ctx, product, cluster))
+	})
+
+	t.Run("route rule beyond first page is still checked", func(t *testing.T) {
+		store := &fakeRouteRulesStorager{
+			allFn: func(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+				return []*shared.RouteRulesParam{
+					{
+						ID:      lib.PInt64(21),
+						Enabled: lib.PBool(true),
+						Rules: []*shared.AiRouteRuleParam{
+							{
+								Name: lib.PString("rule21"),
+								Cond: lib.PString("default_t()"),
+								Targets: []*shared.AiRouteTargetParam{
+									{ClusterName: lib.PString("c1"), Weight: lib.PInt(100)},
+								},
+							},
+						},
+					},
+				}, nil
+			},
+		}
+		m := NewRouteRulesManager(&fakeTxn{}, store)
+
+		err := m.ClusterDeleteChecker(ctx, product, cluster)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Rule rule21 Refer To This Cluster")
+	})
+}
+
+func TestRouteRulesManager_ClusterModelUpdateChecker(t *testing.T) {
+	ctx := context.Background()
+	product := &ibasic.Product{Name: "AI"}
+	cluster := &icluster_conf.Cluster{
+		Name: "c1",
+		LLMConfig: &icluster_conf.LLMConfig{
+			Models: []string{"m1", "m2"},
+		},
+	}
+
+	t.Run("no llm_config change", func(t *testing.T) {
+		m := NewRouteRulesManager(&fakeTxn{}, &fakeRouteRulesStorager{})
+		require.NoError(t, m.ClusterModelUpdateChecker(ctx, product, cluster, &icluster_conf.ClusterParam{}))
+	})
+
+	t.Run("no model removed", func(t *testing.T) {
+		m := NewRouteRulesManager(&fakeTxn{}, &fakeRouteRulesStorager{})
+		require.NoError(t, m.ClusterModelUpdateChecker(ctx, product, cluster, &icluster_conf.ClusterParam{
+			LLMConfig: &icluster_conf.LLMConfig{Models: []string{"m1", "m2", "m3"}},
+		}))
+	})
+
+	t.Run("route rule target refers removed model", func(t *testing.T) {
+		store := &fakeRouteRulesStorager{
+			allFn: func(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+				return []*shared.RouteRulesParam{
+					{
+						ID:      lib.PInt64(1),
+						Enabled: lib.PBool(true),
+						Rules: []*shared.AiRouteRuleParam{
+							{
+								Name: lib.PString("rule1"),
+								Cond: lib.PString("default_t()"),
+								Targets: []*shared.AiRouteTargetParam{
+									{ClusterName: lib.PString("c1"), Model: lib.PString("m1"), Weight: lib.PInt(100)},
+								},
+							},
+						},
+					},
+				}, nil
+			},
+		}
+		m := NewRouteRulesManager(&fakeTxn{}, store)
+
+		err := m.ClusterModelUpdateChecker(ctx, product, cluster, &icluster_conf.ClusterParam{
+			LLMConfig: &icluster_conf.LLMConfig{Models: []string{"m2"}},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Rule rule1 Refer To Model m1 In Cluster c1")
+	})
+
+	t.Run("route rule fallback refers removed model", func(t *testing.T) {
+		store := &fakeRouteRulesStorager{
+			allFn: func(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+				return []*shared.RouteRulesParam{
+					{
+						ID:      lib.PInt64(2),
+						Enabled: lib.PBool(true),
+						Rules: []*shared.AiRouteRuleParam{
+							{
+								Name: lib.PString("rule2"),
+								Cond: lib.PString("default_t()"),
+								Targets: []*shared.AiRouteTargetParam{
+									{ClusterName: lib.PString("c2"), Model: lib.PString("m1"), Weight: lib.PInt(100)},
+								},
+								Fallbacks: []*shared.AiRouteFallbackParam{
+									{ClusterName: lib.PString("c1"), Model: lib.PString("m2")},
+								},
+							},
+						},
+					},
+				}, nil
+			},
+		}
+		m := NewRouteRulesManager(&fakeTxn{}, store)
+
+		err := m.ClusterModelUpdateChecker(ctx, product, cluster, &icluster_conf.ClusterParam{
+			LLMConfig: &icluster_conf.LLMConfig{Models: []string{"m1"}},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Rule rule2 Refer To Model m2 In Cluster c1")
+	})
+
+	t.Run("route rule refers other cluster model", func(t *testing.T) {
+		store := &fakeRouteRulesStorager{
+			allFn: func(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+				return []*shared.RouteRulesParam{
+					{
+						ID:      lib.PInt64(3),
+						Enabled: lib.PBool(true),
+						Rules: []*shared.AiRouteRuleParam{
+							{
+								Name: lib.PString("rule3"),
+								Cond: lib.PString("default_t()"),
+								Targets: []*shared.AiRouteTargetParam{
+									{ClusterName: lib.PString("c2"), Model: lib.PString("m1"), Weight: lib.PInt(100)},
+								},
+							},
+						},
+					},
+				}, nil
+			},
+		}
+		m := NewRouteRulesManager(&fakeTxn{}, store)
+
+		require.NoError(t, m.ClusterModelUpdateChecker(ctx, product, cluster, &icluster_conf.ClusterParam{
+			LLMConfig: &icluster_conf.LLMConfig{Models: []string{"m2"}},
+		}))
+	})
+
+	t.Run("route rule beyond first page is still checked", func(t *testing.T) {
+		store := &fakeRouteRulesStorager{
+			allFn: func(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+				return []*shared.RouteRulesParam{
+					{
+						ID:      lib.PInt64(21),
+						Enabled: lib.PBool(true),
+						Rules: []*shared.AiRouteRuleParam{
+							{
+								Name: lib.PString("rule21"),
+								Cond: lib.PString("default_t()"),
+								Targets: []*shared.AiRouteTargetParam{
+									{ClusterName: lib.PString("c1"), Model: lib.PString("m1"), Weight: lib.PInt(100)},
+								},
+							},
+						},
+					},
+				}, nil
+			},
+		}
+		m := NewRouteRulesManager(&fakeTxn{}, store)
+
+		err := m.ClusterModelUpdateChecker(ctx, product, cluster, &icluster_conf.ClusterParam{
+			LLMConfig: &icluster_conf.LLMConfig{Models: []string{"m2"}},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Rule rule21 Refer To Model m1 In Cluster c1")
 	})
 }
 
@@ -475,6 +649,15 @@ func TestRouteRulesManager_validateRouteRules(t *testing.T) {
 		param := &shared.RouteRulesParam{
 			Rules: []*shared.AiRouteRuleParam{
 				{Name: lib.PString("rule-1"), Targets: []*shared.AiRouteTargetParam{{ClusterName: lib.PString("c1"), Weight: lib.PInt(100)}}},
+			},
+		}
+		assert.Error(t, m.validateRouteRules(param))
+	})
+
+	t.Run("invalid cond syntax", func(t *testing.T) {
+		param := &shared.RouteRulesParam{
+			Rules: []*shared.AiRouteRuleParam{
+				{Name: lib.PString("rule-1"), Cond: lib.PString("req_path_in(/v1, false)"), Targets: []*shared.AiRouteTargetParam{{ClusterName: lib.PString("c1"), Weight: lib.PInt(100)}}},
 			},
 		}
 		assert.Error(t, m.validateRouteRules(param))
@@ -529,7 +712,7 @@ func TestRouteRulesManager_validateRouteRules(t *testing.T) {
 			Rules: []*shared.AiRouteRuleParam{
 				{
 					Name:    lib.PString("rule-1"),
-					Cond:    lib.PString("cond1"),
+					Cond:    lib.PString("default_t()"),
 					Targets: []*shared.AiRouteTargetParam{{ClusterName: lib.PString("c1"), Weight: lib.PInt(100)}},
 				},
 			},

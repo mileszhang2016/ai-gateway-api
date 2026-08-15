@@ -21,13 +21,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/internal/testutil"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/route_rules"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeRouteRulesStorager struct {
@@ -70,6 +70,10 @@ func (f *fakeRouteRulesStorager) FetchRouteRulesByID(ctx context.Context, id int
 	if f.fetchRouteRulesByID != nil {
 		return f.fetchRouteRulesByID(ctx, id)
 	}
+	return nil, nil
+}
+
+func (f *fakeRouteRulesStorager) FetchAllRouteRules(ctx context.Context) ([]*shared.RouteRulesParam, error) {
 	return nil, nil
 }
 
@@ -153,9 +157,9 @@ func TestGlobalRouteRulesUpdateAction(t *testing.T) {
 		"rules": [
 			{
 				"name": "rule1",
-				"Cond": "default_t()",
+				"cond": "default_t()",
 				"targets": [
-					{"ClusterName": "cluster1", "Weight": 100}
+					{"cluster_name": "cluster1", "weight": 100}
 				]
 			}
 		]
@@ -197,9 +201,9 @@ func TestGlobalRouteRulesUpdateAction_NotFound(t *testing.T) {
 		"rules": [
 			{
 				"name": "rule1",
-				"Cond": "default_t()",
+				"cond": "default_t()",
 				"targets": [
-					{"ClusterName": "cluster1", "Weight": 100}
+					{"cluster_name": "cluster1", "weight": 100}
 				]
 			}
 		]

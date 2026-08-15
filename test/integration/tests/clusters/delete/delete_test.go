@@ -76,8 +76,8 @@ func updateAPIKeyRouteRules(t *testing.T, apiKeyID string, rules []interface{}) 
 func routeRule(name, clusterName string) map[string]interface{} {
 	return map[string]interface{}{
 		"name":    name,
-		"Cond":    "default_t()",
-		"targets": []interface{}{map[string]interface{}{"ClusterName": clusterName, "Model": "", "Weight": 100}},
+		"cond":    "default_t()",
+		"targets": []interface{}{map[string]interface{}{"cluster_name": clusterName, "model": "", "weight": 100}},
 		"fallbacks": []interface{}{},
 	}
 }
@@ -85,9 +85,9 @@ func routeRule(name, clusterName string) map[string]interface{} {
 func routeRuleWithFallback(name, targetCluster, fallbackCluster string) map[string]interface{} {
 	return map[string]interface{}{
 		"name":    name,
-		"Cond":    "default_t()",
-		"targets": []interface{}{map[string]interface{}{"ClusterName": targetCluster, "Model": "", "Weight": 100}},
-		"fallbacks": []interface{}{map[string]interface{}{"ClusterName": fallbackCluster, "Model": ""}},
+		"cond":    "default_t()",
+		"targets": []interface{}{map[string]interface{}{"cluster_name": targetCluster, "model": "", "weight": 100}},
+		"fallbacks": []interface{}{map[string]interface{}{"cluster_name": fallbackCluster, "model": ""}},
 	}
 }
 

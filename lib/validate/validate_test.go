@@ -142,14 +142,15 @@ func TestRateLimitPolicy(t *testing.T) {
 
 func TestRouteRules(t *testing.T) {
 	name := "r1"
-	cond := "default_t()"
 	cluster := "cluster_1"
 	weight := 100
+
+	validCond := "default_t()"
 	rules := &shared.RouteRulesParam{
 		Rules: []*shared.AiRouteRuleParam{
 			{
 				Name:    &name,
-				Cond:    &cond,
+				Cond:    &validCond,
 				Targets: []*shared.AiRouteTargetParam{{ClusterName: &cluster, Weight: &weight}},
 			},
 		},
@@ -158,6 +159,54 @@ func TestRouteRules(t *testing.T) {
 
 	weight = 50
 	assert.Error(t, RouteRules(rules))
+	weight = 100
+
+	// valid cond with quoted path
+	quotedPathCond := "req_path_in(\"/v1\", false)"
+	rules.Rules[0].Cond = &quotedPathCond
+	assert.NoError(t, RouteRules(rules))
+
+	// invalid cond: missing quotes around path
+	missingQuoteCond := "req_path_in(/v1, false)"
+	rules.Rules[0].Cond = &missingQuoteCond
+	assert.Error(t, RouteRules(rules))
+
+	// invalid cond: unknown function
+	unknownFuncCond := "unknown_func()"
+	rules.Rules[0].Cond = &unknownFuncCond
+	assert.Error(t, RouteRules(rules))
+
+	// invalid cond: unmatched parenthesis
+	unmatchedParenCond := "default_t("
+	rules.Rules[0].Cond = &unmatchedParenCond
+	assert.Error(t, RouteRules(rules))
+}
+
+func TestConditionExpression(t *testing.T) {
+	cases := []struct {
+		name    string
+		cond    string
+		wantErr bool
+	}{
+		{"default_t", "default_t()", false},
+		{"req_path_in quoted", "req_path_in(\"/v1\", false)", false},
+		{"combined expression", "req_method_in(\"POST\") && req_path_in(\"/v1\", false)", false},
+		{"missing quotes", "req_path_in(/v1, false)", true},
+		{"unknown function", "unknown_func()", true},
+		{"unmatched parenthesis", "default_t(", true},
+		{"empty string", "", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ConditionExpression(tc.cond)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestLLMConfig(t *testing.T) {

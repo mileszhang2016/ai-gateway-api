@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 var sm *testutil.ServerManager
@@ -268,6 +268,99 @@ func TestClusters_Update(t *testing.T) {
 	})
 
 	t.Cleanup(func() {
+		testutil.DeleteCluster(clusterName)
+	})
+}
+
+func TestClusters_Update_PreventDeleteReferencedModel(t *testing.T) {
+	clusterName := testutil.UniqueClusterName()
+	resp, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+		"name": clusterName,
+		"instance_pool": []interface{}{
+			map[string]interface{}{
+				"name":   "backend-1",
+				"addr":   "10.0.0.1",
+				"weight": 100,
+				"port":   8080,
+			},
+		},
+		"llm_config": map[string]interface{}{
+			"models":        []string{"test-model"},
+			"provider_type": "test-provider",
+		},
+	})
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+	testutil.AssertSuccess(t, resp)
+
+	// Create API-Key with route rule referencing the cluster model.
+	apiKeyResp, err := testutil.GetClient().Post("/open-api/v1/api-keys", map[string]interface{}{
+		"description": "model-ref-key",
+		"route_rules": map[string]interface{}{
+			"enabled": true,
+			"rules": []interface{}{
+				map[string]interface{}{
+					"name": "rule-ref-model",
+					"cond": "default_t()",
+					"targets": []interface{}{
+						map[string]interface{}{
+							"cluster_name": clusterName,
+							"model":       "test-model",
+							"weight":      100,
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create api-key failed: %v", err)
+	}
+	testutil.AssertSuccess(t, apiKeyResp)
+	apiKeyID, _ := testutil.GetDataField(apiKeyResp, "id")
+
+	t.Run("CL-4-009 删除被路由引用的模型应被拦截", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
+			"llm_config": map[string]interface{}{
+				"models":        []string{"other-model"},
+				"provider_type": "test-provider",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 500)
+		assert.Contains(t, resp.ErrMsg, "Rule rule-ref-model Refer To Model test-model In Cluster")
+	})
+
+	t.Run("CL-4-010 清理路由引用后可删除模型", func(t *testing.T) {
+		// Remove the route rule reference to test-model.
+		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+apiKeyID.(string), map[string]interface{}{
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("update api-key failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		resp, err = testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
+			"llm_config": map[string]interface{}{
+				"models":        []string{"other-model"},
+				"provider_type": "test-provider",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+	})
+
+	t.Cleanup(func() {
+		testutil.GetClient().Delete("/open-api/v1/api-keys/" + apiKeyID.(string))
 		testutil.DeleteCluster(clusterName)
 	})
 }

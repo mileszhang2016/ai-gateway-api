@@ -152,6 +152,9 @@ func Init() error {
 		map[string]func(context.Context, *ibasic.Product, *icluster_conf.Cluster) error{
 			"rules":       container.RouteRuleManager.ClusterDeleteChecker,
 			"route_rules": container.RouteRulesManager.ClusterDeleteChecker,
+		},
+		map[string]func(context.Context, *ibasic.Product, *icluster_conf.Cluster, *icluster_conf.ClusterParam) error{
+			"route_rules": container.RouteRulesManager.ClusterModelUpdateChecker,
 		})
 
 	container.SubClusterManager = icluster_conf.NewSubClusterManager(
