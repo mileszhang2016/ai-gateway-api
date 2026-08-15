@@ -17,13 +17,13 @@ package icluster_conf
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 )
@@ -58,7 +58,7 @@ type APIKeyParam struct {
 	RouteRulesID      *int64   `json:"-"`
 	ProductName       *string  `json:"-"`
 	InnerID           *int64   `json:"-"`
-	RemainingQuota    *int64   `json:"remaining_quota,omitempty"`
+	RemainingQuota    *float64 `json:"remaining_quota,omitempty"`
 
 	QuotaPlan       *shared.QuotaPlanParam       `json:"quota_plan,omitempty"`
 	RateLimitPolicy *shared.RateLimitPolicyParam `json:"rate_limit_policy,omitempty"`
@@ -80,19 +80,19 @@ type APIKeyTokenFilter struct {
 
 // APIKeyFilter defines filters for querying API keys
 type APIKeyFilter struct {
-	ProductName     *string
-	ProductNames    []string
-	ALBGroupName    *string
-	ID              *string
-	Key             *string
-	InnerID         *int64
-	QuotaPlanID     *int64
-	RouteRulesID    *int64
-	Page            *int
-	PageSize        *int
-	Enabled         *bool
-	EntityID        *string
-	UnlimitedQuota  *bool
+	ProductName    *string
+	ProductNames   []string
+	ALBGroupName   *string
+	ID             *string
+	Key            *string
+	InnerID        *int64
+	QuotaPlanID    *int64
+	RouteRulesID   *int64
+	Page           *int
+	PageSize       *int
+	Enabled        *bool
+	EntityID       *string
+	UnlimitedQuota *bool
 }
 
 // APIKeyStorager interface defines storage operations for API keys
@@ -117,6 +117,7 @@ type APIKeyManager struct {
 	routeRulesStorager      shared.RouteRulesStorager
 	entityStorager          shared.EntityStorager
 	quotaBalanceStorager    shared.QuotaBalanceStorager
+	quotaCache              quotacache.QuotaCache
 }
 
 // QuotaPlanStorager interface defines storage operations for quota plans
@@ -139,7 +140,7 @@ type RateLimitPolicyStorager interface {
 func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager, clusterStorager ClusterStorager,
 	quotaPlanStorager QuotaPlanStorager, rateLimitPolicyStorager RateLimitPolicyStorager,
 	routeRulesStorager shared.RouteRulesStorager, entityStorager shared.EntityStorager,
-	quotaBalanceStorager shared.QuotaBalanceStorager) *APIKeyManager {
+	quotaBalanceStorager shared.QuotaBalanceStorager, quotaCache quotacache.QuotaCache) *APIKeyManager {
 	return &APIKeyManager{
 		txn:                     txn,
 		storager:                storager,
@@ -149,11 +150,13 @@ func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager, clusterStor
 		routeRulesStorager:      routeRulesStorager,
 		entityStorager:          entityStorager,
 		quotaBalanceStorager:    quotaBalanceStorager,
+		quotaCache:              quotaCache,
 	}
 }
 
-// GetRemainingQuota calculates the remaining quota for an API key
-func GetRemainingQuota(param *APIKeyParam) (*int64, error) {
+// GetRemainingQuota calculates the remaining quota for an API key.
+// Redis stores RMB quotas as fixed-point integers (quota * 1e8) to avoid Lua floating point errors.
+func GetRemainingQuota(ctx context.Context, quotaCache quotacache.QuotaCache, param *APIKeyParam) (*float64, error) {
 	if param.UnlimitedQuota != nil && *param.UnlimitedQuota {
 		return nil, nil
 	}
@@ -167,16 +170,12 @@ func GetRemainingQuota(param *APIKeyParam) (*int64, error) {
 		return nil, nil
 	}
 
-	if stateful.DefaultClientSet == nil || stateful.DefaultClientSet.RedisClient == nil {
+	if quotaCache == nil {
 		return param.QuotaPlan.Quota, nil
 	}
 
-	remain, err := stateful.DefaultClientSet.RedisClient.GetInt64(stateful.AIUsedQuotaKey(*param.Key))
+	remain, err := quotaCache.GetRemaining(ctx, *param.Key, param.QuotaPlan.Unit)
 	if err != nil {
-		if strings.Contains(err.Error(), "redigo: nil returned") {
-			return param.QuotaPlan.Quota, nil
-		}
-
 		return nil, fmt.Errorf("get %s-%d from cache is error:%s", *param.Key, param.KeyCreateAt.Unix(), err.Error())
 	}
 
@@ -335,7 +334,10 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 
 // UpdateAPIKey updates an existing API key
 func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) error {
-	return rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
+	var updatedKey *string
+	var updatedQuotaPlan *shared.QuotaPlanParam
+
+	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		list, err := rppm.storager.FetchAPIKeyList(ctx, filter)
 		if err != nil {
 			return err
@@ -345,6 +347,7 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		}
 
 		one := list[0]
+		updatedKey = one.Key
 
 		// key is immutable through update endpoints
 		param.Key = nil
@@ -370,6 +373,7 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 					}
 				}
 			}
+			updatedQuotaPlan = param.QuotaPlan
 		}
 
 		if param.RateLimitPolicy != nil && rppm.rateLimitPolicyStorager != nil {
@@ -407,6 +411,20 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		}, param)
 		return err
 	})
+	if err != nil {
+		return err
+	}
+
+	// Sync Redis remaining quota after DB transaction commits (best-effort).
+	if updatedKey != nil && updatedQuotaPlan != nil &&
+		(updatedQuotaPlan.Unlimited == nil || !*updatedQuotaPlan.Unlimited) &&
+		updatedQuotaPlan.Quota != nil && rppm.quotaCache != nil {
+		if cacheErr := rppm.quotaCache.SetRemaining(ctx, *updatedKey, updatedQuotaPlan.Quota, updatedQuotaPlan.Unit); cacheErr != nil {
+			stateful.AccessLogger.Warn("failed to set quota cache for api_key %s: %v", *updatedKey, cacheErr)
+		}
+	}
+
+	return nil
 }
 
 // CreateAPIKey creates a new API key
@@ -510,8 +528,20 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 		_, err = rppm.storager.CreateAPIKey(ctx, param)
 		return err
 	})
+	if err != nil {
+		return err
+	}
 
-	return
+	// Sync Redis remaining quota after DB transaction commits (best-effort).
+	if param.Key != nil && param.QuotaPlan != nil &&
+		(param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
+		param.QuotaPlan.Quota != nil && rppm.quotaCache != nil {
+		if cacheErr := rppm.quotaCache.SetRemaining(ctx, *param.Key, param.QuotaPlan.Quota, param.QuotaPlan.Unit); cacheErr != nil {
+			stateful.AccessLogger.Warn("failed to set quota cache for api_key %s: %v", *param.Key, cacheErr)
+		}
+	}
+
+	return nil
 }
 
 // CreateAPIKeyToken creates a new API key token

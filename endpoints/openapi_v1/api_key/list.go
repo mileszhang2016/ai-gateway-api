@@ -15,6 +15,7 @@
 package api_key
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -105,7 +106,7 @@ func ListAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	list, err = newResponse(list)
+	list, err = newResponse(req.Context(), list)
 	if err != nil {
 		return nil, err
 	}
@@ -135,10 +136,10 @@ func ListAction(req *http.Request) (interface{}, error) {
 	return resp, nil
 }
 
-func newResponse(list []*icluster_conf.APIKeyParam) ([]*icluster_conf.APIKeyParam, error) {
+func newResponse(ctx context.Context, list []*icluster_conf.APIKeyParam) ([]*icluster_conf.APIKeyParam, error) {
 	for i, one := range list {
 		if one.Key != nil {
-			remainingQuota, err := icluster_conf.GetRemainingQuota(one)
+			remainingQuota, err := icluster_conf.GetRemainingQuota(ctx, container.QuotaCacheSingleton, one)
 			if err != nil {
 				return nil, err
 			}

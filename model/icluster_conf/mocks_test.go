@@ -432,7 +432,7 @@ func (f *fakeEntityStorager) FetchEntity(ctx context.Context, filter *shared.Ent
 
 type fakeQuotaBalanceStorager struct {
 	fetchQuotaBalanceFn  func(ctx context.Context, quotaPlanID int64) (*shared.BalanceSummary, error)
-	createQuotaBalanceFn func(ctx context.Context, quotaPlanID int64, remaining *int64) error
+	createQuotaBalanceFn func(ctx context.Context, quotaPlanID int64, remaining *float64) error
 	deleteQuotaBalanceFn func(ctx context.Context, quotaPlanID int64) error
 }
 
@@ -443,7 +443,7 @@ func (f *fakeQuotaBalanceStorager) FetchQuotaBalance(ctx context.Context, quotaP
 	return nil, nil
 }
 
-func (f *fakeQuotaBalanceStorager) CreateQuotaBalance(ctx context.Context, quotaPlanID int64, remaining *int64) error {
+func (f *fakeQuotaBalanceStorager) CreateQuotaBalance(ctx context.Context, quotaPlanID int64, remaining *float64) error {
 	if f.createQuotaBalanceFn != nil {
 		return f.createQuotaBalanceFn(ctx, quotaPlanID, remaining)
 	}

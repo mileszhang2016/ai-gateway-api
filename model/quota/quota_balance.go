@@ -23,8 +23,8 @@ import (
 type QuotaBalanceParam struct {
 	ID          *int64     `json:"id"`
 	QuotaPlanID *int64     `json:"quota_plan_id"`
-	Used        *int64     `json:"used"`
-	Remaining   *int64     `json:"remaining"`
+	Used        *float64   `json:"used"`
+	Remaining   *float64   `json:"remaining"`
 	LastResetAt *time.Time `json:"last_reset_at"`
 }
 

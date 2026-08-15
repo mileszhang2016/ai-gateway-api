@@ -22,20 +22,20 @@ type EntityStorager interface {
 }
 
 type BalanceSummary struct {
-	Used      *int64 `json:"used"`
-	Remaining *int64 `json:"remaining"`
+	Used      *float64 `json:"used"`
+	Remaining *float64 `json:"remaining"`
 }
 
 type QuotaBalanceStorager interface {
 	FetchQuotaBalance(ctx context.Context, quotaPlanID int64) (*BalanceSummary, error)
-	CreateQuotaBalance(ctx context.Context, quotaPlanID int64, remaining *int64) error
+	CreateQuotaBalance(ctx context.Context, quotaPlanID int64, remaining *float64) error
 	DeleteQuotaBalance(ctx context.Context, quotaPlanID int64) error
 }
 
 type QuotaPlanParam struct {
 	Unlimited             *bool           `json:"unlimited"`
 	PassWhenNoEnoughQuota *bool           `json:"pass_when_no_enough_quota"`
-	Quota                 *int64          `json:"quota"`
+	Quota                 *float64        `json:"quota"`
 	Unit                  *string         `json:"unit"`
 	ResetPeriod           *string         `json:"reset_period"`
 	Balance               *BalanceSummary `json:"balance,omitempty"`

@@ -103,7 +103,7 @@ func TestCheckCreateAPIKey(t *testing.T) {
 		}(), true},
 		{"invalid quota plan unit", func() *icluster_conf.APIKeyParam {
 			p := validAPIKeyParam()
-			p.QuotaPlan = &shared.QuotaPlanParam{Quota: lib.PInt64(100), Unit: &invalidUnit}
+			p.QuotaPlan = &shared.QuotaPlanParam{Quota: lib.PFloat64(100), Unit: &invalidUnit}
 			return p
 		}(), true},
 		{"invalid route rules", func() *icluster_conf.APIKeyParam {
@@ -160,7 +160,7 @@ func TestCheckUpdateAPIKey(t *testing.T) {
 		}(), true},
 		{"invalid quota plan unit", func() *icluster_conf.APIKeyParam {
 			p := &icluster_conf.APIKeyParam{}
-			p.QuotaPlan = &shared.QuotaPlanParam{Quota: lib.PInt64(100), Unit: &invalidUnit}
+			p.QuotaPlan = &shared.QuotaPlanParam{Quota: lib.PFloat64(100), Unit: &invalidUnit}
 			return p
 		}(), true},
 		{"invalid rate limit window", func() *icluster_conf.APIKeyParam {
@@ -222,7 +222,7 @@ func TestCheckFullUpdateAPIKey(t *testing.T) {
 		}(), true},
 		{"invalid quota plan", func() *icluster_conf.APIKeyParam {
 			p := validAPIKeyParam()
-			p.QuotaPlan = &shared.QuotaPlanParam{Quota: lib.PInt64(100), Unit: lib.PString("invalid")}
+			p.QuotaPlan = &shared.QuotaPlanParam{Quota: lib.PFloat64(100), Unit: lib.PString("invalid")}
 			return p
 		}(), true},
 	}

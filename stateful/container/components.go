@@ -33,12 +33,14 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/imods"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iprotocol"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iroute_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/route_rules"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 )
@@ -83,6 +85,11 @@ var (
 	QuotaBalanceStorager    quota.QuotaBalanceStorager
 	RateLimitPolicyStorager quota.RateLimitPolicyStorager
 	RouteRulesStorager      shared.RouteRulesStorager
+	QuotaCacheSingleton     quotacache.QuotaCache
+
+	// Model pricing
+	ModelPriceStorager imodel_price.ModelPriceStorager
+	ModelPriceManager  *imodel_price.Manager
 
 	EntityTypeManager      *quota.EntityTypeManager
 	EntityManager          *quota.EntityManager

@@ -48,8 +48,9 @@ type QuotaPlan struct {
     RedisKey    string  // Redis Key，格式 QUOTA_{id}
     CreateTime  int64   // 创建时间戳
     ExpiredTime int64   // 过期时间戳，-1 表示永不过期
-    Quota       int64   // 配额总量
+    Quota       int64   // 配额总量; Unit=RMB 时为定点整数，精度 1e-8 元
     ResetMode   int     // 0: 非周期性; 1: 周期性
+    Unit        string  // 配额单位: total_token / RMB; RMB 同时隐含货币类型
 }
 ```
 

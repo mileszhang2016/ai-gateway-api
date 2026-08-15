@@ -22,13 +22,13 @@ import (
 
 // QuotaPlanParam 定义配额计划参数
 type QuotaPlanParam struct {
-	ID                    *int64  `json:"id"`
-	Unlimited             *bool   `json:"unlimited"`
-	PassWhenNoEnoughQuota *bool   `json:"pass_when_no_enough_quota"`
-	Quota                 *int64  `json:"quota"`
-	Unit                  *string `json:"unit"`
-	ResetPeriod           *string `json:"reset_period"`
-	CreateTime            *int64  `json:"create_time"`
+	ID                    *int64   `json:"id"`
+	Unlimited             *bool    `json:"unlimited"`
+	PassWhenNoEnoughQuota *bool    `json:"pass_when_no_enough_quota"`
+	Quota                 *float64 `json:"quota"`
+	Unit                  *string  `json:"unit"`
+	ResetPeriod           *string  `json:"reset_period"`
+	CreateTime            *int64   `json:"create_time"`
 }
 
 // QuotaPlanFilter 定义配额计划过滤条件

@@ -1,0 +1,180 @@
+// Copyright(c) 2026 The Infinity AI Gateway Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package imodel_price
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
+)
+
+// ModelPrice represents a single model pricing/capability record.
+type ModelPrice struct {
+	ID                  int64                  `json:"id" yaml:"id,omitempty"`
+	Provider            string                 `json:"provider" yaml:"provider"`
+	Model               string                 `json:"model" yaml:"model"`
+	BaseModel           string                 `json:"base_model" yaml:"base_model"`
+	Mode                string                 `json:"mode" yaml:"mode"`
+	Capabilities        []string               `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+	SupportedParameters []string               `json:"supported_parameters,omitempty" yaml:"supported_parameters,omitempty"`
+	Limits              map[string]interface{} `json:"limits,omitempty" yaml:"limits,omitempty"`
+	Prices              map[string]float64     `json:"prices,omitempty" yaml:"prices,omitempty"`
+	PriceCurrency       string                 `json:"price_currency,omitempty" yaml:"price_currency,omitempty"`
+	Metadata            map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	CreatedAt           time.Time              `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	UpdatedAt           time.Time              `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+}
+
+// ModelPriceFilter is used to query model price records.
+type ModelPriceFilter struct {
+	ID       *int64
+	Provider *string
+	Model    *string
+	Mode     *string
+	Page     *int
+	PageSize *int
+}
+
+// Key returns the unique (provider, model, mode) key of a record.
+func (m *ModelPrice) Key() string {
+	return fmt.Sprintf("%s|%s|%s", m.Provider, m.Model, m.Mode)
+}
+
+// ModelPriceStorager defines storage operations for model pricing records.
+type ModelPriceStorager interface {
+	CreateModelPrice(ctx context.Context, param *ModelPrice) (int64, error)
+	UpdateModelPrice(ctx context.Context, filter *ModelPriceFilter, param *ModelPrice) (int64, error)
+	DeleteModelPrice(ctx context.Context, filter *ModelPriceFilter) error
+	DeleteAllModelPrices(ctx context.Context) error
+	FetchModelPrice(ctx context.Context, filter *ModelPriceFilter) (*ModelPrice, error)
+	FetchModelPriceList(ctx context.Context, filter *ModelPriceFilter) ([]*ModelPrice, int64, error)
+}
+
+// Manager provides business-level operations for model pricing records.
+type Manager struct {
+	txn      itxn.TxnStorager
+	storager ModelPriceStorager
+}
+
+// NewManager creates a new Manager instance.
+func NewManager(txn itxn.TxnStorager, storager ModelPriceStorager) *Manager {
+	return &Manager{
+		txn:      txn,
+		storager: storager,
+	}
+}
+
+// CreateModelPrice creates a single model price record.
+func (m *Manager) CreateModelPrice(ctx context.Context, param *ModelPrice) (int64, error) {
+	if err := ValidateModelPrice(param); err != nil {
+		return 0, err
+	}
+	return m.storager.CreateModelPrice(ctx, param)
+}
+
+// UpdateModelPrice updates a model price record matched by filter.
+func (m *Manager) UpdateModelPrice(ctx context.Context, filter *ModelPriceFilter, param *ModelPrice) (int64, error) {
+	if err := ValidateModelPrice(param); err != nil {
+		return 0, err
+	}
+	return m.storager.UpdateModelPrice(ctx, filter, param)
+}
+
+// DeleteModelPrice deletes model price records matched by filter.
+func (m *Manager) DeleteModelPrice(ctx context.Context, filter *ModelPriceFilter) error {
+	return m.storager.DeleteModelPrice(ctx, filter)
+}
+
+// FetchModelPrice fetches a single model price record matched by filter.
+func (m *Manager) FetchModelPrice(ctx context.Context, filter *ModelPriceFilter) (*ModelPrice, error) {
+	return m.storager.FetchModelPrice(ctx, filter)
+}
+
+// FetchModelPriceList fetches a paginated list of model price records.
+func (m *Manager) FetchModelPriceList(ctx context.Context, filter *ModelPriceFilter) ([]*ModelPrice, int64, error) {
+	return m.storager.FetchModelPriceList(ctx, filter)
+}
+
+// ImportMode defines how model prices are imported.
+type ImportMode string
+
+const (
+	ImportModeReplace ImportMode = "replace"
+	ImportModeMerge   ImportMode = "merge"
+)
+
+// ImportModelPrices imports a batch of model price records.
+// mode = "replace": delete all existing records then insert the new ones.
+// mode = "merge":  update existing (provider, model, mode) records and insert new ones.
+func (m *Manager) ImportModelPrices(ctx context.Context, entries []*ModelPrice, mode string) (imported int, skipped int, err error) {
+	if mode != string(ImportModeReplace) && mode != string(ImportModeMerge) {
+		return 0, 0, xerror.WrapParamErrorWithMsg("import mode must be replace or merge")
+	}
+
+	for _, entry := range entries {
+		if err := ValidateModelPrice(entry); err != nil {
+			return 0, 0, err
+		}
+	}
+
+	err = m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		imported = 0
+		skipped = 0
+
+		if mode == string(ImportModeReplace) {
+			if err := m.storager.DeleteAllModelPrices(ctx); err != nil {
+				return err
+			}
+			for _, entry := range entries {
+				if _, err := m.storager.CreateModelPrice(ctx, entry); err != nil {
+					return err
+				}
+				imported++
+			}
+			return nil
+		}
+
+		// merge mode
+		existing, _, err := m.storager.FetchModelPriceList(ctx, &ModelPriceFilter{})
+		if err != nil {
+			return err
+		}
+		existingMap := make(map[string]*ModelPrice, len(existing))
+		for _, e := range existing {
+			existingMap[e.Key()] = e
+		}
+
+		for _, entry := range entries {
+			if old, ok := existingMap[entry.Key()]; ok {
+				filter := &ModelPriceFilter{ID: &old.ID}
+				if _, err := m.storager.UpdateModelPrice(ctx, filter, entry); err != nil {
+					return err
+				}
+				imported++
+			} else {
+				if _, err := m.storager.CreateModelPrice(ctx, entry); err != nil {
+					return err
+				}
+				imported++
+			}
+		}
+		return nil
+	})
+
+	return imported, skipped, err
+}

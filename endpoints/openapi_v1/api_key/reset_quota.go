@@ -2,14 +2,12 @@ package api_key
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -22,20 +20,20 @@ var ResetQuotaRoute = &xreq.Endpoint{
 }
 
 type ResetQuotaReq struct {
-	Quota *int64 `json:"quota,omitempty"`
+	Quota *float64 `json:"quota,omitempty"`
 }
 
 type ResetQuotaResponse struct {
 	ID            *string           `json:"id"`
-	PreviousQuota *int64            `json:"previous_quota"`
-	NewQuota      *int64            `json:"new_quota"`
+	PreviousQuota *float64          `json:"previous_quota"`
+	NewQuota      *float64          `json:"new_quota"`
 	Balance       *ResetBalanceInfo `json:"balance"`
 }
 
 type ResetBalanceInfo struct {
-	PreviousRemaining int64 `json:"previous_remaining"`
-	NewRemaining      int64 `json:"new_remaining"`
-	Used              int64 `json:"used"`
+	PreviousRemaining float64 `json:"previous_remaining"`
+	NewRemaining      float64 `json:"new_remaining"`
+	Used              float64 `json:"used"`
 }
 
 var _ xreq.Handler = ResetQuotaAction
@@ -71,8 +69,8 @@ func ResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapParamErrorWithMsg("API-Key has no quota plan")
 	}
 
-	var previousQuota *int64
-	var previousRemaining int64
+	var previousQuota *float64
+	var previousRemaining float64
 
 	// 获取重置前的配额信息
 	plan, err := container.QuotaPlanManager.FetchQuotaPlan(req.Context(), &quota.QuotaPlanFilter{
@@ -93,38 +91,10 @@ func ResetQuotaAction(req *http.Request) (interface{}, error) {
 		previousRemaining = *balance.Remaining
 	}
 
-	// 重置配额余额（不更新 last_reset_at，避免影响定期重置调度）
+	// 重置配额余额（不更新 last_reset_at，避免影响定期重置调度；Redis 同步由 Manager 在事务外完成）
 	err = container.QuotaPlanManager.ResetBalance(req.Context(), *apiKey.QuotaPlanID, resetReq.Quota, false)
 	if err != nil {
 		return nil, err
-	}
-
-	// 重置 Redis 中的值为 quota 总量
-	if apiKey.Key != nil && stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
-		redisKey := stateful.AIUsedQuotaKey(*apiKey.Key)
-
-		var resetQuota int64
-		if resetReq.Quota != nil {
-			resetQuota = *resetReq.Quota
-		} else if plan != nil && plan.Quota != nil {
-			resetQuota = *plan.Quota
-		} else {
-			return nil, xerror.WrapParamErrorWithMsg("quota is required")
-		}
-
-		currentValue, err := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if err != nil {
-			if !strings.Contains(err.Error(), "redigo: nil returned") {
-				return nil, err
-			}
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, resetQuota)
-		} else {
-			delta := resetQuota - currentValue
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// 获取更新后的配额计划信息
@@ -141,7 +111,7 @@ func ResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	newRemaining := int64(0)
+	newRemaining := float64(0)
 	if newBalance != nil && newBalance.Remaining != nil {
 		newRemaining = *newBalance.Remaining
 	}

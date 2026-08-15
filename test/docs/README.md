@@ -1,6 +1,6 @@
 # AI Gateway API 集成测试设计方案
 
-**更新日期**：2026-07-27
+**更新日期**：2026-08-09
 **文档类型**：测试设计方案
 **目标读者**：后端开发工程师、测试工程师
 
@@ -31,6 +31,7 @@
 | OpenAPI - Clusters | `/open-api/v1/clusters` | 集群管理 |
 | OpenAPI - Certificate | `/open-api/v1/certificates` | 证书管理 |
 | OpenAPI - Model Provider Types | `/open-api/v1/model-provider-types` | 模型提供商类型 |
+| OpenAPI - Model Prices | `/open-api/v1/model-prices` | 模型定价管理 |
 | OpenAPI - Tools | `/open-api/v1/tools` | 工具接口（如从提供商拉取模型列表） |
 | OpenAPI - Expression Verify | `/open-api/v1/expression/verify` | 路由表达式校验 |
 | InnerAPI | `/inner-api/v1/configs` | 配置导出接口 |
@@ -535,6 +536,7 @@ func GenerateCert() (string, string)   // 生成自签名证书（用于测试�
 - `CL` - 集群模块
 - `CERT` - 证书模块
 - `MPT` - 模型提供商类型模块
+- `MP` - 模型定价模块
 - `TOOL` - 工具模块
 - `EV` - 表达式校验模块
 - InnerAPI 各子模块
@@ -680,13 +682,14 @@ integration/tests/{module}/
 | GRR Global Route Rules | 2 | 9 |
 | RT Route Tables | 1 | 10 |
 | BP 实例池 | 2 | 8 |
-| CL 集群 | 5 | 15 |
+| CL 集群 | 5 | 36 |
 | CERT 证书 | 6 | 11 |
 | MPT 模型提供商类型 | 1 | 3 |
+| MP 模型定价 | 9 | 30 |
 | TOOL 工具 | 1 | 6 |
 | EV 表达式校验 | 1 | 8 |
-| InnerAPI | 9 | 13 |
-| **总计** | **62** | **174** |
+| InnerAPI | 9 | 14 |
+| **总计** | **71** | **226** |
 
 ---
 

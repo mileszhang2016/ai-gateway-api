@@ -40,8 +40,7 @@ func newTestAPIKeyRuleManager() *APIKeyRuleManager {
 		&fakeAPIKeyStorager{},
 		&fakeAIRouteRuleStorager{},
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{},
-	)
+		&fakeEntityStorager{}, nil)
 }
 
 func TestAPIKeyRuleManager_ConfigExport(t *testing.T) {
@@ -80,8 +79,7 @@ func TestAPIKeyRuleManager_ConfigExport(t *testing.T) {
 		apiKeyStore,
 		aiRouteStore,
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{},
-	)
+		&fakeEntityStorager{}, nil)
 
 	conf, err := m.ConfigExport(ctx, "")
 	require.NoError(t, err)
@@ -149,7 +147,7 @@ func TestAPIKeyRuleManager_ConfigExport_Concurrent(t *testing.T) {
 				return &quota.QuotaPlanParam{
 					ID:        filter.ID,
 					Unlimited: lib.PBool(false),
-					Quota:     lib.PInt64(100),
+					Quota:     lib.PFloat64(100),
 				}, nil
 			}
 			return nil, nil
@@ -187,8 +185,7 @@ func TestAPIKeyRuleManager_ConfigExport_Concurrent(t *testing.T) {
 		apiKeyStore,
 		aiRouteStore,
 		quotaPlanStore,
-		entityStore,
-	)
+		entityStore, nil)
 
 	// Increase concurrency to maximize the chance of triggering the race.
 	prevMaxProcs := runtime.GOMAXPROCS(runtime.NumCPU())
@@ -321,7 +318,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator(t *testing.T) {
 				return &quota.QuotaPlanParam{
 					ID:        lib.PInt64(quotaPlanID),
 					Unlimited: lib.PBool(false),
-					Quota:     lib.PInt64(1000),
+					Quota:     lib.PFloat64(1000),
 				}, nil
 			}
 			return nil, nil
@@ -349,8 +346,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator(t *testing.T) {
 		apiKeyStore,
 		aiRouteStore,
 		quotaPlanStore,
-		entityStore,
-	)
+		entityStore, nil)
 
 	data, err := m.APIKeyRuleGenerator(ctx)
 	require.NoError(t, err)
@@ -528,7 +524,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_FalseUnlimitedWithNonUnlimitedQuo
 				return &quota.QuotaPlanParam{
 					ID:        filter.ID,
 					Unlimited: lib.PBool(false),
-					Quota:     lib.PInt64(100),
+					Quota:     lib.PFloat64(100),
 				}, nil
 			}
 			return nil, nil
@@ -560,7 +556,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Expired(t *testing.T) {
 
 	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
 	pastExpire := keyCreateAt.Add(-24 * time.Hour).Unix()
-	quota := int64(100)
+	quota := float64(100)
 	apiKeyStore := &fakeAPIKeyStorager{
 		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
 			return []*icluster_conf.APIKeyParam{
@@ -602,7 +598,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Exhausted(t *testing.T) {
 
 	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
 	futureExpire := time.Date(2030, 1, 1, 0, 0, 0, 0, time.Local).Unix()
-	quota := int64(0)
+	quota := float64(0)
 	apiKeyStore := &fakeAPIKeyStorager{
 		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
 			return []*icluster_conf.APIKeyParam{
@@ -760,7 +756,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_EntityHierarchy(t *testing.T) {
 				return &quota.QuotaPlanParam{
 					ID:        lib.PInt64(quotaPlanID),
 					Unlimited: lib.PBool(false),
-					Quota:     lib.PInt64(500),
+					Quota:     lib.PFloat64(500),
 				}, nil
 			}
 			return nil, nil
@@ -826,7 +822,7 @@ func TestAPIKeyRuleManager_FetchQuotaPlansWithEntityHierarchy(t *testing.T) {
 				return &quota.QuotaPlanParam{
 					ID:        lib.PInt64(quotaPlanID),
 					Unlimited: lib.PBool(false),
-					Quota:     lib.PInt64(100),
+					Quota:     lib.PFloat64(100),
 				}, nil
 			}
 			return nil, nil

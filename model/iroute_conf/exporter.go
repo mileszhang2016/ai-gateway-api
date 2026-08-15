@@ -39,6 +39,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 )
 
@@ -88,6 +89,15 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 	}
 	clusters = icluster_conf.AppendAdvancedRuleCluster(clusters)
 
+	providerModelTable := map[string][]*imodel_price.ModelPrice{}
+	if rm.modelPriceStorager != nil {
+		allPrices, _, err := rm.modelPriceStorager.FetchModelPriceList(ctx, &imodel_price.ModelPriceFilter{})
+		if err != nil {
+			return nil, err
+		}
+		providerModelTable = imodel_price.GroupByProvider(allPrices)
+	}
+
 	products, err := rm.productStorager.FetchProducts(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -125,7 +135,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 		Version:     emptyVersion,
 		RouteTable:  newRouteTableFile(emptyVersion, productMapID2Name, routeRules),
 		HostTable:   newHostTableConf(emptyVersion, productMapID2Name, domains),
-		ClusterConf: icluster_conf.NewBfeClusterConf(emptyVersion, clusters),
+		ClusterConf: icluster_conf.NewBfeClusterConf(emptyVersion, clusters, providerModelTable),
 	}
 
 	return &iversion_control.ExportData{

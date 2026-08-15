@@ -122,6 +122,9 @@ const (
 	FeatureEntity          Feature = "Entity"
 	FeatureQuotaPlan       Feature = "QuotaPlan"
 	FeatureRateLimitPolicy Feature = "RateLimitPolicy"
+
+	// model pricing
+	FeatureModelPrice Feature = "ModelPrice"
 )
 
 var (
@@ -167,6 +170,8 @@ var scope2permission = map[string]map[Feature]Action{
 		FeatureNLBCluster: actionAll,
 		FeatureAIRoute:    actionAll,
 		FeatureAPIKey:     actionAll,
+
+		FeatureModelPrice: actionAll,
 	},
 	ScopeProduct: {
 		FeatureUser:       ActionReadAll,

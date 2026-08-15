@@ -114,7 +114,7 @@ func TestAPIKeyValue(t *testing.T) {
 
 func TestQuotaPlan(t *testing.T) {
 	assert.NoError(t, QuotaPlan(nil))
-	q := int64(-1)
+	q := float64(-1)
 	assert.Error(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q}))
 	q = 100
 	unit := "invalid"
@@ -161,18 +161,74 @@ func TestRouteRules(t *testing.T) {
 }
 
 func TestLLMConfig(t *testing.T) {
-	key := "sk-xxx"
 	c := &icluster_conf.LLMConfig{
 		Models: []string{"m1"},
 		ModelMappings: []*icluster_conf.Mapping{
 			{SourceModel: lib.PString("old"), TargetModel: lib.PString("new")},
 		},
-		Key: &key,
+		Keys: []icluster_conf.APIKey{
+			{Name: lib.PString("key-primary"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(70)},
+			{Name: lib.PString("key-secondary"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(30)},
+		},
+		KeyPolicy: &icluster_conf.KeyPolicy{
+			Strategy:            lib.PString("weighted_random"),
+			MaxRetries:          lib.PInt(3),
+			RetryBackoffInitial: lib.PInt(500),
+			RetryBackoffMax:     lib.PInt(5000),
+		},
 	}
 	assert.NoError(t, LLMConfig(c))
 
-	c.Models = []string{"m1", "m1"}
-	assert.Error(t, LLMConfig(c))
+	// duplicate model
+	c2 := *c
+	c2.Models = []string{"m1", "m1"}
+	assert.Error(t, LLMConfig(&c2))
+
+	// total weight not 100
+	c3 := *c
+	c3.Keys = []icluster_conf.APIKey{
+		{Name: lib.PString("k1"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(50)},
+		{Name: lib.PString("k2"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(30)},
+	}
+	assert.Error(t, LLMConfig(&c3))
+
+	// duplicate key name
+	c4 := *c
+	c4.Keys = []icluster_conf.APIKey{
+		{Name: lib.PString("k1"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(50)},
+		{Name: lib.PString("k1"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(50)},
+	}
+	assert.Error(t, LLMConfig(&c4))
+
+	// API_KEY placeholder without keys
+	c5 := &icluster_conf.LLMConfig{
+		Models: []string{"m1"},
+		ModelEndpoint: &icluster_conf.Endpoint{
+			Schema: "https",
+			URI:    "/v1/models",
+			Headers: map[string]string{
+				"Authorization": "Bearer ${API_KEY}",
+			},
+		},
+	}
+	assert.Error(t, LLMConfig(c5))
+
+	// invalid key_policy retry_backoff_max < retry_backoff_initial
+	c6 := *c
+	c6.KeyPolicy = &icluster_conf.KeyPolicy{
+		Strategy:            lib.PString("weighted_random"),
+		MaxRetries:          lib.PInt(3),
+		RetryBackoffInitial: lib.PInt(500),
+		RetryBackoffMax:     lib.PInt(100),
+	}
+	assert.Error(t, LLMConfig(&c6))
+
+	// invalid key_policy strategy
+	c7 := *c
+	c7.KeyPolicy = &icluster_conf.KeyPolicy{
+		Strategy: lib.PString("invalid"),
+	}
+	assert.Error(t, LLMConfig(&c7))
 }
 
 func TestInstancePool(t *testing.T) {

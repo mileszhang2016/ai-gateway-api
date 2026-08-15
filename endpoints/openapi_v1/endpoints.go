@@ -27,6 +27,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/entity_type"
 	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/global_route_rules"
+	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/model_price"
 	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/model_provider_type"
 	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product"
 	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product_cluster"
@@ -67,6 +68,7 @@ func endpoints() []*xreq.Endpoint {
 		global_route_rules.Endpoints,
 		route_tables.Endpoints,
 		model_provider_type.NewEndpoints(nil),
+		model_price.Endpoints,
 		tool.Endpoints,
 	)
 }

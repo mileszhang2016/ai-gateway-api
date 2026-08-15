@@ -126,7 +126,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
     "ClusterConf": {
         "Version": "00010101000000",
         "Config": {
-            "my-cluster": {
+            "deepseek-cluster": {
                 "BackendConf": { ... },
                 "CheckConf": { ... },
                 "GslbBasic": { ... },
@@ -134,9 +134,48 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
                 "AIConf": {
                     "Type": 0,
                     "ModelMapping": {
-                        "gpt-4": "deepseek-chat"
+                        "gpt-4": "deepseek-v3"
                     },
-                    "Key": "sk-xxxxxxxxxxxx"
+                    "Provider": "deepseek",
+                    "Keys": [
+                        {
+                            "Name": "key-primary",
+                            "Key": "sk-aaaaaaaaaaaa",
+                            "Weight": 70
+                        },
+                        {
+                            "Name": "key-secondary",
+                            "Key": "sk-bbbbbbbbbbbb",
+                            "Weight": 30
+                        }
+                    ],
+                    "KeyPolicy": {
+                        "Strategy": "weighted_random",
+                        "MaxRetries": 3,
+                        "RetryBackoffInitial": 500,
+                        "RetryBackoffMax": 5000
+                    },
+                    "ModelTable": {
+                        "Models": [
+                            {
+                                "Provider": "deepseek",
+                                "Model": "deepseek-v3",
+                                "BaseModel": "deepseek-v3",
+                                "Mode": "chat",
+                                "Capabilities": ["chat", "reasoning", "tools"],
+                                "SupportedParameters": ["temperature", "max_tokens"],
+                                "Limits": {
+                                    "context_window": 128000,
+                                    "max_input_tokens": 128000,
+                                    "max_output_tokens": 8192
+                                },
+                                "Prices": {
+                                    "input_cost_per_token": 0.000002,
+                                    "output_cost_per_token": 0.000008
+                                }
+                            }
+                        ]
+                    }
                 }
             }
         }
@@ -148,7 +187,28 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
 |------|------|------|
 | Type | int | 固定为 0，保留字段 |
 | ModelMapping | object | 模型名称映射，key 为请求模型名，value 为后端实际模型名 |
-| Key | string | 后端 AI 服务的认证密钥 |
+| Provider | string | 对应 OpenAPI `llm_config.provider`；默认空字符串 |
+| Keys | array | API-Key 列表；为空数组时表示该 cluster 不配置 API-Key |
+| Keys[].Name | string | Key 名称/标识（必填） |
+| Keys[].Key | string | API-Key 值 |
+| Keys[].Weight | int | 权重，范围 `[0,100]` |
+| KeyPolicy | object | Key 路由策略 |
+| KeyPolicy.Strategy | string | 本版仅支持 `weighted_random` |
+| KeyPolicy.MaxRetries | int | 请求内总额外重试次数 |
+| KeyPolicy.RetryBackoffInitial | int | 初始退避时间，单位毫秒 |
+| KeyPolicy.RetryBackoffMax | int | 最大退避时间，单位毫秒 |
+| ModelTable | object | 该 cluster 的成本定价表；无 `Currency` 字段 |
+| ModelTable.Models | array | 模型定价条目列表 |
+| ModelTable.Models[].Provider | string | Provider 名 |
+| ModelTable.Models[].Model | string | 模型名，用于匹配请求中的 target_model |
+| ModelTable.Models[].BaseModel | string | 归一化模型名 |
+| ModelTable.Models[].Mode | string | 请求模式，默认 `"chat"`；枚举值同 OpenAPI `model_prices.mode` |
+| ModelTable.Models[].Capabilities | []string | 能力列表；枚举值同 OpenAPI `model_prices.capabilities` |
+| ModelTable.Models[].SupportedParameters | []string | 支持的请求参数列表；枚举值同 OpenAPI `model_prices.supported_parameters` |
+| ModelTable.Models[].Limits | object | 限制对象；键名枚举值同 OpenAPI `model_prices.limits` |
+| ModelTable.Models[].Prices | object | 价格对象；键名枚举值同 OpenAPI `model_prices.prices`；当前价格货币固定为 RMB |
+
+> **说明**：`ModelTable` 由 InnerAPI 根据 `Provider` 查询 `model_prices` 自动填充，不在 OpenAPI `/clusters` 端点中展示。`ModelTable` 不包含 `Currency` 字段，v0.4 仅支持 RMB。
 
 ## 4. 配置未变化返回示例
 

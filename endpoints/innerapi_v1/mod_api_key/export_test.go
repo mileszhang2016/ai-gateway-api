@@ -130,8 +130,7 @@ func setupAPIKeyRuleManager(version string) func() {
 		&fakeAPIKeyStoragerForRule{},
 		&fakeAIRouteRuleStoragerForRule{},
 		&fakeQuotaPlanStoragerForRule{},
-		&fakeEntityStoragerForRule{},
-	)
+		&fakeEntityStoragerForRule{}, nil)
 	return func() {
 		container.APIKeyRuleManager = old
 		stateful.DefaultConfig = origConfig

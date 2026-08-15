@@ -191,13 +191,43 @@ func TestBuildHeaderConditions(t *testing.T) {
 }
 
 func TestBuildModelCondition(t *testing.T) {
-	t.Run("with model filter", func(t *testing.T) {
+	t.Run("exact model filter", func(t *testing.T) {
+		cond := buildModelCondition("base", &ModelFilter{
+			Name:       lib.PString("gpt-4"),
+			Pattern:    lib.PString("$.model"),
+			IgnoreCase: lib.PBool(false),
+			MatchMode:  lib.PString(MatchModeExact),
+		})
+		assert.Equal(t, `base&&req_body_json_in("$.model", "gpt-4", false)`, cond)
+	})
+
+	t.Run("exact model filter by default", func(t *testing.T) {
 		cond := buildModelCondition("base", &ModelFilter{
 			Name:       lib.PString("gpt-4"),
 			Pattern:    lib.PString("$.model"),
 			IgnoreCase: lib.PBool(false),
 		})
 		assert.Equal(t, `base&&req_body_json_in("$.model", "gpt-4", false)`, cond)
+	})
+
+	t.Run("prefix model filter", func(t *testing.T) {
+		cond := buildModelCondition("base", &ModelFilter{
+			Name:       lib.PString("openrouter/"),
+			Pattern:    lib.PString("$.model"),
+			IgnoreCase: lib.PBool(false),
+			MatchMode:  lib.PString(MatchModePrefix),
+		})
+		assert.Equal(t, `base&&req_body_json_prefix_in("$.model", "openrouter/", false)`, cond)
+	})
+
+	t.Run("prefix model filter with nested namespace", func(t *testing.T) {
+		cond := buildModelCondition("base", &ModelFilter{
+			Name:       lib.PString("openrouter/anthropic/"),
+			Pattern:    lib.PString("$.model"),
+			IgnoreCase: lib.PBool(false),
+			MatchMode:  lib.PString(MatchModePrefix),
+		})
+		assert.Equal(t, `base&&req_body_json_prefix_in("$.model", "openrouter/anthropic/", false)`, cond)
 	})
 
 	t.Run("nil filter", func(t *testing.T) {

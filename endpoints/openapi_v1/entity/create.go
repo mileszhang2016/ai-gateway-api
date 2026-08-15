@@ -25,7 +25,6 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -120,34 +119,6 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 
 	if _, err := container.EntityManager.CreateEntity(req.Context(), param); err != nil {
 		return nil, err
-	}
-
-	if param.EntityID != nil && param.QuotaPlan != nil &&
-		(param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
-		param.QuotaPlan.Quota != nil &&
-		stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
-		redisKey := stateful.AIUsedQuotaKey(*param.EntityID)
-		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if errGet != nil {
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, *param.QuotaPlan.Quota)
-		} else {
-			delta := *param.QuotaPlan.Quota - currentValue
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-	}
-
-	if param.EntityID != nil && param.QuotaPlan != nil &&
-		param.QuotaPlan.Unlimited != nil && *param.QuotaPlan.Unlimited &&
-		stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
-		redisKey := stateful.AIUsedQuotaKey(*param.EntityID)
-		defaultQuota := int64(100000000)
-		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if errGet != nil {
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, defaultQuota)
-		} else {
-			delta := defaultQuota - currentValue
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
 	}
 
 	return container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{EntityID: param.EntityID})

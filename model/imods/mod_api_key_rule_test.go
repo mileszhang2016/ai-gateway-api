@@ -31,8 +31,7 @@ func TestNewAPIKeyRuleManager(t *testing.T) {
 		&fakeAPIKeyStorager{},
 		&fakeAIRouteRuleStorager{},
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{},
-	)
+		&fakeEntityStorager{}, nil)
 	assert.NotNil(t, m)
 	assert.NotNil(t, m.txn)
 	assert.NotNil(t, m.versionControlManager)
@@ -80,7 +79,7 @@ func TestConvertAPIKeyRulesToBfeRules_EmptyActions(t *testing.T) {
 func TestConvertQuotaPlanToExport(t *testing.T) {
 	unlimited := false
 	passNoQuota := true
-	quotaVal := int64(1000)
+	quotaVal := float64(1000)
 	period := "monthly"
 	createTime := int64(1234567890)
 
@@ -167,8 +166,7 @@ func TestBuildAIRouteAPIKeyRules(t *testing.T) {
 		&fakeAPIKeyStorager{},
 		aiRouteStore,
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{},
-	)
+		&fakeEntityStorager{}, nil)
 
 	product2config, err := m.buildAIRouteAPIKeyRules(ctx)
 	assert.NoError(t, err)
@@ -195,8 +193,7 @@ func TestBuildAIRouteAPIKeyRules_Error(t *testing.T) {
 		&fakeAPIKeyStorager{},
 		aiRouteStore,
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{},
-	)
+		&fakeEntityStorager{}, nil)
 
 	product2config, err := m.buildAIRouteAPIKeyRules(ctx)
 	assert.Error(t, err)

@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
@@ -70,6 +71,7 @@ type QuotaPlan struct {
 	ExpiredTime int64 // -1 means never expired
 	Quota       int64 // 配额总量
 	ResetMode   int   // 0 – 非周期性；1 – 周期性的配额包
+	Unit        string
 }
 
 type TokenFile struct {
@@ -230,12 +232,12 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 		}
 
 		status := TokenStatusDisabled
-		var remainQuota int64
+		var remainQuota float64
 		if one.Enable != nil && *one.Enable {
 			isUnlimited := one.UnlimitedQuota != nil && *one.UnlimitedQuota
 			if !isUnlimited {
 				status = TokenStatusEnabled
-				remainingQuota, err := icluster_conf.GetRemainingQuota(one)
+				remainingQuota, err := icluster_conf.GetRemainingQuota(ctx, rlm.quotaCache, one)
 				if err != nil {
 					return nil, err
 				}
@@ -579,7 +581,10 @@ func convertQuotaPlanToExport(qp *quota.QuotaPlanParam, id string, redisKeyID st
 		ExpiredTime: -1,
 	}
 	if qp.Quota != nil {
-		result.Quota = *qp.Quota
+		result.Quota = golibquota.PtrToRedisValue(qp.Quota, qp.Unit)
+	}
+	if qp.Unit != nil {
+		result.Unit = *qp.Unit
 	}
 	if qp.ResetPeriod != nil {
 		if *qp.ResetPeriod == "weekly" || *qp.ResetPeriod == "monthly" {

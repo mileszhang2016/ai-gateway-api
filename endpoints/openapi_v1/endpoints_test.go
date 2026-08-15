@@ -37,6 +37,9 @@ func TestEndpoints(t *testing.T) {
 	// Sanity check that some well-known paths are registered.
 	assert.Contains(t, paths, "/auth/users")
 	assert.Contains(t, paths, "/clusters")
+	assert.Contains(t, paths, "/model-prices")
+	assert.Contains(t, paths, "/model-prices/{id}")
+	assert.Contains(t, paths, "/model-prices/import")
 }
 
 func TestRegisterEndpoints(t *testing.T) {

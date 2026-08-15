@@ -8,7 +8,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 )
 
 // BalanceSyncManager 配额余额同步管理器
@@ -18,6 +18,7 @@ type BalanceSyncManager struct {
 	balanceStorager QuotaBalanceStorager
 	planStorager    QuotaPlanStorager
 	entityStorager  EntityStorager
+	quotaCache      quotacache.QuotaCache
 }
 
 // NewBalanceSyncManager 创建配额余额同步管理器
@@ -27,6 +28,7 @@ func NewBalanceSyncManager(
 	balanceStorager QuotaBalanceStorager,
 	planStorager QuotaPlanStorager,
 	entityStorager EntityStorager,
+	quotaCache quotacache.QuotaCache,
 ) *BalanceSyncManager {
 	return &BalanceSyncManager{
 		txn:             txn,
@@ -34,6 +36,7 @@ func NewBalanceSyncManager(
 		balanceStorager: balanceStorager,
 		planStorager:    planStorager,
 		entityStorager:  entityStorager,
+		quotaCache:      quotaCache,
 	}
 }
 
@@ -81,35 +84,35 @@ func (m *BalanceSyncManager) syncPlanBalance(ctx context.Context, plan *QuotaPla
 		}
 	}
 
-	// 3. 从 Redis 读取每个 API-Key 的剩余量
-	var totalRemaining int64 = 0
-	for _, apiKey := range apiKeys {
-		if apiKey.Key == nil || apiKey.KeyCreateAt == nil {
-			continue
+	// 3. 从 Redis 读取每个 API-Key 的剩余量（按单位转换回 float64）
+	var totalRemaining float64 = 0
+	if m.quotaCache != nil {
+		for _, apiKey := range apiKeys {
+			if apiKey.Key == nil || apiKey.KeyCreateAt == nil {
+				continue
+			}
+
+			remaining, err := m.quotaCache.GetRemaining(ctx, *apiKey.Key, plan.Unit)
+			if err != nil {
+				continue
+			}
+
+			totalRemaining += remaining
 		}
 
-		redisKey := stateful.AIUsedQuotaKey(*apiKey.Key)
-		remaining, err := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if err != nil {
-			continue
+		// 4. 从 Redis 读取每个 Entity 的剩余量
+		for _, entity := range entities {
+			if entity.EntityID == nil {
+				continue
+			}
+
+			remaining, err := m.quotaCache.GetRemaining(ctx, *entity.EntityID, plan.Unit)
+			if err != nil {
+				continue
+			}
+
+			totalRemaining += remaining
 		}
-
-		totalRemaining += remaining
-	}
-
-	// 4. 从 Redis 读取每个 Entity 的剩余量
-	for _, entity := range entities {
-		if entity.EntityID == nil {
-			continue
-		}
-
-		redisKey := stateful.AIUsedQuotaKey(*entity.EntityID)
-		remaining, err := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if err != nil {
-			continue
-		}
-
-		totalRemaining += remaining
 	}
 
 	// 5. 计算已使用量
@@ -122,8 +125,8 @@ func (m *BalanceSyncManager) syncPlanBalance(ctx context.Context, plan *QuotaPla
 	_, err = m.balanceStorager.UpdateQuotaBalance(ctx, &QuotaBalanceFilter{
 		QuotaPlanID: plan.ID,
 	}, &QuotaBalanceParam{
-		Used:      lib.PInt64(totalUsed),
-		Remaining: lib.PInt64(totalRemaining),
+		Used:      lib.PFloat64(totalUsed),
+		Remaining: lib.PFloat64(totalRemaining),
 	})
 
 	return err
@@ -171,7 +174,7 @@ func (m *BalanceSyncManager) ResetExpiredBalances(ctx context.Context) error {
 				_, err = m.balanceStorager.UpdateQuotaBalance(ctx, &QuotaBalanceFilter{
 					QuotaPlanID: plan.ID,
 				}, &QuotaBalanceParam{
-					Used:        lib.PInt64(0),
+					Used:        lib.PFloat64(0),
 					Remaining:   plan.Quota,
 					LastResetAt: lib.PTime(now),
 				})
@@ -250,7 +253,6 @@ func (m *BalanceSyncManager) resetAPIKeysRedisUsage(ctx context.Context, planID 
 	if plan == nil || plan.Quota == nil {
 		return fmt.Errorf("plan %d not found or quota is nil", planID)
 	}
-	quotaTotal := *plan.Quota
 
 	// 2. 获取该配额计划下的所有 API-Key
 	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{
@@ -271,28 +273,24 @@ func (m *BalanceSyncManager) resetAPIKeysRedisUsage(ctx context.Context, planID 
 		}
 	}
 
+	if m.quotaCache == nil {
+		return nil
+	}
+
 	// 4. 遍历每个 API-Key，重置其 Redis 值为配额总量
 	for _, apiKey := range apiKeys {
 		if apiKey.Key == nil || apiKey.KeyCreateAt == nil {
 			continue
 		}
 
-		redisKey := stateful.AIUsedQuotaKey(*apiKey.Key)
-		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if errGet != nil {
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, quotaTotal)
-		} else {
-			delta := quotaTotal - currentValue
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-		if err != nil {
+		if err := m.quotaCache.ResetToQuota(ctx, *apiKey.Key, plan.Quota, plan.Unit); err != nil {
 			fmt.Printf("Failed to reset Redis value for API-Key %s (key=%s): %v\n",
 				*apiKey.ID, *apiKey.Key, err)
 			continue
 		}
 
-		fmt.Printf("Reset Redis value for API-Key %s (key=%s, redisKey=%s) to %d\n",
-			*apiKey.ID, *apiKey.Key, redisKey, quotaTotal)
+		fmt.Printf("Reset Redis value for API-Key %s (key=%s) to quota %v\n",
+			*apiKey.ID, *apiKey.Key, *plan.Quota)
 	}
 
 	// 5. 遍历每个 Entity，重置其 Redis 值为配额总量
@@ -301,22 +299,14 @@ func (m *BalanceSyncManager) resetAPIKeysRedisUsage(ctx context.Context, planID 
 			continue
 		}
 
-		redisKey := stateful.AIUsedQuotaKey(*entity.EntityID)
-		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if errGet != nil {
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, quotaTotal)
-		} else {
-			delta := quotaTotal - currentValue
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-		if err != nil {
+		if err := m.quotaCache.ResetToQuota(ctx, *entity.EntityID, plan.Quota, plan.Unit); err != nil {
 			fmt.Printf("Failed to reset Redis value for Entity %s: %v\n",
 				*entity.EntityID, err)
 			continue
 		}
 
-		fmt.Printf("Reset Redis value for Entity %s (redisKey=%s) to %d\n",
-			*entity.EntityID, redisKey, quotaTotal)
+		fmt.Printf("Reset Redis value for Entity %s to quota %v\n",
+			*entity.EntityID, *plan.Quota)
 	}
 
 	return nil

@@ -39,6 +39,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
@@ -183,12 +184,27 @@ type ClusterStickySessions struct {
 	HashHeader    string
 }
 
+type APIKey struct {
+	Name   *string `json:"name"`   // required; length 1-128; unique within keys
+	Key    *string `json:"key"`    // required; non-empty; length 1-512
+	Weight *int    `json:"weight"` // required; range [0,100]
+}
+
+type KeyPolicy struct {
+	Strategy            *string `json:"strategy"`              // default weighted_random
+	MaxRetries          *int    `json:"max_retries"`           // default 0
+	RetryBackoffInitial *int    `json:"retry_backoff_initial"` // default 500
+	RetryBackoffMax     *int    `json:"retry_backoff_max"`     // default 5000
+}
+
 type LLMConfig struct {
 	ModelEndpoint *Endpoint  `json:"model_endpoint"` // model list endpoints
 	Models        []string   `json:"models"`         // model name list
 	ModelMappings []*Mapping `json:"model_mappings"` // model mapping
-	Key           *string    `json:"key"`            // service auth key
+	Keys          []APIKey   `json:"keys"`           // multi API-Key list; empty means no API-Key
+	KeyPolicy     *KeyPolicy `json:"key_policy"`     // key routing policy
 	ProviderType  *string    `json:"provider_type"`
+	Provider      *string    `json:"provider"`       // provider name in model_prices
 }
 
 type Mapping struct {
@@ -784,7 +800,7 @@ func normalizeBFEHashStrategy(sticky *ClusterStickySessions) int32 {
 	return sticky.HashStrategy
 }
 
-func NewBfeClusterConf(version string, clusters []*Cluster) *cluster_conf.BfeClusterConf {
+func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable map[string][]*imodel_price.ModelPrice) *cluster_conf.BfeClusterConf {
 	clusterConfMap := cluster_conf.ClusterToConf{}
 
 	int322intp := func(i int32) *int {
@@ -854,11 +870,36 @@ func NewBfeClusterConf(version string, clusters []*Cluster) *cluster_conf.BfeClu
 		}
 
 		if cluster.LLMConfig != nil {
-			clusterConf.AIConf = &cluster_conf.AIConf{
-				Type:         0,
-				ModelMapping: convertToBFEModelMapping(cluster.LLMConfig.ModelMappings),
-				Key:          cluster.LLMConfig.Key,
+			var modelTable *cluster_conf.ModelTable
+			provider := ""
+			if cluster.LLMConfig.Provider != nil {
+				provider = *cluster.LLMConfig.Provider
 			}
+			if provider != "" {
+				if entries, ok := providerModelTable[provider]; ok && len(entries) > 0 {
+					models := make([]cluster_conf.ModelPrice, 0, len(entries))
+					for _, e := range entries {
+						if e != nil {
+							models = append(models, cluster_conf.ModelPrice{
+								Provider:            e.Provider,
+								Model:               e.Model,
+								BaseModel:           e.BaseModel,
+								Mode:                e.Mode,
+								Capabilities:        e.Capabilities,
+								SupportedParameters: e.SupportedParameters,
+								Limits:              e.Limits,
+								Prices:              e.Prices,
+								Metadata:            e.Metadata,
+							})
+						}
+					}
+					modelTable = &cluster_conf.ModelTable{
+						Currency: "RMB",
+						Models:   models,
+					}
+				}
+			}
+			clusterConf.AIConf = newAIConf(cluster.LLMConfig, modelTable)
 		}
 
 		clusterConfMap[cluster.Name] = clusterConf
@@ -867,6 +908,58 @@ func NewBfeClusterConf(version string, clusters []*Cluster) *cluster_conf.BfeClu
 		Version: &version,
 		Config:  &clusterConfMap,
 	}
+}
+
+func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable) *cluster_conf.AIConf {
+	aiConf := &cluster_conf.AIConf{
+		Type:         0,
+		ModelMapping: convertToBFEModelMapping(llmConfig.ModelMappings),
+		Keys:         []cluster_conf.AIKey{},
+	}
+
+	if llmConfig.Provider != nil {
+		aiConf.Provider = *llmConfig.Provider
+	}
+	if modelTable != nil {
+		aiConf.ModelTable = modelTable
+	}
+
+	for _, k := range llmConfig.Keys {
+		aiConf.Keys = append(aiConf.Keys, cluster_conf.AIKey{
+			Name:   derefString(k.Name, ""),
+			Key:    derefString(k.Key, ""),
+			Weight: derefInt(k.Weight, 0),
+		})
+	}
+
+	aiConf.KeyPolicy = &cluster_conf.AIKeyPolicy{
+		Strategy:            "weighted_random",
+		MaxRetries:          0,
+		RetryBackoffInitial: 500,
+		RetryBackoffMax:     5000,
+	}
+	if llmConfig.KeyPolicy != nil {
+		aiConf.KeyPolicy.Strategy = derefString(llmConfig.KeyPolicy.Strategy, "weighted_random")
+		aiConf.KeyPolicy.MaxRetries = derefInt(llmConfig.KeyPolicy.MaxRetries, 0)
+		aiConf.KeyPolicy.RetryBackoffInitial = derefInt(llmConfig.KeyPolicy.RetryBackoffInitial, 500)
+		aiConf.KeyPolicy.RetryBackoffMax = derefInt(llmConfig.KeyPolicy.RetryBackoffMax, 5000)
+	}
+
+	return aiConf
+}
+
+func derefString(s *string, defaultValue string) string {
+	if s == nil {
+		return defaultValue
+	}
+	return *s
+}
+
+func derefInt(i *int, defaultValue int) int {
+	if i == nil {
+		return defaultValue
+	}
+	return *i
 }
 
 func convertToBFEModelMapping(modelMappings []*Mapping) *map[string]string {
