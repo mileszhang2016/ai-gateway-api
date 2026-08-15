@@ -130,8 +130,18 @@ func validateBasicInfo(basic *BasicInfo, ruleName string) error {
 	}
 
 	// Validate model filter
-	if basic.ModelFilter != nil && basic.ModelFilter.Name != nil && *basic.ModelFilter.Name == "" {
-		return fmt.Errorf("model_filter.name cannot be empty for rule [%s]", ruleName)
+	if basic.ModelFilter != nil {
+		if basic.ModelFilter.Name != nil && *basic.ModelFilter.Name == "" {
+			return fmt.Errorf("model_filter.name cannot be empty for rule [%s]", ruleName)
+		}
+
+		validMatchModes := map[string]bool{
+			MatchModePrefix: true,
+			MatchModeExact:  true,
+		}
+		if basic.ModelFilter.MatchMode != nil && *basic.ModelFilter.MatchMode != "" && !validMatchModes[*basic.ModelFilter.MatchMode] {
+			return fmt.Errorf("Invalid model_filter.match_mode value for rule [%s]: %s", ruleName, *basic.ModelFilter.MatchMode)
+		}
 	}
 
 	return nil

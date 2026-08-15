@@ -177,10 +177,25 @@ func buildModelCondition(currentCond string, modelFilter *ModelFilter) string {
 		return currentCond
 	}
 
-	modelCond := fmt.Sprintf("req_body_json_in(\"%s\", \"%s\", %t)",
-	    *modelFilter.Pattern,
-		*modelFilter.Name,
-		*modelFilter.IgnoreCase)
+	mode := MatchModeExact
+	if modelFilter.MatchMode != nil && *modelFilter.MatchMode != "" {
+		mode = *modelFilter.MatchMode
+	}
+
+	var modelCond string
+	switch mode {
+	case MatchModePrefix:
+		modelCond = fmt.Sprintf("req_body_json_prefix_in(\"%s\", \"%s\", %t)",
+			*modelFilter.Pattern,
+			*modelFilter.Name,
+			*modelFilter.IgnoreCase)
+	default: // exact_match
+		modelCond = fmt.Sprintf("req_body_json_in(\"%s\", \"%s\", %t)",
+			*modelFilter.Pattern,
+			*modelFilter.Name,
+			*modelFilter.IgnoreCase)
+	}
+
 	return combineConditions(currentCond, modelCond)
 }
 

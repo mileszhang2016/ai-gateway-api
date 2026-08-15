@@ -108,3 +108,18 @@ func (m *MockRedisClient) Reset() {
 	defer m.mu.Unlock()
 	m.data = make(map[string]int64)
 }
+
+// NewScript 创建 Redis 脚本（mock 实现，仅用于满足接口）
+func (m *MockRedisClient) NewScript(src string) redis_client.RedisScript {
+	return &mockRedisScript{client: m, src: src}
+}
+
+type mockRedisScript struct {
+	client *MockRedisClient
+	src    string
+}
+
+// Run 执行 Redis 脚本（mock 实现，直接返回 nil）
+func (s *mockRedisScript) Run(key string, args ...interface{}) (interface{}, error) {
+	return nil, nil
+}

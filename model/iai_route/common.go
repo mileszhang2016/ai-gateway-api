@@ -81,6 +81,7 @@ type ModelFilter struct {
 	Name       *string `json:"name,omitempty"`
 	Pattern    *string `json:"pattern,omitempty"`
 	IgnoreCase *bool   `json:"ignore_case"`
+	MatchMode  *string `json:"match_mode,omitempty"`
 }
 
 // PathFilter
