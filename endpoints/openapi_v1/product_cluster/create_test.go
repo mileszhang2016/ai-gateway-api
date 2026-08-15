@@ -170,3 +170,21 @@ func TestUpsertParamValidate_StickySessions(t *testing.T) {
 		assert.NoError(t, p.Validate())
 	})
 }
+
+func TestNormalizeLLMConfig(t *testing.T) {
+	t.Run("nil returns nil", func(t *testing.T) {
+		assert.Nil(t, normalizeLLMConfig(nil))
+	})
+
+	t.Run("copies prefix fields", func(t *testing.T) {
+		in := &icluster_conf.LLMConfig{
+			Models:      []string{"gpt-4"},
+			MatchPrefix: lib.PString("openrouter/"),
+			StripPrefix: lib.PBool(true),
+		}
+		got := normalizeLLMConfig(in)
+		require.NotNil(t, got)
+		assert.Equal(t, "openrouter/", *got.MatchPrefix)
+		assert.Equal(t, true, *got.StripPrefix)
+	})
+}

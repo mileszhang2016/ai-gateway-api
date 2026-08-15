@@ -155,6 +155,8 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
                         "RetryBackoffInitial": 500,
                         "RetryBackoffMax": 5000
                     },
+                    "MatchPrefix": "deepseek/",
+                    "StripPrefix": true,
                     "ModelTable": {
                         "Models": [
                             {
@@ -197,6 +199,8 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
 | KeyPolicy.MaxRetries | int | 请求内总额外重试次数 |
 | KeyPolicy.RetryBackoffInitial | int | 初始退避时间，单位毫秒 |
 | KeyPolicy.RetryBackoffMax | int | 最大退避时间，单位毫秒 |
+| MatchPrefix | string | 需要匹配的 provider/model 前缀；对应 OpenAPI `llm_config.match_prefix` |
+| StripPrefix | bool | 是否裁剪 `MatchPrefix` 前缀；对应 OpenAPI `llm_config.strip_prefix` |
 | ModelTable | object | 该 cluster 的成本定价表；无 `Currency` 字段 |
 | ModelTable.Models | array | 模型定价条目列表 |
 | ModelTable.Models[].Provider | string | Provider 名 |

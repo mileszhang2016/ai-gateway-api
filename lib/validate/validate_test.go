@@ -229,6 +229,22 @@ func TestLLMConfig(t *testing.T) {
 		Strategy: lib.PString("invalid"),
 	}
 	assert.Error(t, LLMConfig(&c7))
+
+	// strip_prefix=true without match_prefix
+	c8 := *c
+	c8.StripPrefix = lib.PBool(true)
+	assert.Error(t, LLMConfig(&c8))
+
+	// match_prefix not ending with '/'
+	c9 := *c
+	c9.MatchPrefix = lib.PString("openrouter")
+	assert.Error(t, LLMConfig(&c9))
+
+	// valid prefix configuration
+	c10 := *c
+	c10.MatchPrefix = lib.PString("openrouter/")
+	c10.StripPrefix = lib.PBool(true)
+	assert.NoError(t, LLMConfig(&c10))
 }
 
 func TestInstancePool(t *testing.T) {

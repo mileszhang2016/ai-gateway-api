@@ -145,6 +145,8 @@ func newTestClusterLLM() *Cluster {
 			RetryBackoffMax:     lib.PInt(5000),
 		},
 		ProviderType: lib.PString("openai"),
+		MatchPrefix:  lib.PString("openrouter/"),
+		StripPrefix:  lib.PBool(true),
 	}
 	return c
 }
@@ -813,6 +815,8 @@ func TestNewBfeClusterConf(t *testing.T) {
 		assert.Equal(t, 5000, cConf.AIConf.KeyPolicy.RetryBackoffMax)
 		require.NotNil(t, cConf.AIConf.ModelMapping)
 		assert.Equal(t, "new", (*cConf.AIConf.ModelMapping)["old"])
+		assert.Equal(t, "openrouter/", cConf.AIConf.MatchPrefix)
+		assert.True(t, cConf.AIConf.StripPrefix)
 	})
 
 	t.Run("disabled sticky sessions with empty hash_header falls back to CLIENT_IP_ONLY", func(t *testing.T) {

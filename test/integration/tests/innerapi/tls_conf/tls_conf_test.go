@@ -220,7 +220,138 @@ models:
 		assert.Contains(t, modelNames, "gpt-4o-mini")
 	})
 
+	t.Run("IN-TLS-1-004 AIConf 包含 MatchPrefix / StripPrefix", func(t *testing.T) {
+		clusterName := testutil.UniqueClusterName()
+		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
+			"instance_pool": []interface{}{
+				map[string]interface{}{
+					"name":   "backend-1",
+					"addr":   "10.0.0.1",
+					"weight": 100,
+					"port":   8080,
+				},
+			},
+			"llm_config": map[string]interface{}{
+				"models":        []string{"openrouter/anthropic/claude-sonnet-4"},
+				"match_prefix":  "openrouter/",
+				"strip_prefix":  true,
+				"provider_type": "openrouter",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterName)
+
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		aiconf := extractAIConf(t, resp, clusterName)
+		assert.Equal(t, "openrouter/", aiconf["MatchPrefix"])
+		assert.Equal(t, true, aiconf["StripPrefix"])
+	})
+
+	t.Run("IN-TLS-1-005 未配置前缀时 AIConf 为默认值", func(t *testing.T) {
+		clusterName := testutil.UniqueClusterName()
+		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
+			"instance_pool": []interface{}{
+				map[string]interface{}{
+					"name":   "backend-1",
+					"addr":   "10.0.0.1",
+					"weight": 100,
+					"port":   8080,
+				},
+			},
+			"llm_config": map[string]interface{}{
+				"models":        []string{"deepseek-chat"},
+				"provider_type": "deepseek",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterName)
+
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		aiconf := extractAIConf(t, resp, clusterName)
+		v, ok := aiconf["MatchPrefix"]
+		if ok && v != nil {
+			assert.Equal(t, "", v, "MatchPrefix should be empty if present")
+		}
+		assert.Equal(t, false, aiconf["StripPrefix"])
+	})
+
+	t.Run("IN-TLS-1-006 仅 match_prefix、strip_prefix=false 时的导出", func(t *testing.T) {
+		clusterName := testutil.UniqueClusterName()
+		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
+			"instance_pool": []interface{}{
+				map[string]interface{}{
+					"name":   "backend-1",
+					"addr":   "10.0.0.1",
+					"weight": 100,
+					"port":   8080,
+				},
+			},
+			"llm_config": map[string]interface{}{
+				"models":        []string{"openrouter/anthropic/claude-sonnet-4"},
+				"match_prefix":  "openrouter/",
+				"strip_prefix":  false,
+				"provider_type": "openrouter",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterName)
+
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		aiconf := extractAIConf(t, resp, clusterName)
+		assert.Equal(t, "openrouter/", aiconf["MatchPrefix"])
+		assert.Equal(t, false, aiconf["StripPrefix"])
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteCertificate(certName)
 	})
+}
+
+func extractAIConf(t *testing.T, resp *testutil.APIResponse, clusterName string) map[string]interface{} {
+	t.Helper()
+	var data map[string]interface{}
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	clusterConf, ok := data["ClusterConf"].(map[string]interface{})
+	if !assert.True(t, ok, "ClusterConf should be an object") {
+		return nil
+	}
+	config, ok := clusterConf["Config"].(map[string]interface{})
+	if !assert.True(t, ok, "ClusterConf.Config should be an object") {
+		return nil
+	}
+	cluster, ok := config[clusterName].(map[string]interface{})
+	if !assert.True(t, ok, "target cluster should exist in ClusterConf.Config") {
+		return nil
+	}
+	aiconf, ok := cluster["AIConf"].(map[string]interface{})
+	if !assert.True(t, ok, "AIConf should be an object") {
+		return nil
+	}
+	return aiconf
 }

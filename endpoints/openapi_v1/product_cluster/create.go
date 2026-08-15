@@ -383,6 +383,8 @@ func normalizeLLMConfig(llm *icluster_conf.LLMConfig) *icluster_conf.LLMConfig {
 		KeyPolicy:     llm.KeyPolicy,
 		ProviderType:  llm.ProviderType,
 		Provider:      llm.Provider,
+		MatchPrefix:   llm.MatchPrefix,
+		StripPrefix:   llm.StripPrefix,
 	}
 	if rst.Keys == nil {
 		rst.Keys = []icluster_conf.APIKey{}

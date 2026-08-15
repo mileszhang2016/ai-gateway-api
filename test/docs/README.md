@@ -1,6 +1,6 @@
 # AI Gateway API 集成测试设计方案
 
-**更新日期**：2026-08-09
+**更新日期**：2026-08-15
 **文档类型**：测试设计方案
 **目标读者**：后端开发工程师、测试工程师
 
@@ -35,6 +35,8 @@
 | OpenAPI - Tools | `/open-api/v1/tools` | 工具接口（如从提供商拉取模型列表） |
 | OpenAPI - Expression Verify | `/open-api/v1/expression/verify` | 路由表达式校验 |
 | InnerAPI | `/inner-api/v1/configs` | 配置导出接口 |
+
+> **v0.4 更新**：新增 Provider/Model 前缀路由裁剪集成测试，覆盖 OpenAPI `/clusters` 对 `llm_config.match_prefix` / `strip_prefix` 的传入校验，以及 InnerAPI `/configs/tls_conf/server_data_conf` 对 `AIConf.MatchPrefix` / `StripPrefix` 的导出验证。详见 [8.1 相关文档](#81-相关文档)。
 
 ### 1.3 设计原则
 
@@ -749,6 +751,8 @@ integration/tests/{module}/
 | 文档 | 路径 | 说明 |
 |------|------|------|
 | 测试使用说明 | `test/integration/README.md` | 集成测试详细使用说明 |
+| Cluster 模块用例设计 | `test/integration/tests/clusters/design.md` | 含 `llm_config.match_prefix` / `strip_prefix` 创建/更新校验用例 |
+| InnerAPI TlsConf 用例设计 | `test/integration/tests/innerapi/tls_conf/design.md` | 含 `AIConf.MatchPrefix` / `StripPrefix` 导出验证用例 |
 | OpenAPI 接口文档 | `design-docs/api-define/OpenAPI接口定义/README.md` | 各模块接口定义索引 |
 | InnerAPI 接口文档 | `design-docs/api-define/InnerAPI接口定义/README.md` | InnerAPI 接口详细设计索引 |
 | 系统设计文档 | `design-docs/sys-design/` | 系统总体与详细设计 |

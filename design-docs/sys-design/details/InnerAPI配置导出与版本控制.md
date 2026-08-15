@@ -128,9 +128,9 @@ type RouteRuleExportData struct {
 
 其中 `RouteTable` 包含产品级高级路由规则（来自 `route_advance_rules`），`ClusterConf` 包含集群转发参数。
 
-> 说明：当管理面 Cluster 配置了 `llm_config` 时，导出后的 `ClusterConf.Config.<cluster_name>.AIConf` 会包含模型映射、认证密钥与模型定价表，供 BFE 侧 AI 转发模块使用。`AIConf` 由 `llm_config.models`/`model_mappings`/`keys`/`key_policy`/`provider` 转换而来，字段位置为 `ClusterConf.Config.<cluster_name>.AIConf`。
+> 说明：当管理面 Cluster 配置了 `llm_config` 时，导出后的 `ClusterConf.Config.<cluster_name>.AIConf` 会包含模型映射、认证密钥、模型定价表以及前缀路由裁剪开关，供 BFE 侧 AI 转发模块使用。`AIConf` 由 `llm_config.models`/`model_mappings`/`keys`/`key_policy`/`provider`/`match_prefix`/`strip_prefix` 转换而来，字段位置为 `ClusterConf.Config.<cluster_name>.AIConf`。
 >
-> `AIConf.Provider` 对应 OpenAPI `llm_config.provider`，用于关联 `model_prices` 表；`AIConf.ModelTable` 由 InnerAPI 根据 `Provider` 查询 `model_prices` 自动填充，不在 OpenAPI `/clusters` 端点中展示。`model_prices` 变更后不会同步触发 InnerAPI 推送，BFE/Conf Agent 按自身周期拉取配置并热加载。
+> `AIConf.Provider` 对应 OpenAPI `llm_config.provider`，用于关联 `model_prices` 表；`AIConf.ModelTable` 由 InnerAPI 根据 `Provider` 查询 `model_prices` 自动填充，不在 OpenAPI `/clusters` 端点中展示。`AIConf.MatchPrefix`/`StripPrefix` 对应 OpenAPI `llm_config.match_prefix`/`strip_prefix`，由 BFE 在转发前决定是否裁剪请求 `model` 字段前缀。`model_prices` 变更后不会同步触发 InnerAPI 推送，BFE/Conf Agent 按自身周期拉取配置并热加载。
 
 ### 4.2 GSLB（`/configs/gslb_data/gslb`）
 

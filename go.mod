@@ -8,7 +8,7 @@ require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/DATA-DOG/go-sqlmock v1.4.0
 	github.com/baidu/go-lib v0.0.0-20210316014414-55daa983069e
-	github.com/bfenetworks/bfe v1.8.5-0.20260815015414-8339b1f92f56
+	github.com/bfenetworks/bfe v1.8.5-0.20260815094932-927738429881
 	github.com/bfenetworks/go-lib v0.0.2
 	github.com/codegangsta/negroni v1.0.0
 	github.com/didi/gendry v1.7.0
