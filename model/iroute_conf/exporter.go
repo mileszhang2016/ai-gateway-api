@@ -31,6 +31,7 @@ package iroute_conf
 import (
 	"context"
 
+	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/cluster_conf"
 	"github.com/bfenetworks/bfe/bfe_config/bfe_route_conf/host_rule_conf"
 	"github.com/bfenetworks/bfe/bfe_config/bfe_route_conf/route_rule_conf"
 
@@ -46,7 +47,7 @@ type RouteRuleExportData struct {
 	Version     string
 	HostTable   *host_rule_conf.HostTableConf
 	RouteTable  *route_rule_conf.RouteTableFile
-	ClusterConf *icluster_conf.ServerDataBfeClusterConf
+	ClusterConf *cluster_conf.BfeClusterConf
 }
 
 func (rred *RouteRuleExportData) UpdateVersion(version string) error {

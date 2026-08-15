@@ -800,8 +800,8 @@ func normalizeBFEHashStrategy(sticky *ClusterStickySessions) int32 {
 	return sticky.HashStrategy
 }
 
-func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable map[string][]*imodel_price.ModelPrice) *ServerDataBfeClusterConf {
-	clusterConfMap := map[string]ServerDataClusterConf{}
+func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable map[string][]*imodel_price.ModelPrice) *cluster_conf.BfeClusterConf {
+	clusterConfMap := cluster_conf.ClusterToConf{}
 
 	int322intp := func(i int32) *int {
 		tmp := int(i)
@@ -821,7 +821,7 @@ func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable m
 			continue
 		}
 
-		clusterConf := ServerDataClusterConf{
+		clusterConf := cluster_conf.ClusterConf{
 			BackendConf: &cluster_conf.BackendBasic{
 				Protocol:              cluster.Basic.Protocol,
 				TimeoutConnSrv:        int322intp(cluster.Basic.Timeouts.TimeoutConnServ),
@@ -870,17 +870,17 @@ func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable m
 		}
 
 		if cluster.LLMConfig != nil {
-			var modelTable *ServerDataModelTable
+			var modelTable *cluster_conf.ModelTable
 			provider := ""
 			if cluster.LLMConfig.Provider != nil {
 				provider = *cluster.LLMConfig.Provider
 			}
 			if provider != "" {
 				if entries, ok := providerModelTable[provider]; ok && len(entries) > 0 {
-					models := make([]ServerDataModelPriceEntry, 0, len(entries))
+					models := make([]cluster_conf.ModelPrice, 0, len(entries))
 					for _, e := range entries {
 						if e != nil {
-							models = append(models, ServerDataModelPriceEntry{
+							models = append(models, cluster_conf.ModelPrice{
 								Provider:            e.Provider,
 								Model:               e.Model,
 								BaseModel:           e.BaseModel,
@@ -893,28 +893,28 @@ func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable m
 							})
 						}
 					}
-					modelTable = &ServerDataModelTable{
+					modelTable = &cluster_conf.ModelTable{
 						Currency: "RMB",
 						Models:   models,
 					}
 				}
 			}
-			clusterConf.AIConf = newServerDataAIConf(cluster.LLMConfig, modelTable)
+			clusterConf.AIConf = newAIConf(cluster.LLMConfig, modelTable)
 		}
 
 		clusterConfMap[cluster.Name] = clusterConf
 	}
-	return &ServerDataBfeClusterConf{
+	return &cluster_conf.BfeClusterConf{
 		Version: &version,
 		Config:  &clusterConfMap,
 	}
 }
 
-func newServerDataAIConf(llmConfig *LLMConfig, modelTable *ServerDataModelTable) *ServerDataAIConf {
-	aiConf := &ServerDataAIConf{
+func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable) *cluster_conf.AIConf {
+	aiConf := &cluster_conf.AIConf{
 		Type:         0,
 		ModelMapping: convertToBFEModelMapping(llmConfig.ModelMappings),
-		Keys:         []ServerDataAIKey{},
+		Keys:         []cluster_conf.AIKey{},
 	}
 
 	if llmConfig.Provider != nil {
@@ -925,14 +925,14 @@ func newServerDataAIConf(llmConfig *LLMConfig, modelTable *ServerDataModelTable)
 	}
 
 	for _, k := range llmConfig.Keys {
-		aiConf.Keys = append(aiConf.Keys, ServerDataAIKey{
+		aiConf.Keys = append(aiConf.Keys, cluster_conf.AIKey{
 			Name:   derefString(k.Name, ""),
 			Key:    derefString(k.Key, ""),
 			Weight: derefInt(k.Weight, 0),
 		})
 	}
 
-	aiConf.KeyPolicy = &ServerDataAIKeyPolicy{
+	aiConf.KeyPolicy = &cluster_conf.AIKeyPolicy{
 		Strategy:            "weighted_random",
 		MaxRetries:          0,
 		RetryBackoffInitial: 500,
