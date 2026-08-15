@@ -126,12 +126,12 @@
         "rules": [
             {
                 "name": "entity-default",
-                "Cond": "default_t()",
+                "cond": "default_t()",
                 "targets": [
                     {
-                        "ClusterName": "cluster_entity",
-                        "Model": "",
-                        "Weight": 100
+                        "cluster_name": "cluster_entity",
+                        "model": "",
+                        "weight": 100
                     }
                 ],
                 "fallbacks": []
@@ -190,12 +190,12 @@
             "rules": [
                 {
                     "name": "entity-default",
-                    "Cond": "default_t()",
+                    "cond": "default_t()",
                     "targets": [
                         {
-                            "ClusterName": "cluster_entity",
-                            "Model": "",
-                            "Weight": 100
+                            "cluster_name": "cluster_entity",
+                            "model": "",
+                            "weight": 100
                         }
                     ],
                     "fallbacks": []
@@ -296,12 +296,12 @@
                     "rules": [
                         {
                             "name": "entity-default",
-                            "Cond": "default_t()",
+                            "cond": "default_t()",
                             "targets": [
                                 {
-                                    "ClusterName": "cluster_entity",
-                                    "Model": "",
-                                    "Weight": 100
+                                    "cluster_name": "cluster_entity",
+                                    "model": "",
+                                    "weight": 100
                                 }
                             ]
                         }

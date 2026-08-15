@@ -44,8 +44,8 @@ func TestAPIKey_PartialUpdate(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name":    "default",
-						"Cond":    "default_t()",
-						"targets": []interface{}{map[string]interface{}{"ClusterName": "cluster1", "Weight": 100}},
+						"cond":    "default_t()",
+						"targets": []interface{}{map[string]interface{}{"cluster_name": "cluster1", "weight": 100}},
 					},
 				},
 			},

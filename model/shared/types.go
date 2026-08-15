@@ -1,6 +1,9 @@
 package shared
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 type EntitySummary struct {
 	ID   *string `json:"id"`
@@ -68,21 +71,91 @@ type RateLimitPolicyParam struct {
 }
 
 type AiRouteTargetParam struct {
-	ClusterName *string `json:"ClusterName"`
-	Model       *string `json:"Model"`
-	Weight      *int    `json:"Weight"`
+	ClusterName *string `json:"cluster_name"`
+	Model       *string `json:"model"`
+	Weight      *int    `json:"weight"`
+}
+
+// UnmarshalJSON accepts both the new snake_case keys and the legacy camel-case
+// keys for backward compatibility with existing database records and old
+// clients. Serialization continues to emit only the new keys.
+func (t *AiRouteTargetParam) UnmarshalJSON(data []byte) error {
+	type Alias AiRouteTargetParam
+	aux := &struct {
+		*Alias
+		OldClusterName *string `json:"ClusterName"`
+		OldModel       *string `json:"Model"`
+		OldWeight      *int    `json:"Weight"`
+	}{
+		Alias: (*Alias)(t),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if t.ClusterName == nil && aux.OldClusterName != nil {
+		t.ClusterName = aux.OldClusterName
+	}
+	if t.Model == nil && aux.OldModel != nil {
+		t.Model = aux.OldModel
+	}
+	if t.Weight == nil && aux.OldWeight != nil {
+		t.Weight = aux.OldWeight
+	}
+	return nil
 }
 
 type AiRouteFallbackParam struct {
-	ClusterName *string `json:"ClusterName"`
-	Model       *string `json:"Model"`
+	ClusterName *string `json:"cluster_name"`
+	Model       *string `json:"model"`
+}
+
+// UnmarshalJSON accepts both the new snake_case keys and the legacy camel-case
+// keys for backward compatibility.
+func (f *AiRouteFallbackParam) UnmarshalJSON(data []byte) error {
+	type Alias AiRouteFallbackParam
+	aux := &struct {
+		*Alias
+		OldClusterName *string `json:"ClusterName"`
+		OldModel       *string `json:"Model"`
+	}{
+		Alias: (*Alias)(f),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if f.ClusterName == nil && aux.OldClusterName != nil {
+		f.ClusterName = aux.OldClusterName
+	}
+	if f.Model == nil && aux.OldModel != nil {
+		f.Model = aux.OldModel
+	}
+	return nil
 }
 
 type AiRouteRuleParam struct {
 	Name      *string                 `json:"name"`
-	Cond      *string                 `json:"Cond"`
+	Cond      *string                 `json:"cond"`
 	Targets   []*AiRouteTargetParam   `json:"targets"`
 	Fallbacks []*AiRouteFallbackParam `json:"fallbacks"`
+}
+
+// UnmarshalJSON accepts both the new snake_case keys and the legacy camel-case
+// keys for backward compatibility.
+func (r *AiRouteRuleParam) UnmarshalJSON(data []byte) error {
+	type Alias AiRouteRuleParam
+	aux := &struct {
+		*Alias
+		OldCond *string `json:"Cond"`
+	}{
+		Alias: (*Alias)(r),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if r.Cond == nil && aux.OldCond != nil {
+		r.Cond = aux.OldCond
+	}
+	return nil
 }
 
 type RouteRulesParam struct {

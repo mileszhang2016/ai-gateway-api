@@ -302,12 +302,12 @@ func TestClusters_Update_PreventDeleteReferencedModel(t *testing.T) {
 			"rules": []interface{}{
 				map[string]interface{}{
 					"name": "rule-ref-model",
-					"Cond": "default_t()",
+					"cond": "default_t()",
 					"targets": []interface{}{
 						map[string]interface{}{
-							"ClusterName": clusterName,
-							"Model":       "test-model",
-							"Weight":      100,
+							"cluster_name": clusterName,
+							"model":       "test-model",
+							"weight":      100,
 						},
 					},
 				},

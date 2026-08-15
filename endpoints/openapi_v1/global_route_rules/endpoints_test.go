@@ -157,9 +157,9 @@ func TestGlobalRouteRulesUpdateAction(t *testing.T) {
 		"rules": [
 			{
 				"name": "rule1",
-				"Cond": "default_t()",
+				"cond": "default_t()",
 				"targets": [
-					{"ClusterName": "cluster1", "Weight": 100}
+					{"cluster_name": "cluster1", "weight": 100}
 				]
 			}
 		]
@@ -201,9 +201,9 @@ func TestGlobalRouteRulesUpdateAction_NotFound(t *testing.T) {
 		"rules": [
 			{
 				"name": "rule1",
-				"Cond": "default_t()",
+				"cond": "default_t()",
 				"targets": [
-					{"ClusterName": "cluster1", "Weight": 100}
+					{"cluster_name": "cluster1", "weight": 100}
 				]
 			}
 		]
