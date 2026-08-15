@@ -9,6 +9,10 @@ v0.0.7 起，`llm_config` 支持多 API-Key：
 - `keys` 非必填，默认值为空数组 `[]`；若传入，则所有元素的 `name`/`key`/`weight` 必填，同一数组内 `name` 唯一，且所有 `weight` 之和必须等于 100。
 - `key_policy` 非必填；`strategy` 当前仅支持 `weighted_random`；`max_retries`、`retry_backoff_initial`、`retry_backoff_max` 必须 ≥0，且 `retry_backoff_max` ≥ `retry_backoff_initial`。
 - 当 `model_endpoint.headers` 中包含 `${API_KEY}` 占位符时，`keys` 不能为空，否则返回 422。
+- v0.4 起，`llm_config` 新增 `match_prefix` / `strip_prefix`：
+  - `match_prefix` 非必填，用于声明该 cluster 匹配的前缀（如 `openrouter/`），若传入且非空则必须以 `/` 结尾；
+  - `strip_prefix` 非必填，默认 `false`；为 `true` 时 `match_prefix` 必填且非空；
+  - 两个字段透传到 InnerAPI 导出的 `AIConf.MatchPrefix` / `StripPrefix`，由 BFE 在转发前执行前缀裁剪。
 
 另外，删除集群时会检查 `route_rules` 表中的全局、Entity、API-Key 路由规则：若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则删除被拒绝。
 
@@ -26,12 +30,12 @@ v0.0.7 起，`llm_config` 支持多 API-Key：
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建集群 | 19 |
+| 创建集群 | 25 |
 | 查询集群列表 | 1 |
 | 查询集群详情 | 1 |
-| 更新集群 | 7 |
+| 更新集群 | 8 |
 | 删除集群 | 8 |
-| **合计** | **36** |
+| **合计** | **43** |
 
 ## 4. 认证方式
 
@@ -91,6 +95,8 @@ clusters/
 | llm_config.keys | []object | N | 多 API-Key 列表 | 非必填，默认 `[]`；非空时须满足下方“API-Key 结构” |
 | llm_config.key_policy | object | N | Key 路由策略 | 非必填；`strategy` 仅支持 `weighted_random`；退避参数 ≥0 且 max ≥ initial |
 | llm_config.provider_type | string | Y | AI 模型提供商类型 | 必填 |
+| llm_config.match_prefix | string | N | provider/model 前缀 | 若传入且非空，必须以 `/` 结尾 |
+| llm_config.strip_prefix | bool | N | 是否裁剪 `match_prefix` | 默认 `false`；为 `true` 时 `match_prefix` 必填且非空 |
 
 ##### API-Key 结构（`llm_config.keys` 元素）
 
@@ -146,6 +152,12 @@ clusters/
 | CL-1-017 | model_endpoint.headers 含 ${API_KEY} 但 keys 为空 | 合法性条件 | 验证 ErrNum=422 |
 | CL-1-018 | key_policy 非法 strategy | 合法性条件 | 验证 ErrNum=422 |
 | CL-1-019 | key_policy 退避参数非法 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-020 | 合法前缀配置（strip_prefix=true） | 正常参数 | 验证 `match_prefix`/`strip_prefix` 返回正确 |
+| CL-1-021 | strip_prefix=true 但 match_prefix 为空 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-022 | match_prefix 缺少尾部斜杠 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-023 | 仅 match_prefix、strip_prefix=false | 正常参数 | 验证仅用于路由标识 |
+| CL-1-024 | 未配置 match_prefix / strip_prefix | 正常参数 | 验证默认值/字段不存在 |
+| CL-1-025 | 非法 strip_prefix 类型 | 异常参数 | 验证 ErrNum=422 |
 
 ### 6.4 测试场景详细设计
 
@@ -1158,6 +1170,270 @@ clusters/
 **ErrMsg**：包含 "retry_backoff_max" 或 "retry_backoff_initial" 的错误信息  
 **Data**：null
 
+----
+
+#### 6.4.20 CL-1-020：合法前缀配置（strip_prefix=true）（正常参数）
+
+##### 设计思路
+
+验证 `llm_config.match_prefix` / `strip_prefix` 合法组合可成功创建集群，且响应字段回显正确。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`match_prefix="openrouter/"`，`strip_prefix=true`。
+2. 验证返回 200。
+3. 验证响应 `llm_config.match_prefix == "openrouter/"`、`llm_config.strip_prefix == true`。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_prefix_valid",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["openrouter/anthropic/claude-sonnet-4"],
+        "match_prefix": "openrouter/",
+        "strip_prefix": true,
+        "provider_type": "openrouter"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data**：`llm_config.match_prefix == "openrouter/"`，`llm_config.strip_prefix == true`
+
+----
+
+#### 6.4.21 CL-1-021：strip_prefix=true 但 match_prefix 为空（合法性条件）
+
+##### 设计思路
+
+验证 `strip_prefix=true` 时，`match_prefix` 必须非空，否则返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`strip_prefix=true`，不传入 `match_prefix`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_prefix_missing",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "strip_prefix": true,
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "match_prefix is required when strip_prefix is true"  
+**Data**：null
+
+----
+
+#### 6.4.22 CL-1-022：match_prefix 缺少尾部斜杠（合法性条件）
+
+##### 设计思路
+
+验证非空 `match_prefix` 必须以 `/` 结尾，否则返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`match_prefix="openrouter"`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_prefix_no_slash",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "match_prefix": "openrouter",
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "match_prefix must end with '/'"  
+**Data**：null
+
+----
+
+#### 6.4.23 CL-1-023：仅 match_prefix、strip_prefix=false（正常参数）
+
+##### 设计思路
+
+验证 `strip_prefix=false` 时，`match_prefix` 可用于路由标识但不裁剪前缀，创建成功且字段回显正确。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`match_prefix="openrouter/"`，`strip_prefix=false`。
+2. 验证返回 200，字段回显正确。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_prefix_no_strip",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["openrouter/anthropic/claude-sonnet-4"],
+        "match_prefix": "openrouter/",
+        "strip_prefix": false,
+        "provider_type": "openrouter"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data**：`llm_config.match_prefix == "openrouter/"`，`llm_config.strip_prefix == false`
+
+----
+
+#### 6.4.24 CL-1-024：未配置 match_prefix / strip_prefix（正常参数）
+
+##### 设计思路
+
+验证不配置这两个字段时，集群创建成功，响应中不存在相关字段或为默认值。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送最小参数创建集群请求，不携带 `match_prefix` / `strip_prefix`。
+2. 验证返回 200，响应中不包含 `match_prefix` 或 `strip_prefix` 字段（或 `strip_prefix` 为 false）。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_no_prefix",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["deepseek-chat"],
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data**：`llm_config.match_prefix` 不存在、为 `null` 或为空字符串；`strip_prefix` 不存在或为 `false`
+
+----
+
+#### 6.4.25 CL-1-025：非法 strip_prefix 类型（异常参数）
+
+##### 设计思路
+
+验证 `strip_prefix` 必须为 bool 类型，传入字符串等非法类型时返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`strip_prefix="true"`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_prefix_bad_type",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "match_prefix": "openrouter/",
+        "strip_prefix": "true",
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "strip_prefix" 或类型错误信息  
+**Data**：null
+
 ---
 
 ## 7. 查询集群列表
@@ -1338,6 +1614,7 @@ URI：`cluster_full`
 | CL-4-005 | 更新非法 instance_pool（非法 IP） | 合法性条件 | 验证 ErrNum=422 |
 | CL-4-006 | 更新 keys（全量替换） | 正常参数 | 验证 PATCH 后 keys 被完整替换 |
 | CL-4-007 | 更新 key_policy | 正常参数 | 验证 PATCH 后 key_policy 更新生效 |
+| CL-4-008 | 更新 match_prefix / strip_prefix | 正常参数 | 验证 PATCH 后前缀配置更新生效，InnerAPI 导出一致 |
 
 ### 9.4 测试场景详细设计
 
@@ -1645,6 +1922,62 @@ URI：`cluster_update_policy`
 | llm_config.keys | 与更新前一致 | Equals |
 | llm_config.key_policy.retry_backoff_initial | 200 | Equals |
 | llm_config.key_policy.retry_backoff_max | 2000 | Equals |
+
+----
+
+#### 9.4.8 CL-4-008：更新 match_prefix / strip_prefix（正常参数）
+
+##### 设计思路
+
+验证通过 PATCH 更新 `llm_config.match_prefix` / `strip_prefix` 后，OpenAPI 查询与 InnerAPI 导出均生效。
+
+##### 前提数据准备
+
+已创建集群 `cluster_update_prefix`，初始配置：
+```json
+{
+    "llm_config": {
+        "models": ["openrouter/anthropic/claude-sonnet-4"],
+        "match_prefix": "openrouter/",
+        "strip_prefix": true,
+        "provider_type": "openrouter"
+    }
+}
+```
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，将 `match_prefix` 改为 `"deepseek/"`，`strip_prefix` 改为 `false`。
+2. 验证返回 200，响应中字段已更新。
+3. 发送 GET 请求查询集群，验证字段一致。
+4. 发送 GET 请求到 `/inner-api/v1/configs/tls_conf/server_data_conf`，验证 `AIConf.MatchPrefix == "deepseek/"`、`AIConf.StripPrefix == false`。
+
+##### 请求参数
+
+URI：`cluster_update_prefix`
+
+```json
+{
+    "llm_config": {
+        "models": ["deepseek-chat"],
+        "match_prefix": "deepseek/",
+        "strip_prefix": false,
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| llm_config.match_prefix | "deepseek/" | Equals |
+| llm_config.strip_prefix | false | Equals |
 
 ---
 

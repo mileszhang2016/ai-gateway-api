@@ -1,9 +1,11 @@
 package clusters_test
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
@@ -196,6 +198,73 @@ func TestClusters_Update(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 		testutil.AssertDataFieldEquals(t, resp, "name", clusterUpdatePolicy)
+	})
+
+	t.Run("CL-4-008 更新 match_prefix / strip_prefix", func(t *testing.T) {
+		clusterUpdatePrefix := testutil.UniqueClusterName()
+		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterUpdatePrefix,
+			"instance_pool": []interface{}{
+				map[string]interface{}{
+					"name":   "backend-1",
+					"addr":   "10.0.0.1",
+					"weight": 100,
+					"port":   8080,
+				},
+			},
+			"llm_config": map[string]interface{}{
+				"models":        []string{"openrouter/anthropic/claude-sonnet-4"},
+				"match_prefix":  "openrouter/",
+				"strip_prefix":  true,
+				"provider_type": "openrouter",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterUpdatePrefix)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterUpdatePrefix, map[string]interface{}{
+			"llm_config": map[string]interface{}{
+				"models":        []string{"deepseek-chat"},
+				"match_prefix":  "deepseek/",
+				"strip_prefix":  false,
+				"provider_type": "deepseek",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		resp, err = testutil.GetClient().Get("/open-api/v1/clusters/" + clusterUpdatePrefix)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal failed: %v", err)
+		}
+		llm, _ := data["llm_config"].(map[string]interface{})
+		assert.Equal(t, "deepseek/", llm["match_prefix"])
+		assert.Equal(t, false, llm["strip_prefix"])
+
+		resp, err = testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("inner api request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var innerData map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &innerData); err != nil {
+			t.Fatalf("unmarshal inner data failed: %v", err)
+		}
+		clusterConf, _ := innerData["ClusterConf"].(map[string]interface{})
+		config, _ := clusterConf["Config"].(map[string]interface{})
+		cluster, _ := config[clusterUpdatePrefix].(map[string]interface{})
+		aiconf, _ := cluster["AIConf"].(map[string]interface{})
+		assert.Equal(t, "deepseek/", aiconf["MatchPrefix"])
+		assert.Equal(t, false, aiconf["StripPrefix"])
 	})
 
 	t.Cleanup(func() {

@@ -61,6 +61,31 @@ func TestCheckLLMConfig(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "strip prefix without match prefix",
+			config: &icluster_conf.LLMConfig{
+				Models:      []string{"gpt-4"},
+				StripPrefix: lib.PBool(true),
+			},
+			wantErr: true,
+		},
+		{
+			name: "match prefix missing trailing slash",
+			config: &icluster_conf.LLMConfig{
+				Models:      []string{"gpt-4"},
+				MatchPrefix: lib.PString("openrouter"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid prefix config",
+			config: &icluster_conf.LLMConfig{
+				Models:      []string{"gpt-4"},
+				MatchPrefix: lib.PString("openrouter/"),
+				StripPrefix: lib.PBool(true),
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tc := range cases {

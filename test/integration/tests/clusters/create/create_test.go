@@ -475,6 +475,151 @@ func TestClusters_Create(t *testing.T) {
 			},
 			wantCode: 422,
 		},
+		{
+			name: "CL-1-020 合法前缀配置（strip_prefix=true）",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"openrouter/anthropic/claude-sonnet-4"},
+					"match_prefix":  "openrouter/",
+					"strip_prefix":  true,
+					"provider_type": "openrouter",
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				llm, _ := data["llm_config"].(map[string]interface{})
+				assert.Equal(t, "openrouter/", llm["match_prefix"])
+				assert.Equal(t, true, llm["strip_prefix"])
+			},
+		},
+		{
+			name: "CL-1-021 strip_prefix=true 但 match_prefix 为空",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"m"},
+					"strip_prefix":  true,
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-022 match_prefix 缺少尾部斜杠",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"m"},
+					"match_prefix":  "openrouter",
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-023 仅 match_prefix、strip_prefix=false",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"openrouter/anthropic/claude-sonnet-4"},
+					"match_prefix":  "openrouter/",
+					"strip_prefix":  false,
+					"provider_type": "openrouter",
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				llm, _ := data["llm_config"].(map[string]interface{})
+				assert.Equal(t, "openrouter/", llm["match_prefix"])
+				assert.Equal(t, false, llm["strip_prefix"])
+			},
+		},
+		{
+			name: "CL-1-024 未配置 match_prefix / strip_prefix",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"deepseek-chat"},
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				llm, _ := data["llm_config"].(map[string]interface{})
+				v, ok := llm["match_prefix"]
+				if ok && v != nil {
+					assert.Equal(t, "", v, "match_prefix should be empty if present")
+				}
+			},
+		},
+		{
+			name: "CL-1-025 非法 strip_prefix 类型",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"m"},
+					"match_prefix":  "openrouter/",
+					"strip_prefix":  "true",
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
 	}
 
 	// 预先创建重复集群

@@ -205,6 +205,13 @@ type LLMConfig struct {
 	KeyPolicy     *KeyPolicy `json:"key_policy"`     // key routing policy
 	ProviderType  *string    `json:"provider_type"`
 	Provider      *string    `json:"provider"`       // provider name in model_prices
+
+	// MatchPrefix defines the provider/model prefix this cluster matches.
+	// Must end with '/' to avoid matching model names themselves.
+	MatchPrefix *string `json:"match_prefix"`
+	// StripPrefix controls whether to strip MatchPrefix from the request model
+	// field before forwarding to the backend.
+	StripPrefix *bool `json:"strip_prefix"`
 }
 
 type Mapping struct {
@@ -922,6 +929,12 @@ func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable) *clust
 	}
 	if modelTable != nil {
 		aiConf.ModelTable = modelTable
+	}
+	if llmConfig.MatchPrefix != nil {
+		aiConf.MatchPrefix = *llmConfig.MatchPrefix
+	}
+	if llmConfig.StripPrefix != nil {
+		aiConf.StripPrefix = *llmConfig.StripPrefix
 	}
 
 	for _, k := range llmConfig.Keys {

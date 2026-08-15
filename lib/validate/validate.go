@@ -678,6 +678,16 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 		}
 	}
 
+	// Validate prefix stripping configuration
+	if c.StripPrefix != nil && *c.StripPrefix {
+		if c.MatchPrefix == nil || *c.MatchPrefix == "" {
+			return xerror.WrapParamErrorWithMsg("llm_config.match_prefix is required when strip_prefix is true")
+		}
+	}
+	if c.MatchPrefix != nil && *c.MatchPrefix != "" && !strings.HasSuffix(*c.MatchPrefix, "/") {
+		return xerror.WrapParamErrorWithMsg("llm_config.match_prefix must end with '/'")
+	}
+
 	return nil
 }
 
