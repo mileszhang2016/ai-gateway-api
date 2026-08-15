@@ -24,7 +24,7 @@ import (
 )
 
 type fakeClusterStorager struct {
-	fetchClusterListFn func(ctx context.Context, param *icluster_conf.ClusterFilter) ([]*icluster_conf.Cluster, error)
+	fetchClusterListFn  func(ctx context.Context, param *icluster_conf.ClusterFilter) ([]*icluster_conf.Cluster, error)
 	fetchLBMatrixListFn func(ctx context.Context) (map[int64]map[string]map[string]int, error)
 }
 
@@ -125,6 +125,7 @@ func setupClusterManager(storager icluster_conf.ClusterStorager, version string)
 		&fakeBFEClusterStorager{},
 		&fakePoolStorager{},
 		testutil.NewVersionControlManager(version),
+		nil,
 		nil,
 	)
 	return func() {

@@ -204,7 +204,7 @@ type LLMConfig struct {
 	Keys          []APIKey   `json:"keys"`           // multi API-Key list; empty means no API-Key
 	KeyPolicy     *KeyPolicy `json:"key_policy"`     // key routing policy
 	ProviderType  *string    `json:"provider_type"`
-	Provider      *string    `json:"provider"`       // provider name in model_prices
+	Provider      *string    `json:"provider"` // provider name in model_prices
 
 	// MatchPrefix defines the provider/model prefix this cluster matches.
 	// Must end with '/' to avoid matching model names themselves.
@@ -313,7 +313,8 @@ func NewClusterManager(txn itxn.TxnStorager, storager ClusterStorager,
 	subClusterStorager SubClusterStorager, bfeClusterStorager ibasic.BFEClusterStorager,
 	poolStorager PoolStorager,
 	versionControlManager *iversion_control.VersionControlManager,
-	deleteCheckers map[string]func(context.Context, *ibasic.Product, *Cluster) error) *ClusterManager {
+	deleteCheckers map[string]func(context.Context, *ibasic.Product, *Cluster) error,
+	updateCheckers map[string]func(context.Context, *ibasic.Product, *Cluster, *ClusterParam) error) *ClusterManager {
 
 	return &ClusterManager{
 		txn:                   txn,
@@ -324,6 +325,7 @@ func NewClusterManager(txn itxn.TxnStorager, storager ClusterStorager,
 		versionControlManager: versionControlManager,
 
 		deleteCheckers: deleteCheckers,
+		updateCheckers: updateCheckers,
 	}
 }
 
@@ -348,6 +350,7 @@ type ClusterManager struct {
 	versionControlManager *iversion_control.VersionControlManager
 
 	deleteCheckers map[string]func(context.Context, *ibasic.Product, *Cluster) error
+	updateCheckers map[string]func(context.Context, *ibasic.Product, *Cluster, *ClusterParam) error
 }
 
 func (rm *ClusterManager) FetchClusterList(ctx context.Context, param *ClusterFilter) (list []*Cluster, err error) {
@@ -632,6 +635,12 @@ func (cm *ClusterManager) UpdateCluster(ctx context.Context, product *ibasic.Pro
 				if subClusterCount != 1 {
 					return xerror.WrapParamErrorWithMsg(fmt.Sprintf("subcluster is EPP, then must be one subcluster"))
 				}
+			}
+		}
+
+		for _, checker := range cm.updateCheckers {
+			if err = checker(ctx, product, oldData, param); err != nil {
+				return err
 			}
 		}
 

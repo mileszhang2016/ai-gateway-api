@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
@@ -217,6 +218,94 @@ func (m *RouteRulesManager) ClusterDeleteChecker(ctx context.Context, product *i
 			for _, fallback := range rule.Fallbacks {
 				if fallback != nil && fallback.ClusterName != nil && *fallback.ClusterName == cluster.Name {
 					return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// ClusterModelUpdateChecker checks whether any model being removed from a cluster
+// is still referenced by route rules (targets or fallbacks). The checker is
+// invoked inside a transaction by the cluster manager, so it should not start
+// another transaction here.
+func (m *RouteRulesManager) ClusterModelUpdateChecker(ctx context.Context, product *ibasic.Product, cluster *icluster_conf.Cluster, param *icluster_conf.ClusterParam) error {
+	if param.LLMConfig == nil {
+		return nil
+	}
+
+	removedModels := removedModels(cluster.LLMConfig, param.LLMConfig)
+	if len(removedModels) == 0 {
+		return nil
+	}
+
+	return m.checkClusterModelsReferenced(ctx, cluster.Name, removedModels)
+}
+
+func removedModels(oldConfig, newConfig *icluster_conf.LLMConfig) []string {
+	oldModels := map[string]struct{}{}
+	if oldConfig != nil {
+		for _, model := range oldConfig.Models {
+			oldModels[model] = struct{}{}
+		}
+	}
+
+	newModels := map[string]struct{}{}
+	for _, model := range newConfig.Models {
+		newModels[model] = struct{}{}
+	}
+
+	var removed []string
+	for model := range oldModels {
+		if _, ok := newModels[model]; !ok {
+			removed = append(removed, model)
+		}
+	}
+	return removed
+}
+
+func (m *RouteRulesManager) checkClusterModelsReferenced(ctx context.Context, clusterName string, models []string) error {
+	modelSet := lib.StringSlice2Map(models)
+	routeTables, _, err := m.storager.FetchRouteRulesList(ctx, &shared.RouteRulesFilter{})
+	if err != nil {
+		return err
+	}
+
+	for _, table := range routeTables {
+		if table == nil || table.ID == nil {
+			continue
+		}
+
+		routeRulesParam, err := m.storager.FetchRouteRulesByID(ctx, *table.ID)
+		if err != nil {
+			return err
+		}
+		if routeRulesParam == nil {
+			continue
+		}
+
+		for _, rule := range routeRulesParam.Rules {
+			if rule == nil {
+				continue
+			}
+
+			ruleName := ""
+			if rule.Name != nil {
+				ruleName = *rule.Name
+			}
+
+			for _, target := range rule.Targets {
+				if target != nil && target.ClusterName != nil && *target.ClusterName == clusterName &&
+					target.Model != nil && modelSet[*target.Model] {
+					return xerror.WrapModelErrorWithMsg("Rule %s Refer To Model %s In Cluster %s", ruleName, *target.Model, clusterName)
+				}
+			}
+
+			for _, fallback := range rule.Fallbacks {
+				if fallback != nil && fallback.ClusterName != nil && *fallback.ClusterName == clusterName &&
+					fallback.Model != nil && modelSet[*fallback.Model] {
+					return xerror.WrapModelErrorWithMsg("Rule %s Refer To Model %s In Cluster %s", ruleName, *fallback.Model, clusterName)
 				}
 			}
 		}
