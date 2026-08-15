@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib/validate"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
@@ -320,6 +321,9 @@ func (m *RouteRulesManager) validateRouteRules(param *shared.RouteRulesParam) er
 
 		if rule.Cond == nil || *rule.Cond == "" {
 			return xerror.WrapParamErrorWithMsg("rule Cond is required")
+		}
+		if err := validate.ConditionExpression(*rule.Cond); err != nil {
+			return err
 		}
 
 		if len(rule.Targets) == 0 {

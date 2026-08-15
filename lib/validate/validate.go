@@ -23,6 +23,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/bfenetworks/bfe/bfe_basic/condition"
+
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
@@ -481,6 +483,14 @@ func RateLimitPolicy(p *shared.RateLimitPolicyParam) error {
 	return nil
 }
 
+// ConditionExpression validates a BFE condition expression string.
+func ConditionExpression(cond string) error {
+	if _, err := condition.Build(cond); err != nil {
+		return xerror.WrapParamErrorWithMsg("invalid route rule Cond: %v", err)
+	}
+	return nil
+}
+
 // RouteRules validates a route rule set.
 func RouteRules(p *shared.RouteRulesParam) error {
 	if p == nil {
@@ -502,6 +512,9 @@ func RouteRules(p *shared.RouteRulesParam) error {
 
 		if rule.Cond == nil || *rule.Cond == "" {
 			return xerror.WrapParamErrorWithMsg("route rule Cond is required")
+		}
+		if err := ConditionExpression(*rule.Cond); err != nil {
+			return err
 		}
 
 		if len(rule.Targets) == 0 {

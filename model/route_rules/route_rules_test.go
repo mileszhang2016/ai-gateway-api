@@ -654,6 +654,15 @@ func TestRouteRulesManager_validateRouteRules(t *testing.T) {
 		assert.Error(t, m.validateRouteRules(param))
 	})
 
+	t.Run("invalid cond syntax", func(t *testing.T) {
+		param := &shared.RouteRulesParam{
+			Rules: []*shared.AiRouteRuleParam{
+				{Name: lib.PString("rule-1"), Cond: lib.PString("req_path_in(/v1, false)"), Targets: []*shared.AiRouteTargetParam{{ClusterName: lib.PString("c1"), Weight: lib.PInt(100)}}},
+			},
+		}
+		assert.Error(t, m.validateRouteRules(param))
+	})
+
 	t.Run("empty targets", func(t *testing.T) {
 		param := &shared.RouteRulesParam{
 			Rules: []*shared.AiRouteRuleParam{
@@ -703,7 +712,7 @@ func TestRouteRulesManager_validateRouteRules(t *testing.T) {
 			Rules: []*shared.AiRouteRuleParam{
 				{
 					Name:    lib.PString("rule-1"),
-					Cond:    lib.PString("cond1"),
+					Cond:    lib.PString("default_t()"),
 					Targets: []*shared.AiRouteTargetParam{{ClusterName: lib.PString("c1"), Weight: lib.PInt(100)}},
 				},
 			},
