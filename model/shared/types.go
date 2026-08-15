@@ -123,6 +123,9 @@ type RouteRulesStorager interface {
 	UpdateRouteRules(ctx context.Context, id int64, param *RouteRulesParam) (int64, error)
 	DeleteRouteRules(ctx context.Context, id int64) error
 	FetchRouteRulesByID(ctx context.Context, id int64) (*RouteRulesParam, error)
+	// FetchAllRouteRules returns all route rules without pagination.
+	// Used by reference checkers that must scan every rule table.
+	FetchAllRouteRules(ctx context.Context) ([]*RouteRulesParam, error)
 }
 
 type QuotaPlanStorager interface {

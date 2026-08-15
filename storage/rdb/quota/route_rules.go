@@ -123,6 +123,27 @@ func (s *RouteRulesStorager) FetchRouteRulesByID(ctx context.Context, id int64) 
 	return routeRulesDataToParam(one), nil
 }
 
+func (s *RouteRulesStorager) FetchAllRouteRules(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+	dbCtx, err := s.dbCtxFactory(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	list, err := dao.TRouteRulesList(dbCtx, &dao.TRouteRulesParam{})
+	if err != nil {
+		return nil, err
+	}
+	if list == nil {
+		return []*shared.RouteRulesParam{}, nil
+	}
+
+	result := make([]*shared.RouteRulesParam, 0, len(list))
+	for _, one := range list {
+		result = append(result, routeRulesDataToParam(one))
+	}
+	return result, nil
+}
+
 func (s *RouteRulesStorager) FetchRouteRulesList(ctx context.Context, filter *shared.RouteRulesFilter) ([]*shared.RouteTableParam, int64, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {

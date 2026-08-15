@@ -304,6 +304,7 @@ type fakeRouteRulesStorager struct {
 	updateFn    func(ctx context.Context, id int64, param *shared.RouteRulesParam) (int64, error)
 	deleteFn    func(ctx context.Context, id int64) error
 	fetchByIDFn func(ctx context.Context, id int64) (*shared.RouteRulesParam, error)
+	allFn       func(ctx context.Context) ([]*shared.RouteRulesParam, error)
 
 	mu          sync.Mutex
 	created     []createRouteRulesCall
@@ -312,6 +313,7 @@ type fakeRouteRulesStorager struct {
 	updated     []updateRouteRulesCall
 	deleted     []int64
 	fetchedByID []int64
+	fetchedAll  int
 }
 
 type createRouteRulesCall struct {
@@ -386,6 +388,16 @@ func (s *fakeRouteRulesStorager) FetchRouteRulesByID(ctx context.Context, id int
 	s.mu.Unlock()
 	if s.fetchByIDFn != nil {
 		return s.fetchByIDFn(ctx, id)
+	}
+	return nil, nil
+}
+
+func (s *fakeRouteRulesStorager) FetchAllRouteRules(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+	s.mu.Lock()
+	s.fetchedAll++
+	s.mu.Unlock()
+	if s.allFn != nil {
+		return s.allFn(ctx)
 	}
 	return nil, nil
 }

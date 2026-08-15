@@ -181,20 +181,16 @@ func (m *RouteRulesManager) ListRouteTables(ctx context.Context, filter *shared.
 // it should not start another transaction here to avoid premature commit of the
 // outer transaction.
 func (m *RouteRulesManager) ClusterDeleteChecker(ctx context.Context, product *ibasic.Product, cluster *icluster_conf.Cluster) error {
-	routeTables, _, err := m.storager.FetchRouteRulesList(ctx, &shared.RouteRulesFilter{})
+	allRouteRules, err := m.storager.FetchAllRouteRules(ctx)
 	if err != nil {
 		return err
 	}
 
-	for _, table := range routeTables {
-		if table == nil || table.ID == nil {
-			continue
-		}
+	return checkClusterReferencedByRouteRules(cluster.Name, allRouteRules)
+}
 
-		routeRulesParam, err := m.storager.FetchRouteRulesByID(ctx, *table.ID)
-		if err != nil {
-			return err
-		}
+func checkClusterReferencedByRouteRules(clusterName string, routeRules []*shared.RouteRulesParam) error {
+	for _, routeRulesParam := range routeRules {
 		if routeRulesParam == nil {
 			continue
 		}
@@ -210,13 +206,13 @@ func (m *RouteRulesManager) ClusterDeleteChecker(ctx context.Context, product *i
 			}
 
 			for _, target := range rule.Targets {
-				if target != nil && target.ClusterName != nil && *target.ClusterName == cluster.Name {
+				if target != nil && target.ClusterName != nil && *target.ClusterName == clusterName {
 					return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
 				}
 			}
 
 			for _, fallback := range rule.Fallbacks {
-				if fallback != nil && fallback.ClusterName != nil && *fallback.ClusterName == cluster.Name {
+				if fallback != nil && fallback.ClusterName != nil && *fallback.ClusterName == clusterName {
 					return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
 				}
 			}
@@ -240,7 +236,12 @@ func (m *RouteRulesManager) ClusterModelUpdateChecker(ctx context.Context, produ
 		return nil
 	}
 
-	return m.checkClusterModelsReferenced(ctx, cluster.Name, removedModels)
+	allRouteRules, err := m.storager.FetchAllRouteRules(ctx)
+	if err != nil {
+		return err
+	}
+
+	return checkClusterModelsReferenced(cluster.Name, removedModels, allRouteRules)
 }
 
 func removedModels(oldConfig, newConfig *icluster_conf.LLMConfig) []string {
@@ -265,22 +266,10 @@ func removedModels(oldConfig, newConfig *icluster_conf.LLMConfig) []string {
 	return removed
 }
 
-func (m *RouteRulesManager) checkClusterModelsReferenced(ctx context.Context, clusterName string, models []string) error {
+func checkClusterModelsReferenced(clusterName string, models []string, routeRules []*shared.RouteRulesParam) error {
 	modelSet := lib.StringSlice2Map(models)
-	routeTables, _, err := m.storager.FetchRouteRulesList(ctx, &shared.RouteRulesFilter{})
-	if err != nil {
-		return err
-	}
 
-	for _, table := range routeTables {
-		if table == nil || table.ID == nil {
-			continue
-		}
-
-		routeRulesParam, err := m.storager.FetchRouteRulesByID(ctx, *table.ID)
-		if err != nil {
-			return err
-		}
+	for _, routeRulesParam := range routeRules {
 		if routeRulesParam == nil {
 			continue
 		}

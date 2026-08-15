@@ -15,7 +15,7 @@ v0.0.7 起，`llm_config` 支持多 API-Key：
   - 两个字段透传到 InnerAPI 导出的 `AIConf.MatchPrefix` / `StripPrefix`，由 BFE 在转发前执行前缀裁剪。
 
 另外：
-- 删除集群时会检查 `route_rules` 表中的全局、Entity、API-Key 路由规则：若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则删除被拒绝。
+- 删除集群时会扫描全部 `route_rules` 表中的全局、Entity、API-Key 路由规则（不经过分页）：若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则删除被拒绝。
 - 更新集群的 `llm_config.models` 时，会检查被移除的模型是否仍被 global/Entity/API-Key 路由规则的 `targets` 或 `fallbacks` 引用（匹配 `ClusterName` + `Model`），若存在引用则更新被拒绝。
 
 ## 2. 接口列表
@@ -2088,7 +2088,7 @@ URI：`cluster_ref_model`
 | 接口名称 | 删除集群 |
 | 方法 | DELETE |
 | 路径 | `/open-api/v1/clusters/{cluster_name}` |
-| 说明 | 删除集群，自动级联清理关联的实例池和子集群；若集群被 global/entity/apikey 路由规则引用，则拒绝删除 |
+| 说明 | 删除集群，自动级联清理关联的实例池和子集群；删除前会扫描全部 global/entity/apikey 路由规则（不经过分页），若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则拒绝删除 |
 
 ### 10.2 接口参数说明
 
