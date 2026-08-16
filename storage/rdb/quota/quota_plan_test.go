@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@ import (
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
 func TestQuotaPlanFilterToParam(t *testing.T) {

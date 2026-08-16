@@ -17,8 +17,8 @@ package auth
 import (
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 var NavigationEndpoint = &xreq.Endpoint{

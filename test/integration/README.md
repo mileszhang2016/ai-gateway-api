@@ -219,7 +219,7 @@ package create
 import (
     "os"
     "testing"
-    "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+    "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
 var sm *testutil.ServerManager

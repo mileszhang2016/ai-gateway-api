@@ -17,7 +17,7 @@ package internal
 import (
 	"database/sql"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 )
 
 var ErrWrap = xerror.WrapDaoError

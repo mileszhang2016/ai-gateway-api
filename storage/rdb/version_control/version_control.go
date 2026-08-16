@@ -17,9 +17,9 @@ package version_control
 import (
 	"context"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
 var _ iversion_control.VersionControlStorager = &VersionControlStorager{}

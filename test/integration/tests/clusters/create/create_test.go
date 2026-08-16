@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
 var sm *testutil.ServerManager

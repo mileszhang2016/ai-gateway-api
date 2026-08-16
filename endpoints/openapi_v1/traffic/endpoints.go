@@ -15,7 +15,7 @@
 package traffic
 
 import (
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 )
 
 var Endpoints = []*xreq.Endpoint{}

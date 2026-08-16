@@ -17,7 +17,7 @@ package export_util
 import (
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 )
 
 type ExportParam struct {

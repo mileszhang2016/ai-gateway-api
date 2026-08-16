@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 )

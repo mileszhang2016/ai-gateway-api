@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,38 +31,38 @@ package rdb
 import (
 	"context"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/imodel_price"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/imods"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iprotocol"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iroute_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/rate_limit_policy"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/route_rules"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/auth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/basic"
-	apiKeyStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/api_key"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
-	entityStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/entity"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/model_price"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/protocol"
-	quotaStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/quota"
-	rateLimitPolicyStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/rate_limit_policy"
-	routeRulesStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/route_rules"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/txn"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/version_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprotocol"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/rate_limit_policy"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/route_rules"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/auth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/basic"
+	apiKeyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
+	entityStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/model_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/protocol"
+	quotaStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/quota"
+	rateLimitPolicyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/rate_limit_policy"
+	routeRulesStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_rules"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/txn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/version_control"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 )
 
 func Init() error {

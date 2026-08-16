@@ -16,7 +16,7 @@ AI Gateway 包含如下核心组件：
 | 组件 | 角色 | 说明 | 仓库 |
 |------|------|------|------|
 | **AI Gateway API** | 控制面 | 对外提供 Open API 接口，完成策略/配置的变更、存储和下发 | 本仓库 |
-| **Dashboard** | 管理控制台 | Web 可视化管理界面 | [infinity-ai-gateway/ai-gateway-web](https://github.com/infinity-ai-gateway/ai-gateway-web) |
+| **Dashboard** | 管理控制台 | Web 可视化管理界面 | [rainway-ai-gateway/ai-gateway-web](https://github.com/rainway-ai-gateway/ai-gateway-web) |
 | **BFE** | 数据面 | 负责流量转发与接入控制 | [bfenetworks/bfe](https://github.com/bfenetworks/bfe) |
 | **Conf Agent** | 配置代理 | 获取最新配置并触发 BFE 热加载 | [bfenetworks/conf-agent](https://github.com/bfenetworks/conf-agent) |
 | **Service Controller** | 服务发现 | 发现并同步 Kubernetes 后端服务 | [bfenetworks/service-controller](https://github.com/bfenetworks/service-controller) |
@@ -44,7 +44,7 @@ AI Gateway 包含如下核心组件：
 
 ```bash
 # 克隆仓库
-git clone https://github.com/infinity-ai-gateway/ai-gateway-api.git
+git clone https://github.com/rainway-ai-gateway/ai-gateway-api.git
 cd ai-gateway-api
 
 # 下载依赖并编译
@@ -86,8 +86,8 @@ Passwd               = "{password}"
 
 ## 容器镜像与 Kubernetes 部署示例
 
-请参阅 [ai-gateway-demo](https://github.com/infinity-ai-gateway/ai-gateway-demo/tree/main): 
-- https://github.com/infinity-ai-gateway/ai-gateway-demo
+请参阅 [ai-gateway-demo](https://github.com/rainway-ai-gateway/ai-gateway-demo/tree/main): 
+- https://github.com/rainway-ai-gateway/ai-gateway-demo
 
 ## 贡献
 

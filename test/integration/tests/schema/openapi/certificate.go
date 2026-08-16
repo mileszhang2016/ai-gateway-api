@@ -1,6 +1,6 @@
 package openapi
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // CertificateSchema 证书数据模型 schema（创建/更新/详情/列表返回，不包含 cert_file_content/key_file_content）
 var CertificateSchema = &testutil.ObjectSchema{

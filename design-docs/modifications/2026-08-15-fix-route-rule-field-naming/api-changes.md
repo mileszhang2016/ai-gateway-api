@@ -5,7 +5,7 @@
 | 项目 | 说明 |
 |------|------|
 | 变更日期 | 2026-08-15 |
-| 关联 Issue | <https://github.com/infinity-ai-gateway/ai-gateway-api/issues/51> |
+| 关联 Issue | <https://github.com/rainway-ai-gateway/ai-gateway-api/issues/51> |
 | 影响模块 | `/entities`、`/api-keys`、`/global-route-rules`、`/route-tables` |
 | 目标文档 | `ai-gateway-api/design-docs/api-define/OpenAPI接口定义/00-common.md`<br>`ai-gateway-api/design-docs/api-define/OpenAPI接口定义/api-keys.md`<br>`ai-gateway-api/design-docs/api-define/OpenAPI接口定义/entities.md`<br>`ai-gateway-api/design-docs/api-define/OpenAPI接口定义/global-route-rules.md` |
 

@@ -1,4 +1,4 @@
-# Infinity AI Gateway - OpenAPI接口定义
+# Rainway AI Gateway - OpenAPI接口定义
 
 **版本号**：v0.3.0
 

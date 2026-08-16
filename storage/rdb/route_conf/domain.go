@@ -17,10 +17,10 @@ package route_conf
 import (
 	"context"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iroute_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
 var _ iroute_conf.DomainStorager = &DomainStorager{}

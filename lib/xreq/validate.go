@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ package xreq
 import (
 	ut "github.com/go-playground/universal-translator"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 )
 
 // Validator is implemented by request parameter structs that need extra

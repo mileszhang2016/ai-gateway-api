@@ -17,9 +17,9 @@ package protocol
 import (
 	"context"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iprotocol"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprotocol"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
 type RDBCertificateStorager struct {

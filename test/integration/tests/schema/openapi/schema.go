@@ -3,7 +3,7 @@
 // 用于在集成测试中严格校验接口返回字段的存在性与类型。
 package openapi
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // ---------- 公共类型 schema ----------
 

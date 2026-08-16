@@ -1,6 +1,6 @@
 package openapi
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // APIKeySchema API-Key 数据模型 schema（不含 balance）
 var APIKeySchema = &testutil.ObjectSchema{

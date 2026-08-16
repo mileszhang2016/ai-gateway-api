@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 )
 
 func Version(t time.Time) string {
