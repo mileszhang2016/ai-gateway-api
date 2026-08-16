@@ -201,6 +201,9 @@ func fromDAO(one *dao.TModelPrice) *imodel_price.ModelPrice {
 		return nil
 	}
 
+	createTime := one.CreatedAt.Unix()
+	updateTime := one.UpdatedAt.Unix()
+
 	return &imodel_price.ModelPrice{
 		ID:                  one.ID,
 		Provider:            one.Provider,
@@ -213,8 +216,8 @@ func fromDAO(one *dao.TModelPrice) *imodel_price.ModelPrice {
 		Prices:              unmarshalPriceMap(one.Prices),
 		PriceCurrency:       one.PriceCurrency,
 		Metadata:            unmarshalMap(one.Metadata),
-		CreatedAt:           one.CreatedAt,
-		UpdatedAt:           one.UpdatedAt,
+		CreateTime:          &createTime,
+		UpdateTime:          &updateTime,
 	}
 }
 
