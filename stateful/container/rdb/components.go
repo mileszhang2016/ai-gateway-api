@@ -50,10 +50,14 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/auth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/basic"
+	apiKeyStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
+	entityStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/model_price"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/protocol"
 	quotaStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/quota"
+	rateLimitPolicyStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/rate_limit_policy"
+	routeRulesStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/route_rules"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/txn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/version_control"
@@ -81,7 +85,7 @@ func Init() error {
 		stateful.NewBFEDBContext,
 		container.SubClusterStoragerSingleton)
 
-	container.APIKeyStorager = cluster_conf.NewAPIKeyStorager(
+	container.APIKeyStorager = apiKeyStorage.NewAPIKeyStorager(
 		stateful.NewBFEDBContext,
 	)
 
@@ -141,7 +145,7 @@ func Init() error {
 
 	// Initialize route rules components before cluster manager because the
 	// cluster delete checker depends on RouteRulesManager.
-	container.RouteRulesStorager = quotaStorage.NewRouteRulesStorager(stateful.NewBFEDBContext)
+	container.RouteRulesStorager = routeRulesStorage.NewRouteRulesStorager(stateful.NewBFEDBContext)
 	container.RouteRulesManager = route_rules.NewRouteRulesManager(
 		container.TxnStoragerSingleton,
 		container.RouteRulesStorager)
@@ -189,11 +193,11 @@ func Init() error {
 		container.SubClusterStoragerSingleton)
 
 	// Initialize quota management components
-	container.EntityTypeStorager = quotaStorage.NewEntityTypeStorager(stateful.NewBFEDBContext)
-	container.EntityStorager = quotaStorage.NewEntityStorager(stateful.NewBFEDBContext)
+	container.EntityTypeStorager = entityStorage.NewEntityTypeStorager(stateful.NewBFEDBContext)
+	container.EntityStorager = entityStorage.NewEntityStorager(stateful.NewBFEDBContext)
 	container.QuotaPlanStorager = quotaStorage.NewQuotaPlanStorager(stateful.NewBFEDBContext)
 	container.QuotaBalanceStorager = quotaStorage.NewQuotaBalanceStorager(stateful.NewBFEDBContext)
-	container.RateLimitPolicyStorager = quotaStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
+	container.RateLimitPolicyStorager = rateLimitPolicyStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
 
 	container.QuotaCacheSingleton = quotacache.NewRedisQuotaCache(
 		stateful.DefaultClientSet.RedisClient,

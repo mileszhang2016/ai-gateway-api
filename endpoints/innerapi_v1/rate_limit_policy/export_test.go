@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/internal/testutil"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/rate_limit_policy"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
@@ -82,23 +83,23 @@ func (f *fakeAPIKeyStoragerForRateLimit) FetchAPIKeyTokenList(ctx context.Contex
 
 type fakeEntityStoragerForRateLimit struct{}
 
-func (f *fakeEntityStoragerForRateLimit) CreateEntity(ctx context.Context, param *rate_limit_policy.EntityParam) (int64, error) {
+func (f *fakeEntityStoragerForRateLimit) CreateEntity(ctx context.Context, param *entity.EntityParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeEntityStoragerForRateLimit) FetchEntity(ctx context.Context, filter *rate_limit_policy.EntityFilter) (*rate_limit_policy.EntityParam, error) {
+func (f *fakeEntityStoragerForRateLimit) FetchEntity(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 	return nil, nil
 }
 
-func (f *fakeEntityStoragerForRateLimit) FetchEntityList(ctx context.Context, filter *rate_limit_policy.EntityFilter) ([]*rate_limit_policy.EntityParam, error) {
+func (f *fakeEntityStoragerForRateLimit) FetchEntityList(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
 	return nil, nil
 }
 
-func (f *fakeEntityStoragerForRateLimit) UpdateEntity(ctx context.Context, filter *rate_limit_policy.EntityFilter, param *rate_limit_policy.EntityParam) (int64, error) {
+func (f *fakeEntityStoragerForRateLimit) UpdateEntity(ctx context.Context, filter *entity.EntityFilter, param *entity.EntityParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeEntityStoragerForRateLimit) DeleteEntity(ctx context.Context, filter *rate_limit_policy.EntityFilter) error {
+func (f *fakeEntityStoragerForRateLimit) DeleteEntity(ctx context.Context, filter *entity.EntityFilter) error {
 	return nil
 }
 

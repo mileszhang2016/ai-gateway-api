@@ -26,6 +26,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/imods"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
@@ -73,23 +74,23 @@ func (f *fakeAIRouteRuleStoragerForRule) CreateAIRouteRules(ctx context.Context,
 
 type fakeQuotaPlanStoragerForRule struct{}
 
-func (f *fakeQuotaPlanStoragerForRule) CreateQuotaPlan(ctx context.Context, param *entity.QuotaPlanParam) (int64, error) {
+func (f *fakeQuotaPlanStoragerForRule) CreateQuotaPlan(ctx context.Context, param *quota.QuotaPlanParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeQuotaPlanStoragerForRule) FetchQuotaPlan(ctx context.Context, filter *entity.QuotaPlanFilter) (*entity.QuotaPlanParam, error) {
+func (f *fakeQuotaPlanStoragerForRule) FetchQuotaPlan(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
 	return nil, nil
 }
 
-func (f *fakeQuotaPlanStoragerForRule) FetchQuotaPlanList(ctx context.Context, filter *entity.QuotaPlanFilter) ([]*entity.QuotaPlanParam, error) {
+func (f *fakeQuotaPlanStoragerForRule) FetchQuotaPlanList(ctx context.Context, filter *quota.QuotaPlanFilter) ([]*quota.QuotaPlanParam, error) {
 	return nil, nil
 }
 
-func (f *fakeQuotaPlanStoragerForRule) UpdateQuotaPlan(ctx context.Context, filter *entity.QuotaPlanFilter, param *entity.QuotaPlanParam) (int64, error) {
+func (f *fakeQuotaPlanStoragerForRule) UpdateQuotaPlan(ctx context.Context, filter *quota.QuotaPlanFilter, param *quota.QuotaPlanParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeQuotaPlanStoragerForRule) DeleteQuotaPlan(ctx context.Context, filter *entity.QuotaPlanFilter) error {
+func (f *fakeQuotaPlanStoragerForRule) DeleteQuotaPlan(ctx context.Context, filter *quota.QuotaPlanFilter) error {
 	return nil
 }
 
