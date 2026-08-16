@@ -51,7 +51,7 @@ func TestModelPrice_Create(t *testing.T) {
 		testutil.AssertSuccess(t, resp)
 		testutil.AssertDataFieldEquals(t, resp, "provider", provider)
 		testutil.AssertDataFieldEquals(t, resp, "price_currency", "RMB")
-		testutil.AssertDataFieldNotEmpty(t, resp, "created_at")
+		testutil.AssertDataFieldNotEmpty(t, resp, "create_time")
 	})
 
 	t.Run("MP-2-002 完整参数创建", func(t *testing.T) {

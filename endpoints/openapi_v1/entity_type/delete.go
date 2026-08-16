@@ -20,7 +20,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -41,7 +41,7 @@ func EntityTypeDeleteAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	one, err := container.EntityTypeManager.FetchEntityType(req.Context(), &quota.EntityTypeFilter{
+	one, err := container.EntityTypeManager.FetchEntityType(req.Context(), &entity.EntityTypeFilter{
 		TypeName: delReq.TypeName,
 	})
 	if err != nil {
@@ -51,7 +51,7 @@ func EntityTypeDeleteAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapRecordNotExist("Entity-Type")
 	}
 
-	entities, err := container.EntityManager.FetchEntityList(req.Context(), &quota.EntityFilter{
+	entities, err := container.EntityManager.FetchEntityList(req.Context(), &entity.EntityFilter{
 		Type: delReq.TypeName,
 	})
 	if err != nil {
@@ -61,7 +61,7 @@ func EntityTypeDeleteAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapParamErrorWithMsg("cannot delete entity type with associated entities")
 	}
 
-	return nil, container.EntityTypeManager.DeleteEntityType(req.Context(), &quota.EntityTypeFilter{
+	return nil, container.EntityTypeManager.DeleteEntityType(req.Context(), &entity.EntityTypeFilter{
 		TypeName: delReq.TypeName,
 	})
 }

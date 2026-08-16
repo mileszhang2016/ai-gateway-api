@@ -89,7 +89,6 @@ func poolParami2d(data *icluster_conf.PoolParam) (*dao.TPoolsParam, error) {
 		eppServer = string(tmp)
 	}
 
-
 	return &dao.TPoolsParam{
 		Id:             data.ID,
 		Name:           data.Name,

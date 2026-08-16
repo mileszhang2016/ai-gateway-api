@@ -23,9 +23,15 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+type pagination struct {
+	Page     int   `json:"page"`
+	PageSize int   `json:"page_size"`
+	Total    int64 `json:"total"`
+}
+
 type listResponse struct {
-	Total int64                    `json:"total"`
-	Items []map[string]interface{} `json:"items"`
+	List       []map[string]interface{} `json:"list"`
+	Pagination pagination               `json:"pagination"`
 }
 
 func TestModelPrice_List(t *testing.T) {
@@ -71,8 +77,8 @@ func TestModelPrice_List(t *testing.T) {
 		if err := json.Unmarshal(resp.Data, &list); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		assert.GreaterOrEqual(t, list.Total, int64(2))
-		assert.NotEmpty(t, list.Items)
+		assert.GreaterOrEqual(t, list.Pagination.Total, int64(2))
+		assert.NotEmpty(t, list.List)
 	})
 
 	t.Run("MP-3-002 自定义分页", func(t *testing.T) {
@@ -89,8 +95,8 @@ func TestModelPrice_List(t *testing.T) {
 		if err := json.Unmarshal(resp.Data, &list); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		assert.GreaterOrEqual(t, list.Total, int64(2))
-		assert.Len(t, list.Items, 1)
+		assert.GreaterOrEqual(t, list.Pagination.Total, int64(2))
+		assert.Len(t, list.List, 1)
 	})
 
 	t.Run("MP-3-003 按 provider 过滤", func(t *testing.T) {
@@ -106,8 +112,8 @@ func TestModelPrice_List(t *testing.T) {
 		if err := json.Unmarshal(resp.Data, &list); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		assert.GreaterOrEqual(t, list.Total, int64(1))
-		for _, item := range list.Items {
+		assert.GreaterOrEqual(t, list.Pagination.Total, int64(1))
+		for _, item := range list.List {
 			assert.Equal(t, providerA, item["provider"])
 		}
 	})
@@ -125,8 +131,8 @@ func TestModelPrice_List(t *testing.T) {
 		if err := json.Unmarshal(resp.Data, &list); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		assert.GreaterOrEqual(t, list.Total, int64(1))
-		for _, item := range list.Items {
+		assert.GreaterOrEqual(t, list.Pagination.Total, int64(1))
+		for _, item := range list.List {
 			assert.Equal(t, "chat", item["mode"])
 		}
 	})

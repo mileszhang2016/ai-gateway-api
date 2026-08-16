@@ -23,9 +23,15 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+type pagination struct {
+	Page     int   `json:"page"`
+	PageSize int   `json:"page_size"`
+	Total    int64 `json:"total"`
+}
+
 type listResponse struct {
-	Total int64                    `json:"total"`
-	Items []map[string]interface{} `json:"items"`
+	List       []map[string]interface{} `json:"list"`
+	Pagination pagination               `json:"pagination"`
 }
 
 func TestModelPrice_One(t *testing.T) {
@@ -80,11 +86,11 @@ func TestModelPrice_One(t *testing.T) {
 		if err := json.Unmarshal(resp.Data, &list); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		assert.Equal(t, int64(1), list.Total)
-		assert.Len(t, list.Items, 1)
-		assert.Equal(t, provider, list.Items[0]["provider"])
-		assert.Equal(t, model, list.Items[0]["model"])
-		assert.Equal(t, "chat", list.Items[0]["mode"])
+		assert.Equal(t, int64(1), list.Pagination.Total)
+		assert.Len(t, list.List, 1)
+		assert.Equal(t, provider, list.List[0]["provider"])
+		assert.Equal(t, model, list.List[0]["model"])
+		assert.Equal(t, "chat", list.List[0]["mode"])
 	})
 
 	t.Run("MP-5-002 按组合键查询缺少参数", func(t *testing.T) {
@@ -116,7 +122,7 @@ func TestModelPrice_One(t *testing.T) {
 		if err := json.Unmarshal(resp.Data, &list); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		assert.Equal(t, int64(0), list.Total)
-		assert.Empty(t, list.Items)
+		assert.Equal(t, int64(0), list.Pagination.Total)
+		assert.Empty(t, list.List)
 	})
 }

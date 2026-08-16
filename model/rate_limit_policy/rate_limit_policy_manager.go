@@ -12,13 +12,14 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package quota
+package rate_limit_policy
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 )
@@ -29,13 +30,13 @@ const ConfigTopicProductRateLimitPolicy = "mod_ai_rate_limit"
 type RateLimitPolicyManager struct {
 	txn                   itxn.TxnStorager
 	storager              RateLimitPolicyStorager
-	apiKeyStorager        icluster_conf.APIKeyStorager
-	entityStorager        EntityStorager
+	apiKeyStorager        api_key.APIKeyStorager
+	entityStorager        entity.EntityStorager
 	versionControlManager *iversion_control.VersionControlManager
 }
 
 // NewRateLimitPolicyManager 创建限流策略管理器
-func NewRateLimitPolicyManager(txn itxn.TxnStorager, storager RateLimitPolicyStorager, apiKeyStorager icluster_conf.APIKeyStorager, entityStorager EntityStorager, versionControlManager *iversion_control.VersionControlManager) *RateLimitPolicyManager {
+func NewRateLimitPolicyManager(txn itxn.TxnStorager, storager RateLimitPolicyStorager, apiKeyStorager api_key.APIKeyStorager, entityStorager entity.EntityStorager, versionControlManager *iversion_control.VersionControlManager) *RateLimitPolicyManager {
 	return &RateLimitPolicyManager{
 		txn:                   txn,
 		storager:              storager,
@@ -95,7 +96,7 @@ func (m *RateLimitPolicyManager) ConfigExport(ctx context.Context, lastVersion s
 
 // RateLimitPolicyGenerator 生成限流策略配置数据
 func (m *RateLimitPolicyManager) RateLimitPolicyGenerator(ctx context.Context) (*iversion_control.ExportData, error) {
-	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{})
+	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &api_key.APIKeyFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("fetch api keys error: %s", err.Error())
 	}
@@ -217,7 +218,7 @@ func (m *RateLimitPolicyManager) RateLimitPolicyGenerator(ctx context.Context) (
 }
 
 // fetchRateLimitPolicyIDsWithEntityHierarchy 获取 api-key 及其关联 entity 层级的所有限流策略ID
-func (m *RateLimitPolicyManager) fetchRateLimitPolicyIDsWithEntityHierarchy(ctx context.Context, apiKey *icluster_conf.APIKeyParam) ([]int64, error) {
+func (m *RateLimitPolicyManager) fetchRateLimitPolicyIDsWithEntityHierarchy(ctx context.Context, apiKey *api_key.APIKeyParam) ([]int64, error) {
 	policyIDs := make([]int64, 0)
 
 	if apiKey.RateLimitPolicyID != nil {
@@ -225,7 +226,7 @@ func (m *RateLimitPolicyManager) fetchRateLimitPolicyIDsWithEntityHierarchy(ctx 
 	}
 
 	if apiKey.EntityID != nil && *apiKey.EntityID != "" && m.entityStorager != nil {
-		entity, err := m.entityStorager.FetchEntity(ctx, &EntityFilter{EntityID: apiKey.EntityID})
+		entity, err := m.entityStorager.FetchEntity(ctx, &entity.EntityFilter{EntityID: apiKey.EntityID})
 		if err != nil {
 			return nil, err
 		}
@@ -242,15 +243,15 @@ func (m *RateLimitPolicyManager) fetchRateLimitPolicyIDsWithEntityHierarchy(ctx 
 }
 
 // fetchEntityRateLimitPolicyIDs 递归获取 entity 及其父 entity 的限流策略ID
-func (m *RateLimitPolicyManager) fetchEntityRateLimitPolicyIDs(ctx context.Context, entity *EntityParam) ([]int64, error) {
+func (m *RateLimitPolicyManager) fetchEntityRateLimitPolicyIDs(ctx context.Context, ent *entity.EntityParam) ([]int64, error) {
 	policyIDs := make([]int64, 0)
 
-	if entity.RateLimitPolicyID != nil {
-		policyIDs = append(policyIDs, *entity.RateLimitPolicyID)
+	if ent.RateLimitPolicyID != nil {
+		policyIDs = append(policyIDs, *ent.RateLimitPolicyID)
 	}
 
-	if entity.ParentID != nil && *entity.ParentID != "" && m.entityStorager != nil {
-		parentEntity, err := m.entityStorager.FetchEntity(ctx, &EntityFilter{EntityID: entity.ParentID})
+	if ent.ParentID != nil && *ent.ParentID != "" && m.entityStorager != nil {
+		parentEntity, err := m.entityStorager.FetchEntity(ctx, &entity.EntityFilter{EntityID: ent.ParentID})
 		if err != nil {
 			return nil, err
 		}

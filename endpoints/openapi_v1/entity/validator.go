@@ -17,12 +17,12 @@ package entity
 import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/validate"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 )
 
 // validateEntityParam performs centralized validation on entity request parameters.
 // When requireNameType is true, Name and Type are required (used by create).
-func validateEntityParam(param *quota.EntityParam, requireNameType bool) error {
+func validateEntityParam(param *entity.EntityParam, requireNameType bool) error {
 	if requireNameType {
 		if param.Name == nil || *param.Name == "" {
 			return xerror.WrapParamErrorWithMsg("name is required")

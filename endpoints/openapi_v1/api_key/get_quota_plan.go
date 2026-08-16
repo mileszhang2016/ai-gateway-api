@@ -20,9 +20,9 @@ import (
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -59,7 +59,7 @@ func GetQuotaPlanAction(req *http.Request) (interface{}, error) {
 }
 
 func GetQuotaPlanProcess(ctx context.Context, id string, product *ibasic.Product) (*GetQuotaPlanResponse, error) {
-	apiKey, err := container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+	apiKey, err := container.APIKeyManager.FetchAPIKey(ctx, &api_key.APIKeyFilter{
 		ID:          &id,
 		ProductName: &product.Name,
 	})

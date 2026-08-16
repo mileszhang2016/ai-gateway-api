@@ -12,7 +12,7 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package quota
+package rate_limit_policy
 
 import (
 	"context"
@@ -192,8 +192,8 @@ type ExportRateLimitRules struct {
 
 // ExportRateLimitPolicy 定义导出到 BFE 的限流策略结构
 type ExportRateLimitPolicy struct {
-	Name    string               `json:"name"`
-	Enabled bool                 `json:"enabled"`
+	Name    string                `json:"name"`
+	Enabled bool                  `json:"enabled"`
 	Rules   *ExportRateLimitRules `json:"rules"`
 }
 

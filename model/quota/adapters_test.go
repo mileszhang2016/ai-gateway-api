@@ -19,10 +19,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/rate_limit_policy"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 )
 
 func TestQuotaPlanStoragerAdapter(t *testing.T) {
@@ -114,7 +116,7 @@ func TestRateLimitPolicyStoragerAdapter(t *testing.T) {
 
 	t.Run("CreateRateLimitPolicy", func(t *testing.T) {
 		inner := &fakeRateLimitPolicyStorager{
-			createFn: func(ctx context.Context, param *RateLimitPolicyParam) (int64, error) {
+			createFn: func(ctx context.Context, param *rate_limit_policy.RateLimitPolicyParam) (int64, error) {
 				assert.True(t, *param.Enabled)
 				assert.Equal(t, 10, *param.MaxConcurrency)
 				assert.Len(t, param.TpmConfigs, 1)
@@ -130,7 +132,7 @@ func TestRateLimitPolicyStoragerAdapter(t *testing.T) {
 
 	t.Run("UpdateRateLimitPolicy", func(t *testing.T) {
 		inner := &fakeRateLimitPolicyStorager{
-			updateFn: func(ctx context.Context, filter *RateLimitPolicyFilter, param *RateLimitPolicyParam) (int64, error) {
+			updateFn: func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter, param *rate_limit_policy.RateLimitPolicyParam) (int64, error) {
 				assert.Equal(t, int64(8), *filter.ID)
 				assert.Equal(t, 10, *param.MaxConcurrency)
 				return 1, nil
@@ -144,7 +146,7 @@ func TestRateLimitPolicyStoragerAdapter(t *testing.T) {
 
 	t.Run("DeleteRateLimitPolicy", func(t *testing.T) {
 		inner := &fakeRateLimitPolicyStorager{
-			deleteFn: func(ctx context.Context, filter *RateLimitPolicyFilter) error {
+			deleteFn: func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) error {
 				assert.Equal(t, int64(8), *filter.ID)
 				return nil
 			},
@@ -155,13 +157,13 @@ func TestRateLimitPolicyStoragerAdapter(t *testing.T) {
 
 	t.Run("FetchRateLimitPolicy", func(t *testing.T) {
 		inner := &fakeRateLimitPolicyStorager{
-			fetchFn: func(ctx context.Context, filter *RateLimitPolicyFilter) (*RateLimitPolicyParam, error) {
+			fetchFn: func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) (*rate_limit_policy.RateLimitPolicyParam, error) {
 				assert.Equal(t, int64(8), *filter.ID)
-				return &RateLimitPolicyParam{
+				return &rate_limit_policy.RateLimitPolicyParam{
 					Enabled:        lib.PBool(true),
 					MaxConcurrency: lib.PInt(10),
-					TpmConfigs:     []TPMConfig{{Name: "tpm-1", Model: "*", WindowMinutes: 1, MaxTokens: 100, StepMinutes: 1}},
-					RpmConfigs:     []RPMConfig{{Name: "rpm-1", Model: "*", WindowMinutes: 1, MaxRequests: 10}},
+					TpmConfigs:     []rate_limit_policy.TPMConfig{{Name: "tpm-1", Model: "*", WindowMinutes: 1, MaxTokens: 100, StepMinutes: 1}},
+					RpmConfigs:     []rate_limit_policy.RPMConfig{{Name: "rpm-1", Model: "*", WindowMinutes: 1, MaxRequests: 10}},
 				}, nil
 			},
 		}
@@ -175,7 +177,7 @@ func TestRateLimitPolicyStoragerAdapter(t *testing.T) {
 
 	t.Run("FetchRateLimitPolicy error propagates", func(t *testing.T) {
 		inner := &fakeRateLimitPolicyStorager{
-			fetchFn: func(ctx context.Context, filter *RateLimitPolicyFilter) (*RateLimitPolicyParam, error) {
+			fetchFn: func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) (*rate_limit_policy.RateLimitPolicyParam, error) {
 				return nil, errors.New("db error")
 			},
 		}
@@ -193,9 +195,9 @@ func TestEntityStoragerAdapter(t *testing.T) {
 		entityName := "entity-one"
 		entityType := "tenant"
 		inner := &fakeEntityStorager{
-			fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+			fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 				assert.Equal(t, entityID, *filter.EntityID)
-				return &EntityParam{
+				return &entity.EntityParam{
 					EntityID: &entityID,
 					Name:     &entityName,
 					Type:     &entityType,
@@ -214,7 +216,7 @@ func TestEntityStoragerAdapter(t *testing.T) {
 	t.Run("FetchEntity not found", func(t *testing.T) {
 		entityID := "not-exist"
 		inner := &fakeEntityStorager{
-			fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+			fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 				return nil, nil
 			},
 		}
@@ -227,7 +229,7 @@ func TestEntityStoragerAdapter(t *testing.T) {
 	t.Run("FetchEntity error propagates", func(t *testing.T) {
 		entityID := "ent-1"
 		inner := &fakeEntityStorager{
-			fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+			fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 				return nil, errors.New("db error")
 			},
 		}

@@ -17,9 +17,11 @@ package quota
 import (
 	"context"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/rate_limit_policy"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 )
 
@@ -33,129 +35,51 @@ func (f *fakeTxn) AtomExecute(ctx context.Context, do func(context.Context) erro
 
 var _ itxn.TxnStorager = (*fakeTxn)(nil)
 
-// fakeEntityTypeStorager 实现 quota.EntityTypeStorager
-type fakeEntityTypeStorager struct {
-	createFn func(ctx context.Context, param *EntityTypeParam) (int64, error)
-	fetchFn  func(ctx context.Context, filter *EntityTypeFilter) (*EntityTypeParam, error)
-	listFn   func(ctx context.Context, filter *EntityTypeFilter) ([]*EntityTypeParam, error)
-	updateFn func(ctx context.Context, filter *EntityTypeFilter, param *EntityTypeParam) (int64, error)
-	deleteFn func(ctx context.Context, filter *EntityTypeFilter) error
-
-	created []*EntityTypeParam
-	fetched []*EntityTypeFilter
-	listed  []*EntityTypeFilter
-	updated []updateEntityTypeCall
-	deleted []*EntityTypeFilter
-}
-
-type updateEntityTypeCall struct {
-	filter *EntityTypeFilter
-	param  *EntityTypeParam
-}
-
-func (s *fakeEntityTypeStorager) CreateEntityType(ctx context.Context, param *EntityTypeParam) (int64, error) {
-	s.created = append(s.created, param)
-	if s.createFn != nil {
-		return s.createFn(ctx, param)
-	}
-	return 0, nil
-}
-
-func (s *fakeEntityTypeStorager) FetchEntityType(ctx context.Context, filter *EntityTypeFilter) (*EntityTypeParam, error) {
-	s.fetched = append(s.fetched, filter)
-	if s.fetchFn != nil {
-		return s.fetchFn(ctx, filter)
-	}
-	return nil, nil
-}
-
-func (s *fakeEntityTypeStorager) FetchEntityTypeList(ctx context.Context, filter *EntityTypeFilter) ([]*EntityTypeParam, error) {
-	s.listed = append(s.listed, filter)
-	if s.listFn != nil {
-		return s.listFn(ctx, filter)
-	}
-	return nil, nil
-}
-
-func (s *fakeEntityTypeStorager) UpdateEntityType(ctx context.Context, filter *EntityTypeFilter, param *EntityTypeParam) (int64, error) {
-	s.updated = append(s.updated, updateEntityTypeCall{filter: filter, param: param})
-	if s.updateFn != nil {
-		return s.updateFn(ctx, filter, param)
-	}
-	return 0, nil
-}
-
-func (s *fakeEntityTypeStorager) DeleteEntityType(ctx context.Context, filter *EntityTypeFilter) error {
-	s.deleted = append(s.deleted, filter)
-	if s.deleteFn != nil {
-		return s.deleteFn(ctx, filter)
-	}
-	return nil
-}
-
-var _ EntityTypeStorager = (*fakeEntityTypeStorager)(nil)
-
-// fakeEntityStorager 实现 quota.EntityStorager
+// fakeEntityStorager 实现 entity.EntityStorager
 type fakeEntityStorager struct {
-	createFn func(ctx context.Context, param *EntityParam) (int64, error)
-	fetchFn  func(ctx context.Context, filter *EntityFilter) (*EntityParam, error)
-	listFn   func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error)
-	updateFn func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error)
-	deleteFn func(ctx context.Context, filter *EntityFilter) error
-
-	created []*EntityParam
-	fetched []*EntityFilter
-	listed  []*EntityFilter
-	updated []updateEntityCall
-	deleted []*EntityFilter
+	createFn func(ctx context.Context, param *entity.EntityParam) (int64, error)
+	fetchFn  func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error)
+	listFn   func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error)
+	updateFn func(ctx context.Context, filter *entity.EntityFilter, param *entity.EntityParam) (int64, error)
+	deleteFn func(ctx context.Context, filter *entity.EntityFilter) error
 }
 
-type updateEntityCall struct {
-	filter *EntityFilter
-	param  *EntityParam
-}
-
-func (s *fakeEntityStorager) CreateEntity(ctx context.Context, param *EntityParam) (int64, error) {
-	s.created = append(s.created, param)
+func (s *fakeEntityStorager) CreateEntity(ctx context.Context, param *entity.EntityParam) (int64, error) {
 	if s.createFn != nil {
 		return s.createFn(ctx, param)
 	}
 	return 0, nil
 }
 
-func (s *fakeEntityStorager) FetchEntity(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
-	s.fetched = append(s.fetched, filter)
+func (s *fakeEntityStorager) FetchEntity(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 	if s.fetchFn != nil {
 		return s.fetchFn(ctx, filter)
 	}
 	return nil, nil
 }
 
-func (s *fakeEntityStorager) FetchEntityList(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
-	s.listed = append(s.listed, filter)
+func (s *fakeEntityStorager) FetchEntityList(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
 	if s.listFn != nil {
 		return s.listFn(ctx, filter)
 	}
 	return nil, nil
 }
 
-func (s *fakeEntityStorager) UpdateEntity(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
-	s.updated = append(s.updated, updateEntityCall{filter: filter, param: param})
+func (s *fakeEntityStorager) UpdateEntity(ctx context.Context, filter *entity.EntityFilter, param *entity.EntityParam) (int64, error) {
 	if s.updateFn != nil {
 		return s.updateFn(ctx, filter, param)
 	}
 	return 0, nil
 }
 
-func (s *fakeEntityStorager) DeleteEntity(ctx context.Context, filter *EntityFilter) error {
-	s.deleted = append(s.deleted, filter)
+func (s *fakeEntityStorager) DeleteEntity(ctx context.Context, filter *entity.EntityFilter) error {
 	if s.deleteFn != nil {
 		return s.deleteFn(ctx, filter)
 	}
 	return nil
 }
 
-var _ EntityStorager = (*fakeEntityStorager)(nil)
+var _ entity.EntityStorager = (*fakeEntityStorager)(nil)
 
 // fakeQuotaPlanStorager 实现 quota.QuotaPlanStorager（内部类型）
 type fakeQuotaPlanStorager struct {
@@ -219,171 +143,51 @@ func (s *fakeQuotaPlanStorager) DeleteQuotaPlan(ctx context.Context, filter *Quo
 
 var _ QuotaPlanStorager = (*fakeQuotaPlanStorager)(nil)
 
-// fakeSharedQuotaPlanStorager 实现 shared.QuotaPlanStorager
-type fakeSharedQuotaPlanStorager struct {
-	createFn func(ctx context.Context, param *shared.QuotaPlanParam) (int64, error)
-	updateFn func(ctx context.Context, id int64, param *shared.QuotaPlanParam) (int64, error)
-	deleteFn func(ctx context.Context, id int64) error
-	fetchFn  func(ctx context.Context, id int64) (*shared.QuotaPlanParam, error)
-
-	created []*shared.QuotaPlanParam
-	updated []updateSharedQuotaPlanCall
-	deleted []int64
-	fetched []int64
-}
-
-type updateSharedQuotaPlanCall struct {
-	id    int64
-	param *shared.QuotaPlanParam
-}
-
-func (s *fakeSharedQuotaPlanStorager) CreateQuotaPlan(ctx context.Context, param *shared.QuotaPlanParam) (int64, error) {
-	s.created = append(s.created, param)
-	if s.createFn != nil {
-		return s.createFn(ctx, param)
-	}
-	return 0, nil
-}
-
-func (s *fakeSharedQuotaPlanStorager) UpdateQuotaPlan(ctx context.Context, id int64, param *shared.QuotaPlanParam) (int64, error) {
-	s.updated = append(s.updated, updateSharedQuotaPlanCall{id: id, param: param})
-	if s.updateFn != nil {
-		return s.updateFn(ctx, id, param)
-	}
-	return 0, nil
-}
-
-func (s *fakeSharedQuotaPlanStorager) DeleteQuotaPlan(ctx context.Context, id int64) error {
-	s.deleted = append(s.deleted, id)
-	if s.deleteFn != nil {
-		return s.deleteFn(ctx, id)
-	}
-	return nil
-}
-
-func (s *fakeSharedQuotaPlanStorager) FetchQuotaPlan(ctx context.Context, id int64) (*shared.QuotaPlanParam, error) {
-	s.fetched = append(s.fetched, id)
-	if s.fetchFn != nil {
-		return s.fetchFn(ctx, id)
-	}
-	return nil, nil
-}
-
-var _ shared.QuotaPlanStorager = (*fakeSharedQuotaPlanStorager)(nil)
-
-// fakeRateLimitPolicyStorager 实现 quota.RateLimitPolicyStorager（内部类型）
+// fakeRateLimitPolicyStorager 实现 rate_limit_policy.RateLimitPolicyStorager
 type fakeRateLimitPolicyStorager struct {
-	createFn func(ctx context.Context, param *RateLimitPolicyParam) (int64, error)
-	fetchFn  func(ctx context.Context, filter *RateLimitPolicyFilter) (*RateLimitPolicyParam, error)
-	listFn   func(ctx context.Context, filter *RateLimitPolicyFilter) ([]*RateLimitPolicyParam, error)
-	updateFn func(ctx context.Context, filter *RateLimitPolicyFilter, param *RateLimitPolicyParam) (int64, error)
-	deleteFn func(ctx context.Context, filter *RateLimitPolicyFilter) error
-
-	created []*RateLimitPolicyParam
-	fetched []*RateLimitPolicyFilter
-	listed  []*RateLimitPolicyFilter
-	updated []updateRateLimitPolicyCall
-	deleted []*RateLimitPolicyFilter
+	createFn func(ctx context.Context, param *rate_limit_policy.RateLimitPolicyParam) (int64, error)
+	fetchFn  func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) (*rate_limit_policy.RateLimitPolicyParam, error)
+	listFn   func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) ([]*rate_limit_policy.RateLimitPolicyParam, error)
+	updateFn func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter, param *rate_limit_policy.RateLimitPolicyParam) (int64, error)
+	deleteFn func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) error
 }
 
-type updateRateLimitPolicyCall struct {
-	filter *RateLimitPolicyFilter
-	param  *RateLimitPolicyParam
-}
-
-func (s *fakeRateLimitPolicyStorager) CreateRateLimitPolicy(ctx context.Context, param *RateLimitPolicyParam) (int64, error) {
-	s.created = append(s.created, param)
+func (s *fakeRateLimitPolicyStorager) CreateRateLimitPolicy(ctx context.Context, param *rate_limit_policy.RateLimitPolicyParam) (int64, error) {
 	if s.createFn != nil {
 		return s.createFn(ctx, param)
 	}
 	return 0, nil
 }
 
-func (s *fakeRateLimitPolicyStorager) FetchRateLimitPolicy(ctx context.Context, filter *RateLimitPolicyFilter) (*RateLimitPolicyParam, error) {
-	s.fetched = append(s.fetched, filter)
+func (s *fakeRateLimitPolicyStorager) FetchRateLimitPolicy(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) (*rate_limit_policy.RateLimitPolicyParam, error) {
 	if s.fetchFn != nil {
 		return s.fetchFn(ctx, filter)
 	}
 	return nil, nil
 }
 
-func (s *fakeRateLimitPolicyStorager) FetchRateLimitPolicyList(ctx context.Context, filter *RateLimitPolicyFilter) ([]*RateLimitPolicyParam, error) {
-	s.listed = append(s.listed, filter)
+func (s *fakeRateLimitPolicyStorager) FetchRateLimitPolicyList(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) ([]*rate_limit_policy.RateLimitPolicyParam, error) {
 	if s.listFn != nil {
 		return s.listFn(ctx, filter)
 	}
 	return nil, nil
 }
 
-func (s *fakeRateLimitPolicyStorager) UpdateRateLimitPolicy(ctx context.Context, filter *RateLimitPolicyFilter, param *RateLimitPolicyParam) (int64, error) {
-	s.updated = append(s.updated, updateRateLimitPolicyCall{filter: filter, param: param})
+func (s *fakeRateLimitPolicyStorager) UpdateRateLimitPolicy(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter, param *rate_limit_policy.RateLimitPolicyParam) (int64, error) {
 	if s.updateFn != nil {
 		return s.updateFn(ctx, filter, param)
 	}
 	return 0, nil
 }
 
-func (s *fakeRateLimitPolicyStorager) DeleteRateLimitPolicy(ctx context.Context, filter *RateLimitPolicyFilter) error {
-	s.deleted = append(s.deleted, filter)
+func (s *fakeRateLimitPolicyStorager) DeleteRateLimitPolicy(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) error {
 	if s.deleteFn != nil {
 		return s.deleteFn(ctx, filter)
 	}
 	return nil
 }
 
-var _ RateLimitPolicyStorager = (*fakeRateLimitPolicyStorager)(nil)
-
-// fakeSharedRateLimitPolicyStorager 实现 shared.RateLimitPolicyStorager
-type fakeSharedRateLimitPolicyStorager struct {
-	createFn func(ctx context.Context, param *shared.RateLimitPolicyParam) (int64, error)
-	updateFn func(ctx context.Context, id int64, param *shared.RateLimitPolicyParam) (int64, error)
-	deleteFn func(ctx context.Context, id int64) error
-	fetchFn  func(ctx context.Context, id int64) (*shared.RateLimitPolicyParam, error)
-
-	created []*shared.RateLimitPolicyParam
-	updated []updateSharedRateLimitPolicyCall
-	deleted []int64
-	fetched []int64
-}
-
-type updateSharedRateLimitPolicyCall struct {
-	id    int64
-	param *shared.RateLimitPolicyParam
-}
-
-func (s *fakeSharedRateLimitPolicyStorager) CreateRateLimitPolicy(ctx context.Context, param *shared.RateLimitPolicyParam) (int64, error) {
-	s.created = append(s.created, param)
-	if s.createFn != nil {
-		return s.createFn(ctx, param)
-	}
-	return 0, nil
-}
-
-func (s *fakeSharedRateLimitPolicyStorager) UpdateRateLimitPolicy(ctx context.Context, id int64, param *shared.RateLimitPolicyParam) (int64, error) {
-	s.updated = append(s.updated, updateSharedRateLimitPolicyCall{id: id, param: param})
-	if s.updateFn != nil {
-		return s.updateFn(ctx, id, param)
-	}
-	return 0, nil
-}
-
-func (s *fakeSharedRateLimitPolicyStorager) DeleteRateLimitPolicy(ctx context.Context, id int64) error {
-	s.deleted = append(s.deleted, id)
-	if s.deleteFn != nil {
-		return s.deleteFn(ctx, id)
-	}
-	return nil
-}
-
-func (s *fakeSharedRateLimitPolicyStorager) FetchRateLimitPolicy(ctx context.Context, id int64) (*shared.RateLimitPolicyParam, error) {
-	s.fetched = append(s.fetched, id)
-	if s.fetchFn != nil {
-		return s.fetchFn(ctx, id)
-	}
-	return nil, nil
-}
-
-var _ shared.RateLimitPolicyStorager = (*fakeSharedRateLimitPolicyStorager)(nil)
+var _ rate_limit_policy.RateLimitPolicyStorager = (*fakeRateLimitPolicyStorager)(nil)
 
 // fakeQuotaBalanceStorager 实现 quota.QuotaBalanceStorager
 type fakeQuotaBalanceStorager struct {
@@ -540,67 +344,67 @@ func (s *fakeRouteRulesStorager) FetchAllRouteRules(ctx context.Context) ([]*sha
 
 var _ shared.RouteRulesStorager = (*fakeRouteRulesStorager)(nil)
 
-// fakeAPIKeyStorager 实现 icluster_conf.APIKeyStorager
+// fakeAPIKeyStorager 实现 api_key.APIKeyStorager
 type fakeAPIKeyStorager struct {
-	fetchListFn      func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error)
-	createFn         func(ctx context.Context, param *icluster_conf.APIKeyParam) (int64, error)
-	updateFn         func(ctx context.Context, filter *icluster_conf.APIKeyFilter, param *icluster_conf.APIKeyParam) (int64, error)
-	deleteFn         func(ctx context.Context, filter *icluster_conf.APIKeyFilter) error
-	createTokenFn    func(ctx context.Context, param *icluster_conf.APIKeyTokenParam) (int64, error)
-	updateTokenFn    func(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter, param *icluster_conf.APIKeyTokenParam) error
-	fetchTokenListFn func(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter) ([]*icluster_conf.APIKeyTokenParam, error)
+	fetchListFn      func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error)
+	createFn         func(ctx context.Context, param *api_key.APIKeyParam) (int64, error)
+	updateFn         func(ctx context.Context, filter *api_key.APIKeyFilter, param *api_key.APIKeyParam) (int64, error)
+	deleteFn         func(ctx context.Context, filter *api_key.APIKeyFilter) error
+	createTokenFn    func(ctx context.Context, param *api_key.APIKeyTokenParam) (int64, error)
+	updateTokenFn    func(ctx context.Context, filter *api_key.APIKeyTokenFilter, param *api_key.APIKeyTokenParam) error
+	fetchTokenListFn func(ctx context.Context, filter *api_key.APIKeyTokenFilter) ([]*api_key.APIKeyTokenParam, error)
 }
 
-func (s *fakeAPIKeyStorager) FetchAPIKeyList(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+func (s *fakeAPIKeyStorager) FetchAPIKeyList(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 	if s.fetchListFn != nil {
 		return s.fetchListFn(ctx, filter)
 	}
 	return nil, nil
 }
 
-func (s *fakeAPIKeyStorager) CreateAPIKey(ctx context.Context, param *icluster_conf.APIKeyParam) (int64, error) {
+func (s *fakeAPIKeyStorager) CreateAPIKey(ctx context.Context, param *api_key.APIKeyParam) (int64, error) {
 	if s.createFn != nil {
 		return s.createFn(ctx, param)
 	}
 	return 0, nil
 }
 
-func (s *fakeAPIKeyStorager) UpdateAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter, param *icluster_conf.APIKeyParam) (int64, error) {
+func (s *fakeAPIKeyStorager) UpdateAPIKey(ctx context.Context, filter *api_key.APIKeyFilter, param *api_key.APIKeyParam) (int64, error) {
 	if s.updateFn != nil {
 		return s.updateFn(ctx, filter, param)
 	}
 	return 0, nil
 }
 
-func (s *fakeAPIKeyStorager) DeleteAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter) error {
+func (s *fakeAPIKeyStorager) DeleteAPIKey(ctx context.Context, filter *api_key.APIKeyFilter) error {
 	if s.deleteFn != nil {
 		return s.deleteFn(ctx, filter)
 	}
 	return nil
 }
 
-func (s *fakeAPIKeyStorager) CreateAPIKeyToken(ctx context.Context, param *icluster_conf.APIKeyTokenParam) (int64, error) {
+func (s *fakeAPIKeyStorager) CreateAPIKeyToken(ctx context.Context, param *api_key.APIKeyTokenParam) (int64, error) {
 	if s.createTokenFn != nil {
 		return s.createTokenFn(ctx, param)
 	}
 	return 0, nil
 }
 
-func (s *fakeAPIKeyStorager) UpdateAPIKeyToken(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter, param *icluster_conf.APIKeyTokenParam) error {
+func (s *fakeAPIKeyStorager) UpdateAPIKeyToken(ctx context.Context, filter *api_key.APIKeyTokenFilter, param *api_key.APIKeyTokenParam) error {
 	if s.updateTokenFn != nil {
 		return s.updateTokenFn(ctx, filter, param)
 	}
 	return nil
 }
 
-func (s *fakeAPIKeyStorager) FetchAPIKeyTokenList(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter) ([]*icluster_conf.APIKeyTokenParam, error) {
+func (s *fakeAPIKeyStorager) FetchAPIKeyTokenList(ctx context.Context, filter *api_key.APIKeyTokenFilter) ([]*api_key.APIKeyTokenParam, error) {
 	if s.fetchTokenListFn != nil {
 		return s.fetchTokenListFn(ctx, filter)
 	}
 	return nil, nil
 }
 
-var _ icluster_conf.APIKeyStorager = (*fakeAPIKeyStorager)(nil)
+var _ api_key.APIKeyStorager = (*fakeAPIKeyStorager)(nil)
 
 // fakeVersionControlStorager 实现 iversion_control.VersionControlStorager
 type fakeVersionControlStorager struct {

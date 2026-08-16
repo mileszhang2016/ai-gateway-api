@@ -19,13 +19,13 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 )
 
 func newTestAIRouteExporter() *AIRouteExporter {
@@ -53,8 +53,8 @@ func TestAIRouteExporter_ConfigExport(t *testing.T) {
 	}
 
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:  lib.PString("key-1"),
 					Key: lib.PString("ak-key-1"),
@@ -64,7 +64,7 @@ func TestAIRouteExporter_ConfigExport(t *testing.T) {
 	}
 
 	entityStore := &fakeEntityStorager{
-		listFn: func(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error) {
+		listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
 			return nil, nil
 		},
 	}
@@ -104,7 +104,7 @@ func TestAIRouteExporter_ConfigExport_Error(t *testing.T) {
 	ctx := context.Background()
 
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 			return nil, errors.New("fetch failed")
 		},
 	}
@@ -127,8 +127,8 @@ func TestAIRouteExporter_AIRouteGenerator(t *testing.T) {
 	entityID := "entity-1"
 
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:           lib.PString("key-1"),
 					Key:          &apiKey,
@@ -140,8 +140,8 @@ func TestAIRouteExporter_AIRouteGenerator(t *testing.T) {
 	}
 
 	entityStore := &fakeEntityStorager{
-		listFn: func(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error) {
-			return []*quota.EntityParam{
+		listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
+			return []*entity.EntityParam{
 				{
 					EntityID:     lib.PString(entityID),
 					Name:         lib.PString("team-a"),
@@ -213,8 +213,8 @@ func TestAIRouteExporter_AIRouteGenerator_NoGlobal(t *testing.T) {
 
 	apiKey := "ak-key-1"
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:  lib.PString("key-1"),
 					Key: &apiKey,
@@ -224,7 +224,7 @@ func TestAIRouteExporter_AIRouteGenerator_NoGlobal(t *testing.T) {
 	}
 
 	entityStore := &fakeEntityStorager{
-		listFn: func(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error) {
+		listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
 			return nil, nil
 		},
 	}
@@ -254,7 +254,7 @@ func TestAIRouteExporter_AIRouteGenerator_FetchEntitiesError(t *testing.T) {
 	ctx := context.Background()
 
 	entityStore := &fakeEntityStorager{
-		listFn: func(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error) {
+		listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
 			return nil, errors.New("entity fetch failed")
 		},
 	}

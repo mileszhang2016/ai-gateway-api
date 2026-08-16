@@ -12,12 +12,11 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package quota
+package entity
 
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
@@ -35,7 +34,7 @@ type EntityManager struct {
 	quotaPlanStorager       shared.QuotaPlanStorager
 	rateLimitPolicyStorager shared.RateLimitPolicyStorager
 	routeRulesStorager      shared.RouteRulesStorager
-	quotaBalanceStorager    QuotaBalanceStorager
+	quotaBalanceStorager    shared.QuotaBalanceStorager
 	quotaCache              quotacache.QuotaCache
 }
 
@@ -45,7 +44,7 @@ func NewEntityManager(txn itxn.TxnStorager, storager EntityStorager,
 	quotaPlanStorager shared.QuotaPlanStorager,
 	rateLimitPolicyStorager shared.RateLimitPolicyStorager,
 	routeRulesStorager shared.RouteRulesStorager,
-	quotaBalanceStorager QuotaBalanceStorager,
+	quotaBalanceStorager shared.QuotaBalanceStorager,
 	quotaCache quotacache.QuotaCache) *EntityManager {
 	return &EntityManager{
 		txn:                     txn,
@@ -121,17 +120,11 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 		}
 
 		if param.QuotaPlanID != nil && m.quotaBalanceStorager != nil {
-			now := time.Now()
 			remaining := lib.PFloat64(0)
 			if param.QuotaPlan != nil && param.QuotaPlan.Quota != nil {
 				remaining = param.QuotaPlan.Quota
 			}
-			_, err = m.quotaBalanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
-				QuotaPlanID: param.QuotaPlanID,
-				Used:        lib.PFloat64(0),
-				Remaining:   remaining,
-				LastResetAt: &now,
-			})
+			err = m.quotaBalanceStorager.CreateQuotaBalance(ctx, *param.QuotaPlanID, remaining)
 			if err != nil {
 				return err
 			}
@@ -250,13 +243,7 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 				param.QuotaPlanID = &quotaPlanID
 
 				if m.quotaBalanceStorager != nil {
-					now := time.Now()
-					_, err = m.quotaBalanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
-						QuotaPlanID: &quotaPlanID,
-						Used:        lib.PFloat64(0),
-						Remaining:   param.QuotaPlan.Quota,
-						LastResetAt: &now,
-					})
+					err = m.quotaBalanceStorager.CreateQuotaBalance(ctx, quotaPlanID, param.QuotaPlan.Quota)
 					if err != nil {
 						return err
 					}
@@ -347,7 +334,7 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 		}
 
 		if one.QuotaPlanID != nil && m.quotaBalanceStorager != nil {
-			if err := m.quotaBalanceStorager.DeleteQuotaBalance(ctx, &QuotaBalanceFilter{QuotaPlanID: one.QuotaPlanID}); err != nil {
+			if err := m.quotaBalanceStorager.DeleteQuotaBalance(ctx, *one.QuotaPlanID); err != nil {
 				return err
 			}
 		}
@@ -390,7 +377,7 @@ func (m *EntityManager) populateAssociatedData(ctx context.Context, one *EntityP
 		one.QuotaPlan = quotaPlan
 
 		if m.quotaBalanceStorager != nil {
-			balance, err := m.quotaBalanceStorager.FetchQuotaBalance(ctx, &QuotaBalanceFilter{QuotaPlanID: one.QuotaPlanID})
+			balance, err := m.quotaBalanceStorager.FetchQuotaBalance(ctx, *one.QuotaPlanID)
 			if err != nil {
 				return err
 			}
@@ -533,51 +520,4 @@ func (a *entityStoragerAdapter) FetchEntity(ctx context.Context, filter *shared.
 		Name: entity.Name,
 		Type: entity.Type,
 	}, nil
-}
-
-// quotaBalanceStoragerAdapter 适配 QuotaBalanceStorager 为 shared.QuotaBalanceStorager
-type quotaBalanceStoragerAdapter struct {
-	balanceStorager QuotaBalanceStorager
-}
-
-// NewQuotaBalanceStoragerAdapter 创建 QuotaBalanceStorager 适配器
-func NewQuotaBalanceStoragerAdapter(balanceStorager QuotaBalanceStorager) shared.QuotaBalanceStorager {
-	return &quotaBalanceStoragerAdapter{
-		balanceStorager: balanceStorager,
-	}
-}
-
-func (a *quotaBalanceStoragerAdapter) FetchQuotaBalance(ctx context.Context, quotaPlanID int64) (*shared.BalanceSummary, error) {
-	balance, err := a.balanceStorager.FetchQuotaBalance(ctx, &QuotaBalanceFilter{
-		QuotaPlanID: &quotaPlanID,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if balance == nil {
-		return nil, nil
-	}
-
-	return &shared.BalanceSummary{
-		Used:      balance.Used,
-		Remaining: balance.Remaining,
-	}, nil
-}
-
-func (a *quotaBalanceStoragerAdapter) CreateQuotaBalance(ctx context.Context, quotaPlanID int64, remaining *float64) error {
-	now := time.Now()
-	_, err := a.balanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
-		QuotaPlanID: &quotaPlanID,
-		Used:        lib.PFloat64(0),
-		Remaining:   remaining,
-		LastResetAt: &now,
-	})
-	return err
-}
-
-func (a *quotaBalanceStoragerAdapter) DeleteQuotaBalance(ctx context.Context, quotaPlanID int64) error {
-	return a.balanceStorager.DeleteQuotaBalance(ctx, &QuotaBalanceFilter{
-		QuotaPlanID: &quotaPlanID,
-	})
 }

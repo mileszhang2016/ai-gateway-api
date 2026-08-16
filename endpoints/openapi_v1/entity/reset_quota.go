@@ -20,6 +20,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/validate"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
@@ -65,7 +66,7 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	entity, err := container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{
+	entity, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{
 		EntityID: resetReq.EntityID,
 	})
 	if err != nil {

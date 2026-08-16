@@ -19,7 +19,7 @@ import (
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -31,7 +31,7 @@ var EntityTypeListRoute = &xreq.Endpoint{
 }
 
 type EntityTypeListResponse struct {
-	List       []*quota.EntityTypeParam `json:"list"`
+	List       []*entity.EntityTypeParam `json:"list"`
 	Pagination struct {
 		Page     int `json:"page"`
 		PageSize int `json:"page_size"`
@@ -40,7 +40,7 @@ type EntityTypeListResponse struct {
 }
 
 func EntityTypeListAction(req *http.Request) (interface{}, error) {
-	filter := &quota.EntityTypeFilter{}
+	filter := &entity.EntityTypeFilter{}
 	if err := xreq.BindForm(req, filter); err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func EntityTypeListAction(req *http.Request) (interface{}, error) {
 
 	total := len(list)
 	if isPagination {
-		countFilter := &quota.EntityTypeFilter{
+		countFilter := &entity.EntityTypeFilter{
 			ID:       filter.ID,
 			TypeName: filter.TypeName,
 			Level:    filter.Level,

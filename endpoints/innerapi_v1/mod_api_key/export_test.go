@@ -24,40 +24,40 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/internal/testutil"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/imods"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 type fakeAPIKeyStoragerForRule struct{}
 
-func (f *fakeAPIKeyStoragerForRule) FetchAPIKeyList(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+func (f *fakeAPIKeyStoragerForRule) FetchAPIKeyList(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 	return nil, nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) CreateAPIKey(ctx context.Context, param *icluster_conf.APIKeyParam) (int64, error) {
+func (f *fakeAPIKeyStoragerForRule) CreateAPIKey(ctx context.Context, param *api_key.APIKeyParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) UpdateAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter, param *icluster_conf.APIKeyParam) (int64, error) {
+func (f *fakeAPIKeyStoragerForRule) UpdateAPIKey(ctx context.Context, filter *api_key.APIKeyFilter, param *api_key.APIKeyParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) DeleteAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter) error {
+func (f *fakeAPIKeyStoragerForRule) DeleteAPIKey(ctx context.Context, filter *api_key.APIKeyFilter) error {
 	return nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) CreateAPIKeyToken(ctx context.Context, param *icluster_conf.APIKeyTokenParam) (int64, error) {
+func (f *fakeAPIKeyStoragerForRule) CreateAPIKeyToken(ctx context.Context, param *api_key.APIKeyTokenParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) UpdateAPIKeyToken(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter, param *icluster_conf.APIKeyTokenParam) error {
+func (f *fakeAPIKeyStoragerForRule) UpdateAPIKeyToken(ctx context.Context, filter *api_key.APIKeyTokenFilter, param *api_key.APIKeyTokenParam) error {
 	return nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) FetchAPIKeyTokenList(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter) ([]*icluster_conf.APIKeyTokenParam, error) {
+func (f *fakeAPIKeyStoragerForRule) FetchAPIKeyTokenList(ctx context.Context, filter *api_key.APIKeyTokenFilter) ([]*api_key.APIKeyTokenParam, error) {
 	return nil, nil
 }
 
@@ -73,45 +73,45 @@ func (f *fakeAIRouteRuleStoragerForRule) CreateAIRouteRules(ctx context.Context,
 
 type fakeQuotaPlanStoragerForRule struct{}
 
-func (f *fakeQuotaPlanStoragerForRule) CreateQuotaPlan(ctx context.Context, param *quota.QuotaPlanParam) (int64, error) {
+func (f *fakeQuotaPlanStoragerForRule) CreateQuotaPlan(ctx context.Context, param *entity.QuotaPlanParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeQuotaPlanStoragerForRule) FetchQuotaPlan(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
+func (f *fakeQuotaPlanStoragerForRule) FetchQuotaPlan(ctx context.Context, filter *entity.QuotaPlanFilter) (*entity.QuotaPlanParam, error) {
 	return nil, nil
 }
 
-func (f *fakeQuotaPlanStoragerForRule) FetchQuotaPlanList(ctx context.Context, filter *quota.QuotaPlanFilter) ([]*quota.QuotaPlanParam, error) {
+func (f *fakeQuotaPlanStoragerForRule) FetchQuotaPlanList(ctx context.Context, filter *entity.QuotaPlanFilter) ([]*entity.QuotaPlanParam, error) {
 	return nil, nil
 }
 
-func (f *fakeQuotaPlanStoragerForRule) UpdateQuotaPlan(ctx context.Context, filter *quota.QuotaPlanFilter, param *quota.QuotaPlanParam) (int64, error) {
+func (f *fakeQuotaPlanStoragerForRule) UpdateQuotaPlan(ctx context.Context, filter *entity.QuotaPlanFilter, param *entity.QuotaPlanParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeQuotaPlanStoragerForRule) DeleteQuotaPlan(ctx context.Context, filter *quota.QuotaPlanFilter) error {
+func (f *fakeQuotaPlanStoragerForRule) DeleteQuotaPlan(ctx context.Context, filter *entity.QuotaPlanFilter) error {
 	return nil
 }
 
 type fakeEntityStoragerForRule struct{}
 
-func (f *fakeEntityStoragerForRule) CreateEntity(ctx context.Context, param *quota.EntityParam) (int64, error) {
+func (f *fakeEntityStoragerForRule) CreateEntity(ctx context.Context, param *entity.EntityParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeEntityStoragerForRule) FetchEntity(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+func (f *fakeEntityStoragerForRule) FetchEntity(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 	return nil, nil
 }
 
-func (f *fakeEntityStoragerForRule) FetchEntityList(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error) {
+func (f *fakeEntityStoragerForRule) FetchEntityList(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
 	return nil, nil
 }
 
-func (f *fakeEntityStoragerForRule) UpdateEntity(ctx context.Context, filter *quota.EntityFilter, param *quota.EntityParam) (int64, error) {
+func (f *fakeEntityStoragerForRule) UpdateEntity(ctx context.Context, filter *entity.EntityFilter, param *entity.EntityParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeEntityStoragerForRule) DeleteEntity(ctx context.Context, filter *quota.EntityFilter) error {
+func (f *fakeEntityStoragerForRule) DeleteEntity(ctx context.Context, filter *entity.EntityFilter) error {
 	return nil
 }
 

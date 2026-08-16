@@ -19,8 +19,8 @@ import (
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
@@ -43,7 +43,7 @@ func DeleteAction(req *http.Request) (interface{}, error) {
 	productName := defaultProductName
 
 	// Fetch API key to get quotaPlanID for deleting associated quota balances
-	apiKey, err := container.APIKeyManager.FetchAPIKey(req.Context(), &icluster_conf.APIKeyFilter{
+	apiKey, err := container.APIKeyManager.FetchAPIKey(req.Context(), &api_key.APIKeyFilter{
 		ID:          oneReq.ID,
 		ProductName: &productName,
 	})
@@ -61,7 +61,7 @@ func DeleteAction(req *http.Request) (interface{}, error) {
 		}
 	}
 
-	err = container.APIKeyManager.DeleteAPIKey(req.Context(), &icluster_conf.APIKeyFilter{
+	err = container.APIKeyManager.DeleteAPIKey(req.Context(), &api_key.APIKeyFilter{
 		ID:          oneReq.ID,
 		ProductName: &productName,
 	})

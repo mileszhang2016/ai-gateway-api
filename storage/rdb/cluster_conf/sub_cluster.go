@@ -118,7 +118,7 @@ func newSubCluster(pp *dao.TSubCluster, pool *icluster_conf.Pool, product *ibasi
 		ClusterID:   pp.ClusterID,
 
 		InstancePool: pool,
-		Role:        pp.Role,
+		Role:         pp.Role,
 	}
 
 	// When role from DB is empty, inherit from the associated pool.

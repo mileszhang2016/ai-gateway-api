@@ -19,12 +19,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBalanceSyncManager_shouldResetByPeriod(t *testing.T) {
@@ -121,24 +122,24 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 		planStorager := &fakeQuotaPlanStorager{
 			listFn: func(ctx context.Context, filter *QuotaPlanFilter) ([]*QuotaPlanParam, error) {
 				return []*QuotaPlanParam{{
-					ID:      &planID,
-					Quota:   &quota,
+					ID:        &planID,
+					Quota:     &quota,
 					Unlimited: lib.PBool(false),
 				}}, nil
 			},
 		}
 		apiKeyStorager := &fakeAPIKeyStorager{
-			fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 				createdAt := time.Now()
-				return []*icluster_conf.APIKeyParam{{
+				return []*api_key.APIKeyParam{{
 					Key:         &apiKey,
 					KeyCreateAt: &createdAt,
 				}}, nil
 			},
 		}
 		entityStorager := &fakeEntityStorager{
-			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
-				return []*EntityParam{{EntityID: &entityID}}, nil
+			listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
+				return []*entity.EntityParam{{EntityID: &entityID}}, nil
 			},
 		}
 		balanceStorager := &fakeQuotaBalanceStorager{
@@ -182,9 +183,9 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 			},
 		}
 		apiKeyStorager := &fakeAPIKeyStorager{
-			fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 				createdAt := time.Now()
-				return []*icluster_conf.APIKeyParam{{
+				return []*api_key.APIKeyParam{{
 					ID:          lib.PString("ak-id-1"),
 					Key:         &apiKey,
 					KeyCreateAt: &createdAt,
@@ -192,8 +193,8 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 			},
 		}
 		entityStorager := &fakeEntityStorager{
-			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
-				return []*EntityParam{{EntityID: &entityID}}, nil
+			listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
+				return []*entity.EntityParam{{EntityID: &entityID}}, nil
 			},
 		}
 		balanceStorager := &fakeQuotaBalanceStorager{

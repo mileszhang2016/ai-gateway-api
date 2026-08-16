@@ -23,10 +23,10 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
@@ -47,7 +47,7 @@ var APIKeyCreateRoute = &xreq.Endpoint{
 }
 
 func APIKeyCreateAction(req *http.Request) (interface{}, error) {
-	param := &icluster_conf.APIKeyParam{}
+	param := &api_key.APIKeyParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func APIKeyCreateAction(req *http.Request) (interface{}, error) {
 	return APIKeyCreateProcess(req.Context(), param, defaultProduct())
 }
 
-func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, product *ibasic.Product) (*icluster_conf.APIKeyParam, error) {
+func APIKeyCreateProcess(ctx context.Context, param *api_key.APIKeyParam, product *ibasic.Product) (*api_key.APIKeyParam, error) {
 	if param.Key == nil || *param.Key == "" {
 		generatedKey, err := generateAPIKeyValue(product.Name)
 		if err != nil {
@@ -69,7 +69,7 @@ func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 	}
 
 	if param.EntityID != nil && *param.EntityID != "" {
-		entity, err := container.EntityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: param.EntityID})
+		entity, err := container.EntityStorager.FetchEntity(ctx, &entity.EntityFilter{EntityID: param.EntityID})
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +113,7 @@ func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 		}
 	}
 
-	err = container.APIKeyManager.CreateAPIKey(ctx, &icluster_conf.APIKeyParam{
+	err = container.APIKeyManager.CreateAPIKey(ctx, &api_key.APIKeyParam{
 		ID:              lib.PString(apiKeyID),
 		Enable:          param.Enable,
 		Key:             param.Key,
@@ -133,7 +133,7 @@ func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 		return nil, err
 	}
 
-	return container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+	return container.APIKeyManager.FetchAPIKey(ctx, &api_key.APIKeyFilter{
 		ID:          &apiKeyID,
 		ProductName: &product.Name,
 	})
@@ -142,7 +142,7 @@ func APIKeyCreateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 // generateAPIKeyID generates a unique API-Key ID with format "api-key-{sequence}"
 func generateAPIKeyID(ctx context.Context, productName string) (string, error) {
 	// Get all API keys to find the max sequence number
-	list, err := container.APIKeyManager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{
+	list, err := container.APIKeyManager.FetchAPIKeyList(ctx, &api_key.APIKeyFilter{
 		ProductName: &productName,
 	})
 	if err != nil {

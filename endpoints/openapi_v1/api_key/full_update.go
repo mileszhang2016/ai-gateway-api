@@ -21,9 +21,9 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -44,7 +44,7 @@ func APIKeyFullUpdateAction(req *http.Request) (interface{}, error) {
 	}
 
 	// body param
-	param := &icluster_conf.APIKeyParam{}
+	param := &api_key.APIKeyParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
 	}
@@ -54,12 +54,12 @@ func APIKeyFullUpdateAction(req *http.Request) (interface{}, error) {
 	return APIKeyFullUpdateProcess(req.Context(), param, defaultProduct())
 }
 
-func APIKeyFullUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, product *ibasic.Product) (*icluster_conf.APIKeyParam, error) {
+func APIKeyFullUpdateProcess(ctx context.Context, param *api_key.APIKeyParam, product *ibasic.Product) (*api_key.APIKeyParam, error) {
 	if err := checkFullUpdateAPIKey(param, product.Name); err != nil {
 		return nil, xerror.WrapParamError(err)
 	}
 
-	existing, err := container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+	existing, err := container.APIKeyManager.FetchAPIKey(ctx, &api_key.APIKeyFilter{
 		ID:          param.ID,
 		ProductName: &product.Name,
 	})
@@ -70,10 +70,10 @@ func APIKeyFullUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyPar
 		return nil, xerror.WrapRecordNotExist("API-Key")
 	}
 
-	err = container.APIKeyManager.UpdateAPIKey(ctx, &icluster_conf.APIKeyFilter{
+	err = container.APIKeyManager.UpdateAPIKey(ctx, &api_key.APIKeyFilter{
 		ID:          param.ID,
 		ProductName: &product.Name,
-	}, &icluster_conf.APIKeyParam{
+	}, &api_key.APIKeyParam{
 		Enable:          param.Enable,
 		Key:             param.Key,
 		Description:     param.Description,
@@ -93,7 +93,7 @@ func APIKeyFullUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyPar
 	}
 
 	// 获取更新后的 API-Key
-	updated, err := container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+	updated, err := container.APIKeyManager.FetchAPIKey(ctx, &api_key.APIKeyFilter{
 		ID:          param.ID,
 		ProductName: &product.Name,
 	})

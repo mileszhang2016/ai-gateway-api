@@ -31,6 +31,7 @@ package rdb
 import (
 	"context"
 
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
@@ -42,6 +43,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/rate_limit_policy"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/route_rules"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
@@ -55,6 +57,8 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/txn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/version_control"
+
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 )
 
 func Init() error {
@@ -195,18 +199,18 @@ func Init() error {
 		stateful.DefaultClientSet.RedisClient,
 	)
 
-	container.EntityTypeManager = quota.NewEntityTypeManager(
+	container.EntityTypeManager = entity.NewEntityTypeManager(
 		container.TxnStoragerSingleton,
 		container.EntityTypeStorager)
 
-	container.EntityManager = quota.NewEntityManager(
+	container.EntityManager = entity.NewEntityManager(
 		container.TxnStoragerSingleton,
 		container.EntityStorager,
 		container.EntityTypeStorager,
 		quota.NewQuotaPlanStoragerAdapter(container.QuotaPlanStorager),
-		quota.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
+		rate_limit_policy.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
 		container.RouteRulesStorager,
-		container.QuotaBalanceStorager,
+		quota.NewQuotaBalanceStoragerAdapter(container.QuotaBalanceStorager),
 		container.QuotaCacheSingleton)
 
 	container.APIKeyRuleManager = imods.NewAPIKeyRuleManager(
@@ -231,7 +235,7 @@ func Init() error {
 		container.EntityStorager,
 		container.QuotaCacheSingleton)
 
-	container.RateLimitPolicyManager = quota.NewRateLimitPolicyManager(
+	container.RateLimitPolicyManager = rate_limit_policy.NewRateLimitPolicyManager(
 		container.TxnStoragerSingleton,
 		container.RateLimitPolicyStorager,
 		container.APIKeyStorager,
@@ -244,10 +248,9 @@ func Init() error {
 		container.RouteRulesStorager,
 		container.VersionControlManager)
 
-	container.APIKeyManager = icluster_conf.NewAPIKeyManager(
+	container.APIKeyManager = api_key.NewAPIKeyManager(
 		container.TxnStoragerSingleton,
 		container.APIKeyStorager,
-		container.ClusterStoragerSingleton,
 		quota.NewQuotaPlanStoragerAdapter(container.QuotaPlanStorager),
 		quota.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
 		container.RouteRulesStorager,

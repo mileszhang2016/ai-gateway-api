@@ -18,10 +18,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewAPIKeyRuleManager(t *testing.T) {
