@@ -3,7 +3,7 @@
 // 对动态 map 仅校验其为 object。
 package innerapi
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // ---------- 公共/复用 schema ----------
 

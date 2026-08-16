@@ -17,10 +17,10 @@ package auth
 import (
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 // ProductUserListRoute route

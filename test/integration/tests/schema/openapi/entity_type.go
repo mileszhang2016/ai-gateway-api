@@ -1,6 +1,6 @@
 package openapi
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // EntityTypeSchema Entity-Type 数据模型 schema
 var EntityTypeSchema = &testutil.ObjectSchema{

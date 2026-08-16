@@ -14,7 +14,7 @@
 
 package internal
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/lib"
+import "github.com/rainway-ai-gateway/ai-gateway-api/lib"
 
 var (
 	PInt64   = lib.PInt64

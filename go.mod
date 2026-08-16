@@ -1,4 +1,4 @@
-module github.com/infinity-ai-gateway/ai-gateway-api
+module github.com/rainway-ai-gateway/ai-gateway-api
 
 go 1.22
 

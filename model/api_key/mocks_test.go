@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 type fakeTxn struct{}

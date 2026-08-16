@@ -3,10 +3,10 @@ package product_pool
 import (
 	"context"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 func getDefaultProduct(ctx context.Context) (*ibasic.Product, error) {

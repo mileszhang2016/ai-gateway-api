@@ -8,12 +8,12 @@
 fatal error: concurrent map writes
 
 goroutine 1428038 [running]:
-github.com/infinity-ai-gateway/ai-gateway-api/model/imods.(*APIKeyRuleManager).fetchEntityQuotaPlanHierarchy(...)
+github.com/rainway-ai-gateway/ai-gateway-api/model/imods.(*APIKeyRuleManager).fetchEntityQuotaPlanHierarchy(...)
         .../model/imods/exporter.go:417 +0x6f0
-github.com/infinity-ai-gateway/ai-gateway-api/model/imods.(*APIKeyRuleManager).fetchEntityQuotaPlanHierarchy(...)
+github.com/rainway-ai-gateway/ai-gateway-api/model/imods.(*APIKeyRuleManager).fetchEntityQuotaPlanHierarchy(...)
         .../model/imods/exporter.go:429 +0x418
 ...
-github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control.(*VersionControlManager).ExportConfig.func1(...)
+github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control.(*VersionControlManager).ExportConfig.func1(...)
         .../model/iversion_control/version_control.go:88 +0x43
 ```
 

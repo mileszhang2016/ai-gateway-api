@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@ package model_price
 import (
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/imodel_price"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 // OneEndpoint fetches a single model price record by id.

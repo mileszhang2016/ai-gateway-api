@@ -1,6 +1,6 @@
 package openapi
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // ModelFromProviderItemSchema /tools/get-models-from-provider 返回数组元素 schema
 var ModelFromProviderItemSchema = &testutil.ObjectSchema{

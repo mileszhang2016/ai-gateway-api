@@ -1,6 +1,6 @@
 package openapi
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // InstanceSchema 集群实例 schema
 var InstanceSchema = &testutil.ObjectSchema{

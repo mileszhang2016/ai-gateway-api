@@ -9,11 +9,11 @@ import (
 	"path"
 	"strings"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 const (

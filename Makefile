@@ -1,4 +1,4 @@
-# Copyright(c) 2024 The Infinity AI Gateway Authors. All rights reserved.
+# Copyright(c) 2024 The Rainway AI Gateway (壬远AI网关) Authors. All rights reserved.
 # Copyright (c) 2019 The BFE Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

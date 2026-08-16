@@ -1,6 +1,6 @@
 package openapi
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // RouteTableSchema 路由表元素 schema
 var RouteTableSchema = &testutil.ObjectSchema{

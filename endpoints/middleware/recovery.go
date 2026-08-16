@@ -23,9 +23,9 @@ import (
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 type Recovery struct {

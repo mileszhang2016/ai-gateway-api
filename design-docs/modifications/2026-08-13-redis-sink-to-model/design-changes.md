@@ -180,7 +180,7 @@ import (
 
     "github.com/bfenetworks/go-lib/quota"
     "github.com/bfenetworks/bfe/bfe_util/redis_client"
-    "github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+    "github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 type redisQuotaCache struct {
@@ -238,7 +238,7 @@ func (c *redisQuotaCache) ResetToQuota(ctx context.Context, key string, quotaVal
 在 `model/icluster_conf/api_key.go` 中：
 
 ```go
-import "github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
+import "github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 
 type APIKeyManager struct {
     txn             itxn.TxnStorager
@@ -359,7 +359,7 @@ if err := container.QuotaResetService.ResetAPIKeyQuota(ctx, apiKey, &resetQuota,
 `BalanceSyncManager` 改为依赖 `quotacache.QuotaCache` 接口：
 
 ```go
-import "github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
+import "github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 
 type BalanceSyncManager struct {
     txn             itxn.TxnStorager
@@ -391,7 +391,7 @@ type BalanceSyncManager struct {
 
 ```go
 import (
-    "github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
+    "github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 )
 
 func NewQuotaCache(client redis_client.Client) quotacache.QuotaCache {

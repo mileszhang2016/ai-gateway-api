@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,10 +17,10 @@ package route_tables
 import (
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 var Endpoints = []*xreq.Endpoint{

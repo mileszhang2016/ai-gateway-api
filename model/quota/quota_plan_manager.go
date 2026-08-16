@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,12 +19,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 // QuotaPlanManager 定义配额计划管理器

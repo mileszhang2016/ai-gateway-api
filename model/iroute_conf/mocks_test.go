@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@ package iroute_conf
 import (
 	"context"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 )
 
 type fakeTxn struct{}

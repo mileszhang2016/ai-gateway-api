@@ -17,16 +17,16 @@ package innerapi_v1
 import (
 	"github.com/gorilla/mux"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/ai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/extra_file"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/gslb_data"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/mod_api_key"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/mod_body_process"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/protocol"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/rate_limit_policy"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/server_data"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/middleware"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/ai_route"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/extra_file"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/gslb_data"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/mod_api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/mod_body_process"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/protocol"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/rate_limit_policy"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/server_data"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/middleware"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 )
 
 func endpoints() []*xreq.Endpoint {

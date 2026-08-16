@@ -23,8 +23,8 @@ import (
 	"github.com/codegangsta/negroni"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 func UpdateMonitor(req *http.Request, requestInfo *xreq.RequestInfo) {

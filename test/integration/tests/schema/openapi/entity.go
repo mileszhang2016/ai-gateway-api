@@ -1,6 +1,6 @@
 package openapi
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // EntitySchema Entity 数据模型 schema（不含 balance）
 // parent_id 对根节点为 null，因此设为可选。

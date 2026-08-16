@@ -1,6 +1,6 @@
 package openapi
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // ModelPriceSchema 模型定价记录数据模型 schema
 // 与 /entities、/api-keys 等接口保持一致，create_time/update_time 为 int64 Unix 时间戳。

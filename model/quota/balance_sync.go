@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 )
 
 // BalanceSyncManager 配额余额同步管理器
