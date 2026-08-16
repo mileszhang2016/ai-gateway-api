@@ -19,8 +19,8 @@ import (
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -32,12 +32,12 @@ var EntityGetQuotaPlanRoute = &xreq.Endpoint{
 }
 
 type EntityGetQuotaPlanResponse struct {
-	Unlimited             *bool     `json:"unlimited"`
-	PassWhenNoEnoughQuota *bool     `json:"pass_when_no_enough_quota"`
-	Quota                 *float64  `json:"quota"`
-	Unit                  *string   `json:"unit"`
-	ResetPeriod           *string   `json:"reset_period"`
-	Balance               *Balance  `json:"balance"`
+	Unlimited             *bool    `json:"unlimited"`
+	PassWhenNoEnoughQuota *bool    `json:"pass_when_no_enough_quota"`
+	Quota                 *float64 `json:"quota"`
+	Unit                  *string  `json:"unit"`
+	ResetPeriod           *string  `json:"reset_period"`
+	Balance               *Balance `json:"balance"`
 }
 
 type Balance struct {
@@ -55,7 +55,7 @@ func EntityGetQuotaPlanAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	entity, err := container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{
+	entity, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{
 		EntityID: getReq.EntityID,
 	})
 	if err != nil {

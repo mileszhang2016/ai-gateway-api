@@ -29,6 +29,7 @@
 package container
 
 import (
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
@@ -41,8 +42,11 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/rate_limit_policy"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/route_rules"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 )
 
 var (
@@ -53,7 +57,7 @@ var (
 	BFEClusterStoragerSingleton     ibasic.BFEClusterStorager
 	DomainStoragerSingleton         iroute_conf.DomainStorager
 	ClusterStoragerSingleton        icluster_conf.ClusterStorager
-	APIKeyStorager                  icluster_conf.APIKeyStorager
+	APIKeyStorager                  api_key.APIKeyStorager
 	PoolStoragerSingleton           icluster_conf.PoolStorager
 	SubClusterStoragerSingleton     icluster_conf.SubClusterStorager
 	CertificateStoragerSingleton    iprotocol.CertificateStorager
@@ -75,15 +79,15 @@ var (
 	PoolManager                     *icluster_conf.PoolManager
 	APIKeyRuleManager               *imods.APIKeyRuleManager
 	ModBodyProcessManager           *imods.ModBodyProcessManager
-	APIKeyManager                   *icluster_conf.APIKeyManager
+	APIKeyManager                   *api_key.APIKeyManager
 	AIRouteRuleManager              *iai_route.AIRouteRuleManager
 
 	// Quota management
-	EntityTypeStorager      quota.EntityTypeStorager
-	EntityStorager          quota.EntityStorager
+	EntityTypeStorager      entity.EntityTypeStorager
+	EntityStorager          entity.EntityStorager
 	QuotaPlanStorager       quota.QuotaPlanStorager
 	QuotaBalanceStorager    quota.QuotaBalanceStorager
-	RateLimitPolicyStorager quota.RateLimitPolicyStorager
+	RateLimitPolicyStorager rate_limit_policy.RateLimitPolicyStorager
 	RouteRulesStorager      shared.RouteRulesStorager
 	QuotaCacheSingleton     quotacache.QuotaCache
 
@@ -91,10 +95,10 @@ var (
 	ModelPriceStorager imodel_price.ModelPriceStorager
 	ModelPriceManager  *imodel_price.Manager
 
-	EntityTypeManager      *quota.EntityTypeManager
-	EntityManager          *quota.EntityManager
+	EntityTypeManager      *entity.EntityTypeManager
+	EntityManager          *entity.EntityManager
 	QuotaPlanManager       *quota.QuotaPlanManager
-	RateLimitPolicyManager *quota.RateLimitPolicyManager
+	RateLimitPolicyManager *rate_limit_policy.RateLimitPolicyManager
 	RouteRulesManager      *route_rules.RouteRulesManager
 	AIRouteExporter        *imods.AIRouteExporter
 	BalanceSyncManager     *quota.BalanceSyncManager

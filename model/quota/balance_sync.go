@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 )
@@ -14,20 +15,20 @@ import (
 // BalanceSyncManager 配额余额同步管理器
 type BalanceSyncManager struct {
 	txn             itxn.TxnStorager
-	apiKeyStorager  icluster_conf.APIKeyStorager
+	apiKeyStorager  api_key.APIKeyStorager
 	balanceStorager QuotaBalanceStorager
 	planStorager    QuotaPlanStorager
-	entityStorager  EntityStorager
+	entityStorager  entity.EntityStorager
 	quotaCache      quotacache.QuotaCache
 }
 
 // NewBalanceSyncManager 创建配额余额同步管理器
 func NewBalanceSyncManager(
 	txn itxn.TxnStorager,
-	apiKeyStorager icluster_conf.APIKeyStorager,
+	apiKeyStorager api_key.APIKeyStorager,
 	balanceStorager QuotaBalanceStorager,
 	planStorager QuotaPlanStorager,
-	entityStorager EntityStorager,
+	entityStorager entity.EntityStorager,
 	quotaCache quotacache.QuotaCache,
 ) *BalanceSyncManager {
 	return &BalanceSyncManager{
@@ -66,7 +67,7 @@ func (m *BalanceSyncManager) SyncAllBalances(ctx context.Context) error {
 // syncPlanBalance 同步单个配额计划的余额
 func (m *BalanceSyncManager) syncPlanBalance(ctx context.Context, plan *QuotaPlanParam) error {
 	// 1. 获取关联到此配额计划的所有 API-Key
-	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{
+	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &api_key.APIKeyFilter{
 		QuotaPlanID: plan.ID,
 	})
 	if err != nil {
@@ -74,9 +75,9 @@ func (m *BalanceSyncManager) syncPlanBalance(ctx context.Context, plan *QuotaPla
 	}
 
 	// 2. 获取关联到此配额计划的所有 Entity
-	var entities []*EntityParam
+	var entities []*entity.EntityParam
 	if m.entityStorager != nil {
-		entities, err = m.entityStorager.FetchEntityList(ctx, &EntityFilter{
+		entities, err = m.entityStorager.FetchEntityList(ctx, &entity.EntityFilter{
 			QuotaPlanID: plan.ID,
 		})
 		if err != nil {
@@ -255,7 +256,7 @@ func (m *BalanceSyncManager) resetAPIKeysRedisUsage(ctx context.Context, planID 
 	}
 
 	// 2. 获取该配额计划下的所有 API-Key
-	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{
+	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &api_key.APIKeyFilter{
 		QuotaPlanID: &planID,
 	})
 	if err != nil {
@@ -263,9 +264,9 @@ func (m *BalanceSyncManager) resetAPIKeysRedisUsage(ctx context.Context, planID 
 	}
 
 	// 3. 获取该配额计划下的所有 Entity
-	var entities []*EntityParam
+	var entities []*entity.EntityParam
 	if m.entityStorager != nil {
-		entities, err = m.entityStorager.FetchEntityList(ctx, &EntityFilter{
+		entities, err = m.entityStorager.FetchEntityList(ctx, &entity.EntityFilter{
 			QuotaPlanID: &planID,
 		})
 		if err != nil {

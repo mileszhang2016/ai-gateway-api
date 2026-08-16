@@ -12,14 +12,14 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package cluster_conf
+package api_key
 
 import (
 	"context"
 	"encoding/json"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
@@ -33,10 +33,10 @@ func NewAPIKeyStorager(dbCtxFactory lib.DBContextFactory) *APIKeyStorager {
 	}
 }
 
-var _ icluster_conf.APIKeyStorager = &APIKeyStorager{}
+var _ api_key.APIKeyStorager = &APIKeyStorager{}
 
 func (rpps *APIKeyStorager) CreateAPIKey(ctx context.Context,
-	param *icluster_conf.APIKeyParam) (int64, error) {
+	param *api_key.APIKeyParam) (int64, error) {
 	dbCtx, err := rpps.dbCtxFactory(ctx)
 	if err != nil {
 		return 0, err
@@ -63,7 +63,7 @@ func (rpps *APIKeyStorager) CreateAPIKey(ctx context.Context,
 	return dao.TAPIKeyCreate(dbCtx, data)
 }
 
-func newAPIKeyDataToParam(param *icluster_conf.APIKeyParam) *dao.TAPIKeyParam {
+func newAPIKeyDataToParam(param *api_key.APIKeyParam) *dao.TAPIKeyParam {
 	return &dao.TAPIKeyParam{
 		ID:                param.ID,
 		Enable:            param.Enable,
@@ -80,21 +80,21 @@ func newAPIKeyDataToParam(param *icluster_conf.APIKeyParam) *dao.TAPIKeyParam {
 	}
 }
 
-func newAPIKeyFilterToParam(filter *icluster_conf.APIKeyFilter) *dao.TAPIKeyParam {
+func newAPIKeyFilterToParam(filter *api_key.APIKeyFilter) *dao.TAPIKeyParam {
 	if filter == nil {
 		return nil
 	}
 
 	param := &dao.TAPIKeyParam{
-		ProductName:     filter.ProductName,
-		ID:              filter.ID,
-		Key:             filter.Key,
-		InnerID:         filter.InnerID,
-		QuotaPlanID:     filter.QuotaPlanID,
-		RouteRulesID:    filter.RouteRulesID,
-		Enable:          filter.Enabled,
-		EntityID:        filter.EntityID,
-		UnlimitedQuota:  filter.UnlimitedQuota,
+		ProductName:    filter.ProductName,
+		ID:             filter.ID,
+		Key:            filter.Key,
+		InnerID:        filter.InnerID,
+		QuotaPlanID:    filter.QuotaPlanID,
+		RouteRulesID:   filter.RouteRulesID,
+		Enable:         filter.Enabled,
+		EntityID:       filter.EntityID,
+		UnlimitedQuota: filter.UnlimitedQuota,
 	}
 
 	if filter.Page != nil && filter.PageSize != nil {
@@ -106,7 +106,7 @@ func newAPIKeyFilterToParam(filter *icluster_conf.APIKeyFilter) *dao.TAPIKeyPara
 }
 
 func (rpps *APIKeyStorager) FetchAPIKeyList(ctx context.Context,
-	filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+	filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 	dbCtx, err := rpps.dbCtxFactory(ctx)
 	if err != nil {
 		return nil, err
@@ -117,7 +117,7 @@ func (rpps *APIKeyStorager) FetchAPIKeyList(ctx context.Context,
 		return nil, err
 	}
 
-	var rst []*icluster_conf.APIKeyParam
+	var rst []*api_key.APIKeyParam
 	for _, one := range list {
 		rst = append(rst, apiKeyParamToData(one))
 	}
@@ -125,7 +125,7 @@ func (rpps *APIKeyStorager) FetchAPIKeyList(ctx context.Context,
 	return rst, nil
 }
 
-func apiKeyParamToData(one *dao.TAPIKey) *icluster_conf.APIKeyParam {
+func apiKeyParamToData(one *dao.TAPIKey) *api_key.APIKeyParam {
 	models := []string{"*"}
 	if one.AllowedModels != "" {
 		json.Unmarshal([]byte(one.AllowedModels), &models)
@@ -145,7 +145,7 @@ func apiKeyParamToData(one *dao.TAPIKey) *icluster_conf.APIKeyParam {
 	createTime := one.CreatedAt.Unix()
 	updateTime := one.UpdatedAt.Unix()
 
-	return &icluster_conf.APIKeyParam{
+	return &api_key.APIKeyParam{
 		InnerID:           &one.InnerID,
 		ID:                &one.ID,
 		Enable:            &one.Enable,
@@ -166,7 +166,7 @@ func apiKeyParamToData(one *dao.TAPIKey) *icluster_conf.APIKeyParam {
 	}
 }
 
-func (rpps *APIKeyStorager) DeleteAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter) error {
+func (rpps *APIKeyStorager) DeleteAPIKey(ctx context.Context, filter *api_key.APIKeyFilter) error {
 	dbCtx, err := rpps.dbCtxFactory(ctx)
 	if err != nil {
 		return err
@@ -177,7 +177,7 @@ func (rpps *APIKeyStorager) DeleteAPIKey(ctx context.Context, filter *icluster_c
 	return err
 }
 
-func (rpps *APIKeyStorager) UpdateAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter, param *icluster_conf.APIKeyParam) (int64, error) {
+func (rpps *APIKeyStorager) UpdateAPIKey(ctx context.Context, filter *api_key.APIKeyFilter, param *api_key.APIKeyParam) (int64, error) {
 	dbCtx, err := rpps.dbCtxFactory(ctx)
 	if err != nil {
 		return 0, err
@@ -203,7 +203,7 @@ func (rpps *APIKeyStorager) UpdateAPIKey(ctx context.Context, filter *icluster_c
 }
 
 func (rpps *APIKeyStorager) CreateAPIKeyToken(ctx context.Context,
-	param *icluster_conf.APIKeyTokenParam) (int64, error) {
+	param *api_key.APIKeyTokenParam) (int64, error) {
 	dbCtx, err := rpps.dbCtxFactory(ctx)
 	if err != nil {
 		return 0, err
@@ -216,7 +216,7 @@ func (rpps *APIKeyStorager) CreateAPIKeyToken(ctx context.Context,
 	})
 }
 
-func (rpps *APIKeyStorager) UpdateAPIKeyToken(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter, param *icluster_conf.APIKeyTokenParam) error {
+func (rpps *APIKeyStorager) UpdateAPIKeyToken(ctx context.Context, filter *api_key.APIKeyTokenFilter, param *api_key.APIKeyTokenParam) error {
 	dbCtx, err := rpps.dbCtxFactory(ctx)
 	if err != nil {
 		return err
@@ -229,7 +229,7 @@ func (rpps *APIKeyStorager) UpdateAPIKeyToken(ctx context.Context, filter *iclus
 }
 
 func (rpps *APIKeyStorager) FetchAPIKeyTokenList(ctx context.Context,
-	filter *icluster_conf.APIKeyTokenFilter) ([]*icluster_conf.APIKeyTokenParam, error) {
+	filter *api_key.APIKeyTokenFilter) ([]*api_key.APIKeyTokenParam, error) {
 	dbCtx, err := rpps.dbCtxFactory(ctx)
 	if err != nil {
 		return nil, err
@@ -249,10 +249,10 @@ func (rpps *APIKeyStorager) FetchAPIKeyTokenList(ctx context.Context,
 	return newAPIKeyTokensDataToParam(list), nil
 }
 
-func newAPIKeyTokensDataToParam(list []*dao.TAPIKeyToken) []*icluster_conf.APIKeyTokenParam {
-	results := make([]*icluster_conf.APIKeyTokenParam, len(list))
+func newAPIKeyTokensDataToParam(list []*dao.TAPIKeyToken) []*api_key.APIKeyTokenParam {
+	results := make([]*api_key.APIKeyTokenParam, len(list))
 	for i, one := range list {
-		results[i] = &icluster_conf.APIKeyTokenParam{
+		results[i] = &api_key.APIKeyTokenParam{
 			Key:       &one.Key,
 			CreatedAt: &one.CreatedAt,
 		}

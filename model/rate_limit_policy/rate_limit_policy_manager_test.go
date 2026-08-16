@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package quota
+package rate_limit_policy
 
 import (
 	"context"
 	"errors"
 	"testing"
 
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 )
 
 func TestRateLimitPolicyManager_CRUD(t *testing.T) {
@@ -170,8 +171,8 @@ func TestRateLimitPolicyManager_RateLimitPolicyGenerator(t *testing.T) {
 		apiKey := "ak-1"
 		policyID := int64(101)
 		apiKeyStore := &fakeAPIKeyStorager{
-			fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-				return []*icluster_conf.APIKeyParam{
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+				return []*api_key.APIKeyParam{
 					{
 						Key:               &apiKey,
 						RateLimitPolicyID: &policyID,
@@ -215,8 +216,8 @@ func TestRateLimitPolicyManager_RateLimitPolicyGenerator(t *testing.T) {
 		apiKey := "ak-1"
 		policyID := int64(101)
 		apiKeyStore := &fakeAPIKeyStorager{
-			fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-				return []*icluster_conf.APIKeyParam{
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+				return []*api_key.APIKeyParam{
 					{Key: &apiKey, RateLimitPolicyID: &policyID},
 				}, nil
 			},
@@ -241,8 +242,8 @@ func TestRateLimitPolicyManager_RateLimitPolicyGenerator(t *testing.T) {
 	t.Run("api key without key value is skipped", func(t *testing.T) {
 		policyID := int64(101)
 		apiKeyStore := &fakeAPIKeyStorager{
-			fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-				return []*icluster_conf.APIKeyParam{
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+				return []*api_key.APIKeyParam{
 					{RateLimitPolicyID: &policyID, Key: nil},
 				}, nil
 			},
@@ -270,8 +271,8 @@ func TestRateLimitPolicyManager_RateLimitPolicyGenerator(t *testing.T) {
 		parentPolicyID := int64(103)
 
 		apiKeyStore := &fakeAPIKeyStorager{
-			fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-				return []*icluster_conf.APIKeyParam{
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+				return []*api_key.APIKeyParam{
 					{Key: &apiKey, EntityID: &entityID, RateLimitPolicyID: &apiPolicyID},
 				}, nil
 			},
@@ -286,16 +287,16 @@ func TestRateLimitPolicyManager_RateLimitPolicyGenerator(t *testing.T) {
 			},
 		}
 		entityStore := &fakeEntityStorager{
-			fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+			fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 				if filter.EntityID != nil && *filter.EntityID == entityID {
-					return &EntityParam{
+					return &entity.EntityParam{
 						EntityID:          &entityID,
 						ParentID:          &parentID,
 						RateLimitPolicyID: &entityPolicyID,
 					}, nil
 				}
 				if filter.EntityID != nil && *filter.EntityID == parentID {
-					return &EntityParam{
+					return &entity.EntityParam{
 						EntityID:          &parentID,
 						RateLimitPolicyID: &parentPolicyID,
 					}, nil
@@ -318,8 +319,8 @@ func TestRateLimitPolicyManager_RateLimitPolicyGenerator(t *testing.T) {
 		apiKey := "ak-1"
 		policyID := int64(101)
 		apiKeyStore := &fakeAPIKeyStorager{
-			fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-				return []*icluster_conf.APIKeyParam{{Key: &apiKey, RateLimitPolicyID: &policyID}}, nil
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+				return []*api_key.APIKeyParam{{Key: &apiKey, RateLimitPolicyID: &policyID}}, nil
 			},
 		}
 		policyStore := &fakeRateLimitPolicyStorager{
@@ -346,7 +347,7 @@ func TestRateLimitPolicyManager_RateLimitPolicyGenerator(t *testing.T) {
 
 	t.Run("api key fetch error propagates", func(t *testing.T) {
 		apiKeyStore := &fakeAPIKeyStorager{
-			fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 				return nil, errors.New("api key db error")
 			},
 		}
@@ -375,8 +376,8 @@ func TestRateLimitPolicyManager_RateLimitPolicyGenerator_MaxConcurrency(t *testi
 	apiKey := "ak-1"
 	policyID := int64(101)
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{{Key: &apiKey, RateLimitPolicyID: &policyID}}, nil
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{{Key: &apiKey, RateLimitPolicyID: &policyID}}, nil
 		},
 	}
 	policyStore := &fakeRateLimitPolicyStorager{
@@ -406,16 +407,16 @@ func TestRateLimitPolicyManager_fetchEntityRateLimitPolicyIDs_ParentNotFound(t *
 	policyID := int64(101)
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 			if filter.EntityID != nil && *filter.EntityID == entityID {
-				return &EntityParam{EntityID: &entityID, ParentID: &parentID, RateLimitPolicyID: &policyID}, nil
+				return &entity.EntityParam{EntityID: &entityID, ParentID: &parentID, RateLimitPolicyID: &policyID}, nil
 			}
 			return nil, nil
 		},
 	}
 	m := NewRateLimitPolicyManager(&fakeTxn{}, &fakeRateLimitPolicyStorager{}, &fakeAPIKeyStorager{}, entityStore, nil)
 
-	ids, err := m.fetchEntityRateLimitPolicyIDs(ctx, &EntityParam{EntityID: &entityID, ParentID: &parentID, RateLimitPolicyID: &policyID})
+	ids, err := m.fetchEntityRateLimitPolicyIDs(ctx, &entity.EntityParam{EntityID: &entityID, ParentID: &parentID, RateLimitPolicyID: &policyID})
 	require.NoError(t, err)
 	assert.Equal(t, []int64{policyID}, ids)
 }

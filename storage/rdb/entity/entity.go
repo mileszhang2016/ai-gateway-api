@@ -12,14 +12,14 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package quota
+package entity
 
 import (
 	"context"
 	"encoding/json"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
@@ -33,9 +33,9 @@ func NewEntityStorager(dbCtxFactory lib.DBContextFactory) *EntityStorager {
 	}
 }
 
-var _ quota.EntityStorager = &EntityStorager{}
+var _ entity.EntityStorager = &EntityStorager{}
 
-func (s *EntityStorager) CreateEntity(ctx context.Context, param *quota.EntityParam) (int64, error) {
+func (s *EntityStorager) CreateEntity(ctx context.Context, param *entity.EntityParam) (int64, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return 0, err
@@ -47,11 +47,11 @@ func (s *EntityStorager) CreateEntity(ctx context.Context, param *quota.EntityPa
 	return dao.TEntityCreate(dbCtx, data)
 }
 
-func (s *EntityStorager) FetchEntityByRouteRulesID(ctx context.Context, routeRulesID int64) (*quota.EntityParam, error) {
-	return s.FetchEntity(ctx, &quota.EntityFilter{RouteRulesID: &routeRulesID})
+func (s *EntityStorager) FetchEntityByRouteRulesID(ctx context.Context, routeRulesID int64) (*entity.EntityParam, error) {
+	return s.FetchEntity(ctx, &entity.EntityFilter{RouteRulesID: &routeRulesID})
 }
 
-func (s *EntityStorager) FetchEntity(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+func (s *EntityStorager) FetchEntity(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func (s *EntityStorager) FetchEntity(ctx context.Context, filter *quota.EntityFi
 	return entityParamToData(one), nil
 }
 
-func (s *EntityStorager) FetchEntityList(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error) {
+func (s *EntityStorager) FetchEntityList(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func (s *EntityStorager) FetchEntityList(ctx context.Context, filter *quota.Enti
 		return nil, err
 	}
 
-	var rst []*quota.EntityParam
+	var rst []*entity.EntityParam
 	for _, one := range list {
 		rst = append(rst, entityParamToData(one))
 	}
@@ -89,7 +89,7 @@ func (s *EntityStorager) FetchEntityList(ctx context.Context, filter *quota.Enti
 	return rst, nil
 }
 
-func (s *EntityStorager) UpdateEntity(ctx context.Context, filter *quota.EntityFilter, param *quota.EntityParam) (int64, error) {
+func (s *EntityStorager) UpdateEntity(ctx context.Context, filter *entity.EntityFilter, param *entity.EntityParam) (int64, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return 0, err
@@ -101,7 +101,7 @@ func (s *EntityStorager) UpdateEntity(ctx context.Context, filter *quota.EntityF
 	return dao.TEntityUpdate(dbCtx, data, entityFilterToParam(filter))
 }
 
-func (s *EntityStorager) DeleteEntity(ctx context.Context, filter *quota.EntityFilter) error {
+func (s *EntityStorager) DeleteEntity(ctx context.Context, filter *entity.EntityFilter) error {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return err
@@ -111,7 +111,7 @@ func (s *EntityStorager) DeleteEntity(ctx context.Context, filter *quota.EntityF
 	return err
 }
 
-func entityFilterToParam(filter *quota.EntityFilter) *dao.TEntityParam {
+func entityFilterToParam(filter *entity.EntityFilter) *dao.TEntityParam {
 	if filter == nil {
 		return nil
 	}
@@ -143,7 +143,7 @@ func entityFilterToParam(filter *quota.EntityFilter) *dao.TEntityParam {
 	return param
 }
 
-func entityDataToParam(param *quota.EntityParam) *dao.TEntityParam {
+func entityDataToParam(param *entity.EntityParam) *dao.TEntityParam {
 	data := &dao.TEntityParam{
 		EntityID:          param.EntityID,
 		Name:              param.Name,
@@ -173,8 +173,8 @@ func entityDataToParam(param *quota.EntityParam) *dao.TEntityParam {
 	return data
 }
 
-func entityParamToData(one *dao.TEntity) *quota.EntityParam {
-	param := &quota.EntityParam{
+func entityParamToData(one *dao.TEntity) *entity.EntityParam {
+	param := &entity.EntityParam{
 		InnerID:           &one.ID,
 		EntityID:          &one.EntityID,
 		Name:              &one.Name,

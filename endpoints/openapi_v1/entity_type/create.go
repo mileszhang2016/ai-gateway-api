@@ -21,7 +21,7 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -33,7 +33,7 @@ var EntityTypeCreateRoute = &xreq.Endpoint{
 }
 
 func EntityTypeCreateAction(req *http.Request) (interface{}, error) {
-	param := &quota.EntityTypeParam{}
+	param := &entity.EntityTypeParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func EntityTypeCreateAction(req *http.Request) (interface{}, error) {
 		}
 	}
 
-	existing, err := container.EntityTypeManager.FetchEntityType(req.Context(), &quota.EntityTypeFilter{
+	existing, err := container.EntityTypeManager.FetchEntityType(req.Context(), &entity.EntityTypeFilter{
 		TypeName: param.TypeName,
 	})
 	if err != nil {
@@ -72,7 +72,7 @@ func EntityTypeCreateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	return container.EntityTypeManager.FetchEntityType(req.Context(), &quota.EntityTypeFilter{
+	return container.EntityTypeManager.FetchEntityType(req.Context(), &entity.EntityTypeFilter{
 		TypeName: param.TypeName,
 	})
 }

@@ -18,17 +18,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/stretchr/testify/assert"
 )
 
-func validAPIKeyParam() *icluster_conf.APIKeyParam {
+func validAPIKeyParam() *api_key.APIKeyParam {
 	desc := "test api key"
 	key := "ak-test_123"
 	neverExpire := int64(-1)
-	return &icluster_conf.APIKeyParam{
+	return &api_key.APIKeyParam{
 		Description: &desc,
 		Key:         &key,
 		ExpiredTime: &neverExpire,
@@ -62,51 +62,51 @@ func TestCheckCreateAPIKey(t *testing.T) {
 
 	cases := []struct {
 		name    string
-		param   *icluster_conf.APIKeyParam
+		param   *api_key.APIKeyParam
 		wantErr bool
 	}{
 		{"valid", validAPIKeyParam(), false},
-		{"missing description", func() *icluster_conf.APIKeyParam {
+		{"missing description", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.Description = nil
 			return p
 		}(), true},
-		{"empty description", func() *icluster_conf.APIKeyParam {
+		{"empty description", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.Description = lib.PString("")
 			return p
 		}(), true},
-		{"description too long", func() *icluster_conf.APIKeyParam {
+		{"description too long", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.Description = lib.PString(string(longDesc))
 			return p
 		}(), true},
-		{"missing key", func() *icluster_conf.APIKeyParam {
+		{"missing key", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.Key = nil
 			return p
 		}(), true},
-		{"invalid key", func() *icluster_conf.APIKeyParam {
+		{"invalid key", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.Key = &invalidKey
 			return p
 		}(), true},
-		{"invalid subnet", func() *icluster_conf.APIKeyParam {
+		{"invalid subnet", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.Subnet = []string{invalidCIDR}
 			return p
 		}(), true},
-		{"expired time in past", func() *icluster_conf.APIKeyParam {
+		{"expired time in past", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.ExpiredTime = &past
 			return p
 		}(), true},
-		{"invalid quota plan unit", func() *icluster_conf.APIKeyParam {
+		{"invalid quota plan unit", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.QuotaPlan = &shared.QuotaPlanParam{Quota: lib.PFloat64(100), Unit: &invalidUnit}
 			return p
 		}(), true},
-		{"invalid route rules", func() *icluster_conf.APIKeyParam {
+		{"invalid route rules", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.RouteRules = &shared.RouteRulesParam{Rules: []*shared.AiRouteRuleParam{}}
 			return p
@@ -134,37 +134,37 @@ func TestCheckUpdateAPIKey(t *testing.T) {
 
 	cases := []struct {
 		name    string
-		param   *icluster_conf.APIKeyParam
+		param   *api_key.APIKeyParam
 		wantErr bool
 	}{
-		{"empty update valid", &icluster_conf.APIKeyParam{}, false},
-		{"valid description", func() *icluster_conf.APIKeyParam {
+		{"empty update valid", &api_key.APIKeyParam{}, false},
+		{"valid description", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.Key = nil
 			return p
 		}(), false},
-		{"description too long", func() *icluster_conf.APIKeyParam {
-			p := &icluster_conf.APIKeyParam{}
+		{"description too long", func() *api_key.APIKeyParam {
+			p := &api_key.APIKeyParam{}
 			p.Description = lib.PString(string(longDesc))
 			return p
 		}(), true},
-		{"invalid subnet", func() *icluster_conf.APIKeyParam {
-			p := &icluster_conf.APIKeyParam{}
+		{"invalid subnet", func() *api_key.APIKeyParam {
+			p := &api_key.APIKeyParam{}
 			p.Subnet = []string{invalidCIDR}
 			return p
 		}(), true},
-		{"invalid key", func() *icluster_conf.APIKeyParam {
-			p := &icluster_conf.APIKeyParam{}
+		{"invalid key", func() *api_key.APIKeyParam {
+			p := &api_key.APIKeyParam{}
 			p.Key = &invalidKey
 			return p
 		}(), true},
-		{"invalid quota plan unit", func() *icluster_conf.APIKeyParam {
-			p := &icluster_conf.APIKeyParam{}
+		{"invalid quota plan unit", func() *api_key.APIKeyParam {
+			p := &api_key.APIKeyParam{}
 			p.QuotaPlan = &shared.QuotaPlanParam{Quota: lib.PFloat64(100), Unit: &invalidUnit}
 			return p
 		}(), true},
-		{"invalid rate limit window", func() *icluster_conf.APIKeyParam {
-			p := &icluster_conf.APIKeyParam{}
+		{"invalid rate limit window", func() *api_key.APIKeyParam {
+			p := &api_key.APIKeyParam{}
 			p.RateLimitPolicy = &shared.RateLimitPolicyParam{
 				Enabled: lib.PBool(true),
 				Rules: &shared.RateLimitRules{
@@ -175,8 +175,8 @@ func TestCheckUpdateAPIKey(t *testing.T) {
 			}
 			return p
 		}(), true},
-		{"duplicate route rule names", func() *icluster_conf.APIKeyParam {
-			p := &icluster_conf.APIKeyParam{}
+		{"duplicate route rule names", func() *api_key.APIKeyParam {
+			p := &api_key.APIKeyParam{}
 			p.RouteRules = validRouteRules()
 			name := "r1"
 			cond := "default_t()"
@@ -206,21 +206,21 @@ func TestCheckUpdateAPIKey(t *testing.T) {
 func TestCheckFullUpdateAPIKey(t *testing.T) {
 	cases := []struct {
 		name    string
-		param   *icluster_conf.APIKeyParam
+		param   *api_key.APIKeyParam
 		wantErr bool
 	}{
 		{"valid", validAPIKeyParam(), false},
-		{"missing description", func() *icluster_conf.APIKeyParam {
+		{"missing description", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.Description = nil
 			return p
 		}(), true},
-		{"empty description", func() *icluster_conf.APIKeyParam {
+		{"empty description", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.Description = lib.PString("")
 			return p
 		}(), true},
-		{"invalid quota plan", func() *icluster_conf.APIKeyParam {
+		{"invalid quota plan", func() *api_key.APIKeyParam {
 			p := validAPIKeyParam()
 			p.QuotaPlan = &shared.QuotaPlanParam{Quota: lib.PFloat64(100), Unit: lib.PString("invalid")}
 			return p

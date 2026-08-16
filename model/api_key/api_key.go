@@ -12,7 +12,7 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package icluster_conf
+package api_key
 
 import (
 	"context"
@@ -111,7 +111,6 @@ type APIKeyStorager interface {
 type APIKeyManager struct {
 	storager                APIKeyStorager
 	txn                     itxn.TxnStorager
-	clusterStorager         ClusterStorager
 	quotaPlanStorager       QuotaPlanStorager
 	rateLimitPolicyStorager RateLimitPolicyStorager
 	routeRulesStorager      shared.RouteRulesStorager
@@ -137,14 +136,13 @@ type RateLimitPolicyStorager interface {
 }
 
 // NewAPIKeyManager creates a new APIKeyManager instance
-func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager, clusterStorager ClusterStorager,
+func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager,
 	quotaPlanStorager QuotaPlanStorager, rateLimitPolicyStorager RateLimitPolicyStorager,
 	routeRulesStorager shared.RouteRulesStorager, entityStorager shared.EntityStorager,
 	quotaBalanceStorager shared.QuotaBalanceStorager, quotaCache quotacache.QuotaCache) *APIKeyManager {
 	return &APIKeyManager{
 		txn:                     txn,
 		storager:                storager,
-		clusterStorager:         clusterStorager,
 		quotaPlanStorager:       quotaPlanStorager,
 		rateLimitPolicyStorager: rateLimitPolicyStorager,
 		routeRulesStorager:      routeRulesStorager,

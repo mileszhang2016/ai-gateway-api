@@ -22,10 +22,10 @@ import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -46,7 +46,7 @@ func APIKeyUpdateAction(req *http.Request) (interface{}, error) {
 	}
 
 	// body param
-	param := &icluster_conf.APIKeyParam{}
+	param := &api_key.APIKeyParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
 	}
@@ -56,12 +56,12 @@ func APIKeyUpdateAction(req *http.Request) (interface{}, error) {
 	return APIKeyUpdateProcess(req.Context(), param, defaultProduct())
 }
 
-func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, product *ibasic.Product) (*icluster_conf.APIKeyParam, error) {
+func APIKeyUpdateProcess(ctx context.Context, param *api_key.APIKeyParam, product *ibasic.Product) (*api_key.APIKeyParam, error) {
 	if err := checkUpdateAPIKey(param, product.Name); err != nil {
 		return nil, xerror.WrapParamError(err)
 	}
 
-	existing, err := container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+	existing, err := container.APIKeyManager.FetchAPIKey(ctx, &api_key.APIKeyFilter{
 		ID:          param.ID,
 		ProductName: &product.Name,
 	})
@@ -74,7 +74,7 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 
 	// 检查 entity_id 是否存在（如果传入的话）
 	if param.EntityID != nil && *param.EntityID != "" {
-		entity, err := container.EntityManager.FetchEntity(ctx, &quota.EntityFilter{EntityID: param.EntityID})
+		entity, err := container.EntityManager.FetchEntity(ctx, &entity.EntityFilter{EntityID: param.EntityID})
 		if err != nil {
 			return nil, err
 		}
@@ -85,10 +85,10 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 
 	quotaPlanChanged := param.QuotaPlan != nil
 
-	err = container.APIKeyManager.UpdateAPIKey(ctx, &icluster_conf.APIKeyFilter{
+	err = container.APIKeyManager.UpdateAPIKey(ctx, &api_key.APIKeyFilter{
 		ID:          param.ID,
 		ProductName: &product.Name,
-	}, &icluster_conf.APIKeyParam{
+	}, &api_key.APIKeyParam{
 		Enable:          param.Enable,
 		Key:             param.Key,
 		Description:     param.Description,
@@ -108,7 +108,7 @@ func APIKeyUpdateProcess(ctx context.Context, param *icluster_conf.APIKeyParam, 
 	}
 
 	// 获取更新后的 API-Key
-	updated, err := container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+	updated, err := container.APIKeyManager.FetchAPIKey(ctx, &api_key.APIKeyFilter{
 		ID:          param.ID,
 		ProductName: &product.Name,
 	})

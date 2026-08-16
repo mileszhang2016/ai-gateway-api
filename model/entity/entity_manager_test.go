@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package quota
+package entity
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEntityManager_CreateEntity(t *testing.T) {
@@ -61,9 +61,9 @@ func TestEntityManager_CreateEntity(t *testing.T) {
 				return 400, nil
 			},
 		}
-		balanceStore := &fakeQuotaBalanceStorager{
-			createFn: func(ctx context.Context, param *QuotaBalanceParam) (int64, error) {
-				return 500, nil
+		balanceStore := &fakeSharedQuotaBalanceStorager{
+			createFn: func(ctx context.Context, quotaPlanID int64, remaining *float64) error {
+				return nil
 			},
 		}
 
@@ -98,7 +98,7 @@ func TestEntityManager_CreateEntity(t *testing.T) {
 		// balance created with remaining = quota
 		require.Len(t, balanceStore.created, 1)
 		assert.Equal(t, float64(1000), *balanceStore.created[0].Remaining)
-		assert.Equal(t, int64(200), *balanceStore.created[0].QuotaPlanID)
+		assert.Equal(t, int64(200), balanceStore.created[0].QuotaPlanID)
 	})
 
 	t.Run("entity type not found", func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestEntityManager_CreateEntity(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, &fakeEntityStorager{}, entityTypeStore,
-			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		entityType := "unknown"
 		_, err := m.CreateEntity(ctx, &EntityParam{Type: &entityType})
@@ -124,7 +124,7 @@ func TestEntityManager_CreateEntity(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{},
-			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		_, err := m.CreateEntity(ctx, &EntityParam{Name: &entityName})
 		require.Error(t, err)
@@ -153,7 +153,7 @@ func TestEntityManager_CreateEntity(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, entityTypeStore,
-			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		_, err := m.CreateEntity(ctx, &EntityParam{
 			Type:     &childType,
@@ -198,9 +198,9 @@ func TestEntityManager_FetchEntity(t *testing.T) {
 				return &shared.RouteRulesParam{Enabled: lib.PBool(true)}, nil
 			},
 		}
-		balanceStore := &fakeQuotaBalanceStorager{
-			fetchFn: func(ctx context.Context, filter *QuotaBalanceFilter) (*QuotaBalanceParam, error) {
-				return &QuotaBalanceParam{Used: lib.PFloat64(100), Remaining: lib.PFloat64(900)}, nil
+		balanceStore := &fakeSharedQuotaBalanceStorager{
+			fetchFn: func(ctx context.Context, quotaPlanID int64) (*shared.BalanceSummary, error) {
+				return &shared.BalanceSummary{Used: lib.PFloat64(100), Remaining: lib.PFloat64(900)}, nil
 			},
 		}
 
@@ -227,7 +227,7 @@ func TestEntityManager_FetchEntity(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{},
-			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		entityID := "not-exist"
 		entity, err := m.FetchEntity(ctx, &EntityFilter{EntityID: &entityID})
@@ -265,13 +265,13 @@ func TestEntityManager_DeleteEntity(t *testing.T) {
 		quotaPlanStore := &fakeSharedQuotaPlanStorager{}
 		rateLimitStore := &fakeSharedRateLimitPolicyStorager{}
 		routeRulesStore := &fakeRouteRulesStorager{}
-		balanceStore := &fakeQuotaBalanceStorager{}
+		balanceStore := &fakeSharedQuotaBalanceStorager{}
 
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore, rateLimitStore, routeRulesStore, balanceStore, nil)
 
 		require.NoError(t, m.DeleteEntity(ctx, &EntityFilter{EntityID: &entityID}))
 		assert.Len(t, balanceStore.deleted, 1)
-		assert.Equal(t, quotaPlanID, *balanceStore.deleted[0].QuotaPlanID)
+		assert.Equal(t, quotaPlanID, balanceStore.deleted[0])
 		assert.Len(t, quotaPlanStore.deleted, 1)
 		assert.Equal(t, quotaPlanID, quotaPlanStore.deleted[0])
 		assert.Len(t, rateLimitStore.deleted, 1)
@@ -291,7 +291,7 @@ func TestEntityManager_DeleteEntity(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{},
-			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		err := m.DeleteEntity(ctx, &EntityFilter{EntityID: &entityID})
 		require.Error(t, err)
@@ -306,7 +306,7 @@ func TestEntityManager_DeleteEntity(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{},
-			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		err := m.DeleteEntity(ctx, &EntityFilter{EntityID: &entityID})
 		require.Error(t, err)
@@ -330,7 +330,7 @@ func TestEntityManager_FetchEntitySummary(t *testing.T) {
 		},
 	}
 	m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{},
-		&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+		&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 	summary, err := m.FetchEntitySummary(ctx, entityID)
 	require.NoError(t, err)
@@ -357,7 +357,7 @@ func TestEntityManager_populateAssociatedData_Error(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore,
-			&fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		_, err := m.FetchEntity(ctx, &EntityFilter{EntityID: &entityID})
 		require.Error(t, err)
@@ -387,9 +387,9 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 				return 200, nil
 			},
 		}
-		balanceStore := &fakeQuotaBalanceStorager{
-			createFn: func(ctx context.Context, param *QuotaBalanceParam) (int64, error) {
-				return 300, nil
+		balanceStore := &fakeSharedQuotaBalanceStorager{
+			createFn: func(ctx context.Context, quotaPlanID int64, remaining *float64) error {
+				return nil
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore,
@@ -405,7 +405,7 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 		assert.Equal(t, float64(1000), *quotaPlanStore.created[0].Quota)
 
 		require.Len(t, balanceStore.created, 1)
-		assert.Equal(t, int64(200), *balanceStore.created[0].QuotaPlanID)
+		assert.Equal(t, int64(200), balanceStore.created[0].QuotaPlanID)
 		assert.Equal(t, float64(1000), *balanceStore.created[0].Remaining)
 
 		require.Len(t, entityStore.updated, 1)
@@ -435,7 +435,7 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore,
-			&fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{
 			QuotaPlan: &shared.QuotaPlanParam{Quota: lib.PFloat64(2000)},
@@ -471,7 +471,7 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{},
-			&fakeSharedRateLimitPolicyStorager{}, routeRulesStore, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedRateLimitPolicyStorager{}, routeRulesStore, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{
 			RouteRules: &shared.RouteRulesParam{Enabled: lib.PBool(true)},
@@ -491,7 +491,7 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{},
-			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		_, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{})
 		require.Error(t, err)
@@ -528,7 +528,7 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, entityTypeStore,
-			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		_, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{ParentID: &parentID})
 		require.Error(t, err)
@@ -555,9 +555,9 @@ func TestEntityManager_FetchEntityList(t *testing.T) {
 			return &shared.QuotaPlanParam{Quota: lib.PFloat64(100)}, nil
 		},
 	}
-	balanceStore := &fakeQuotaBalanceStorager{
-		fetchFn: func(ctx context.Context, filter *QuotaBalanceFilter) (*QuotaBalanceParam, error) {
-			return &QuotaBalanceParam{Used: lib.PFloat64(10), Remaining: lib.PFloat64(90)}, nil
+	balanceStore := &fakeSharedQuotaBalanceStorager{
+		fetchFn: func(ctx context.Context, quotaPlanID int64) (*shared.BalanceSummary, error) {
+			return &shared.BalanceSummary{Used: lib.PFloat64(10), Remaining: lib.PFloat64(90)}, nil
 		},
 	}
 	m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore,
@@ -590,7 +590,7 @@ func TestEntityManager_UpdateEntity_RateLimitPolicy(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{},
-			rateLimitStore, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			rateLimitStore, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{
 			RateLimitPolicy: &shared.RateLimitPolicyParam{Enabled: lib.PBool(true)},
@@ -620,7 +620,7 @@ func TestEntityManager_UpdateEntity_RateLimitPolicy(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{},
-			rateLimitStore, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			rateLimitStore, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{
 			RateLimitPolicy: &shared.RateLimitPolicyParam{Enabled: lib.PBool(false)},
@@ -651,7 +651,7 @@ func TestEntityManager_UpdateEntity_RouteRulesCreate(t *testing.T) {
 		},
 	}
 	m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{},
-		&fakeSharedRateLimitPolicyStorager{}, routeRulesStore, &fakeQuotaBalanceStorager{}, nil)
+		&fakeSharedRateLimitPolicyStorager{}, routeRulesStore, &fakeSharedQuotaBalanceStorager{}, nil)
 
 	affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{
 		RouteRules: &shared.RouteRulesParam{Enabled: lib.PBool(true)},
@@ -694,7 +694,7 @@ func TestEntityManager_UpdateEntity_ParentIDWithoutType(t *testing.T) {
 		},
 	}
 	m := NewEntityManager(&fakeTxn{}, entityStore, entityTypeStore,
-		&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+		&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 	_, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{ParentID: &parentID})
 	require.Error(t, err)
@@ -713,7 +713,7 @@ func TestEntityManager_checkEntityLevel_NilLevel(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, &fakeEntityStorager{}, entityTypeStore,
-			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		err := m.checkEntityLevel(ctx, entityType, parentID)
 		require.Error(t, err)
@@ -739,7 +739,7 @@ func TestEntityManager_checkEntityLevel_NilLevel(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, entityTypeStore,
-			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		err := m.checkEntityLevel(ctx, entityType, parentID)
 		require.Error(t, err)
@@ -756,7 +756,7 @@ func TestEntityManager_FetchEntitySummary_Error(t *testing.T) {
 		},
 	}
 	m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{},
-		&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+		&fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 	_, err := m.FetchEntitySummary(ctx, entityID)
 	require.Error(t, err)
@@ -780,7 +780,7 @@ func TestEntityManager_populateAssociatedData_MoreBranches(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{},
-			rateLimitStore, &fakeRouteRulesStorager{}, &fakeQuotaBalanceStorager{}, nil)
+			rateLimitStore, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		_, err := m.FetchEntity(ctx, &EntityFilter{EntityID: &entityID})
 		require.Error(t, err)
@@ -800,7 +800,7 @@ func TestEntityManager_populateAssociatedData_MoreBranches(t *testing.T) {
 			},
 		}
 		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{},
-			&fakeSharedRateLimitPolicyStorager{}, routeRulesStore, &fakeQuotaBalanceStorager{}, nil)
+			&fakeSharedRateLimitPolicyStorager{}, routeRulesStore, &fakeSharedQuotaBalanceStorager{}, nil)
 
 		_, err := m.FetchEntity(ctx, &EntityFilter{EntityID: &entityID})
 		require.Error(t, err)
@@ -819,8 +819,8 @@ func TestEntityManager_populateAssociatedData_MoreBranches(t *testing.T) {
 				return &shared.QuotaPlanParam{Quota: lib.PFloat64(100)}, nil
 			},
 		}
-		balanceStore := &fakeQuotaBalanceStorager{
-			fetchFn: func(ctx context.Context, filter *QuotaBalanceFilter) (*QuotaBalanceParam, error) {
+		balanceStore := &fakeSharedQuotaBalanceStorager{
+			fetchFn: func(ctx context.Context, quotaPlanID int64) (*shared.BalanceSummary, error) {
 				return nil, nil
 			},
 		}

@@ -12,13 +12,13 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package quota
+package entity
 
 import (
 	"context"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
@@ -32,9 +32,9 @@ func NewEntityTypeStorager(dbCtxFactory lib.DBContextFactory) *EntityTypeStorage
 	}
 }
 
-var _ quota.EntityTypeStorager = &EntityTypeStorager{}
+var _ entity.EntityTypeStorager = &EntityTypeStorager{}
 
-func (s *EntityTypeStorager) CreateEntityType(ctx context.Context, param *quota.EntityTypeParam) (int64, error) {
+func (s *EntityTypeStorager) CreateEntityType(ctx context.Context, param *entity.EntityTypeParam) (int64, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return 0, err
@@ -50,7 +50,7 @@ func (s *EntityTypeStorager) CreateEntityType(ctx context.Context, param *quota.
 	return dao.TEntityTypeCreate(dbCtx, data)
 }
 
-func (s *EntityTypeStorager) FetchEntityType(ctx context.Context, filter *quota.EntityTypeFilter) (*quota.EntityTypeParam, error) {
+func (s *EntityTypeStorager) FetchEntityType(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func (s *EntityTypeStorager) FetchEntityType(ctx context.Context, filter *quota.
 	return entityTypeParamToData(one), nil
 }
 
-func (s *EntityTypeStorager) FetchEntityTypeList(ctx context.Context, filter *quota.EntityTypeFilter) ([]*quota.EntityTypeParam, error) {
+func (s *EntityTypeStorager) FetchEntityTypeList(ctx context.Context, filter *entity.EntityTypeFilter) ([]*entity.EntityTypeParam, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func (s *EntityTypeStorager) FetchEntityTypeList(ctx context.Context, filter *qu
 		return nil, err
 	}
 
-	var rst []*quota.EntityTypeParam
+	var rst []*entity.EntityTypeParam
 	for _, one := range list {
 		rst = append(rst, entityTypeParamToData(one))
 	}
@@ -88,7 +88,7 @@ func (s *EntityTypeStorager) FetchEntityTypeList(ctx context.Context, filter *qu
 	return rst, nil
 }
 
-func (s *EntityTypeStorager) UpdateEntityType(ctx context.Context, filter *quota.EntityTypeFilter, param *quota.EntityTypeParam) (int64, error) {
+func (s *EntityTypeStorager) UpdateEntityType(ctx context.Context, filter *entity.EntityTypeFilter, param *entity.EntityTypeParam) (int64, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return 0, err
@@ -103,7 +103,7 @@ func (s *EntityTypeStorager) UpdateEntityType(ctx context.Context, filter *quota
 	return dao.TEntityTypeUpdate(dbCtx, data, entityTypeFilterToParam(filter))
 }
 
-func (s *EntityTypeStorager) DeleteEntityType(ctx context.Context, filter *quota.EntityTypeFilter) error {
+func (s *EntityTypeStorager) DeleteEntityType(ctx context.Context, filter *entity.EntityTypeFilter) error {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func (s *EntityTypeStorager) DeleteEntityType(ctx context.Context, filter *quota
 	return err
 }
 
-func entityTypeFilterToParam(filter *quota.EntityTypeFilter) *dao.TEntityTypeParam {
+func entityTypeFilterToParam(filter *entity.EntityTypeFilter) *dao.TEntityTypeParam {
 	if filter == nil {
 		return nil
 	}
@@ -135,9 +135,9 @@ func entityTypeFilterToParam(filter *quota.EntityTypeFilter) *dao.TEntityTypePar
 	return param
 }
 
-func entityTypeParamToData(one *dao.TEntityType) *quota.EntityTypeParam {
+func entityTypeParamToData(one *dao.TEntityType) *entity.EntityTypeParam {
 	createTime := one.CreatedAt.Unix()
-	return &quota.EntityTypeParam{
+	return &entity.EntityTypeParam{
 		ID:          &one.ID,
 		TypeName:    &one.TypeName,
 		Description: &one.Description,

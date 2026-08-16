@@ -12,14 +12,14 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package quota
+package rate_limit_policy
 
 import (
 	"context"
 	"encoding/json"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/rate_limit_policy"
 	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
@@ -33,9 +33,9 @@ func NewRateLimitPolicyStorager(dbCtxFactory lib.DBContextFactory) *RateLimitPol
 	}
 }
 
-var _ quota.RateLimitPolicyStorager = &RateLimitPolicyStorager{}
+var _ rate_limit_policy.RateLimitPolicyStorager = &RateLimitPolicyStorager{}
 
-func (s *RateLimitPolicyStorager) CreateRateLimitPolicy(ctx context.Context, param *quota.RateLimitPolicyParam) (int64, error) {
+func (s *RateLimitPolicyStorager) CreateRateLimitPolicy(ctx context.Context, param *rate_limit_policy.RateLimitPolicyParam) (int64, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return 0, err
@@ -47,7 +47,7 @@ func (s *RateLimitPolicyStorager) CreateRateLimitPolicy(ctx context.Context, par
 	return dao.TRateLimitPolicyCreate(dbCtx, data)
 }
 
-func (s *RateLimitPolicyStorager) FetchRateLimitPolicy(ctx context.Context, filter *quota.RateLimitPolicyFilter) (*quota.RateLimitPolicyParam, error) {
+func (s *RateLimitPolicyStorager) FetchRateLimitPolicy(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) (*rate_limit_policy.RateLimitPolicyParam, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func (s *RateLimitPolicyStorager) FetchRateLimitPolicy(ctx context.Context, filt
 	return rateLimitPolicyParamToData(one), nil
 }
 
-func (s *RateLimitPolicyStorager) FetchRateLimitPolicyList(ctx context.Context, filter *quota.RateLimitPolicyFilter) ([]*quota.RateLimitPolicyParam, error) {
+func (s *RateLimitPolicyStorager) FetchRateLimitPolicyList(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) ([]*rate_limit_policy.RateLimitPolicyParam, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return nil, err
@@ -77,7 +77,7 @@ func (s *RateLimitPolicyStorager) FetchRateLimitPolicyList(ctx context.Context, 
 		return nil, err
 	}
 
-	var rst []*quota.RateLimitPolicyParam
+	var rst []*rate_limit_policy.RateLimitPolicyParam
 	for _, one := range list {
 		rst = append(rst, rateLimitPolicyParamToData(one))
 	}
@@ -85,7 +85,7 @@ func (s *RateLimitPolicyStorager) FetchRateLimitPolicyList(ctx context.Context, 
 	return rst, nil
 }
 
-func (s *RateLimitPolicyStorager) UpdateRateLimitPolicy(ctx context.Context, filter *quota.RateLimitPolicyFilter, param *quota.RateLimitPolicyParam) (int64, error) {
+func (s *RateLimitPolicyStorager) UpdateRateLimitPolicy(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter, param *rate_limit_policy.RateLimitPolicyParam) (int64, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return 0, err
@@ -97,7 +97,7 @@ func (s *RateLimitPolicyStorager) UpdateRateLimitPolicy(ctx context.Context, fil
 	return dao.TRateLimitPolicyUpdate(dbCtx, data, rateLimitPolicyFilterToParam(filter))
 }
 
-func (s *RateLimitPolicyStorager) DeleteRateLimitPolicy(ctx context.Context, filter *quota.RateLimitPolicyFilter) error {
+func (s *RateLimitPolicyStorager) DeleteRateLimitPolicy(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) error {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {
 		return err
@@ -107,7 +107,7 @@ func (s *RateLimitPolicyStorager) DeleteRateLimitPolicy(ctx context.Context, fil
 	return err
 }
 
-func rateLimitPolicyFilterToParam(filter *quota.RateLimitPolicyFilter) *dao.TRateLimitPolicyParam {
+func rateLimitPolicyFilterToParam(filter *rate_limit_policy.RateLimitPolicyFilter) *dao.TRateLimitPolicyParam {
 	if filter == nil {
 		return nil
 	}
@@ -117,7 +117,7 @@ func rateLimitPolicyFilterToParam(filter *quota.RateLimitPolicyFilter) *dao.TRat
 	}
 }
 
-func rateLimitPolicyDataToParam(param *quota.RateLimitPolicyParam) *dao.TRateLimitPolicyParam {
+func rateLimitPolicyDataToParam(param *rate_limit_policy.RateLimitPolicyParam) *dao.TRateLimitPolicyParam {
 	data := &dao.TRateLimitPolicyParam{
 		Enabled:        param.Enabled,
 		MaxConcurrency: param.MaxConcurrency,
@@ -142,8 +142,8 @@ func rateLimitPolicyDataToParam(param *quota.RateLimitPolicyParam) *dao.TRateLim
 	return data
 }
 
-func rateLimitPolicyParamToData(one *dao.TRateLimitPolicy) *quota.RateLimitPolicyParam {
-	param := &quota.RateLimitPolicyParam{
+func rateLimitPolicyParamToData(one *dao.TRateLimitPolicy) *rate_limit_policy.RateLimitPolicyParam {
+	param := &rate_limit_policy.RateLimitPolicyParam{
 		ID:             &one.ID,
 		Enabled:        &one.Enabled,
 		MaxConcurrency: &one.MaxConcurrency,

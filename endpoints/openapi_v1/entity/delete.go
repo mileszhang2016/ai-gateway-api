@@ -20,9 +20,9 @@ import (
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -43,17 +43,17 @@ func EntityDeleteAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	entity, err := container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{
+	ent, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{
 		EntityID: deleteReq.EntityID,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if entity == nil {
+	if ent == nil {
 		return nil, xerror.WrapRecordNotExist("Entity")
 	}
 
-	children, err := container.EntityManager.FetchEntityList(req.Context(), &quota.EntityFilter{ParentID: deleteReq.EntityID})
+	children, err := container.EntityManager.FetchEntityList(req.Context(), &entity.EntityFilter{ParentID: deleteReq.EntityID})
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func EntityDeleteAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapConflictErrorWithMsg("entity has children, cannot delete")
 	}
 
-	apiKeys, err := container.APIKeyManager.FetchAPIKeyList(req.Context(), &icluster_conf.APIKeyFilter{
+	apiKeys, err := container.APIKeyManager.FetchAPIKeyList(req.Context(), &api_key.APIKeyFilter{
 		EntityID: deleteReq.EntityID,
 	})
 	if err != nil {
@@ -71,7 +71,7 @@ func EntityDeleteAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapParamErrorWithMsg(fmt.Sprintf("cannot delete entity with associated api-keys"))
 	}
 
-	return nil, container.EntityManager.DeleteEntity(req.Context(), &quota.EntityFilter{
+	return nil, container.EntityManager.DeleteEntity(req.Context(), &entity.EntityFilter{
 		EntityID: deleteReq.EntityID,
 	})
 }

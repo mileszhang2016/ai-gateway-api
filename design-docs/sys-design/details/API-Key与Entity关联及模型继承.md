@@ -167,7 +167,7 @@ API-Key 导出到 BFE 时，会收集 API-Key 自身及 Entity 层级向上的�
 ```go
 func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(
     ctx context.Context,
-    apiKey *icluster_conf.APIKeyParam,
+    apiKey *api_key.APIKeyParam,
     productName string,
 ) ([]string, []ApikeyTag, error) {
     // 1. API-Key 自身配额计划（跳过 unlimited）
@@ -191,7 +191,7 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(
 ```go
 func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(
     ctx context.Context,
-    entity *quota.EntityParam,
+    entity *entity.EntityParam,
     productName string,
 ) ([]string, []ApikeyTag, error) {
     // 当前 Entity 的 QuotaPlan（跳过 unlimited）
@@ -256,7 +256,7 @@ type ApikeyTag struct {
 ```go
 func (m *RateLimitPolicyManager) fetchRateLimitPolicyIDsWithEntityHierarchy(
     ctx context.Context,
-    apiKey *icluster_conf.APIKeyParam,
+    apiKey *api_key.APIKeyParam,
 ) ([]int64, error) {
     policyIDs := make([]int64, 0)
 
@@ -403,14 +403,14 @@ for _, apiKey := range apiKeys {
 
 | 文件 | 说明 |
 |------|------|
-| `model/quota/entity.go` | Entity 模型定义 |
-| `model/quota/entity_manager.go` | Entity 创建/更新/删除、关联填充 |
-| `model/quota/entity_type.go` | EntityType 模型与层级校验 |
-| `model/icluster_conf/api_key.go` | API-Key 模型、GetRemainingQuota、级联删除 |
+| `model/entity/entity.go` | Entity 模型定义 |
+| `model/entity/entity_manager.go` | Entity 创建/更新/删除、关联填充 |
+| `model/entity/entity_type.go` | EntityType 模型与层级校验 |
+| `model/api_key/api_key.go` | API-Key 模型、GetRemainingQuota、级联删除 |
 | `model/imods/exporter.go` | mod-api-key 导出：模型继承、配额计划层级合并 |
 | `model/imods/mod_api_key_rule.go` | APIKeyRuleManager 定义 |
 | `model/imods/ai_route_exporter.go` | AI 路由绑定关系导出 |
-| `model/quota/rate_limit_policy_manager.go` | 限流策略层级收集与导出 |
+| `model/rate_limit_policy/rate_limit_policy_manager.go` | 限流策略层级收集与导出 |
 | `endpoints/openapi_v1/api_key/*.go` | API-Key 端点 |
 | `endpoints/openapi_v1/entity/*.go` | Entity 端点 |
 | `endpoints/openapi_v1/entity_type/*.go` | Entity-Type 端点 |

@@ -245,7 +245,7 @@ type ModBodyProcessConf struct {
 
 ### 4.8 rate-limit-policy（`/configs/rate-limit-policy`）
 
-由 `model/quota/rate_limit_policy_manager.go` 实现：
+由 `model/rate_limit_policy/rate_limit_policy_manager.go` 实现：
 
 ```go
 type ExportRateLimitPolicyConfig struct {
@@ -399,4 +399,4 @@ Authorization: Token <token>
 | `model/imods/mod_api_key_rule.go` | mod-api-key 配置生成 |
 | `model/imods/mod_body_process.go` | mod-body-process 配置生成 |
 | `model/imods/ai_route_exporter.go` | AI 路由配置生成 |
-| `model/quota/rate_limit_policy_manager.go` | 限流策略配置生成 |
+| `model/rate_limit_policy/rate_limit_policy_manager.go` | 限流策略配置生成 |

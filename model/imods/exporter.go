@@ -22,8 +22,9 @@ import (
 	"time"
 
 	golibquota "github.com/bfenetworks/go-lib/quota"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	entpkg "github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
@@ -193,7 +194,7 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 		}
 	}
 
-	apiKeyList, err := rlm.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{})
+	apiKeyList, err := rlm.apiKeyStorager.FetchAPIKeyList(ctx, &api_key.APIKeyFilter{})
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +238,7 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 			isUnlimited := one.UnlimitedQuota != nil && *one.UnlimitedQuota
 			if !isUnlimited {
 				status = TokenStatusEnabled
-				remainingQuota, err := icluster_conf.GetRemainingQuota(ctx, rlm.quotaCache, one)
+				remainingQuota, err := api_key.GetRemainingQuota(ctx, rlm.quotaCache, one)
 				if err != nil {
 					return nil, err
 				}
@@ -383,7 +384,7 @@ func convertAPIKeyRulesToBfeRules(oldRules []*APIKeyRule) []*TokenRuleFile {
 	return exportRules
 }
 
-func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Context, apiKey *icluster_conf.APIKeyParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
+func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Context, apiKey *api_key.APIKeyParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
 	quotaPlanIDs := make([]string, 0)
 	tags := make([]ApikeyTag, 0)
 
@@ -409,7 +410,7 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Con
 	}
 
 	if apiKey.EntityID != nil && *apiKey.EntityID != "" && rlm.entityStorager != nil {
-		entity, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: apiKey.EntityID})
+		entity, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: apiKey.EntityID})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -426,7 +427,7 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Con
 	return quotaPlanIDs, tags, nil
 }
 
-func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context, entity *quota.EntityParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
+func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context, entity *entpkg.EntityParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
 	quotaPlanIDs := make([]string, 0)
 	tags := make([]ApikeyTag, 0)
 
@@ -459,7 +460,7 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context,
 	}
 
 	if entity.ParentID != nil && *entity.ParentID != "" && rlm.entityStorager != nil {
-		parentEntity, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: entity.ParentID})
+		parentEntity, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: entity.ParentID})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -481,7 +482,7 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context,
 //   - intersectedAllowModels: intersection of all AllowModels from entities in the hierarchy (nil if any entity has empty AllowModels)
 //   - unionBlockModels: union of all BlockModels from entities in the hierarchy
 func (rlm *APIKeyRuleManager) fetchEntityModelHierarchy(ctx context.Context, entityID string) ([]string, []string, error) {
-	entity, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: &entityID})
+	entity, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: &entityID})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -499,7 +500,7 @@ func (rlm *APIKeyRuleManager) fetchEntityModelHierarchy(ctx context.Context, ent
 
 // collectEntityModels recursively walks the entity hierarchy to collect AllowModels and BlockModels
 // If an entity's AllowModels or BlockModels contains "*", it is skipped (meaning allow/block all)
-func (rlm *APIKeyRuleManager) collectEntityModels(ctx context.Context, entity *quota.EntityParam, allAllowModels *[][]string, allBlockModels *[]string) {
+func (rlm *APIKeyRuleManager) collectEntityModels(ctx context.Context, entity *entpkg.EntityParam, allAllowModels *[][]string, allBlockModels *[]string) {
 	if len(entity.AllowModels) > 0 && !containsStar(entity.AllowModels) {
 		*allAllowModels = append(*allAllowModels, entity.AllowModels)
 	}
@@ -508,7 +509,7 @@ func (rlm *APIKeyRuleManager) collectEntityModels(ctx context.Context, entity *q
 	}
 
 	if entity.ParentID != nil && *entity.ParentID != "" && rlm.entityStorager != nil {
-		parent, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: entity.ParentID})
+		parent, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: entity.ParentID})
 		if err != nil || parent == nil {
 			return
 		}

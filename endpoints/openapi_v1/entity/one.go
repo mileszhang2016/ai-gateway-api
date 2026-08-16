@@ -19,8 +19,8 @@ import (
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -41,7 +41,7 @@ func EntityOneAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	one, err := container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{
+	one, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{
 		EntityID: oneReq.EntityID,
 	})
 	if err != nil {

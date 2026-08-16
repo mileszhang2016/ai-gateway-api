@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package quota
+package entity
 
 import (
 	"context"
 	"errors"
 	"testing"
 
+	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
 )
 
 func TestEntityTypeManager_CreateEntityType(t *testing.T) {

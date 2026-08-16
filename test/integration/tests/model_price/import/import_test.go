@@ -23,9 +23,15 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+type pagination struct {
+	Page     int   `json:"page"`
+	PageSize int   `json:"page_size"`
+	Total    int64 `json:"total"`
+}
+
 type listResponse struct {
-	Total int64           `json:"total"`
-	Items []modelPriceDTO `json:"items"`
+	List       []modelPriceDTO `json:"list"`
+	Pagination pagination      `json:"pagination"`
 }
 
 type modelPriceDTO struct {
@@ -87,10 +93,10 @@ func TestModelPrice_Import(t *testing.T) {
 		if err != nil {
 			t.Fatalf("list failed: %v", err)
 		}
-		assert.Equal(t, int64(2), list.Total)
+		assert.Equal(t, int64(2), list.Pagination.Total)
 
 		providers := map[string]bool{}
-		for _, item := range list.Items {
+		for _, item := range list.List {
 			providers[item.Provider] = true
 		}
 		assert.True(t, providers[provider1], "expected provider1 in list")
@@ -161,7 +167,7 @@ func TestModelPrice_Import(t *testing.T) {
 		if err != nil {
 			t.Fatalf("list failed: %v", err)
 		}
-		assert.GreaterOrEqual(t, list.Total, int64(2))
+		assert.GreaterOrEqual(t, list.Pagination.Total, int64(2))
 
 		_, _, _ = testutil.ImportModelPricesWithResult([]byte(buildYAML(nil)), "replace")
 	})
@@ -195,7 +201,7 @@ func TestModelPrice_Import(t *testing.T) {
 		if err != nil {
 			t.Fatalf("list failed: %v", err)
 		}
-		assert.Equal(t, int64(1), list.Total)
+		assert.Equal(t, int64(1), list.Pagination.Total)
 
 		_, _, _ = testutil.ImportModelPricesWithResult([]byte(buildYAML(nil)), "replace")
 	})

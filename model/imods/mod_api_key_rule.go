@@ -15,8 +15,9 @@
 package imods
 
 import (
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
@@ -26,10 +27,10 @@ import (
 type APIKeyRuleManager struct {
 	txn                   itxn.TxnStorager
 	versionControlManager *iversion_control.VersionControlManager
-	apiKeyStorager        icluster_conf.APIKeyStorager
+	apiKeyStorager        api_key.APIKeyStorager
 	aiRouteStorager       iai_route.AIRouteRuleStorager
 	quotaPlanStorager     quota.QuotaPlanStorager
-	entityStorager        quota.EntityStorager
+	entityStorager        entity.EntityStorager
 	quotaCache            quotacache.QuotaCache
 }
 
@@ -65,10 +66,10 @@ const (
 
 func NewAPIKeyRuleManager(txn itxn.TxnStorager,
 	versionControlManager *iversion_control.VersionControlManager,
-	apiKeyStorager icluster_conf.APIKeyStorager,
+	apiKeyStorager api_key.APIKeyStorager,
 	aiRouteStorager iai_route.AIRouteRuleStorager,
 	quotaPlanStorager quota.QuotaPlanStorager,
-	entityStorager quota.EntityStorager,
+	entityStorager entity.EntityStorager,
 	quotaCache quotacache.QuotaCache) *APIKeyRuleManager {
 	return &APIKeyRuleManager{
 		txn:                   txn,

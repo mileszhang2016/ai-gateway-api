@@ -18,6 +18,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
@@ -229,58 +230,58 @@ func (f *fakeSubClusterStorager) UpdateSubCluster(ctx context.Context, one *SubC
 }
 
 type fakeAPIKeyStorager struct {
-	fetchAPIKeyListFn      func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error)
-	createAPIKeyFn         func(ctx context.Context, param *APIKeyParam) (int64, error)
-	updateAPIKeyFn         func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error)
-	deleteAPIKeyFn         func(ctx context.Context, filter *APIKeyFilter) error
-	createAPIKeyTokenFn    func(ctx context.Context, param *APIKeyTokenParam) (int64, error)
-	updateAPIKeyTokenFn    func(ctx context.Context, filter *APIKeyTokenFilter, param *APIKeyTokenParam) error
-	fetchAPIKeyTokenListFn func(ctx context.Context, filter *APIKeyTokenFilter) ([]*APIKeyTokenParam, error)
+	fetchAPIKeyListFn      func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error)
+	createAPIKeyFn         func(ctx context.Context, param *api_key.APIKeyParam) (int64, error)
+	updateAPIKeyFn         func(ctx context.Context, filter *api_key.APIKeyFilter, param *api_key.APIKeyParam) (int64, error)
+	deleteAPIKeyFn         func(ctx context.Context, filter *api_key.APIKeyFilter) error
+	createAPIKeyTokenFn    func(ctx context.Context, param *api_key.APIKeyTokenParam) (int64, error)
+	updateAPIKeyTokenFn    func(ctx context.Context, filter *api_key.APIKeyTokenFilter, param *api_key.APIKeyTokenParam) error
+	fetchAPIKeyTokenListFn func(ctx context.Context, filter *api_key.APIKeyTokenFilter) ([]*api_key.APIKeyTokenParam, error)
 }
 
-func (f *fakeAPIKeyStorager) FetchAPIKeyList(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
+func (f *fakeAPIKeyStorager) FetchAPIKeyList(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 	if f.fetchAPIKeyListFn != nil {
 		return f.fetchAPIKeyListFn(ctx, filter)
 	}
 	return nil, nil
 }
 
-func (f *fakeAPIKeyStorager) CreateAPIKey(ctx context.Context, param *APIKeyParam) (int64, error) {
+func (f *fakeAPIKeyStorager) CreateAPIKey(ctx context.Context, param *api_key.APIKeyParam) (int64, error) {
 	if f.createAPIKeyFn != nil {
 		return f.createAPIKeyFn(ctx, param)
 	}
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStorager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error) {
+func (f *fakeAPIKeyStorager) UpdateAPIKey(ctx context.Context, filter *api_key.APIKeyFilter, param *api_key.APIKeyParam) (int64, error) {
 	if f.updateAPIKeyFn != nil {
 		return f.updateAPIKeyFn(ctx, filter, param)
 	}
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStorager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilter) error {
+func (f *fakeAPIKeyStorager) DeleteAPIKey(ctx context.Context, filter *api_key.APIKeyFilter) error {
 	if f.deleteAPIKeyFn != nil {
 		return f.deleteAPIKeyFn(ctx, filter)
 	}
 	return nil
 }
 
-func (f *fakeAPIKeyStorager) CreateAPIKeyToken(ctx context.Context, param *APIKeyTokenParam) (int64, error) {
+func (f *fakeAPIKeyStorager) CreateAPIKeyToken(ctx context.Context, param *api_key.APIKeyTokenParam) (int64, error) {
 	if f.createAPIKeyTokenFn != nil {
 		return f.createAPIKeyTokenFn(ctx, param)
 	}
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStorager) UpdateAPIKeyToken(ctx context.Context, filter *APIKeyTokenFilter, param *APIKeyTokenParam) error {
+func (f *fakeAPIKeyStorager) UpdateAPIKeyToken(ctx context.Context, filter *api_key.APIKeyTokenFilter, param *api_key.APIKeyTokenParam) error {
 	if f.updateAPIKeyTokenFn != nil {
 		return f.updateAPIKeyTokenFn(ctx, filter, param)
 	}
 	return nil
 }
 
-func (f *fakeAPIKeyStorager) FetchAPIKeyTokenList(ctx context.Context, filter *APIKeyTokenFilter) ([]*APIKeyTokenParam, error) {
+func (f *fakeAPIKeyStorager) FetchAPIKeyTokenList(ctx context.Context, filter *api_key.APIKeyTokenFilter) ([]*api_key.APIKeyTokenParam, error) {
 	if f.fetchAPIKeyTokenListFn != nil {
 		return f.fetchAPIKeyTokenListFn(ctx, filter)
 	}

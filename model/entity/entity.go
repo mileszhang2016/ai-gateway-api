@@ -12,7 +12,7 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package quota
+package entity
 
 import (
 	"context"
@@ -42,10 +42,10 @@ type EntityParam struct {
 
 // EntityFilter 定义 Entity 过滤条件
 type EntityFilter struct {
-	EntityID    *string `form:"id"`
-	Name        *string `form:"name"`
-	Type        *string `form:"type"`
-	ParentID    *string `form:"parent_id"`
+	EntityID     *string `form:"id"`
+	Name         *string `form:"name"`
+	Type         *string `form:"type"`
+	ParentID     *string `form:"parent_id"`
 	QuotaPlanID  *int64  `form:"quota_plan_id"`
 	RouteRulesID *int64  `form:"route_rules_id"`
 	Page         *int    `form:"page"`

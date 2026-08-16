@@ -17,11 +17,11 @@ package api_key
 import (
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/validate"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 )
 
 // checkCreateAPIKey validates parameters for creating a new API key.
-func checkCreateAPIKey(param *icluster_conf.APIKeyParam, productName string) error {
+func checkCreateAPIKey(param *api_key.APIKeyParam, productName string) error {
 	if param.Description == nil || *param.Description == "" {
 		return xerror.WrapParamErrorWithMsg("description is required")
 	}
@@ -57,7 +57,7 @@ func checkCreateAPIKey(param *icluster_conf.APIKeyParam, productName string) err
 }
 
 // checkUpdateAPIKey validates parameters for updating an existing API key.
-func checkUpdateAPIKey(param *icluster_conf.APIKeyParam, productName string) error {
+func checkUpdateAPIKey(param *api_key.APIKeyParam, productName string) error {
 	if param.Description != nil {
 		if err := validate.Description(*param.Description, validate.MaxAPIDescriptionLength, "description"); err != nil {
 			return err
@@ -112,7 +112,7 @@ func checkAllowSubnet(cidrs []string) error {
 }
 
 // checkFullUpdateAPIKey validates parameters for full updating an existing API key.
-func checkFullUpdateAPIKey(param *icluster_conf.APIKeyParam, productName string) error {
+func checkFullUpdateAPIKey(param *api_key.APIKeyParam, productName string) error {
 	if param.Description == nil || *param.Description == "" {
 		return xerror.WrapParamErrorWithMsg("description is required")
 	}

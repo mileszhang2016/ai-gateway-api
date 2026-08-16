@@ -20,7 +20,8 @@ import (
 	"time"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
@@ -31,14 +32,14 @@ type QuotaPlanManager struct {
 	txn             itxn.TxnStorager
 	storager        QuotaPlanStorager
 	balanceStorager QuotaBalanceStorager
-	apiKeyStorager  icluster_conf.APIKeyStorager
-	entityStorager  EntityStorager
+	apiKeyStorager  api_key.APIKeyStorager
+	entityStorager  entity.EntityStorager
 	quotaCache      quotacache.QuotaCache
 }
 
 // NewQuotaPlanManager 创建配额计划管理器
 func NewQuotaPlanManager(txn itxn.TxnStorager, storager QuotaPlanStorager, balanceStorager QuotaBalanceStorager,
-	apiKeyStorager icluster_conf.APIKeyStorager, entityStorager EntityStorager, quotaCache quotacache.QuotaCache) *QuotaPlanManager {
+	apiKeyStorager api_key.APIKeyStorager, entityStorager entity.EntityStorager, quotaCache quotacache.QuotaCache) *QuotaPlanManager {
 	return &QuotaPlanManager{
 		txn:             txn,
 		storager:        storager,
@@ -154,7 +155,7 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 		return nil
 	}
 
-	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{QuotaPlanID: &planID})
+	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &api_key.APIKeyFilter{QuotaPlanID: &planID})
 	if err != nil {
 		stateful.AccessLogger.Warn("failed to fetch api keys for quota plan %d: %v", planID, err)
 		return nil
@@ -169,7 +170,7 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 	}
 
 	if m.entityStorager != nil {
-		entities, err := m.entityStorager.FetchEntityList(ctx, &EntityFilter{QuotaPlanID: &planID})
+		entities, err := m.entityStorager.FetchEntityList(ctx, &entity.EntityFilter{QuotaPlanID: &planID})
 		if err != nil {
 			stateful.AccessLogger.Warn("failed to fetch entities for quota plan %d: %v", planID, err)
 			return nil

@@ -23,14 +23,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestAPIKeyRuleManager() *APIKeyRuleManager {
@@ -48,13 +49,13 @@ func TestAPIKeyRuleManager_ConfigExport(t *testing.T) {
 	ctx := context.Background()
 
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
-					ID:        lib.PString("key-1"),
-					Key:       lib.PString("ak-key-1"),
+					ID:          lib.PString("key-1"),
+					Key:         lib.PString("ak-key-1"),
 					ProductName: lib.PString("AI_product"),
-					Enable:    lib.PBool(true),
+					Enable:      lib.PBool(true),
 					KeyCreateAt: lib.PTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)),
 				},
 			}, nil
@@ -99,7 +100,7 @@ func TestAPIKeyRuleManager_ConfigExport_GeneratorError(t *testing.T) {
 	ctx := context.Background()
 
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 			return nil, errors.New("api key fetch error")
 		},
 	}
@@ -121,13 +122,13 @@ func TestAPIKeyRuleManager_ConfigExport_Concurrent(t *testing.T) {
 	const iterations = 10
 
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			keys := make([]*icluster_conf.APIKeyParam, numKeys)
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			keys := make([]*api_key.APIKeyParam, numKeys)
 			for i := 0; i < numKeys; i++ {
 				id := fmt.Sprintf("key-%d", i)
 				quotaPlanID := int64(i%5 + 1)
 				entityID := fmt.Sprintf("entity-%d", i%10)
-				keys[i] = &icluster_conf.APIKeyParam{
+				keys[i] = &api_key.APIKeyParam{
 					ID:          lib.PString(id),
 					Key:         lib.PString(fmt.Sprintf("ak-%s", id)),
 					ProductName: lib.PString("AI_product"),
@@ -155,9 +156,9 @@ func TestAPIKeyRuleManager_ConfigExport_Concurrent(t *testing.T) {
 	}
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 			if filter.EntityID != nil {
-				return &quota.EntityParam{
+				return &entity.EntityParam{
 					EntityID: filter.EntityID,
 					Name:     filter.EntityID,
 					Type:     lib.PString("team"),
@@ -288,8 +289,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator(t *testing.T) {
 	entityID := "entity-1"
 
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:          lib.PString("key-1"),
 					Key:         lib.PString("ak-key-1"),
@@ -326,12 +327,12 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator(t *testing.T) {
 	}
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 			if filter.EntityID != nil && *filter.EntityID == entityID {
-				return &quota.EntityParam{
-					EntityID: lib.PString(entityID),
-					Name:     lib.PString("team-a"),
-					Type:     lib.PString("team"),
+				return &entity.EntityParam{
+					EntityID:    lib.PString(entityID),
+					Name:        lib.PString("team-a"),
+					Type:        lib.PString("team"),
 					AllowModels: []string{"gpt-4", "claude"},
 					BlockModels: []string{"gpt-2"},
 				}, nil
@@ -372,8 +373,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Unlimited(t *testing.T) {
 
 	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:             lib.PString("key-1"),
 					Key:            lib.PString("ak-key-1"),
@@ -411,8 +412,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_FalseUnlimitedWithEmptyQuotaPlans
 	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
 	quotaPlanID := int64(1)
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:             lib.PString("key-1"),
 					Key:            lib.PString("ak-key-1"),
@@ -464,8 +465,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_MinimalParamsWithNoQuotaPlan(t *t
 
 	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:          lib.PString("key-1"),
 					Key:         lib.PString("ak-key-1"),
@@ -503,8 +504,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_FalseUnlimitedWithNonUnlimitedQuo
 	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
 	quotaPlanID := int64(1)
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:             lib.PString("key-1"),
 					Key:            lib.PString("ak-key-1"),
@@ -558,8 +559,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Expired(t *testing.T) {
 	pastExpire := keyCreateAt.Add(-24 * time.Hour).Unix()
 	quota := float64(100)
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:          lib.PString("key-1"),
 					Key:         lib.PString("ak-key-1"),
@@ -600,8 +601,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Exhausted(t *testing.T) {
 	futureExpire := time.Date(2030, 1, 1, 0, 0, 0, 0, time.Local).Unix()
 	quota := float64(0)
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:          lib.PString("key-1"),
 					Key:         lib.PString("ak-key-1"),
@@ -639,8 +640,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Disabled(t *testing.T) {
 	ctx := context.Background()
 
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:          lib.PString("key-1"),
 					Key:         lib.PString("ak-key-1"),
@@ -677,8 +678,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_ModelIntersectionEmpty(t *testing
 	keyCreateAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)
 	entityID := "entity-1"
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:          lib.PString("key-1"),
 					Key:         lib.PString("ak-key-1"),
@@ -699,8 +700,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_ModelIntersectionEmpty(t *testing
 	}
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
-			return &quota.EntityParam{
+		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
+			return &entity.EntityParam{
 				EntityID:    lib.PString(entityID),
 				AllowModels: []string{"claude"},
 			}, nil
@@ -730,8 +731,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_EntityHierarchy(t *testing.T) {
 	quotaPlanID := int64(20)
 
 	apiKeyStore := &fakeAPIKeyStorager{
-		fetchListFn: func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-			return []*icluster_conf.APIKeyParam{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			return []*api_key.APIKeyParam{
 				{
 					ID:          lib.PString("key-1"),
 					Key:         lib.PString("ak-key-1"),
@@ -764,9 +765,9 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_EntityHierarchy(t *testing.T) {
 	}
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 			if filter.EntityID != nil && *filter.EntityID == entityID {
-				return &quota.EntityParam{
+				return &entity.EntityParam{
 					EntityID:    lib.PString(entityID),
 					Name:        lib.PString("team-a"),
 					Type:        lib.PString("team"),
@@ -776,7 +777,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_EntityHierarchy(t *testing.T) {
 				}, nil
 			}
 			if filter.EntityID != nil && *filter.EntityID == parentID {
-				return &quota.EntityParam{
+				return &entity.EntityParam{
 					EntityID:    lib.PString(parentID),
 					Name:        lib.PString("org-a"),
 					Type:        lib.PString("org"),
@@ -810,7 +811,7 @@ func TestAPIKeyRuleManager_FetchQuotaPlansWithEntityHierarchy(t *testing.T) {
 	quotaPlanID := int64(10)
 	entityID := "entity-1"
 
-	apiKey := &icluster_conf.APIKeyParam{
+	apiKey := &api_key.APIKeyParam{
 		Key:         &key,
 		QuotaPlanID: &quotaPlanID,
 		EntityID:    &entityID,
@@ -830,9 +831,9 @@ func TestAPIKeyRuleManager_FetchQuotaPlansWithEntityHierarchy(t *testing.T) {
 	}
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 			if filter.EntityID != nil && *filter.EntityID == entityID {
-				return &quota.EntityParam{
+				return &entity.EntityParam{
 					EntityID: lib.PString(entityID),
 					Name:     lib.PString("team-a"),
 					Type:     lib.PString("team"),
@@ -862,9 +863,9 @@ func TestAPIKeyRuleManager_FetchEntityModelHierarchy(t *testing.T) {
 	entityID := "entity-1"
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 			if filter.EntityID != nil && *filter.EntityID == entityID {
-				return &quota.EntityParam{
+				return &entity.EntityParam{
 					EntityID:    lib.PString(entityID),
 					ParentID:    &parentID,
 					AllowModels: []string{"gpt-4", "claude"},
@@ -872,7 +873,7 @@ func TestAPIKeyRuleManager_FetchEntityModelHierarchy(t *testing.T) {
 				}, nil
 			}
 			if filter.EntityID != nil && *filter.EntityID == parentID {
-				return &quota.EntityParam{
+				return &entity.EntityParam{
 					EntityID:    lib.PString(parentID),
 					AllowModels: []string{"gpt-4"},
 					BlockModels: []string{"bloom"},
@@ -896,7 +897,7 @@ func TestAPIKeyRuleManager_FetchEntityModelHierarchy_EntityNotFound(t *testing.T
 	ctx := context.Background()
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 			return nil, nil
 		},
 	}
@@ -920,7 +921,7 @@ func TestAPIKeyRuleManager_CollectEntityModels_Star(t *testing.T) {
 
 	var allAllowModels [][]string
 	var allBlockModels []string
-	m.collectEntityModels(ctx, &quota.EntityParam{
+	m.collectEntityModels(ctx, &entity.EntityParam{
 		AllowModels: []string{"*"},
 		BlockModels: []string{"*"},
 	}, &allAllowModels, &allBlockModels)

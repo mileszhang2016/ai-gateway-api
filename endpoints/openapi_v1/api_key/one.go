@@ -17,7 +17,7 @@ package api_key
 import (
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
@@ -48,7 +48,7 @@ func OneAction(req *http.Request) (interface{}, error) {
 
 	productName := defaultProductName
 
-	one, err := container.APIKeyManager.FetchAPIKey(req.Context(), &icluster_conf.APIKeyFilter{
+	one, err := container.APIKeyManager.FetchAPIKey(req.Context(), &api_key.APIKeyFilter{
 		ID:          oneReq.ID,
 		ProductName: &productName,
 	})
@@ -59,7 +59,7 @@ func OneAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapRecordNotExist("API-Key")
 	}
 
-	response, err := newResponse(req.Context(), []*icluster_conf.APIKeyParam{one})
+	response, err := newResponse(req.Context(), []*api_key.APIKeyParam{one})
 	if err != nil {
 		return nil, err
 	}

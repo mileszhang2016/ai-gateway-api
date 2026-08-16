@@ -19,8 +19,8 @@ import (
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/infinity-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -41,7 +41,7 @@ func EntityFullUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	existing, err := container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{
+	existing, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{
 		EntityID: fullUpdateReq.EntityID,
 	})
 	if err != nil {
@@ -51,7 +51,7 @@ func EntityFullUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapRecordNotExist("Entity")
 	}
 
-	param := &quota.EntityParam{}
+	param := &entity.EntityParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
 	}
@@ -60,14 +60,14 @@ func EntityFullUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	if _, err := container.EntityManager.UpdateEntity(req.Context(), &quota.EntityFilter{
+	if _, err := container.EntityManager.UpdateEntity(req.Context(), &entity.EntityFilter{
 		EntityID: fullUpdateReq.EntityID,
 	}, param); err != nil {
 		return nil, err
 	}
 
 	// 获取更新后的 Entity
-	updated, err := container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{EntityID: fullUpdateReq.EntityID})
+	updated, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{EntityID: fullUpdateReq.EntityID})
 	if err != nil {
 		return nil, err
 	}
