@@ -285,6 +285,52 @@ func TestCreate(t *testing.T) {
 
 4. **不污染源码**：`integration/` 和 `tests/` 均在 `test/` 目录下，通过独立 Go module 和 replace 指令引用主项目，不会修改任何程序代码。
 
+## Schema 集成测试
+
+为严格校验每个接口返回值是否符合 `design-docs/api-define` 中的定义，项目新增了 schema 集成测试：
+
+```bash
+# 全部 schema 测试
+go test -v -count=1 -timeout 300s ./tests/schema/...
+
+# 仅 OpenAPI schema 测试
+go test -v -count=1 -timeout 300s ./tests/schema/openapi/...
+
+# 仅 InnerAPI schema 测试
+go test -v -count=1 -timeout 300s ./tests/schema/innerapi/...
+```
+
+### 目录说明
+
+```
+tests/schema/
+├── openapi/                 # OpenAPI v1 schema 定义与测试
+│   ├── schema.go            # 公共类型（QuotaPlan、RateLimitPolicy、RouteRules 等）
+│   ├── api_key.go
+│   ├── entity.go
+│   ├── entity_type.go
+│   ├── cluster.go
+│   ├── certificate.go
+│   ├── auth.go
+│   ├── model_price.go
+│   ├── route_tables.go
+│   ├── global_route_rules.go
+│   ├── tools.go
+│   └── openapi_schema_test.go
+└── innerapi/                # InnerAPI v1 schema 定义与测试
+    ├── schema.go            # 各导出配置顶层 schema
+    └── innerapi_schema_test.go
+```
+
+### 校验框架
+
+通用校验器位于 `testutil/schema.go`，支持：
+
+- `AssertSchema`：校验对象字段存在性与类型
+- `AssertListSchema`：校验数组及元素结构
+- `AssertPagedListSchema`：校验 `{list, pagination}` 分页结构
+- 必填字段、可选字段、嵌套对象、数组元素、枚举值校验
+
 ## 相关文档
 
 | 文档 | 路径 |

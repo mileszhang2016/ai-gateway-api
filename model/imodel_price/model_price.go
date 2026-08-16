@@ -17,7 +17,6 @@ package imodel_price
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
@@ -36,8 +35,8 @@ type ModelPrice struct {
 	Prices              map[string]float64     `json:"prices,omitempty" yaml:"prices,omitempty"`
 	PriceCurrency       string                 `json:"price_currency,omitempty" yaml:"price_currency,omitempty"`
 	Metadata            map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	CreatedAt           time.Time              `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	UpdatedAt           time.Time              `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	CreateTime          *int64                 `json:"create_time,omitempty" yaml:"create_time,omitempty"`
+	UpdateTime          *int64                 `json:"update_time,omitempty" yaml:"update_time,omitempty"`
 }
 
 // ModelPriceFilter is used to query model price records.

@@ -31,9 +31,15 @@ var ListEndpoint = &xreq.Endpoint{
 	Authorizer: iauth.FA(iauth.FeatureModelPrice, iauth.ActionRead),
 }
 
+type pagination struct {
+	Page     int   `json:"page"`
+	PageSize int   `json:"page_size"`
+	Total    int64 `json:"total"`
+}
+
 type listResponse struct {
-	Total int64                    `json:"total"`
-	Items []*imodel_price.ModelPrice `json:"items"`
+	List       []*imodel_price.ModelPrice `json:"list"`
+	Pagination *pagination                `json:"pagination"`
 }
 
 // ListAction handles GET /model-prices.
@@ -49,7 +55,11 @@ func ListAction(req *http.Request) (interface{}, error) {
 	}
 
 	return &listResponse{
-		Total: total,
-		Items: list,
+		List: list,
+		Pagination: &pagination{
+			Page:     page,
+			PageSize: pageSize,
+			Total:    total,
+		},
 	}, nil
 }

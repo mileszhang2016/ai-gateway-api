@@ -121,6 +121,47 @@ func TestQuotaPlan(t *testing.T) {
 	assert.Error(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q, Unit: &unit}))
 	unit = "total_token"
 	assert.NoError(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q, Unit: &unit}))
+
+	// RMB quota upper limit: 90,000,000.00 yuan
+	unit = "RMB"
+	q = 90000000.00
+	assert.NoError(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q, Unit: &unit}))
+	q = 90000000.00000001
+	assert.Error(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q, Unit: &unit}))
+	q = 90000001.00
+	assert.Error(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q, Unit: &unit}))
+}
+
+func TestQuotaValue(t *testing.T) {
+	q := float64(-1)
+	assert.Error(t, QuotaValue(&q, "total_token"))
+
+	q = 1.5
+	assert.Error(t, QuotaValue(&q, "total_token"))
+
+	q = 100
+	assert.NoError(t, QuotaValue(&q, "total_token"))
+
+	q = 100.123456789
+	assert.Error(t, QuotaValue(&q, "RMB"))
+
+	q = 100.12345678
+	assert.NoError(t, QuotaValue(&q, "RMB"))
+
+	q = 90000000.00
+	assert.NoError(t, QuotaValue(&q, "RMB"))
+
+	q = 90000000.00000001
+	assert.Error(t, QuotaValue(&q, "RMB"))
+
+	q = 90000001.00
+	assert.Error(t, QuotaValue(&q, "RMB"))
+
+	assert.NoError(t, QuotaValue(nil, "RMB"))
+
+	// Unknown unit: only non-negative check applies
+	q = 123.45
+	assert.NoError(t, QuotaValue(&q, "unknown"))
 }
 
 func TestRateLimitPolicy(t *testing.T) {

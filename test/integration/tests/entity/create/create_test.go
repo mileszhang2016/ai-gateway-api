@@ -165,6 +165,20 @@ func TestEntity_Create(t *testing.T) {
 				assert.InDelta(t, float64(0), balance["used"], 0.00001)
 			},
 		},
+		{
+			name: "E-1-012 创建 Entity 时 RMB 配额超过 9000 万元上限",
+			body: map[string]interface{}{
+				"name": testutil.UniqueEntityName(),
+				"type": typeName,
+				"quota_plan": map[string]interface{}{
+					"unlimited":    false,
+					"quota":        90000000.01,
+					"unit":         "RMB",
+					"reset_period": "monthly",
+				},
+			},
+			wantCode: 422,
+		},
 	}
 
 	for _, tt := range tests {
