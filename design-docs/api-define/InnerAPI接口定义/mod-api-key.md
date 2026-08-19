@@ -90,9 +90,9 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
         "ai_product": {
             "AI_product-abcdef123456": {
                 "key": "AI_product-abcdef123456",
+                "key_id": "ak-test-key-001",
                 "enabled": 1,
                 "status": 1,
-                "name": "ak-test-key-001",
                 "update_time": 1716883200,
                 "expired_time": -1,
                 "unlimited_quota": false,
@@ -114,9 +114,9 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
 | 字段 | 类型 | 说明 | 可能取值 |
 |------|------|------|----------|
 | key | string | API-Key 值 | 系统生成的 Key 字符串 |
+| key_id | string | API-Key 标识 ID | 用于唯一标识该 API-Key，对应 API-Key 的唯一标识 |
 | enabled | int | 是否启用 | `1`: 启用, `2`: 禁用 |
 | status | int | Key 状态 | `1`: 启用, `2`: 禁用, `3`: 已过期, `4`: 配额耗尽 |
-| name | string | API-Key ID | 对应 API-Key 的唯一标识 |
 | update_time | int64 | 创建时间 | Unix 时间戳（秒） |
 | expired_time | int64 | 过期时间 | `-1`: 永不过期；其他为 Unix 时间戳（秒） |
 | unlimited_quota | bool | 是否无限配额 | `true`: 不检查配额；`false`: 检查配额 |
@@ -236,9 +236,9 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
             "ai_product": {
                 "AI_product-abcdef123456": {
                     "key": "AI_product-abcdef123456",
+                    "key_id": "ak-test-key-001",
                     "enabled": 1,
                     "status": 1,
-                    "name": "ak-test-key-001",
                     "update_time": 1716883200,
                     "expired_time": -1,
                     "unlimited_quota": false,
@@ -252,9 +252,9 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
                 },
                 "AI_product-ghijkl789012": {
                     "key": "AI_product-ghijkl789012",
+                    "key_id": "ak-prod-key-002",
                     "enabled": 1,
                     "status": 1,
-                    "name": "ak-prod-key-002",
                     "update_time": 1716883200,
                     "expired_time": -1,
                     "unlimited_quota": true,

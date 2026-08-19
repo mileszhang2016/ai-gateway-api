@@ -77,9 +77,9 @@ type QuotaPlan struct {
 
 type TokenFile struct {
 	Key            string  `json:"key"`
+	KeyID          string  `json:"key_id"`
 	Enabled        int     `json:"enabled"`
 	Status         int     `json:"status"`
-	Name           string  `json:"name"`
 	UpdateTime     int64   `json:"update_time"`
 	ExpiredTime    int64   `json:"expired_time"` // -1 means never expired
 	UnlimitedQuota bool    `json:"unlimited_quota"`
@@ -260,9 +260,9 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 
 		tokenFile := &TokenFile{
 			Key:            *one.Key,
+			KeyID:          *one.ID,
 			Enabled:        2,
 			Status:         status,
-			Name:           *one.ID,
 			ExpiredTime:    expiredTime,
 			UpdateTime:     one.KeyCreateAt.Unix(),
 			UnlimitedQuota: one.UnlimitedQuota != nil && *one.UnlimitedQuota,

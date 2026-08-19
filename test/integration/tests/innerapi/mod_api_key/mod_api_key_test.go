@@ -48,6 +48,35 @@ func TestInnerAPI_ModApiKey(t *testing.T) {
 		testutil.AssertDataFieldNotEmpty(t, resp, "config")
 		testutil.AssertDataFieldNotEmpty(t, resp, "QuotaPlans")
 		testutil.AssertDataFieldNotEmpty(t, resp, "tokens")
+
+		// 验证导出的 token 包含 key_id 且不包含 name
+		var data map[string]interface{}
+		if err := testutil.UnmarshalData(resp, &data); err != nil {
+			t.Fatalf("parse data failed: %v", err)
+		}
+		tokens, ok := data["tokens"].(map[string]interface{})
+		if !ok {
+			t.Fatal("tokens is not an object")
+		}
+		productTokens, ok := tokens["AI_product"].(map[string]interface{})
+		if !ok {
+			t.Fatal("tokens.AI_product is not an object")
+		}
+		if len(productTokens) == 0 {
+			t.Fatal("tokens.AI_product is empty")
+		}
+		for key, token := range productTokens {
+			tokenMap, ok := token.(map[string]interface{})
+			if !ok {
+				t.Fatalf("token %s is not an object", key)
+			}
+			if _, ok := tokenMap["key_id"]; !ok {
+				t.Errorf("token %s missing key_id", key)
+			}
+			if _, ok := tokenMap["name"]; ok {
+				t.Errorf("token %s should not contain name", key)
+			}
+		}
 	})
 
 	t.Run("IN-6-002 增量同步未变化", func(t *testing.T) {
