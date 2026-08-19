@@ -358,6 +358,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator(t *testing.T) {
 	require.True(t, ok)
 	assert.NotNil(t, conf.Tokens["AI_product"]["ak-key-1"])
 	token := conf.Tokens["AI_product"]["ak-key-1"]
+	assert.Equal(t, "key-1", token.KeyID)
 	assert.Equal(t, TokenStatusEnabled, token.Status)
 	assert.Equal(t, 1, token.Enabled)
 	assert.Equal(t, "gpt-4", *token.Models)

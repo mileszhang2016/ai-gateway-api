@@ -19,10 +19,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/internal/testutil"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
@@ -35,7 +37,15 @@ import (
 type fakeAPIKeyStoragerForRule struct{}
 
 func (f *fakeAPIKeyStoragerForRule) FetchAPIKeyList(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
-	return nil, nil
+	return []*api_key.APIKeyParam{
+		{
+			ID:          lib.PString("key-1"),
+			Key:         lib.PString("ak-key-1"),
+			ProductName: lib.PString("AI_product"),
+			Enable:      lib.PBool(true),
+			KeyCreateAt: lib.PTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)),
+		},
+	}, nil
 }
 
 func (f *fakeAPIKeyStoragerForRule) CreateAPIKey(ctx context.Context, param *api_key.APIKeyParam) (int64, error) {
@@ -151,6 +161,8 @@ func TestExportAction(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "v2", *conf.Version)
 	assert.Contains(t, conf.Config, "AI_product")
+	require.Contains(t, conf.Tokens["AI_product"], "ak-key-1")
+	assert.Equal(t, "key-1", conf.Tokens["AI_product"]["ak-key-1"].KeyID)
 }
 
 func TestExportAction_VersionNotChanged(t *testing.T) {
