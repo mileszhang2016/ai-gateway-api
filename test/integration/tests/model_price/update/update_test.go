@@ -107,6 +107,34 @@ func TestModelPrice_Update(t *testing.T) {
 		testutil.AssertErrCode(t, resp, 422)
 	})
 
+	t.Run("MP-6-004 按 id 更新 limits 为负数", func(t *testing.T) {
+		provider := testutil.UniqueName("provider")
+		model := "update-limit-invalid"
+		id, err := testutil.CreateModelPrice(map[string]interface{}{
+			"provider":   provider,
+			"model":      model,
+			"base_model": model,
+			"mode":       "chat",
+			"prices": map[string]interface{}{
+				"input_cost_per_token": 0.001,
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteModelPrice(id)
+
+		resp, err := testutil.GetClient().Put("/open-api/v1/model-prices/"+fmt.Sprintf("%d", id), map[string]interface{}{
+			"limits": map[string]interface{}{
+				"max_output_tokens": -1,
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Run("MP-7-001 按组合键更新 prices", func(t *testing.T) {
 		provider := testutil.UniqueName("provider")
 		model := "update-query-model"
@@ -153,6 +181,38 @@ func TestModelPrice_Update(t *testing.T) {
 		}, map[string]interface{}{
 			"prices": map[string]interface{}{
 				"input_cost_per_token": 0.001,
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
+	t.Run("MP-7-003 按组合键更新 limits 为负数", func(t *testing.T) {
+		provider := testutil.UniqueName("provider")
+		model := "update-query-limit-invalid"
+		id, err := testutil.CreateModelPrice(map[string]interface{}{
+			"provider":   provider,
+			"model":      model,
+			"base_model": model,
+			"mode":       "chat",
+			"prices": map[string]interface{}{
+				"input_cost_per_token": 0.001,
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteModelPrice(id)
+
+		resp, err := testutil.GetClient().PutWithQuery("/open-api/v1/model-prices", map[string]string{
+			"provider": provider,
+			"model":    model,
+			"mode":     "chat",
+		}, map[string]interface{}{
+			"limits": map[string]interface{}{
+				"context_window": -1,
 			},
 		})
 		if err != nil {

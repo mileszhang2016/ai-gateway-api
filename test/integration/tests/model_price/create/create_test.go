@@ -150,6 +150,25 @@ func TestModelPrice_Create(t *testing.T) {
 		testutil.AssertErrCode(t, resp, 422)
 	})
 
+	t.Run("MP-2-007 limits 包含负数", func(t *testing.T) {
+		resp, err := testutil.GetClient().Post("/open-api/v1/model-prices", map[string]interface{}{
+			"provider":   testutil.UniqueName("provider"),
+			"model":      "test-model",
+			"base_model": "test-model",
+			"mode":       "chat",
+			"limits": map[string]interface{}{
+				"context_window": -1,
+			},
+			"prices": map[string]interface{}{
+				"input_cost_per_token": 0.001,
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Run("MP-2-006 重复三元组", func(t *testing.T) {
 		provider := testutil.UniqueName("provider")
 		model := testutil.UniqueName("model")

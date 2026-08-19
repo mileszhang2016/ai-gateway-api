@@ -16,6 +16,7 @@ package imodel_price
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
@@ -120,6 +121,45 @@ var ValidMetadataKeys = map[string]bool{
 	"notes":  true,
 }
 
+func validateLimitValue(key string, v interface{}) error {
+	switch n := v.(type) {
+	case int:
+		if n < 0 {
+			return xerror.WrapParamErrorWithMsg("limit %s must be >= 0", key)
+		}
+	case int8:
+		if n < 0 {
+			return xerror.WrapParamErrorWithMsg("limit %s must be >= 0", key)
+		}
+	case int16:
+		if n < 0 {
+			return xerror.WrapParamErrorWithMsg("limit %s must be >= 0", key)
+		}
+	case int32:
+		if n < 0 {
+			return xerror.WrapParamErrorWithMsg("limit %s must be >= 0", key)
+		}
+	case int64:
+		if n < 0 {
+			return xerror.WrapParamErrorWithMsg("limit %s must be >= 0", key)
+		}
+	case uint, uint8, uint16, uint32, uint64, uintptr:
+		// non-negative integers by definition
+	case float32:
+		f := float64(n)
+		if f < 0 || f != math.Trunc(f) {
+			return xerror.WrapParamErrorWithMsg("limit %s must be a non-negative integer", key)
+		}
+	case float64:
+		if n < 0 || n != math.Trunc(n) {
+			return xerror.WrapParamErrorWithMsg("limit %s must be a non-negative integer", key)
+		}
+	default:
+		return xerror.WrapParamErrorWithMsg("limit %s must be a non-negative integer", key)
+	}
+	return nil
+}
+
 // ValidateModelPrice validates a model price record.
 func ValidateModelPrice(m *ModelPrice) error {
 	if m == nil {
@@ -168,9 +208,12 @@ func ValidateModelPrice(m *ModelPrice) error {
 		}
 	}
 
-	for k := range m.Limits {
+	for k, v := range m.Limits {
 		if !ValidLimitKeys[k] {
 			return xerror.WrapParamErrorWithMsg("invalid limit key: %s", k)
+		}
+		if err := validateLimitValue(k, v); err != nil {
+			return err
 		}
 	}
 
