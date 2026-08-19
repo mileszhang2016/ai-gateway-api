@@ -41,7 +41,7 @@
 | `mode` | string | 请求模式 | 必填；枚举值见下表 |
 | `capabilities` | []string | 模型支持的能力列表 | 默认空数组；元素应为枚举值 |
 | `supported_parameters` | []string | 支持的请求参数列表 | 默认空数组；元素应为枚举值 |
-| `limits` | object | 限制对象 | 默认空对象；键名应为枚举值 |
+| `limits` | object | 限制对象 | 默认空对象；键名应为枚举值；所有限制字段必须为非负整数 |
 | `prices` | object | 价格对象 | 必填；至少包含一个价格字段；所有价格字段必须为非负数；键名应为枚举值 |
 | `price_currency` | string | 价格货币 | 固定为 `RMB`，请求体中无需传入 |
 | `metadata` | object | 元数据 | 默认空对象；键名应为枚举值 |
@@ -204,7 +204,7 @@ models:
 | `mode` | Y | 模型模式，枚举值同第 1 节 `mode` 枚举 |
 | `capabilities` | N | 能力列表，枚举值同第 1 节 `capabilities` 枚举 |
 | `supported_parameters` | N | 支持的请求参数列表，枚举值同第 1 节 `supported_parameters` 枚举 |
-| `limits` | N | 限制对象，键名枚举值同第 1 节 `limits` 枚举 |
+| `limits` | N | 限制对象，键名枚举值同第 1 节 `limits` 枚举；所有限制字段必须为非负整数 |
 | `prices` | Y | 价格对象，键名枚举值同第 1 节 `prices` 枚举；至少包含一个价格字段 |
 | `metadata` | N | 元数据，键名枚举值同第 1 节 `metadata` 枚举 |
 
@@ -285,8 +285,9 @@ models:
 2. 校验每条记录的 `(provider, model, mode)` 唯一性；
 3. 校验必填字段：`provider`、`model`、`base_model`、`mode`、`prices`；
 4. 校验 `prices` 中至少包含一个价格字段，且所有价格字段为非负数；
-5. `replace` 模式：先清空 `model_prices` 表，再写入新数据；
-6. `merge` 模式：对已有 `(provider, model, mode)` 记录更新，新增记录插入。
+5. 校验 `limits` 中所有限制字段值为非负整数；
+6. `replace` 模式：先清空 `model_prices` 表，再写入新数据；
+7. `merge` 模式：对已有 `(provider, model, mode)` 记录更新，新增记录插入。
 
 **权限**
 
@@ -554,6 +555,7 @@ Data 为 null。
 6. `mode` 必须是预定义枚举值；
 7. `capabilities`、`supported_parameters` 若传入，其元素应取自对应枚举值（非枚举值可接收但建议告警或记录，便于后续收敛）；
 8. `limits`、`prices`、`metadata` 的键名应取自对应枚举值（非枚举键可接收但建议告警或记录，便于后续收敛）；
-9. `/v1/model-prices/import` 仅接受 YAML 文件，且 `default_currency` 必须为 `RMB`。
+9. `limits` 中所有限制字段值必须为非负整数；
+10. `/v1/model-prices/import` 仅接受 YAML 文件，且 `default_currency` 必须为 `RMB`。
 
 ---

@@ -237,6 +237,30 @@ func TestModelPrice_Import(t *testing.T) {
 		testutil.AssertErrCode(t, resp, 422)
 	})
 
+	t.Run("MP-1-007 limits 包含负数", func(t *testing.T) {
+		yaml := buildYAML([]map[string]interface{}{
+			{
+				"provider": testutil.UniqueName("provider"),
+				"model":    "m",
+				"mode":     "chat",
+				"limits": map[string]interface{}{
+					"context_window": -1,
+				},
+				"prices": map[string]float64{
+					"input_cost_per_token": 0.0001,
+				},
+			},
+		})
+
+		resp, err := testutil.GetClient().PostMultipartFile("/open-api/v1/model-prices/import", "file", "model-list.yaml", []byte(yaml), map[string]string{
+			"mode": "replace",
+		})
+		if err != nil {
+			t.Fatalf("import failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Run("MP-1-006 重复三元组", func(t *testing.T) {
 		provider := testutil.UniqueName("provider")
 		yaml := buildYAML([]map[string]interface{}{
@@ -280,6 +304,12 @@ func buildYAML(models []map[string]interface{}) string {
 		yaml += fmt.Sprintf("    model: %s\n", m["model"])
 		yaml += fmt.Sprintf("    base_model: %s\n", m["model"])
 		yaml += fmt.Sprintf("    mode: %s\n", m["mode"])
+		if limits, ok := m["limits"].(map[string]interface{}); ok {
+			yaml += "    limits:\n"
+			for k, v := range limits {
+				yaml += fmt.Sprintf("      %s: %v\n", k, v)
+			}
+		}
 		prices := m["prices"].(map[string]float64)
 		yaml += "    prices:\n"
 		for k, v := range prices {

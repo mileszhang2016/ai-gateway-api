@@ -56,6 +56,13 @@ func TestValidateModelPrice(t *testing.T) {
 		{"invalid capability", func() *ModelPrice { p := validModelPrice(); p.Capabilities = []string{"unknown"}; return p }(), true},
 		{"invalid supported parameter", func() *ModelPrice { p := validModelPrice(); p.SupportedParameters = []string{"unknown"}; return p }(), true},
 		{"invalid limit key", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"unknown": 1}; return p }(), true},
+		{"negative limit int", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": -1}; return p }(), true},
+		{"negative limit float64", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": float64(-1)}; return p }(), true},
+		{"non-integer limit", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": 1.5}; return p }(), true},
+		{"non-numeric limit", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": "abc"}; return p }(), true},
+		{"valid zero limit", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": 0}; return p }(), false},
+		{"valid positive limit", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": 128000}; return p }(), false},
+		{"valid positive limit float64", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": float64(128000)}; return p }(), false},
 		{"invalid metadata key", func() *ModelPrice { p := validModelPrice(); p.Metadata = map[string]interface{}{"unknown": 1}; return p }(), true},
 	}
 
