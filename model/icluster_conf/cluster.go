@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -36,12 +36,13 @@ import (
 	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/cluster_conf"
 	"github.com/bfenetworks/bfe/bfe_config/bfe_route_conf/route_rule_conf"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 var (
@@ -183,12 +184,34 @@ type ClusterStickySessions struct {
 	HashHeader    string
 }
 
+type APIKey struct {
+	Name   *string `json:"name"`   // required; length 1-128; unique within keys
+	Key    *string `json:"key"`    // required; non-empty; length 1-512
+	Weight *int    `json:"weight"` // required; range [0,100]
+}
+
+type KeyPolicy struct {
+	Strategy            *string `json:"strategy"`              // default weighted_random
+	MaxRetries          *int    `json:"max_retries"`           // default 0
+	RetryBackoffInitial *int    `json:"retry_backoff_initial"` // default 500
+	RetryBackoffMax     *int    `json:"retry_backoff_max"`     // default 5000
+}
+
 type LLMConfig struct {
 	ModelEndpoint *Endpoint  `json:"model_endpoint"` // model list endpoints
 	Models        []string   `json:"models"`         // model name list
 	ModelMappings []*Mapping `json:"model_mappings"` // model mapping
-	Key           *string    `json:"key"`            // service auth key
+	Keys          []APIKey   `json:"keys"`           // multi API-Key list; empty means no API-Key
+	KeyPolicy     *KeyPolicy `json:"key_policy"`     // key routing policy
 	ProviderType  *string    `json:"provider_type"`
+	Provider      *string    `json:"provider"` // provider name in model_prices
+
+	// MatchPrefix defines the provider/model prefix this cluster matches.
+	// Must end with '/' to avoid matching model names themselves.
+	MatchPrefix *string `json:"match_prefix"`
+	// StripPrefix controls whether to strip MatchPrefix from the request model
+	// field before forwarding to the backend.
+	StripPrefix *bool `json:"strip_prefix"`
 }
 
 type Mapping struct {
@@ -290,7 +313,8 @@ func NewClusterManager(txn itxn.TxnStorager, storager ClusterStorager,
 	subClusterStorager SubClusterStorager, bfeClusterStorager ibasic.BFEClusterStorager,
 	poolStorager PoolStorager,
 	versionControlManager *iversion_control.VersionControlManager,
-	deleteCheckers map[string]func(context.Context, *ibasic.Product, *Cluster) error) *ClusterManager {
+	deleteCheckers map[string]func(context.Context, *ibasic.Product, *Cluster) error,
+	updateCheckers map[string]func(context.Context, *ibasic.Product, *Cluster, *ClusterParam) error) *ClusterManager {
 
 	return &ClusterManager{
 		txn:                   txn,
@@ -301,6 +325,7 @@ func NewClusterManager(txn itxn.TxnStorager, storager ClusterStorager,
 		versionControlManager: versionControlManager,
 
 		deleteCheckers: deleteCheckers,
+		updateCheckers: updateCheckers,
 	}
 }
 
@@ -325,6 +350,7 @@ type ClusterManager struct {
 	versionControlManager *iversion_control.VersionControlManager
 
 	deleteCheckers map[string]func(context.Context, *ibasic.Product, *Cluster) error
+	updateCheckers map[string]func(context.Context, *ibasic.Product, *Cluster, *ClusterParam) error
 }
 
 func (rm *ClusterManager) FetchClusterList(ctx context.Context, param *ClusterFilter) (list []*Cluster, err error) {
@@ -612,6 +638,12 @@ func (cm *ClusterManager) UpdateCluster(ctx context.Context, product *ibasic.Pro
 			}
 		}
 
+		for _, checker := range cm.updateCheckers {
+			if err = checker(ctx, product, oldData, param); err != nil {
+				return err
+			}
+		}
+
 		return cm.storager.ClusterUpdate(ctx, product, oldData, param)
 	})
 
@@ -784,7 +816,7 @@ func normalizeBFEHashStrategy(sticky *ClusterStickySessions) int32 {
 	return sticky.HashStrategy
 }
 
-func NewBfeClusterConf(version string, clusters []*Cluster) *cluster_conf.BfeClusterConf {
+func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable map[string][]*imodel_price.ModelPrice) *cluster_conf.BfeClusterConf {
 	clusterConfMap := cluster_conf.ClusterToConf{}
 
 	int322intp := func(i int32) *int {
@@ -854,11 +886,36 @@ func NewBfeClusterConf(version string, clusters []*Cluster) *cluster_conf.BfeClu
 		}
 
 		if cluster.LLMConfig != nil {
-			clusterConf.AIConf = &cluster_conf.AIConf{
-				Type:         0,
-				ModelMapping: convertToBFEModelMapping(cluster.LLMConfig.ModelMappings),
-				Key:          cluster.LLMConfig.Key,
+			var modelTable *cluster_conf.ModelTable
+			provider := ""
+			if cluster.LLMConfig.Provider != nil {
+				provider = *cluster.LLMConfig.Provider
 			}
+			if provider != "" {
+				if entries, ok := providerModelTable[provider]; ok && len(entries) > 0 {
+					models := make([]cluster_conf.ModelPrice, 0, len(entries))
+					for _, e := range entries {
+						if e != nil {
+							models = append(models, cluster_conf.ModelPrice{
+								Provider:            e.Provider,
+								Model:               e.Model,
+								BaseModel:           e.BaseModel,
+								Mode:                e.Mode,
+								Capabilities:        e.Capabilities,
+								SupportedParameters: e.SupportedParameters,
+								Limits:              e.Limits,
+								Prices:              e.Prices,
+								Metadata:            e.Metadata,
+							})
+						}
+					}
+					modelTable = &cluster_conf.ModelTable{
+						Currency: "RMB",
+						Models:   models,
+					}
+				}
+			}
+			clusterConf.AIConf = newAIConf(cluster.LLMConfig, modelTable)
 		}
 
 		clusterConfMap[cluster.Name] = clusterConf
@@ -867,6 +924,64 @@ func NewBfeClusterConf(version string, clusters []*Cluster) *cluster_conf.BfeClu
 		Version: &version,
 		Config:  &clusterConfMap,
 	}
+}
+
+func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable) *cluster_conf.AIConf {
+	aiConf := &cluster_conf.AIConf{
+		Type:         0,
+		ModelMapping: convertToBFEModelMapping(llmConfig.ModelMappings),
+		Keys:         []cluster_conf.AIKey{},
+	}
+
+	if llmConfig.Provider != nil {
+		aiConf.Provider = *llmConfig.Provider
+	}
+	if modelTable != nil {
+		aiConf.ModelTable = modelTable
+	}
+	if llmConfig.MatchPrefix != nil {
+		aiConf.MatchPrefix = *llmConfig.MatchPrefix
+	}
+	if llmConfig.StripPrefix != nil {
+		aiConf.StripPrefix = *llmConfig.StripPrefix
+	}
+
+	for _, k := range llmConfig.Keys {
+		aiConf.Keys = append(aiConf.Keys, cluster_conf.AIKey{
+			Name:   derefString(k.Name, ""),
+			Key:    derefString(k.Key, ""),
+			Weight: derefInt(k.Weight, 0),
+		})
+	}
+
+	aiConf.KeyPolicy = &cluster_conf.AIKeyPolicy{
+		Strategy:            "weighted_random",
+		MaxRetries:          0,
+		RetryBackoffInitial: 500,
+		RetryBackoffMax:     5000,
+	}
+	if llmConfig.KeyPolicy != nil {
+		aiConf.KeyPolicy.Strategy = derefString(llmConfig.KeyPolicy.Strategy, "weighted_random")
+		aiConf.KeyPolicy.MaxRetries = derefInt(llmConfig.KeyPolicy.MaxRetries, 0)
+		aiConf.KeyPolicy.RetryBackoffInitial = derefInt(llmConfig.KeyPolicy.RetryBackoffInitial, 500)
+		aiConf.KeyPolicy.RetryBackoffMax = derefInt(llmConfig.KeyPolicy.RetryBackoffMax, 5000)
+	}
+
+	return aiConf
+}
+
+func derefString(s *string, defaultValue string) string {
+	if s == nil {
+		return defaultValue
+	}
+	return *s
+}
+
+func derefInt(i *int, defaultValue int) int {
+	if i == nil {
+		return defaultValue
+	}
+	return *i
 }
 
 func convertToBFEModelMapping(modelMappings []*Mapping) *map[string]string {

@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,45 +19,56 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/internal/testutil"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/imods"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/internal/testutil"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 type fakeAPIKeyStoragerForRule struct{}
 
-func (f *fakeAPIKeyStoragerForRule) FetchAPIKeyList(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
-	return nil, nil
+func (f *fakeAPIKeyStoragerForRule) FetchAPIKeyList(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+	return []*api_key.APIKeyParam{
+		{
+			ID:          lib.PString("key-1"),
+			Key:         lib.PString("ak-key-1"),
+			ProductName: lib.PString("AI_product"),
+			Enable:      lib.PBool(true),
+			KeyCreateAt: lib.PTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)),
+		},
+	}, nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) CreateAPIKey(ctx context.Context, param *icluster_conf.APIKeyParam) (int64, error) {
+func (f *fakeAPIKeyStoragerForRule) CreateAPIKey(ctx context.Context, param *api_key.APIKeyParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) UpdateAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter, param *icluster_conf.APIKeyParam) (int64, error) {
+func (f *fakeAPIKeyStoragerForRule) UpdateAPIKey(ctx context.Context, filter *api_key.APIKeyFilter, param *api_key.APIKeyParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) DeleteAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter) error {
+func (f *fakeAPIKeyStoragerForRule) DeleteAPIKey(ctx context.Context, filter *api_key.APIKeyFilter) error {
 	return nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) CreateAPIKeyToken(ctx context.Context, param *icluster_conf.APIKeyTokenParam) (int64, error) {
+func (f *fakeAPIKeyStoragerForRule) CreateAPIKeyToken(ctx context.Context, param *api_key.APIKeyTokenParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) UpdateAPIKeyToken(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter, param *icluster_conf.APIKeyTokenParam) error {
+func (f *fakeAPIKeyStoragerForRule) UpdateAPIKeyToken(ctx context.Context, filter *api_key.APIKeyTokenFilter, param *api_key.APIKeyTokenParam) error {
 	return nil
 }
 
-func (f *fakeAPIKeyStoragerForRule) FetchAPIKeyTokenList(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter) ([]*icluster_conf.APIKeyTokenParam, error) {
+func (f *fakeAPIKeyStoragerForRule) FetchAPIKeyTokenList(ctx context.Context, filter *api_key.APIKeyTokenFilter) ([]*api_key.APIKeyTokenParam, error) {
 	return nil, nil
 }
 
@@ -95,23 +106,23 @@ func (f *fakeQuotaPlanStoragerForRule) DeleteQuotaPlan(ctx context.Context, filt
 
 type fakeEntityStoragerForRule struct{}
 
-func (f *fakeEntityStoragerForRule) CreateEntity(ctx context.Context, param *quota.EntityParam) (int64, error) {
+func (f *fakeEntityStoragerForRule) CreateEntity(ctx context.Context, param *entity.EntityParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeEntityStoragerForRule) FetchEntity(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+func (f *fakeEntityStoragerForRule) FetchEntity(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 	return nil, nil
 }
 
-func (f *fakeEntityStoragerForRule) FetchEntityList(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error) {
+func (f *fakeEntityStoragerForRule) FetchEntityList(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
 	return nil, nil
 }
 
-func (f *fakeEntityStoragerForRule) UpdateEntity(ctx context.Context, filter *quota.EntityFilter, param *quota.EntityParam) (int64, error) {
+func (f *fakeEntityStoragerForRule) UpdateEntity(ctx context.Context, filter *entity.EntityFilter, param *entity.EntityParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeEntityStoragerForRule) DeleteEntity(ctx context.Context, filter *quota.EntityFilter) error {
+func (f *fakeEntityStoragerForRule) DeleteEntity(ctx context.Context, filter *entity.EntityFilter) error {
 	return nil
 }
 
@@ -130,8 +141,7 @@ func setupAPIKeyRuleManager(version string) func() {
 		&fakeAPIKeyStoragerForRule{},
 		&fakeAIRouteRuleStoragerForRule{},
 		&fakeQuotaPlanStoragerForRule{},
-		&fakeEntityStoragerForRule{},
-	)
+		&fakeEntityStoragerForRule{}, nil)
 	return func() {
 		container.APIKeyRuleManager = old
 		stateful.DefaultConfig = origConfig
@@ -151,6 +161,8 @@ func TestExportAction(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "v2", *conf.Version)
 	assert.Contains(t, conf.Config, "AI_product")
+	require.Contains(t, conf.Tokens["AI_product"], "ak-key-1")
+	assert.Equal(t, "key-1", conf.Tokens["AI_product"]["ak-key-1"].KeyID)
 }
 
 func TestExportAction_VersionNotChanged(t *testing.T) {

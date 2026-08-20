@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,12 +21,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	golibquota "github.com/bfenetworks/go-lib/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	entpkg "github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 // ConfigTopicProductAPIKeyRule is the configuration topic for API key rules
@@ -70,13 +72,14 @@ type QuotaPlan struct {
 	ExpiredTime int64 // -1 means never expired
 	Quota       int64 // 配额总量
 	ResetMode   int   // 0 – 非周期性；1 – 周期性的配额包
+	Unit        string
 }
 
 type TokenFile struct {
 	Key            string  `json:"key"`
+	KeyID          string  `json:"key_id"`
 	Enabled        int     `json:"enabled"`
 	Status         int     `json:"status"`
-	Name           string  `json:"name"`
 	UpdateTime     int64   `json:"update_time"`
 	ExpiredTime    int64   `json:"expired_time"` // -1 means never expired
 	UnlimitedQuota bool    `json:"unlimited_quota"`
@@ -191,7 +194,7 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 		}
 	}
 
-	apiKeyList, err := rlm.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{})
+	apiKeyList, err := rlm.apiKeyStorager.FetchAPIKeyList(ctx, &api_key.APIKeyFilter{})
 	if err != nil {
 		return nil, err
 	}
@@ -230,12 +233,12 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 		}
 
 		status := TokenStatusDisabled
-		var remainQuota int64
+		var remainQuota float64
 		if one.Enable != nil && *one.Enable {
 			isUnlimited := one.UnlimitedQuota != nil && *one.UnlimitedQuota
 			if !isUnlimited {
 				status = TokenStatusEnabled
-				remainingQuota, err := icluster_conf.GetRemainingQuota(one)
+				remainingQuota, err := api_key.GetRemainingQuota(ctx, rlm.quotaCache, one)
 				if err != nil {
 					return nil, err
 				}
@@ -257,9 +260,9 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 
 		tokenFile := &TokenFile{
 			Key:            *one.Key,
+			KeyID:          *one.ID,
 			Enabled:        2,
 			Status:         status,
-			Name:           *one.ID,
 			ExpiredTime:    expiredTime,
 			UpdateTime:     one.KeyCreateAt.Unix(),
 			UnlimitedQuota: one.UnlimitedQuota != nil && *one.UnlimitedQuota,
@@ -381,7 +384,7 @@ func convertAPIKeyRulesToBfeRules(oldRules []*APIKeyRule) []*TokenRuleFile {
 	return exportRules
 }
 
-func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Context, apiKey *icluster_conf.APIKeyParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
+func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Context, apiKey *api_key.APIKeyParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
 	quotaPlanIDs := make([]string, 0)
 	tags := make([]ApikeyTag, 0)
 
@@ -407,7 +410,7 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Con
 	}
 
 	if apiKey.EntityID != nil && *apiKey.EntityID != "" && rlm.entityStorager != nil {
-		entity, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: apiKey.EntityID})
+		entity, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: apiKey.EntityID})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -424,7 +427,7 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Con
 	return quotaPlanIDs, tags, nil
 }
 
-func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context, entity *quota.EntityParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
+func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context, entity *entpkg.EntityParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
 	quotaPlanIDs := make([]string, 0)
 	tags := make([]ApikeyTag, 0)
 
@@ -457,7 +460,7 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context,
 	}
 
 	if entity.ParentID != nil && *entity.ParentID != "" && rlm.entityStorager != nil {
-		parentEntity, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: entity.ParentID})
+		parentEntity, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: entity.ParentID})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -479,7 +482,7 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context,
 //   - intersectedAllowModels: intersection of all AllowModels from entities in the hierarchy (nil if any entity has empty AllowModels)
 //   - unionBlockModels: union of all BlockModels from entities in the hierarchy
 func (rlm *APIKeyRuleManager) fetchEntityModelHierarchy(ctx context.Context, entityID string) ([]string, []string, error) {
-	entity, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: &entityID})
+	entity, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: &entityID})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -497,7 +500,7 @@ func (rlm *APIKeyRuleManager) fetchEntityModelHierarchy(ctx context.Context, ent
 
 // collectEntityModels recursively walks the entity hierarchy to collect AllowModels and BlockModels
 // If an entity's AllowModels or BlockModels contains "*", it is skipped (meaning allow/block all)
-func (rlm *APIKeyRuleManager) collectEntityModels(ctx context.Context, entity *quota.EntityParam, allAllowModels *[][]string, allBlockModels *[]string) {
+func (rlm *APIKeyRuleManager) collectEntityModels(ctx context.Context, entity *entpkg.EntityParam, allAllowModels *[][]string, allBlockModels *[]string) {
 	if len(entity.AllowModels) > 0 && !containsStar(entity.AllowModels) {
 		*allAllowModels = append(*allAllowModels, entity.AllowModels)
 	}
@@ -506,7 +509,7 @@ func (rlm *APIKeyRuleManager) collectEntityModels(ctx context.Context, entity *q
 	}
 
 	if entity.ParentID != nil && *entity.ParentID != "" && rlm.entityStorager != nil {
-		parent, err := rlm.entityStorager.FetchEntity(ctx, &quota.EntityFilter{EntityID: entity.ParentID})
+		parent, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: entity.ParentID})
 		if err != nil || parent == nil {
 			return
 		}
@@ -579,7 +582,10 @@ func convertQuotaPlanToExport(qp *quota.QuotaPlanParam, id string, redisKeyID st
 		ExpiredTime: -1,
 	}
 	if qp.Quota != nil {
-		result.Quota = *qp.Quota
+		result.Quota = golibquota.PtrToRedisValue(qp.Quota, qp.Unit)
+	}
+	if qp.Unit != nil {
+		result.Unit = *qp.Unit
 	}
 	if qp.ResetPeriod != nil {
 		if *qp.ResetPeriod == "weekly" || *qp.ResetPeriod == "monthly" {

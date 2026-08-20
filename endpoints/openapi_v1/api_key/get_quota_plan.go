@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,12 +18,12 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 var _ xreq.Handler = GetQuotaPlanAction
@@ -38,15 +38,15 @@ var GetQuotaPlanRoute = &xreq.Endpoint{
 type GetQuotaPlanResponse struct {
 	Unlimited             *bool    `json:"unlimited"`
 	PassWhenNoEnoughQuota *bool    `json:"pass_when_no_enough_quota"`
-	Quota                 *int64   `json:"quota"`
+	Quota                 *float64 `json:"quota"`
 	Unit                  *string  `json:"unit"`
 	ResetPeriod           *string  `json:"reset_period"`
 	Balance               *Balance `json:"balance"`
 }
 
 type Balance struct {
-	Used      int64 `json:"used"`
-	Remaining int64 `json:"remaining"`
+	Used      float64 `json:"used"`
+	Remaining float64 `json:"remaining"`
 }
 
 func GetQuotaPlanAction(req *http.Request) (interface{}, error) {
@@ -59,7 +59,7 @@ func GetQuotaPlanAction(req *http.Request) (interface{}, error) {
 }
 
 func GetQuotaPlanProcess(ctx context.Context, id string, product *ibasic.Product) (*GetQuotaPlanResponse, error) {
-	apiKey, err := container.APIKeyManager.FetchAPIKey(ctx, &icluster_conf.APIKeyFilter{
+	apiKey, err := container.APIKeyManager.FetchAPIKey(ctx, &api_key.APIKeyFilter{
 		ID:          &id,
 		ProductName: &product.Name,
 	})
@@ -75,10 +75,35 @@ func GetQuotaPlanProcess(ctx context.Context, id string, product *ibasic.Product
 		return nil, nil
 	}
 
-	// TODO: Get balance from quota balance storage
-	balance := &Balance{
-		Used:      0,
-		Remaining: *apiKey.QuotaPlan.Quota,
+	var balance *Balance
+	if apiKey.QuotaPlanID != nil {
+		balanceData, err := container.QuotaPlanManager.FetchQuotaBalance(ctx, *apiKey.QuotaPlanID)
+		if err != nil {
+			return nil, err
+		}
+		if balanceData != nil {
+			used := float64(0)
+			if balanceData.Used != nil {
+				used = *balanceData.Used
+			}
+			remaining := float64(0)
+			if balanceData.Remaining != nil {
+				remaining = *balanceData.Remaining
+			}
+			balance = &Balance{
+				Used:      used,
+				Remaining: remaining,
+			}
+		} else {
+			remaining := float64(0)
+			if apiKey.QuotaPlan.Quota != nil {
+				remaining = *apiKey.QuotaPlan.Quota
+			}
+			balance = &Balance{
+				Used:      0,
+				Remaining: remaining,
+			}
+		}
 	}
 
 	return &GetQuotaPlanResponse{

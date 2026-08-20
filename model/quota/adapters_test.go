@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,10 +19,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/rate_limit_policy"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 )
 
 func TestQuotaPlanStoragerAdapter(t *testing.T) {
@@ -32,12 +34,12 @@ func TestQuotaPlanStoragerAdapter(t *testing.T) {
 		inner := &fakeQuotaPlanStorager{
 			createFn: func(ctx context.Context, param *QuotaPlanParam) (int64, error) {
 				require.NotNil(t, param.Quota)
-				assert.Equal(t, int64(100), *param.Quota)
+				assert.Equal(t, float64(100), *param.Quota)
 				return 7, nil
 			},
 		}
 		adapter := NewQuotaPlanStoragerAdapter(inner)
-		id, err := adapter.CreateQuotaPlan(ctx, &shared.QuotaPlanParam{Quota: lib.PInt64(100)})
+		id, err := adapter.CreateQuotaPlan(ctx, &shared.QuotaPlanParam{Quota: lib.PFloat64(100)})
 		require.NoError(t, err)
 		assert.Equal(t, int64(7), id)
 	})
@@ -46,12 +48,12 @@ func TestQuotaPlanStoragerAdapter(t *testing.T) {
 		inner := &fakeQuotaPlanStorager{
 			updateFn: func(ctx context.Context, filter *QuotaPlanFilter, param *QuotaPlanParam) (int64, error) {
 				assert.Equal(t, int64(7), *filter.ID)
-				assert.Equal(t, int64(200), *param.Quota)
+				assert.Equal(t, float64(200), *param.Quota)
 				return 1, nil
 			},
 		}
 		adapter := NewQuotaPlanStoragerAdapter(inner)
-		affected, err := adapter.UpdateQuotaPlan(ctx, 7, &shared.QuotaPlanParam{Quota: lib.PInt64(200)})
+		affected, err := adapter.UpdateQuotaPlan(ctx, 7, &shared.QuotaPlanParam{Quota: lib.PFloat64(200)})
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), affected)
 	})
@@ -71,14 +73,14 @@ func TestQuotaPlanStoragerAdapter(t *testing.T) {
 		inner := &fakeQuotaPlanStorager{
 			fetchFn: func(ctx context.Context, filter *QuotaPlanFilter) (*QuotaPlanParam, error) {
 				assert.Equal(t, int64(7), *filter.ID)
-				return &QuotaPlanParam{Quota: lib.PInt64(300)}, nil
+				return &QuotaPlanParam{Quota: lib.PFloat64(300)}, nil
 			},
 		}
 		adapter := NewQuotaPlanStoragerAdapter(inner)
 		result, err := adapter.FetchQuotaPlan(ctx, 7)
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.Equal(t, int64(300), *result.Quota)
+		assert.Equal(t, float64(300), *result.Quota)
 	})
 
 	t.Run("FetchQuotaPlan not found", func(t *testing.T) {
@@ -114,7 +116,7 @@ func TestRateLimitPolicyStoragerAdapter(t *testing.T) {
 
 	t.Run("CreateRateLimitPolicy", func(t *testing.T) {
 		inner := &fakeRateLimitPolicyStorager{
-			createFn: func(ctx context.Context, param *RateLimitPolicyParam) (int64, error) {
+			createFn: func(ctx context.Context, param *rate_limit_policy.RateLimitPolicyParam) (int64, error) {
 				assert.True(t, *param.Enabled)
 				assert.Equal(t, 10, *param.MaxConcurrency)
 				assert.Len(t, param.TpmConfigs, 1)
@@ -130,7 +132,7 @@ func TestRateLimitPolicyStoragerAdapter(t *testing.T) {
 
 	t.Run("UpdateRateLimitPolicy", func(t *testing.T) {
 		inner := &fakeRateLimitPolicyStorager{
-			updateFn: func(ctx context.Context, filter *RateLimitPolicyFilter, param *RateLimitPolicyParam) (int64, error) {
+			updateFn: func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter, param *rate_limit_policy.RateLimitPolicyParam) (int64, error) {
 				assert.Equal(t, int64(8), *filter.ID)
 				assert.Equal(t, 10, *param.MaxConcurrency)
 				return 1, nil
@@ -144,7 +146,7 @@ func TestRateLimitPolicyStoragerAdapter(t *testing.T) {
 
 	t.Run("DeleteRateLimitPolicy", func(t *testing.T) {
 		inner := &fakeRateLimitPolicyStorager{
-			deleteFn: func(ctx context.Context, filter *RateLimitPolicyFilter) error {
+			deleteFn: func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) error {
 				assert.Equal(t, int64(8), *filter.ID)
 				return nil
 			},
@@ -155,13 +157,13 @@ func TestRateLimitPolicyStoragerAdapter(t *testing.T) {
 
 	t.Run("FetchRateLimitPolicy", func(t *testing.T) {
 		inner := &fakeRateLimitPolicyStorager{
-			fetchFn: func(ctx context.Context, filter *RateLimitPolicyFilter) (*RateLimitPolicyParam, error) {
+			fetchFn: func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) (*rate_limit_policy.RateLimitPolicyParam, error) {
 				assert.Equal(t, int64(8), *filter.ID)
-				return &RateLimitPolicyParam{
+				return &rate_limit_policy.RateLimitPolicyParam{
 					Enabled:        lib.PBool(true),
 					MaxConcurrency: lib.PInt(10),
-					TpmConfigs:     []TPMConfig{{Name: "tpm-1", Model: "*", WindowMinutes: 1, MaxTokens: 100, StepMinutes: 1}},
-					RpmConfigs:     []RPMConfig{{Name: "rpm-1", Model: "*", WindowMinutes: 1, MaxRequests: 10}},
+					TpmConfigs:     []rate_limit_policy.TPMConfig{{Name: "tpm-1", Model: "*", WindowMinutes: 1, MaxTokens: 100, StepMinutes: 1}},
+					RpmConfigs:     []rate_limit_policy.RPMConfig{{Name: "rpm-1", Model: "*", WindowMinutes: 1, MaxRequests: 10}},
 				}, nil
 			},
 		}
@@ -175,7 +177,7 @@ func TestRateLimitPolicyStoragerAdapter(t *testing.T) {
 
 	t.Run("FetchRateLimitPolicy error propagates", func(t *testing.T) {
 		inner := &fakeRateLimitPolicyStorager{
-			fetchFn: func(ctx context.Context, filter *RateLimitPolicyFilter) (*RateLimitPolicyParam, error) {
+			fetchFn: func(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) (*rate_limit_policy.RateLimitPolicyParam, error) {
 				return nil, errors.New("db error")
 			},
 		}
@@ -193,9 +195,9 @@ func TestEntityStoragerAdapter(t *testing.T) {
 		entityName := "entity-one"
 		entityType := "tenant"
 		inner := &fakeEntityStorager{
-			fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+			fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 				assert.Equal(t, entityID, *filter.EntityID)
-				return &EntityParam{
+				return &entity.EntityParam{
 					EntityID: &entityID,
 					Name:     &entityName,
 					Type:     &entityType,
@@ -214,7 +216,7 @@ func TestEntityStoragerAdapter(t *testing.T) {
 	t.Run("FetchEntity not found", func(t *testing.T) {
 		entityID := "not-exist"
 		inner := &fakeEntityStorager{
-			fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+			fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 				return nil, nil
 			},
 		}
@@ -227,7 +229,7 @@ func TestEntityStoragerAdapter(t *testing.T) {
 	t.Run("FetchEntity error propagates", func(t *testing.T) {
 		entityID := "ent-1"
 		inner := &fakeEntityStorager{
-			fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+			fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 				return nil, errors.New("db error")
 			},
 		}
@@ -244,15 +246,15 @@ func TestQuotaBalanceStoragerAdapter(t *testing.T) {
 		inner := &fakeQuotaBalanceStorager{
 			fetchFn: func(ctx context.Context, filter *QuotaBalanceFilter) (*QuotaBalanceParam, error) {
 				assert.Equal(t, int64(7), *filter.QuotaPlanID)
-				return &QuotaBalanceParam{Used: lib.PInt64(10), Remaining: lib.PInt64(90)}, nil
+				return &QuotaBalanceParam{Used: lib.PFloat64(10), Remaining: lib.PFloat64(90)}, nil
 			},
 		}
 		adapter := NewQuotaBalanceStoragerAdapter(inner)
 		result, err := adapter.FetchQuotaBalance(ctx, 7)
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.Equal(t, int64(10), *result.Used)
-		assert.Equal(t, int64(90), *result.Remaining)
+		assert.Equal(t, float64(10), *result.Used)
+		assert.Equal(t, float64(90), *result.Remaining)
 	})
 
 	t.Run("FetchQuotaBalance not found", func(t *testing.T) {
@@ -271,14 +273,14 @@ func TestQuotaBalanceStoragerAdapter(t *testing.T) {
 		inner := &fakeQuotaBalanceStorager{
 			createFn: func(ctx context.Context, param *QuotaBalanceParam) (int64, error) {
 				assert.Equal(t, int64(7), *param.QuotaPlanID)
-				assert.Equal(t, int64(0), *param.Used)
-				assert.Equal(t, int64(100), *param.Remaining)
+				assert.Equal(t, float64(0), *param.Used)
+				assert.Equal(t, float64(100), *param.Remaining)
 				assert.NotNil(t, param.LastResetAt)
 				return 9, nil
 			},
 		}
 		adapter := NewQuotaBalanceStoragerAdapter(inner)
-		require.NoError(t, adapter.CreateQuotaBalance(ctx, 7, lib.PInt64(100)))
+		require.NoError(t, adapter.CreateQuotaBalance(ctx, 7, lib.PFloat64(100)))
 	})
 
 	t.Run("DeleteQuotaBalance", func(t *testing.T) {

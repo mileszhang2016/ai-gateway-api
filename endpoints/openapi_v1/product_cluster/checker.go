@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,8 +19,8 @@ import (
 	"net"
 	"regexp"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/validate"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 )
 
 // ValidationError describes a single field validation failure.
@@ -34,23 +34,7 @@ func (e *ValidationError) Error() string {
 }
 
 func checkLLMConfig(llmConfig *icluster_conf.LLMConfig) error {
-	if llmConfig == nil {
-		return xerror.WrapParamErrorWithMsg("llm_config is required")
-	}
-
-	if len(llmConfig.Models) == 0 {
-		return xerror.WrapParamErrorWithMsg("llm_config.models is required")
-	}
-
-	if llmConfig.ModelEndpoint != nil {
-		switch llmConfig.ModelEndpoint.Schema {
-		case "", "http", "https":
-		default:
-			return xerror.WrapParamErrorWithMsg("llm_config.model_endpoint.schema must be http or https")
-		}
-	}
-
-	return nil
+	return validate.LLMConfig(llmConfig)
 }
 
 // CheckEPPServer validates EPP server configuration.

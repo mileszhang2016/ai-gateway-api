@@ -318,7 +318,7 @@ func findProjectRoot() (string, error) {
 		goModPath := filepath.Join(dir, "go.mod")
 		if _, err := os.Stat(goModPath); err == nil {
 			content, err := os.ReadFile(goModPath)
-			if err == nil && strings.Contains(string(content), "module github.com/infinity-ai-gateway/ai-gateway-api") && !strings.Contains(string(content), "integration") {
+			if err == nil && strings.Contains(string(content), "module github.com/rainway-ai-gateway/ai-gateway-api") && !strings.Contains(string(content), "integration") {
 				return dir, nil
 			}
 		}

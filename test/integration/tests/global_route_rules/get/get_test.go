@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
 var sm *testutil.ServerManager
@@ -48,9 +48,9 @@ func TestGlobalRouteRules_Get(t *testing.T) {
 			"rules": []interface{}{
 				map[string]interface{}{
 					"name":  "global-default",
-					"Cond":  "default_t()",
+					"cond":  "default_t()",
 					"targets": []interface{}{
-						map[string]interface{}{"ClusterName": "cluster_global", "Model": "", "Weight": 100},
+						map[string]interface{}{"cluster_name": "cluster_global", "model": "", "weight": 100},
 					},
 					"fallbacks": []interface{}{},
 				},

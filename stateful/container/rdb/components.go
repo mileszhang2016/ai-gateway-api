@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,27 +31,38 @@ package rdb
 import (
 	"context"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/imods"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iprotocol"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iroute_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/route_rules"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/auth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/basic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/protocol"
-	quotaStorage "github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/txn"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/version_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprotocol"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/rate_limit_policy"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/route_rules"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/auth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/basic"
+	apiKeyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
+	entityStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/model_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/protocol"
+	quotaStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/quota"
+	rateLimitPolicyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/rate_limit_policy"
+	routeRulesStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_rules"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/txn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/version_control"
+
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 )
 
 func Init() error {
@@ -74,7 +85,7 @@ func Init() error {
 		stateful.NewBFEDBContext,
 		container.SubClusterStoragerSingleton)
 
-	container.APIKeyStorager = cluster_conf.NewAPIKeyStorager(
+	container.APIKeyStorager = apiKeyStorage.NewAPIKeyStorager(
 		stateful.NewBFEDBContext,
 	)
 
@@ -116,6 +127,13 @@ func Init() error {
 		container.VersionControlManager,
 		container.RouteRuleStoragerSingleton,
 	)
+	// Initialize model pricing before route rule manager so InnerAPI exports can
+	// attach ModelTable to AIConf.
+	container.ModelPriceStorager = model_price.NewRDBModelPriceStorager(stateful.NewBFEDBContext)
+	container.ModelPriceManager = imodel_price.NewManager(
+		container.TxnStoragerSingleton,
+		container.ModelPriceStorager)
+
 	container.RouteRuleManager = iroute_conf.NewRouteRuleManager(
 		container.TxnStoragerSingleton,
 		container.RouteRuleStoragerSingleton,
@@ -123,10 +141,11 @@ func Init() error {
 		container.ProductStoragerSingleton,
 		container.VersionControlManager,
 		container.DomainStoragerSingleton)
+	container.RouteRuleManager.SetModelPriceStorager(container.ModelPriceStorager)
 
 	// Initialize route rules components before cluster manager because the
 	// cluster delete checker depends on RouteRulesManager.
-	container.RouteRulesStorager = quotaStorage.NewRouteRulesStorager(stateful.NewBFEDBContext)
+	container.RouteRulesStorager = routeRulesStorage.NewRouteRulesStorager(stateful.NewBFEDBContext)
 	container.RouteRulesManager = route_rules.NewRouteRulesManager(
 		container.TxnStoragerSingleton,
 		container.RouteRulesStorager)
@@ -141,6 +160,9 @@ func Init() error {
 		map[string]func(context.Context, *ibasic.Product, *icluster_conf.Cluster) error{
 			"rules":       container.RouteRuleManager.ClusterDeleteChecker,
 			"route_rules": container.RouteRulesManager.ClusterDeleteChecker,
+		},
+		map[string]func(context.Context, *ibasic.Product, *icluster_conf.Cluster, *icluster_conf.ClusterParam) error{
+			"route_rules": container.RouteRulesManager.ClusterModelUpdateChecker,
 		})
 
 	container.SubClusterManager = icluster_conf.NewSubClusterManager(
@@ -171,24 +193,29 @@ func Init() error {
 		container.SubClusterStoragerSingleton)
 
 	// Initialize quota management components
-	container.EntityTypeStorager = quotaStorage.NewEntityTypeStorager(stateful.NewBFEDBContext)
-	container.EntityStorager = quotaStorage.NewEntityStorager(stateful.NewBFEDBContext)
+	container.EntityTypeStorager = entityStorage.NewEntityTypeStorager(stateful.NewBFEDBContext)
+	container.EntityStorager = entityStorage.NewEntityStorager(stateful.NewBFEDBContext)
 	container.QuotaPlanStorager = quotaStorage.NewQuotaPlanStorager(stateful.NewBFEDBContext)
 	container.QuotaBalanceStorager = quotaStorage.NewQuotaBalanceStorager(stateful.NewBFEDBContext)
-	container.RateLimitPolicyStorager = quotaStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
+	container.RateLimitPolicyStorager = rateLimitPolicyStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
 
-	container.EntityTypeManager = quota.NewEntityTypeManager(
+	container.QuotaCacheSingleton = quotacache.NewRedisQuotaCache(
+		stateful.DefaultClientSet.RedisClient,
+	)
+
+	container.EntityTypeManager = entity.NewEntityTypeManager(
 		container.TxnStoragerSingleton,
 		container.EntityTypeStorager)
 
-	container.EntityManager = quota.NewEntityManager(
+	container.EntityManager = entity.NewEntityManager(
 		container.TxnStoragerSingleton,
 		container.EntityStorager,
 		container.EntityTypeStorager,
 		quota.NewQuotaPlanStoragerAdapter(container.QuotaPlanStorager),
-		quota.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
+		rate_limit_policy.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
 		container.RouteRulesStorager,
-		container.QuotaBalanceStorager)
+		quota.NewQuotaBalanceStoragerAdapter(container.QuotaBalanceStorager),
+		container.QuotaCacheSingleton)
 
 	container.APIKeyRuleManager = imods.NewAPIKeyRuleManager(
 		container.TxnStoragerSingleton,
@@ -197,6 +224,7 @@ func Init() error {
 		container.AIRouteRuleStorager,
 		container.QuotaPlanStorager,
 		container.EntityStorager,
+		container.QuotaCacheSingleton,
 	)
 
 	container.ModBodyProcessManager = imods.NewModBodyProcessManager(
@@ -206,9 +234,12 @@ func Init() error {
 	container.QuotaPlanManager = quota.NewQuotaPlanManager(
 		container.TxnStoragerSingleton,
 		container.QuotaPlanStorager,
-		container.QuotaBalanceStorager)
+		container.QuotaBalanceStorager,
+		container.APIKeyStorager,
+		container.EntityStorager,
+		container.QuotaCacheSingleton)
 
-	container.RateLimitPolicyManager = quota.NewRateLimitPolicyManager(
+	container.RateLimitPolicyManager = rate_limit_policy.NewRateLimitPolicyManager(
 		container.TxnStoragerSingleton,
 		container.RateLimitPolicyStorager,
 		container.APIKeyStorager,
@@ -221,15 +252,15 @@ func Init() error {
 		container.RouteRulesStorager,
 		container.VersionControlManager)
 
-	container.APIKeyManager = icluster_conf.NewAPIKeyManager(
+	container.APIKeyManager = api_key.NewAPIKeyManager(
 		container.TxnStoragerSingleton,
 		container.APIKeyStorager,
-		container.ClusterStoragerSingleton,
 		quota.NewQuotaPlanStoragerAdapter(container.QuotaPlanStorager),
 		quota.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
 		container.RouteRulesStorager,
 		quota.NewEntityStoragerAdapter(container.EntityStorager),
 		quota.NewQuotaBalanceStoragerAdapter(container.QuotaBalanceStorager),
+		container.QuotaCacheSingleton,
 	)
 
 	// Initialize quota balance sync and reset components
@@ -238,7 +269,8 @@ func Init() error {
 		container.APIKeyStorager,
 		container.QuotaBalanceStorager,
 		container.QuotaPlanStorager,
-		container.EntityStorager)
+		container.EntityStorager,
+		container.QuotaCacheSingleton)
 
 	container.QuotaResetScheduler = quota.NewQuotaResetScheduler(
 		container.TxnStoragerSingleton,

@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,22 +17,24 @@ package dao
 import (
 	"time"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao/internal"
+	"github.com/shopspring/decimal"
+
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/internal/dao/internal"
 )
 
 const tQuotaPlanTableName = "quota_plans"
 
 type TQuotaPlan struct {
-	ID                    int64     `db:"id"`
-	Unlimited             bool      `db:"unlimited"`
-	PassWhenNoEnoughQuota bool      `db:"pass_when_no_enough_quota"`
-	Quota                 int64     `db:"quota"`
-	Unit                  string    `db:"unit"`
-	ResetPeriod           string    `db:"reset_period"`
-	CreatedAt             time.Time `db:"created_at"`
-	UpdatedAt             time.Time `db:"updated_at"`
+	ID                    int64           `db:"id"`
+	Unlimited             bool            `db:"unlimited"`
+	PassWhenNoEnoughQuota bool            `db:"pass_when_no_enough_quota"`
+	Quota                 decimal.Decimal `db:"quota"`
+	Unit                  string          `db:"unit"`
+	ResetPeriod           string          `db:"reset_period"`
+	CreatedAt             time.Time       `db:"created_at"`
+	UpdatedAt             time.Time       `db:"updated_at"`
 }
 
 // TQuotaPlanOne Query One
@@ -63,14 +65,14 @@ func TQuotaPlanList(dbCtx lib.DBContexter, where *TQuotaPlanParam) ([]*TQuotaPla
 }
 
 type TQuotaPlanParam struct {
-	ID                    *int64     `db:"id"`
-	Unlimited             *bool      `db:"unlimited"`
-	PassWhenNoEnoughQuota *bool      `db:"pass_when_no_enough_quota"`
-	Quota                 *int64     `db:"quota"`
-	Unit                  *string    `db:"unit"`
-	ResetPeriod           *string    `db:"reset_period"`
-	CreatedAt             *time.Time `db:"created_at"`
-	UpdatedAt             *time.Time `db:"updated_at"`
+	ID                    *int64           `db:"id"`
+	Unlimited             *bool            `db:"unlimited"`
+	PassWhenNoEnoughQuota *bool            `db:"pass_when_no_enough_quota"`
+	Quota                 *decimal.Decimal `db:"quota"`
+	Unit                  *string          `db:"unit"`
+	ResetPeriod           *string          `db:"reset_period"`
+	CreatedAt             *time.Time       `db:"created_at"`
+	UpdatedAt             *time.Time       `db:"updated_at"`
 
 	OrderBy *string `db:"_orderby"`
 }

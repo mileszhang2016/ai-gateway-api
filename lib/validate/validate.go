@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,15 +16,19 @@ package validate
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"regexp"
 	"strings"
 	"time"
 	"unicode"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/bfenetworks/bfe/bfe_basic/condition"
+	golibquota "github.com/bfenetworks/go-lib/quota"
+
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 var (
@@ -345,12 +349,19 @@ func QuotaPlan(p *shared.QuotaPlanParam) error {
 	if p == nil {
 		return nil
 	}
-	if p.Quota != nil && *p.Quota < 0 {
-		return xerror.WrapParamErrorWithMsg("quota must be >= 0")
+
+	unit := "total_token"
+	if p.Unit != nil && *p.Unit != "" {
+		unit = *p.Unit
 	}
-	if p.Unit != nil && *p.Unit != "" && *p.Unit != "total_token" {
-		return xerror.WrapParamErrorWithMsg("unit must be total_token")
+	if unit != "total_token" && unit != "RMB" {
+		return xerror.WrapParamErrorWithMsg("unit must be total_token or RMB")
 	}
+
+	if err := QuotaValue(p.Quota, unit); err != nil {
+		return err
+	}
+
 	if p.ResetPeriod != nil && *p.ResetPeriod != "" {
 		switch *p.ResetPeriod {
 		case "never", "weekly", "monthly":
@@ -359,6 +370,36 @@ func QuotaPlan(p *shared.QuotaPlanParam) error {
 		}
 	}
 	return nil
+}
+
+// QuotaValue validates a single quota value for the given unit.
+// A nil quota is treated as valid (not provided).
+func QuotaValue(quota *float64, unit string) error {
+	if quota == nil {
+		return nil
+	}
+	if *quota < 0 {
+		return xerror.WrapParamErrorWithMsg("quota must be >= 0")
+	}
+	if unit == "total_token" {
+		if math.Mod(*quota, 1) != 0 {
+			return xerror.WrapParamErrorWithMsg("quota must be an integer when unit is total_token")
+		}
+	} else if unit == "RMB" {
+		if !validDecimalPlaces(*quota, 8) {
+			return xerror.WrapParamErrorWithMsg("quota can have at most 8 decimal places when unit is RMB")
+		}
+		if *quota > golibquota.MaxRMBQuota {
+			return xerror.WrapParamErrorWithMsg("quota must be <= %v when unit is RMB", golibquota.MaxRMBQuota)
+		}
+	}
+	return nil
+}
+
+func validDecimalPlaces(v float64, maxPlaces int) bool {
+	mult := math.Pow(10, float64(maxPlaces))
+	scaled := v * mult
+	return math.Abs(scaled-math.Round(scaled)) < 1e-9
 }
 
 // RateLimitPolicy validates a rate limit policy configuration.
@@ -456,6 +497,14 @@ func RateLimitPolicy(p *shared.RateLimitPolicyParam) error {
 	return nil
 }
 
+// ConditionExpression validates a BFE condition expression string.
+func ConditionExpression(cond string) error {
+	if _, err := condition.Build(cond); err != nil {
+		return xerror.WrapParamErrorWithMsg("invalid route rule Cond: %v", err)
+	}
+	return nil
+}
+
 // RouteRules validates a route rule set.
 func RouteRules(p *shared.RouteRulesParam) error {
 	if p == nil {
@@ -477,6 +526,9 @@ func RouteRules(p *shared.RouteRulesParam) error {
 
 		if rule.Cond == nil || *rule.Cond == "" {
 			return xerror.WrapParamErrorWithMsg("route rule Cond is required")
+		}
+		if err := ConditionExpression(*rule.Cond); err != nil {
+			return err
 		}
 
 		if len(rule.Targets) == 0 {
@@ -566,10 +618,6 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 		modelSet[model] = struct{}{}
 	}
 
-	if c.Key != nil && len(*c.Key) > MaxLLMKeyLength {
-		return xerror.WrapParamErrorWithMsg("llm_config.key length must be <= %d", MaxLLMKeyLength)
-	}
-
 	if c.ModelEndpoint != nil {
 		switch c.ModelEndpoint.Schema {
 		case "", "http", "https":
@@ -590,6 +638,81 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 			return xerror.WrapParamErrorWithMsg("duplicate source_model in llm_config.model_mappings: %s", *mapping.SourceModel)
 		}
 		sourceSet[*mapping.SourceModel] = struct{}{}
+	}
+
+	// Validate keys
+	if len(c.Keys) > 0 {
+		nameSet := map[string]struct{}{}
+		totalWeight := 0
+		for i, key := range c.Keys {
+			if key.Name == nil || *key.Name == "" {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].name is required", i)
+			}
+			if len(*key.Name) < 1 || len(*key.Name) > 128 {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].name length must be between 1 and 128", i)
+			}
+			if _, ok := nameSet[*key.Name]; ok {
+				return xerror.WrapParamErrorWithMsg("duplicate name in llm_config.keys: %s", *key.Name)
+			}
+			nameSet[*key.Name] = struct{}{}
+
+			if key.Key == nil || *key.Key == "" {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].key is required", i)
+			}
+			if len(*key.Key) > MaxLLMKeyLength {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].key length must be <= %d", i, MaxLLMKeyLength)
+			}
+
+			if key.Weight == nil {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].weight is required", i)
+			}
+			if *key.Weight < 0 || *key.Weight > 100 {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].weight must be between 0 and 100", i)
+			}
+			totalWeight += *key.Weight
+		}
+		if totalWeight != 100 {
+			return xerror.WrapParamErrorWithMsg("llm_config.keys total weight must be 100, got %d", totalWeight)
+		}
+	}
+
+	// Validate key_policy
+	if c.KeyPolicy != nil {
+		if c.KeyPolicy.Strategy != nil && *c.KeyPolicy.Strategy != "" && *c.KeyPolicy.Strategy != "weighted_random" {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.strategy must be weighted_random")
+		}
+		if c.KeyPolicy.MaxRetries != nil && *c.KeyPolicy.MaxRetries < 0 {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.max_retries must be >= 0")
+		}
+		if c.KeyPolicy.RetryBackoffInitial != nil && *c.KeyPolicy.RetryBackoffInitial < 0 {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.retry_backoff_initial must be >= 0")
+		}
+		if c.KeyPolicy.RetryBackoffMax != nil && *c.KeyPolicy.RetryBackoffMax < 0 {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.retry_backoff_max must be >= 0")
+		}
+		if c.KeyPolicy.RetryBackoffInitial != nil && c.KeyPolicy.RetryBackoffMax != nil &&
+			*c.KeyPolicy.RetryBackoffMax < *c.KeyPolicy.RetryBackoffInitial {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.retry_backoff_max must be >= retry_backoff_initial")
+		}
+	}
+
+	// Validate API_KEY placeholder
+	if c.ModelEndpoint != nil && len(c.ModelEndpoint.Headers) > 0 && len(c.Keys) == 0 {
+		for _, value := range c.ModelEndpoint.Headers {
+			if strings.Contains(value, "${API_KEY}") {
+				return xerror.WrapParamErrorWithMsg("llm_config.model_endpoint.headers contains ${API_KEY} but keys is empty")
+			}
+		}
+	}
+
+	// Validate prefix stripping configuration
+	if c.StripPrefix != nil && *c.StripPrefix {
+		if c.MatchPrefix == nil || *c.MatchPrefix == "" {
+			return xerror.WrapParamErrorWithMsg("llm_config.match_prefix is required when strip_prefix is true")
+		}
+	}
+	if c.MatchPrefix != nil && *c.MatchPrefix != "" && !strings.HasSuffix(*c.MatchPrefix, "/") {
+		return xerror.WrapParamErrorWithMsg("llm_config.match_prefix must end with '/'")
 	}
 
 	return nil

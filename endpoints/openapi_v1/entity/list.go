@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,10 +17,10 @@ package entity
 import (
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 var EntityListRoute = &xreq.Endpoint{
@@ -31,7 +31,7 @@ var EntityListRoute = &xreq.Endpoint{
 }
 
 type EntityListResponse struct {
-	List       []*quota.EntityParam `json:"list"`
+	List       []*entity.EntityParam `json:"list"`
 	Pagination struct {
 		Page     int `json:"page"`
 		PageSize int `json:"page_size"`
@@ -40,7 +40,7 @@ type EntityListResponse struct {
 }
 
 func EntityListAction(req *http.Request) (interface{}, error) {
-	filter := &quota.EntityFilter{}
+	filter := &entity.EntityFilter{}
 	if err := xreq.BindForm(req, filter); err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func EntityListAction(req *http.Request) (interface{}, error) {
 
 	total := len(list)
 	if isPagination {
-		countFilter := &quota.EntityFilter{
+		countFilter := &entity.EntityFilter{
 			Type:        filter.Type,
 			ParentID:    filter.ParentID,
 			QuotaPlanID: filter.QuotaPlanID,

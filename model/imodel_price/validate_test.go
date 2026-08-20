@@ -1,0 +1,159 @@
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package imodel_price
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func validModelPrice() *ModelPrice {
+	return &ModelPrice{
+		Provider:  "openai",
+		Model:     "gpt-4",
+		BaseModel: "gpt-4",
+		Mode:      "chat",
+		Prices: map[string]float64{
+			"input_cost_per_token":  0.001,
+			"output_cost_per_token": 0.002,
+		},
+		PriceCurrency: "RMB",
+	}
+}
+
+func TestValidateModelPrice(t *testing.T) {
+	cases := []struct {
+		name    string
+		param   *ModelPrice
+		wantErr bool
+	}{
+		{"valid", validModelPrice(), false},
+		{"nil", nil, true},
+		{"missing provider", func() *ModelPrice { p := validModelPrice(); p.Provider = ""; return p }(), true},
+		{"missing model", func() *ModelPrice { p := validModelPrice(); p.Model = ""; return p }(), true},
+		{"missing base_model", func() *ModelPrice { p := validModelPrice(); p.BaseModel = ""; return p }(), true},
+		{"missing mode", func() *ModelPrice { p := validModelPrice(); p.Mode = ""; return p }(), true},
+		{"invalid mode", func() *ModelPrice { p := validModelPrice(); p.Mode = "unknown"; return p }(), true},
+		{"missing prices", func() *ModelPrice { p := validModelPrice(); p.Prices = nil; return p }(), true},
+		{"empty prices", func() *ModelPrice { p := validModelPrice(); p.Prices = map[string]float64{}; return p }(), true},
+		{"invalid price key", func() *ModelPrice { p := validModelPrice(); p.Prices = map[string]float64{"invalid_key": 1}; return p }(), true},
+		{"negative price", func() *ModelPrice { p := validModelPrice(); p.Prices["input_cost_per_token"] = -1; return p }(), true},
+		{"invalid currency", func() *ModelPrice { p := validModelPrice(); p.PriceCurrency = "USD"; return p }(), true},
+		{"valid empty currency", func() *ModelPrice { p := validModelPrice(); p.PriceCurrency = ""; return p }(), false},
+		{"invalid capability", func() *ModelPrice { p := validModelPrice(); p.Capabilities = []string{"unknown"}; return p }(), true},
+		{"invalid supported parameter", func() *ModelPrice { p := validModelPrice(); p.SupportedParameters = []string{"unknown"}; return p }(), true},
+		{"invalid limit key", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"unknown": 1}; return p }(), true},
+		{"negative limit int", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": -1}; return p }(), true},
+		{"negative limit float64", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": float64(-1)}; return p }(), true},
+		{"non-integer limit", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": 1.5}; return p }(), true},
+		{"non-numeric limit", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": "abc"}; return p }(), true},
+		{"valid zero limit", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": 0}; return p }(), false},
+		{"valid positive limit", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": 128000}; return p }(), false},
+		{"valid positive limit float64", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": float64(128000)}; return p }(), false},
+		{"invalid metadata key", func() *ModelPrice { p := validModelPrice(); p.Metadata = map[string]interface{}{"unknown": 1}; return p }(), true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateModelPrice(tc.param)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateImportFile(t *testing.T) {
+	base := func() *ModelListFile {
+		return &ModelListFile{
+			Version:         "v1.0",
+			DefaultCurrency: "RMB",
+			Models:          []*ModelPrice{validModelPrice()},
+		}
+	}
+
+	cases := []struct {
+		name    string
+		file    *ModelListFile
+		wantErr bool
+	}{
+		{"valid", base(), false},
+		{"nil", nil, true},
+		{"empty version", func() *ModelListFile { f := base(); f.Version = ""; return f }(), true},
+		{"unsupported version", func() *ModelListFile { f := base(); f.Version = "v2.0"; return f }(), true},
+		{"empty default_currency", func() *ModelListFile { f := base(); f.DefaultCurrency = ""; return f }(), true},
+		{"invalid default_currency", func() *ModelListFile { f := base(); f.DefaultCurrency = "USD"; return f }(), true},
+		{"invalid model", func() *ModelListFile { f := base(); f.Models[0].Mode = "bad"; return f }(), true},
+		{"duplicate model", func() *ModelListFile {
+			f := base()
+			f.Models = append(f.Models, validModelPrice())
+			return f
+		}(), true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateImportFile(tc.file)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestStringSliceContains(t *testing.T) {
+	assert.True(t, StringSliceContains([]string{"a", "b"}, "b"))
+	assert.False(t, StringSliceContains([]string{"a", "b"}, "c"))
+}
+
+func TestNormalizeCurrency(t *testing.T) {
+	m := validModelPrice()
+	m.PriceCurrency = ""
+	NormalizeCurrency(m, "RMB")
+	assert.Equal(t, "RMB", m.PriceCurrency)
+
+	// Already set should not be overwritten.
+	m.PriceCurrency = "RMB"
+	NormalizeCurrency(m, "USD")
+	assert.Equal(t, "RMB", m.PriceCurrency)
+
+	// Nil should not panic.
+	NormalizeCurrency(nil, "RMB")
+}
+
+func TestGroupByProvider(t *testing.T) {
+	a := &ModelPrice{Provider: "p1", Model: "m1", BaseModel: "m1", Mode: "chat", Prices: map[string]float64{"input_cost_per_token": 1}}
+	b := &ModelPrice{Provider: "p2", Model: "m2", BaseModel: "m2", Mode: "chat", Prices: map[string]float64{"input_cost_per_token": 1}}
+	c := &ModelPrice{Provider: "p1", Model: "m3", BaseModel: "m3", Mode: "chat", Prices: map[string]float64{"input_cost_per_token": 1}}
+
+	groups := GroupByProvider([]*ModelPrice{a, b, c})
+	assert.Len(t, groups["p1"], 2)
+	assert.Len(t, groups["p2"], 1)
+
+	// Nil entries are skipped.
+	groups = GroupByProvider([]*ModelPrice{nil, a})
+	assert.Len(t, groups["p1"], 1)
+}
+
+func TestErrorAtIndex(t *testing.T) {
+	err := ErrorAtIndex(3, assert.AnError)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "models[3]:")
+}

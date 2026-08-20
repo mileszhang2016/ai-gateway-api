@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,89 +22,90 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/internal/testutil"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/internal/testutil"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/rate_limit_policy"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 type fakeRateLimitPolicyStorager struct{}
 
-func (f *fakeRateLimitPolicyStorager) CreateRateLimitPolicy(ctx context.Context, param *quota.RateLimitPolicyParam) (int64, error) {
+func (f *fakeRateLimitPolicyStorager) CreateRateLimitPolicy(ctx context.Context, param *rate_limit_policy.RateLimitPolicyParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeRateLimitPolicyStorager) FetchRateLimitPolicy(ctx context.Context, filter *quota.RateLimitPolicyFilter) (*quota.RateLimitPolicyParam, error) {
+func (f *fakeRateLimitPolicyStorager) FetchRateLimitPolicy(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) (*rate_limit_policy.RateLimitPolicyParam, error) {
 	return nil, nil
 }
 
-func (f *fakeRateLimitPolicyStorager) FetchRateLimitPolicyList(ctx context.Context, filter *quota.RateLimitPolicyFilter) ([]*quota.RateLimitPolicyParam, error) {
+func (f *fakeRateLimitPolicyStorager) FetchRateLimitPolicyList(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) ([]*rate_limit_policy.RateLimitPolicyParam, error) {
 	return nil, nil
 }
 
-func (f *fakeRateLimitPolicyStorager) UpdateRateLimitPolicy(ctx context.Context, filter *quota.RateLimitPolicyFilter, param *quota.RateLimitPolicyParam) (int64, error) {
+func (f *fakeRateLimitPolicyStorager) UpdateRateLimitPolicy(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter, param *rate_limit_policy.RateLimitPolicyParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeRateLimitPolicyStorager) DeleteRateLimitPolicy(ctx context.Context, filter *quota.RateLimitPolicyFilter) error {
+func (f *fakeRateLimitPolicyStorager) DeleteRateLimitPolicy(ctx context.Context, filter *rate_limit_policy.RateLimitPolicyFilter) error {
 	return nil
 }
 
 type fakeAPIKeyStoragerForRateLimit struct{}
 
-func (f *fakeAPIKeyStoragerForRateLimit) FetchAPIKeyList(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+func (f *fakeAPIKeyStoragerForRateLimit) FetchAPIKeyList(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 	return nil, nil
 }
 
-func (f *fakeAPIKeyStoragerForRateLimit) CreateAPIKey(ctx context.Context, param *icluster_conf.APIKeyParam) (int64, error) {
+func (f *fakeAPIKeyStoragerForRateLimit) CreateAPIKey(ctx context.Context, param *api_key.APIKeyParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStoragerForRateLimit) UpdateAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter, param *icluster_conf.APIKeyParam) (int64, error) {
+func (f *fakeAPIKeyStoragerForRateLimit) UpdateAPIKey(ctx context.Context, filter *api_key.APIKeyFilter, param *api_key.APIKeyParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStoragerForRateLimit) DeleteAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter) error {
+func (f *fakeAPIKeyStoragerForRateLimit) DeleteAPIKey(ctx context.Context, filter *api_key.APIKeyFilter) error {
 	return nil
 }
 
-func (f *fakeAPIKeyStoragerForRateLimit) CreateAPIKeyToken(ctx context.Context, param *icluster_conf.APIKeyTokenParam) (int64, error) {
+func (f *fakeAPIKeyStoragerForRateLimit) CreateAPIKeyToken(ctx context.Context, param *api_key.APIKeyTokenParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeAPIKeyStoragerForRateLimit) UpdateAPIKeyToken(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter, param *icluster_conf.APIKeyTokenParam) error {
+func (f *fakeAPIKeyStoragerForRateLimit) UpdateAPIKeyToken(ctx context.Context, filter *api_key.APIKeyTokenFilter, param *api_key.APIKeyTokenParam) error {
 	return nil
 }
 
-func (f *fakeAPIKeyStoragerForRateLimit) FetchAPIKeyTokenList(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter) ([]*icluster_conf.APIKeyTokenParam, error) {
+func (f *fakeAPIKeyStoragerForRateLimit) FetchAPIKeyTokenList(ctx context.Context, filter *api_key.APIKeyTokenFilter) ([]*api_key.APIKeyTokenParam, error) {
 	return nil, nil
 }
 
 type fakeEntityStoragerForRateLimit struct{}
 
-func (f *fakeEntityStoragerForRateLimit) CreateEntity(ctx context.Context, param *quota.EntityParam) (int64, error) {
+func (f *fakeEntityStoragerForRateLimit) CreateEntity(ctx context.Context, param *entity.EntityParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeEntityStoragerForRateLimit) FetchEntity(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+func (f *fakeEntityStoragerForRateLimit) FetchEntity(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 	return nil, nil
 }
 
-func (f *fakeEntityStoragerForRateLimit) FetchEntityList(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error) {
+func (f *fakeEntityStoragerForRateLimit) FetchEntityList(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
 	return nil, nil
 }
 
-func (f *fakeEntityStoragerForRateLimit) UpdateEntity(ctx context.Context, filter *quota.EntityFilter, param *quota.EntityParam) (int64, error) {
+func (f *fakeEntityStoragerForRateLimit) UpdateEntity(ctx context.Context, filter *entity.EntityFilter, param *entity.EntityParam) (int64, error) {
 	return 0, nil
 }
 
-func (f *fakeEntityStoragerForRateLimit) DeleteEntity(ctx context.Context, filter *quota.EntityFilter) error {
+func (f *fakeEntityStoragerForRateLimit) DeleteEntity(ctx context.Context, filter *entity.EntityFilter) error {
 	return nil
 }
 
 func setupRateLimitPolicyManager(version string) func() {
 	old := container.RateLimitPolicyManager
-	container.RateLimitPolicyManager = quota.NewRateLimitPolicyManager(
+	container.RateLimitPolicyManager = rate_limit_policy.NewRateLimitPolicyManager(
 		&testutil.FakeTxn{},
 		&fakeRateLimitPolicyStorager{},
 		&fakeAPIKeyStoragerForRateLimit{},
@@ -125,7 +126,7 @@ func TestExportAction(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, data)
 
-	conf, ok := data.(*quota.ExportRateLimitPolicyConfig)
+	conf, ok := data.(*rate_limit_policy.ExportRateLimitPolicyConfig)
 	require.True(t, ok)
 	assert.Equal(t, "v2", conf.Version)
 	assert.Contains(t, conf.Config, "AI_product")

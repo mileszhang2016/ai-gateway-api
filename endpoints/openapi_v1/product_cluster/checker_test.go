@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 )
 
 func TestCheckLLMConfig(t *testing.T) {
@@ -60,6 +60,31 @@ func TestCheckLLMConfig(t *testing.T) {
 				ModelEndpoint: &icluster_conf.Endpoint{Schema: "ftp"},
 			},
 			wantErr: true,
+		},
+		{
+			name: "strip prefix without match prefix",
+			config: &icluster_conf.LLMConfig{
+				Models:      []string{"gpt-4"},
+				StripPrefix: lib.PBool(true),
+			},
+			wantErr: true,
+		},
+		{
+			name: "match prefix missing trailing slash",
+			config: &icluster_conf.LLMConfig{
+				Models:      []string{"gpt-4"},
+				MatchPrefix: lib.PString("openrouter"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid prefix config",
+			config: &icluster_conf.LLMConfig{
+				Models:      []string{"gpt-4"},
+				MatchPrefix: lib.PString("openrouter/"),
+				StripPrefix: lib.PBool(true),
+			},
+			wantErr: false,
 		},
 	}
 

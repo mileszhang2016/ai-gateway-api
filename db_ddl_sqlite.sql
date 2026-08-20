@@ -393,7 +393,7 @@ CREATE TABLE quota_plans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   unlimited INTEGER DEFAULT 1,
   pass_when_no_enough_quota INTEGER DEFAULT 0,
-  quota INTEGER DEFAULT 0,
+  quota REAL DEFAULT 0,
   unit TEXT DEFAULT 'total_token',
   reset_period TEXT DEFAULT 'never',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -408,8 +408,8 @@ DROP TABLE IF EXISTS quota_balances;
 CREATE TABLE quota_balances (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   quota_plan_id INTEGER NOT NULL,
-  used INTEGER DEFAULT 0,
-  remaining INTEGER DEFAULT 0,
+  used REAL DEFAULT 0,
+  remaining REAL DEFAULT 0,
   last_reset_at DATETIME DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -418,6 +418,29 @@ CREATE TABLE quota_balances (
 CREATE INDEX quota_balances_remaining ON quota_balances (remaining);
 CREATE TRIGGER quota_balances_updated_at AFTER UPDATE ON quota_balances
   FOR EACH ROW BEGIN UPDATE quota_balances SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create model_prices
+DROP TABLE IF EXISTS model_prices;
+CREATE TABLE model_prices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  base_model TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  capabilities TEXT,
+  supported_parameters TEXT,
+  limits TEXT,
+  prices TEXT NOT NULL,
+  price_currency TEXT DEFAULT 'RMB',
+  metadata TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (provider, model, mode)
+);
+CREATE INDEX model_prices_provider ON model_prices (provider);
+CREATE INDEX model_prices_mode ON model_prices (mode);
+CREATE TRIGGER model_prices_updated_at AFTER UPDATE ON model_prices
+  FOR EACH ROW BEGIN UPDATE model_prices SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
 -- create rate_limit_policies
 DROP TABLE IF EXISTS rate_limit_policies;

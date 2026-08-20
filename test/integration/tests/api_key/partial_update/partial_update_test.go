@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 	"github.com/stretchr/testify/assert"
-	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
 var sm *testutil.ServerManager
@@ -43,9 +43,9 @@ func TestAPIKey_PartialUpdate(t *testing.T) {
 				"enabled": true,
 				"rules": []interface{}{
 					map[string]interface{}{
-						"name":  "default",
-						"Cond":  "default_t()",
-						"targets": []interface{}{map[string]interface{}{"ClusterName": "cluster1", "Weight": 100}},
+						"name":    "default",
+						"cond":    "default_t()",
+						"targets": []interface{}{map[string]interface{}{"cluster_name": "cluster1", "weight": 100}},
 					},
 				},
 			},
@@ -90,6 +90,60 @@ func TestAPIKey_PartialUpdate(t *testing.T) {
 			t.Fatalf("request failed: %v", err)
 		}
 		testutil.AssertErrCode(t, resp, 422)
+	})
+
+	t.Run("AK-5-005 部分更新 quota_plan 切换为 RMB", func(t *testing.T) {
+		id, err := testutil.CreateAPIKey("partial-update-rmb-key", "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(id)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        100000,
+				"unit":         "total_token",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        888.88,
+				"unit":         "RMB",
+				"reset_period": "weekly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal data: %v", err)
+		}
+		qp := data["quota_plan"].(map[string]interface{})
+		assert.Equal(t, "RMB", qp["unit"])
+		assert.InDelta(t, float64(888.88), qp["quota"], 0.00001)
+
+		qpResp, err := testutil.GetClient().Get("/open-api/v1/api-keys/" + id + "/quota-plan")
+		if err != nil {
+			t.Fatalf("query quota-plan failed: %v", err)
+		}
+		testutil.AssertSuccess(t, qpResp)
+		var qpData map[string]interface{}
+		if err := json.Unmarshal(qpResp.Data, &qpData); err != nil {
+			t.Fatalf("unmarshal quota-plan data: %v", err)
+		}
+		balance := qpData["balance"].(map[string]interface{})
+		assert.InDelta(t, float64(888.88), balance["remaining"], 0.00001)
+		assert.InDelta(t, float64(0), balance["used"], 0.00001)
 	})
 
 	t.Cleanup(func() {

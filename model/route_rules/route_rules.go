@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,11 +18,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/validate"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 // RouteRulesManager manages route rules with transaction support
@@ -180,20 +182,16 @@ func (m *RouteRulesManager) ListRouteTables(ctx context.Context, filter *shared.
 // it should not start another transaction here to avoid premature commit of the
 // outer transaction.
 func (m *RouteRulesManager) ClusterDeleteChecker(ctx context.Context, product *ibasic.Product, cluster *icluster_conf.Cluster) error {
-	routeTables, _, err := m.storager.FetchRouteRulesList(ctx, &shared.RouteRulesFilter{})
+	allRouteRules, err := m.storager.FetchAllRouteRules(ctx)
 	if err != nil {
 		return err
 	}
 
-	for _, table := range routeTables {
-		if table == nil || table.ID == nil {
-			continue
-		}
+	return checkClusterReferencedByRouteRules(cluster.Name, allRouteRules)
+}
 
-		routeRulesParam, err := m.storager.FetchRouteRulesByID(ctx, *table.ID)
-		if err != nil {
-			return err
-		}
+func checkClusterReferencedByRouteRules(clusterName string, routeRules []*shared.RouteRulesParam) error {
+	for _, routeRulesParam := range routeRules {
 		if routeRulesParam == nil {
 			continue
 		}
@@ -209,14 +207,95 @@ func (m *RouteRulesManager) ClusterDeleteChecker(ctx context.Context, product *i
 			}
 
 			for _, target := range rule.Targets {
-				if target != nil && target.ClusterName != nil && *target.ClusterName == cluster.Name {
+				if target != nil && target.ClusterName != nil && *target.ClusterName == clusterName {
 					return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
 				}
 			}
 
 			for _, fallback := range rule.Fallbacks {
-				if fallback != nil && fallback.ClusterName != nil && *fallback.ClusterName == cluster.Name {
+				if fallback != nil && fallback.ClusterName != nil && *fallback.ClusterName == clusterName {
 					return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// ClusterModelUpdateChecker checks whether any model being removed from a cluster
+// is still referenced by route rules (targets or fallbacks). The checker is
+// invoked inside a transaction by the cluster manager, so it should not start
+// another transaction here.
+func (m *RouteRulesManager) ClusterModelUpdateChecker(ctx context.Context, product *ibasic.Product, cluster *icluster_conf.Cluster, param *icluster_conf.ClusterParam) error {
+	if param.LLMConfig == nil {
+		return nil
+	}
+
+	removedModels := removedModels(cluster.LLMConfig, param.LLMConfig)
+	if len(removedModels) == 0 {
+		return nil
+	}
+
+	allRouteRules, err := m.storager.FetchAllRouteRules(ctx)
+	if err != nil {
+		return err
+	}
+
+	return checkClusterModelsReferenced(cluster.Name, removedModels, allRouteRules)
+}
+
+func removedModels(oldConfig, newConfig *icluster_conf.LLMConfig) []string {
+	oldModels := map[string]struct{}{}
+	if oldConfig != nil {
+		for _, model := range oldConfig.Models {
+			oldModels[model] = struct{}{}
+		}
+	}
+
+	newModels := map[string]struct{}{}
+	for _, model := range newConfig.Models {
+		newModels[model] = struct{}{}
+	}
+
+	var removed []string
+	for model := range oldModels {
+		if _, ok := newModels[model]; !ok {
+			removed = append(removed, model)
+		}
+	}
+	return removed
+}
+
+func checkClusterModelsReferenced(clusterName string, models []string, routeRules []*shared.RouteRulesParam) error {
+	modelSet := lib.StringSlice2Map(models)
+
+	for _, routeRulesParam := range routeRules {
+		if routeRulesParam == nil {
+			continue
+		}
+
+		for _, rule := range routeRulesParam.Rules {
+			if rule == nil {
+				continue
+			}
+
+			ruleName := ""
+			if rule.Name != nil {
+				ruleName = *rule.Name
+			}
+
+			for _, target := range rule.Targets {
+				if target != nil && target.ClusterName != nil && *target.ClusterName == clusterName &&
+					target.Model != nil && modelSet[*target.Model] {
+					return xerror.WrapModelErrorWithMsg("Rule %s Refer To Model %s In Cluster %s", ruleName, *target.Model, clusterName)
+				}
+			}
+
+			for _, fallback := range rule.Fallbacks {
+				if fallback != nil && fallback.ClusterName != nil && *fallback.ClusterName == clusterName &&
+					fallback.Model != nil && modelSet[*fallback.Model] {
+					return xerror.WrapModelErrorWithMsg("Rule %s Refer To Model %s In Cluster %s", ruleName, *fallback.Model, clusterName)
 				}
 			}
 		}
@@ -242,6 +321,9 @@ func (m *RouteRulesManager) validateRouteRules(param *shared.RouteRulesParam) er
 
 		if rule.Cond == nil || *rule.Cond == "" {
 			return xerror.WrapParamErrorWithMsg("rule Cond is required")
+		}
+		if err := validate.ConditionExpression(*rule.Cond); err != nil {
+			return err
 		}
 
 		if len(rule.Targets) == 0 {

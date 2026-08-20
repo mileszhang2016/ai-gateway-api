@@ -1,10 +1,12 @@
 package entity_test
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 var sm *testutil.ServerManager
@@ -32,9 +34,9 @@ func TestEntity_QuotaReset(t *testing.T) {
 	}
 	_, err = testutil.GetClient().Patch("/open-api/v1/entities/"+entityID, map[string]interface{}{
 		"quota_plan": map[string]interface{}{
-			"unlimited":   false,
-			"quota":       1000000,
-			"unit":        "total_token",
+			"unlimited":    false,
+			"quota":        1000000,
+			"unit":         "total_token",
 			"reset_period": "monthly",
 		},
 	})
@@ -63,6 +65,76 @@ func TestEntity_QuotaReset(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 		testutil.AssertDataFieldEquals(t, resp, "new_quota", float64(200000))
+	})
+
+	t.Run("E-8-003 重置 RMB 配额余额", func(t *testing.T) {
+		rmbEntityName := testutil.UniqueEntityName()
+		rmbEntityID, err := testutil.CreateEntity(rmbEntityName, typeName, "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteEntity(rmbEntityID)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/entities/"+rmbEntityID, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        50.5,
+				"unit":         "RMB",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		resp, err := testutil.GetClient().Post("/open-api/v1/entities/"+rmbEntityID+"/quota-plan/reset", map[string]interface{}{
+			"quota":  300.1234,
+			"reason": "adjust entity rmb quota",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal data: %v", err)
+		}
+		assert.InDelta(t, float64(50.5), data["previous_quota"], 0.00001)
+		assert.InDelta(t, float64(300.1234), data["new_quota"], 0.00001)
+		balance := data["balance"].(map[string]interface{})
+		assert.InDelta(t, float64(0), balance["used"], 0.00001)
+		assert.InDelta(t, float64(300.1234), balance["new_remaining"], 0.00001)
+	})
+
+	t.Run("E-8-004 重置 RMB 配额超过 9000 万元上限", func(t *testing.T) {
+		rmbEntityName := testutil.UniqueEntityName()
+		rmbEntityID, err := testutil.CreateEntity(rmbEntityName, typeName, "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteEntity(rmbEntityID)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/entities/"+rmbEntityID, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        50.5,
+				"unit":         "RMB",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		resp, err := testutil.GetClient().Post("/open-api/v1/entities/"+rmbEntityID+"/quota-plan/reset", map[string]interface{}{
+			"quota":  90000000.01,
+			"reason": "exceed rmb quota limit",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
 	})
 
 	t.Cleanup(func() {

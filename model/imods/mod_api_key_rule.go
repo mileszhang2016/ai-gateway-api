@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,20 +15,23 @@
 package imods
 
 import (
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 )
 
 type APIKeyRuleManager struct {
 	txn                   itxn.TxnStorager
 	versionControlManager *iversion_control.VersionControlManager
-	apiKeyStorager        icluster_conf.APIKeyStorager
+	apiKeyStorager        api_key.APIKeyStorager
 	aiRouteStorager       iai_route.AIRouteRuleStorager
 	quotaPlanStorager     quota.QuotaPlanStorager
-	entityStorager        quota.EntityStorager
+	entityStorager        entity.EntityStorager
+	quotaCache            quotacache.QuotaCache
 }
 
 const (
@@ -63,10 +66,11 @@ const (
 
 func NewAPIKeyRuleManager(txn itxn.TxnStorager,
 	versionControlManager *iversion_control.VersionControlManager,
-	apiKeyStorager icluster_conf.APIKeyStorager,
+	apiKeyStorager api_key.APIKeyStorager,
 	aiRouteStorager iai_route.AIRouteRuleStorager,
 	quotaPlanStorager quota.QuotaPlanStorager,
-	entityStorager quota.EntityStorager) *APIKeyRuleManager {
+	entityStorager entity.EntityStorager,
+	quotaCache quotacache.QuotaCache) *APIKeyRuleManager {
 	return &APIKeyRuleManager{
 		txn:                   txn,
 		versionControlManager: versionControlManager,
@@ -74,5 +78,6 @@ func NewAPIKeyRuleManager(txn itxn.TxnStorager,
 		aiRouteStorager:       aiRouteStorager,
 		quotaPlanStorager:     quotaPlanStorager,
 		entityStorager:        entityStorager,
+		quotaCache:            quotaCache,
 	}
 }

@@ -2,9 +2,21 @@
 
 ## 1. 模块概述
 
-Cluster 模块负责 AI 网关后端集群的管理，包括创建、查询、更新、删除。v0.3.0 是本次变更最大模块：删除 `ready`、`sub_clusters`、`scheduler` 等内部字段对外暴露；`Instance` 删除 `tags`；`llm_config` 必填；`llm_config.models` 为字符串数组；`llm_config.key` 为必填敏感字段；不再通过 OpenAPI 设置/获取 `DefaultAIClusterName`。
+Cluster 模块负责 AI 网关后端集群的管理，包括创建、查询、更新、删除。v0.3.0 是本次变更最大模块：删除 `ready`、`sub_clusters`、`scheduler` 等内部字段对外暴露；`Instance` 删除 `tags`；`llm_config` 必填；`llm_config.models` 为字符串数组；不再通过 OpenAPI 设置/获取 `DefaultAIClusterName`。
 
-另外，删除集群时会检查 `route_rules` 表中的全局、Entity、API-Key 路由规则：若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则删除被拒绝。
+v0.0.7 起，`llm_config` 支持多 API-Key：
+- 旧字段 `llm_config.key` 已移除，改为 `llm_config.keys`（`APIKey` 数组）+ `llm_config.key_policy`（Key 路由策略）。
+- `keys` 非必填，默认值为空数组 `[]`；若传入，则所有元素的 `name`/`key`/`weight` 必填，同一数组内 `name` 唯一，且所有 `weight` 之和必须等于 100。
+- `key_policy` 非必填；`strategy` 当前仅支持 `weighted_random`；`max_retries`、`retry_backoff_initial`、`retry_backoff_max` 必须 ≥0，且 `retry_backoff_max` ≥ `retry_backoff_initial`。
+- 当 `model_endpoint.headers` 中包含 `${API_KEY}` 占位符时，`keys` 不能为空，否则返回 422。
+- v0.4 起，`llm_config` 新增 `match_prefix` / `strip_prefix`：
+  - `match_prefix` 非必填，用于声明该 cluster 匹配的前缀（如 `openrouter/`），若传入且非空则必须以 `/` 结尾；
+  - `strip_prefix` 非必填，默认 `false`；为 `true` 时 `match_prefix` 必填且非空；
+  - 两个字段透传到 InnerAPI 导出的 `AIConf.MatchPrefix` / `StripPrefix`，由 BFE 在转发前执行前缀裁剪。
+
+另外：
+- 删除集群时会扫描全部 `route_rules` 表中的全局、Entity、API-Key 路由规则（不经过分页）：若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则删除被拒绝。
+- 更新集群的 `llm_config.models` 时，会检查被移除的模型是否仍被 global/Entity/API-Key 路由规则的 `targets` 或 `fallbacks` 引用（匹配 `ClusterName` + `Model`），若存在引用则更新被拒绝。
 
 ## 2. 接口列表
 
@@ -20,12 +32,12 @@ Cluster 模块负责 AI 网关后端集群的管理，包括创建、查询、�
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建集群 | 12 |
+| 创建集群 | 25 |
 | 查询集群列表 | 1 |
 | 查询集群详情 | 1 |
-| 更新集群 | 5 |
+| 更新集群 | 10 |
 | 删除集群 | 8 |
-| **合计** | **26** |
+| **合计** | **45** |
 
 ## 4. 认证方式
 
@@ -78,12 +90,32 @@ clusters/
 | basic | object | N | 基本参数 | `protocol` ∈ {http, https}；超时 >0；重试/连接数 ≥0 |
 | sticky_sessions | object | N | 会话保持 | `hash_strategy` ∈ {CLIENT_IP_ONLY, CLIENT_ID_ONLY, CLIENT_ID_PREFERED} |
 | passive_health_check | object | N | 被动健康检查 | `uri` 非空且以 `/` 开头；`statuscode` 为 0 或 100-599 |
-| llm_config | object | Y | AI LLM 服务配置 | 必填；`models` ≥1 个非空唯一字符串；`key` ≤512；`model_endpoint.schema` ∈ {http, https}；`model_mappings.source_model` 唯一 |
+| llm_config | object | Y | AI LLM 服务配置 | 必填；`models` ≥1 个非空唯一字符串；`model_endpoint.schema` ∈ {http, https}；`model_mappings.source_model` 唯一 |
 | llm_config.model_endpoint | object | N | 模型列表端点配置 | `schema` ∈ {http, https} |
 | llm_config.models | []string | Y | 支持的模型名称列表 | ≥1 个非空唯一字符串 |
 | llm_config.model_mappings | []object | N | 模型名称映射 | `source_model`/`target_model` 必填；`source_model` 唯一 |
-| llm_config.key | string | Y | 服务认证密钥 | 必填；长度 ≤512 |
+| llm_config.keys | []object | N | 多 API-Key 列表 | 非必填，默认 `[]`；非空时须满足下方“API-Key 结构” |
+| llm_config.key_policy | object | N | Key 路由策略 | 非必填；`strategy` 仅支持 `weighted_random`；退避参数 ≥0 且 max ≥ initial |
 | llm_config.provider_type | string | Y | AI 模型提供商类型 | 必填 |
+| llm_config.match_prefix | string | N | provider/model 前缀 | 若传入且非空，必须以 `/` 结尾 |
+| llm_config.strip_prefix | bool | N | 是否裁剪 `match_prefix` | 默认 `false`；为 `true` 时 `match_prefix` 必填且非空 |
+
+##### API-Key 结构（`llm_config.keys` 元素）
+
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| name | string | Y | Key 名称/标识 | 长度 1-128；同一 `keys` 数组内唯一 |
+| key | string | Y | 服务认证密钥 | 长度 1-512 |
+| weight | int | Y | 权重 | 0-100；所有元素 weight 之和必须等于 100 |
+
+##### Key 路由策略（`llm_config.key_policy`）
+
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| strategy | string | N | 选择策略 | 仅支持 `weighted_random` |
+| max_retries | int | N | 最大重试次数 | ≥0 |
+| retry_backoff_initial | int | N | 初始退避时间（毫秒） | ≥0 |
+| retry_backoff_max | int | N | 最大退避时间（毫秒） | ≥0；且 ≥ `retry_backoff_initial` |
 
 #### 6.2.2 返回数据字段
 
@@ -115,6 +147,19 @@ clusters/
 | CL-1-010 | weight 超过 100 | 合法性条件 | 验证 ErrNum=422 |
 | CL-1-011 | 重复实例 (hostname+ip) | 合法性条件 | 验证 ErrNum=422 |
 | CL-1-012 | llm_config 模型重复 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-013 | 使用多 Key 创建集群 | 正常参数 | 验证 `keys`/`key_policy` 返回正确 |
+| CL-1-014 | keys 权重和不为 100 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-015 | keys 中存在重复 name | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-016 | keys 元素缺少必填字段 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-017 | model_endpoint.headers 含 ${API_KEY} 但 keys 为空 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-018 | key_policy 非法 strategy | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-019 | key_policy 退避参数非法 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-020 | 合法前缀配置（strip_prefix=true） | 正常参数 | 验证 `match_prefix`/`strip_prefix` 返回正确 |
+| CL-1-021 | strip_prefix=true 但 match_prefix 为空 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-022 | match_prefix 缺少尾部斜杠 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-023 | 仅 match_prefix、strip_prefix=false | 正常参数 | 验证仅用于路由标识 |
+| CL-1-024 | 未配置 match_prefix / strip_prefix | 正常参数 | 验证默认值/字段不存在 |
+| CL-1-025 | 非法 strip_prefix 类型 | 异常参数 | 验证 ErrNum=422 |
 
 ### 6.4 测试场景详细设计
 
@@ -151,7 +196,6 @@ clusters/
     ],
     "llm_config": {
         "models": ["deepseek-chat"],
-        "key": "sk-xxx",
         "provider_type": "deepseek"
     }
 }
@@ -172,7 +216,8 @@ clusters/
 | sticky_sessions | 非空对象 | IsObject |
 | passive_health_check | 非空对象 | IsObject |
 | llm_config.models | ["deepseek-chat"] | Equals |
-| llm_config.key | "sk-xxx" | Equals |
+| llm_config.keys | 空数组 `[]` | Equals |
+| llm_config.key_policy | 不存在或为 null | NotExists / IsNull |
 | ready | 不存在 | NotExists |
 | sub_clusters | 不存在 | NotExists |
 | scheduler | 不存在 | NotExists |
@@ -265,7 +310,24 @@ clusters/
                 "value": "deepseek-chat"
             }
         ],
-        "key": "sk-xxx",
+        "keys": [
+            {
+                "name": "primary",
+                "key": "sk-aaaaaaaaaaaa",
+                "weight": 70
+            },
+            {
+                "name": "secondary",
+                "key": "sk-bbbbbbbbbbbb",
+                "weight": 30
+            }
+        ],
+        "key_policy": {
+            "strategy": "weighted_random",
+            "max_retries": 3,
+            "retry_backoff_initial": 100,
+            "retry_backoff_max": 5000
+        },
         "provider_type": "deepseek"
     }
 }
@@ -284,6 +346,8 @@ clusters/
 | description | "完整集群" | Equals |
 | instance_pool | 长度为 2 | Len=2 |
 | llm_config.models | ["deepseek-chat", "deepseek-coder"] | Equals |
+| llm_config.keys | 长度为 2；元素字段与输入一致 | Len=2 / Equals |
+| llm_config.key_policy.strategy | "weighted_random" | Equals |
 | ready | 不存在 | NotExists |
 | sub_clusters | 不存在 | NotExists |
 | scheduler | 不存在 | NotExists |
@@ -353,7 +417,6 @@ clusters/
     "name": "cluster_no_pool",
     "llm_config": {
         "models": ["m"],
-        "key": "sk-xxx",
         "provider_type": "deepseek"
     }
 }
@@ -399,7 +462,6 @@ clusters/
     ],
     "llm_config": {
         "models": ["m"],
-        "key": "sk-xxx",
         "provider_type": "deepseek"
     }
 }
@@ -436,7 +498,6 @@ clusters/
     "instance_pool": [],
     "llm_config": {
         "models": ["m"],
-        "key": "sk-xxx",
         "provider_type": "deepseek"
     }
 }
@@ -482,7 +543,6 @@ clusters/
     ],
     "llm_config": {
         "models": ["m"],
-        "key": "sk-xxx",
         "provider_type": "deepseek"
     }
 }
@@ -528,7 +588,6 @@ clusters/
     ],
     "llm_config": {
         "models": ["m"],
-        "key": "sk-xxx",
         "provider_type": "deepseek"
     }
 }
@@ -574,7 +633,6 @@ clusters/
     ],
     "llm_config": {
         "models": ["m"],
-        "key": "sk-xxx",
         "provider_type": "deepseek"
     }
 }
@@ -620,7 +678,6 @@ clusters/
     ],
     "llm_config": {
         "models": ["m"],
-        "key": "sk-xxx",
         "provider_type": "deepseek"
     }
 }
@@ -674,7 +731,6 @@ clusters/
     ],
     "llm_config": {
         "models": ["m"],
-        "key": "sk-xxx",
         "provider_type": "deepseek"
     }
 }
@@ -720,7 +776,6 @@ clusters/
     ],
     "llm_config": {
         "models": ["m", "m"],
-        "key": "sk-xxx",
         "provider_type": "deepseek"
     }
 }
@@ -730,6 +785,655 @@ clusters/
 
 **ErrNum**：422  
 **ErrMsg**：包含重复 model 的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.13 CL-1-013：使用多 Key 创建集群（正常参数）
+
+##### 设计思路
+
+验证使用 `llm_config.keys` 多 Key 列表和 `key_policy` 创建集群成功，返回结构与输入一致。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`llm_config.keys` 包含 2 个 Key，且 `key_policy` 配置完整。
+2. 验证返回的 `llm_config.keys`/`llm_config.key_policy` 与输入一致。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_multi_keys",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "model_endpoint": {
+            "schema": "https",
+            "uri": "/v1/models",
+            "headers": {
+                "Authorization": "Bearer ${API_KEY}"
+            }
+        },
+        "models": ["deepseek-chat"],
+        "keys": [
+            {
+                "name": "primary",
+                "key": "sk-aaaaaaaaaaaa",
+                "weight": 70
+            },
+            {
+                "name": "secondary",
+                "key": "sk-bbbbbbbbbbbb",
+                "weight": 30
+            }
+        ],
+        "key_policy": {
+            "strategy": "weighted_random",
+            "max_retries": 3,
+            "retry_backoff_initial": 100,
+            "retry_backoff_max": 5000
+        },
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| name | "cluster_multi_keys" | Equals |
+| llm_config.keys | 长度为 2 | Len=2 |
+| llm_config.keys[0].name | "primary" | Equals |
+| llm_config.keys[0].key | "sk-aaaaaaaaaaaa" | Equals |
+| llm_config.keys[0].weight | 70 | Equals |
+| llm_config.keys[1].name | "secondary" | Equals |
+| llm_config.key_policy.strategy | "weighted_random" | Equals |
+| llm_config.key_policy.max_retries | 3 | Equals |
+
+---
+
+#### 6.4.14 CL-1-014：keys 权重和不为 100（合法性条件）
+
+##### 设计思路
+
+验证 `llm_config.keys` 所有元素 `weight` 之和必须等于 100，否则返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`keys` 中两个 Key 的 weight 分别为 60 和 30（合计 90）。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_bad_key_weight",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "keys": [
+            {"name": "k1", "key": "sk-1", "weight": 60},
+            {"name": "k2", "key": "sk-2", "weight": 30}
+        ],
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "total weight" 或 "100" 的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.15 CL-1-015：keys 中存在重复 name（合法性条件）
+
+##### 设计思路
+
+验证同一 `keys` 数组内 `name` 必须唯一。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`keys` 中两个 Key 使用相同 `name`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_dup_key_name",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "keys": [
+            {"name": "same", "key": "sk-1", "weight": 50},
+            {"name": "same", "key": "sk-2", "weight": 50}
+        ],
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "duplicate name" 或 "keys" 的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.16 CL-1-016：keys 元素缺少必填字段（合法性条件）
+
+##### 设计思路
+
+验证 `keys` 元素中的 `name`/`key`/`weight` 均为必填字段，缺少任一字段返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`keys` 元素缺少 `weight`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_key_missing_field",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "keys": [
+            {"name": "k1", "key": "sk-1"}
+        ],
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "weight is required" 或 "keys" 的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.17 CL-1-017：model_endpoint.headers 含 ${API_KEY} 但 keys 为空（合法性条件）
+
+##### 设计思路
+
+验证当 `model_endpoint.headers` 中出现 `${API_KEY}` 占位符时，`keys` 不能为空数组，否则返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`model_endpoint.headers.Authorization` 包含 `${API_KEY}`，但 `keys` 为空数组。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_api_key_placeholder_no_keys",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "model_endpoint": {
+            "schema": "https",
+            "uri": "/v1/models",
+            "headers": {
+                "Authorization": "Bearer ${API_KEY}"
+            }
+        },
+        "keys": [],
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "API_KEY" 或 "keys is empty" 的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.18 CL-1-018：key_policy 非法 strategy（合法性条件）
+
+##### 设计思路
+
+验证 `key_policy.strategy` 仅支持 `weighted_random`，其他值返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`key_policy.strategy` 为 `round_robin`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_bad_key_policy_strategy",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "keys": [
+            {"name": "k1", "key": "sk-1", "weight": 100}
+        ],
+        "key_policy": {
+            "strategy": "round_robin"
+        },
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "weighted_random" 或 "strategy" 的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.19 CL-1-019：key_policy 退避参数非法（合法性条件）
+
+##### 设计思路
+
+验证 `key_policy.retry_backoff_max` 必须 ≥ `retry_backoff_initial`，否则返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`retry_backoff_initial=1000`，`retry_backoff_max=500`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_bad_key_policy_backoff",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {
+                "Default": 8080
+            }
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "keys": [
+            {"name": "k1", "key": "sk-1", "weight": 100}
+        ],
+        "key_policy": {
+            "strategy": "weighted_random",
+            "retry_backoff_initial": 1000,
+            "retry_backoff_max": 500
+        },
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "retry_backoff_max" 或 "retry_backoff_initial" 的错误信息  
+**Data**：null
+
+----
+
+#### 6.4.20 CL-1-020：合法前缀配置（strip_prefix=true）（正常参数）
+
+##### 设计思路
+
+验证 `llm_config.match_prefix` / `strip_prefix` 合法组合可成功创建集群，且响应字段回显正确。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`match_prefix="openrouter/"`，`strip_prefix=true`。
+2. 验证返回 200。
+3. 验证响应 `llm_config.match_prefix == "openrouter/"`、`llm_config.strip_prefix == true`。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_prefix_valid",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["openrouter/anthropic/claude-sonnet-4"],
+        "match_prefix": "openrouter/",
+        "strip_prefix": true,
+        "provider_type": "openrouter"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data**：`llm_config.match_prefix == "openrouter/"`，`llm_config.strip_prefix == true`
+
+----
+
+#### 6.4.21 CL-1-021：strip_prefix=true 但 match_prefix 为空（合法性条件）
+
+##### 设计思路
+
+验证 `strip_prefix=true` 时，`match_prefix` 必须非空，否则返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`strip_prefix=true`，不传入 `match_prefix`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_prefix_missing",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "strip_prefix": true,
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "match_prefix is required when strip_prefix is true"  
+**Data**：null
+
+----
+
+#### 6.4.22 CL-1-022：match_prefix 缺少尾部斜杠（合法性条件）
+
+##### 设计思路
+
+验证非空 `match_prefix` 必须以 `/` 结尾，否则返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`match_prefix="openrouter"`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_prefix_no_slash",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "match_prefix": "openrouter",
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "match_prefix must end with '/'"  
+**Data**：null
+
+----
+
+#### 6.4.23 CL-1-023：仅 match_prefix、strip_prefix=false（正常参数）
+
+##### 设计思路
+
+验证 `strip_prefix=false` 时，`match_prefix` 可用于路由标识但不裁剪前缀，创建成功且字段回显正确。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`match_prefix="openrouter/"`，`strip_prefix=false`。
+2. 验证返回 200，字段回显正确。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_prefix_no_strip",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["openrouter/anthropic/claude-sonnet-4"],
+        "match_prefix": "openrouter/",
+        "strip_prefix": false,
+        "provider_type": "openrouter"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data**：`llm_config.match_prefix == "openrouter/"`，`llm_config.strip_prefix == false`
+
+----
+
+#### 6.4.24 CL-1-024：未配置 match_prefix / strip_prefix（正常参数）
+
+##### 设计思路
+
+验证不配置这两个字段时，集群创建成功，响应中不存在相关字段或为默认值。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送最小参数创建集群请求，不携带 `match_prefix` / `strip_prefix`。
+2. 验证返回 200，响应中不包含 `match_prefix` 或 `strip_prefix` 字段（或 `strip_prefix` 为 false）。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_no_prefix",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["deepseek-chat"],
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data**：`llm_config.match_prefix` 不存在、为 `null` 或为空字符串；`strip_prefix` 不存在或为 `false`
+
+----
+
+#### 6.4.25 CL-1-025：非法 strip_prefix 类型（异常参数）
+
+##### 设计思路
+
+验证 `strip_prefix` 必须为 bool 类型，传入字符串等非法类型时返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`strip_prefix="true"`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_prefix_bad_type",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "match_prefix": "openrouter/",
+        "strip_prefix": "true",
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "strip_prefix" 或类型错误信息  
 **Data**：null
 
 ---
@@ -910,6 +1614,11 @@ URI：`cluster_full`
 | CL-4-003 | 更新后查询一致性 | 返回数据 | PATCH 后立即 GET，验证数据一致 |
 | CL-4-004 | 更新不存在的集群 | 异常参数 | 验证 ErrNum=404 |
 | CL-4-005 | 更新非法 instance_pool（非法 IP） | 合法性条件 | 验证 ErrNum=422 |
+| CL-4-006 | 更新 keys（全量替换） | 正常参数 | 验证 PATCH 后 keys 被完整替换 |
+| CL-4-007 | 更新 key_policy | 正常参数 | 验证 PATCH 后 key_policy 更新生效 |
+| CL-4-008 | 更新 match_prefix / strip_prefix | 正常参数 | 验证 PATCH 后前缀配置更新生效，InnerAPI 导出一致 |
+| CL-4-009 | 删除被路由引用的模型 | 业务规则 | `llm_config.models` 移除仍被路由规则引用的模型，验证 ErrNum=500 |
+| CL-4-010 | 清理路由引用后可删除模型 | 正常参数 | 移除 API-Key 路由规则引用后，可成功删除集群模型 |
 
 ### 9.4 测试场景详细设计
 
@@ -982,7 +1691,6 @@ URI：`cluster_full`
 {
     "llm_config": {
         "models": ["qwen-turbo"],
-        "key": "sk-xxx",
         "provider_type": "qwen"
     }
 }
@@ -999,6 +1707,7 @@ URI：`cluster_full`
 |------|--------|---------|
 | llm_config.models | ["qwen-turbo"] | Equals |
 | llm_config.provider_type | "qwen" | Equals |
+| llm_config.keys | 与更新前一致或为空数组 | Equals |
 
 ---
 
@@ -1112,6 +1821,263 @@ Body：
 
 ---
 
+#### 9.4.6 CL-4-006：更新 keys（全量替换）
+
+##### 设计思路
+
+验证 `PATCH /open-api/v1/clusters/{cluster_name}` 对 `llm_config.keys` 执行全量替换：传入完整的新 Key 列表后，旧的 Key 被清空，新的 Key 生效。
+
+##### 前提数据准备
+
+已创建集群 `cluster_update_keys`，初始 `llm_config.keys` 包含一个 Key。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，传入新的 `llm_config.keys`（2 个 Key）和 `key_policy`。
+2. 验证返回的 `keys` 与请求一致，原 Key 已不存在。
+3. 发送 GET 请求查询集群，验证返回的 `keys`/`key_policy` 与 PATCH 一致。
+
+##### 请求参数
+
+URI：`cluster_update_keys`
+
+```json
+{
+    "llm_config": {
+        "models": ["deepseek-chat"],
+        "keys": [
+            {
+                "name": "new-primary",
+                "key": "sk-new-primary",
+                "weight": 60
+            },
+            {
+                "name": "new-secondary",
+                "key": "sk-new-secondary",
+                "weight": 40
+            }
+        ],
+        "key_policy": {
+            "strategy": "weighted_random",
+            "max_retries": 5
+        }
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| llm_config.keys | 长度为 2 | Len=2 |
+| llm_config.keys[0].name | "new-primary" | Equals |
+| llm_config.keys[1].name | "new-secondary" | Equals |
+| llm_config.key_policy.max_retries | 5 | Equals |
+
+---
+
+#### 9.4.7 CL-4-007：更新 key_policy（正常参数）
+
+##### 设计思路
+
+验证单独更新 `llm_config.key_policy` 不影响 `keys` 内容。
+
+##### 前提数据准备
+
+已创建集群 `cluster_update_policy`，初始 `llm_config.keys` 包含两个 Key。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，仅传入新的 `llm_config.key_policy`。
+2. 验证返回的 `key_policy` 已更新，`keys` 保持原状。
+3. 发送 GET 请求查询集群，验证一致性。
+
+##### 请求参数
+
+URI：`cluster_update_policy`
+
+```json
+{
+    "llm_config": {
+        "models": ["deepseek-chat"],
+        "key_policy": {
+            "strategy": "weighted_random",
+            "retry_backoff_initial": 200,
+            "retry_backoff_max": 2000
+        }
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| llm_config.keys | 与更新前一致 | Equals |
+| llm_config.key_policy.retry_backoff_initial | 200 | Equals |
+| llm_config.key_policy.retry_backoff_max | 2000 | Equals |
+
+----
+
+#### 9.4.8 CL-4-008：更新 match_prefix / strip_prefix（正常参数）
+
+##### 设计思路
+
+验证通过 PATCH 更新 `llm_config.match_prefix` / `strip_prefix` 后，OpenAPI 查询与 InnerAPI 导出均生效。
+
+##### 前提数据准备
+
+已创建集群 `cluster_update_prefix`，初始配置：
+```json
+{
+    "llm_config": {
+        "models": ["openrouter/anthropic/claude-sonnet-4"],
+        "match_prefix": "openrouter/",
+        "strip_prefix": true,
+        "provider_type": "openrouter"
+    }
+}
+```
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，将 `match_prefix` 改为 `"deepseek/"`，`strip_prefix` 改为 `false`。
+2. 验证返回 200，响应中字段已更新。
+3. 发送 GET 请求查询集群，验证字段一致。
+4. 发送 GET 请求到 `/inner-api/v1/configs/tls_conf/server_data_conf`，验证 `AIConf.MatchPrefix == "deepseek/"`、`AIConf.StripPrefix == false`。
+
+##### 请求参数
+
+URI：`cluster_update_prefix`
+
+```json
+{
+    "llm_config": {
+        "models": ["deepseek-chat"],
+        "match_prefix": "deepseek/",
+        "strip_prefix": false,
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| llm_config.match_prefix | "deepseek/" | Equals |
+| llm_config.strip_prefix | false | Equals |
+
+---
+
+#### 9.4.9 CL-4-009：删除被路由引用的模型（业务规则）
+
+##### 设计思路
+
+验证更新集群时，若 `llm_config.models` 中移除的模型仍被 global/Entity/API-Key 路由规则的 `targets` 或 `fallbacks` 引用（同时匹配 `ClusterName` 与 `Model`），则更新应被拒绝，返回 500 业务错误。
+
+##### 前提数据准备
+
+已创建集群 `cluster_ref_model`，`llm_config.models` 包含 `test-model`；已创建 API-Key `model-ref-key`，其 `route_rules` 中存在规则 `rule-ref-model`，`targets` 引用该集群的 `test-model`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求到 `/open-api/v1/clusters/{cluster_name}`，将 `llm_config.models` 从 `["test-model"]` 改为 `["other-model"]`。
+2. 验证返回错误码与错误信息。
+
+##### 请求参数
+
+URI：`cluster_ref_model`
+
+```json
+{
+    "llm_config": {
+        "models": ["other-model"],
+        "provider_type": "test-provider"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：500  
+**ErrMsg**：包含 `Rule rule-ref-model Refer To Model test-model In Cluster`  
+**Data**：null
+
+---
+
+#### 9.4.10 CL-4-010：清理路由引用后可删除模型（正常参数）
+
+##### 设计思路
+
+验证当被移除的模型不再被任何路由规则引用时，更新集群 `llm_config.models` 可以成功执行。
+
+##### 前提数据准备
+
+已完成 CL-4-009 的场景，即集群 `cluster_ref_model` 与 API-Key `model-ref-key` 均存在，且路由规则引用 `test-model`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求到 `/open-api/v1/api-keys/{api_key_id}`，将 API-Key 的 `route_rules` 清空或禁用，移除对 `test-model` 的引用。
+2. 再次发送 PATCH 请求到 `/open-api/v1/clusters/{cluster_name}`，将 `llm_config.models` 改为 `["other-model"]`。
+3. 验证返回 200，且 `llm_config.models` 已更新。
+
+##### 请求参数
+
+**步骤 1：清空 API-Key 路由规则**
+
+URI：`model-ref-key` 的 id
+
+```json
+{
+    "route_rules": {
+        "enabled": false,
+        "rules": []
+    }
+}
+```
+
+**步骤 2：更新集群模型列表**
+
+URI：`cluster_ref_model`
+
+```json
+{
+    "llm_config": {
+        "models": ["other-model"],
+        "provider_type": "test-provider"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| llm_config.models | ["other-model"] | Equals |
+
+---
+
 ## 10. 删除集群
 
 ### 10.1 接口信息
@@ -1122,7 +2088,7 @@ Body：
 | 接口名称 | 删除集群 |
 | 方法 | DELETE |
 | 路径 | `/open-api/v1/clusters/{cluster_name}` |
-| 说明 | 删除集群，自动级联清理关联的实例池和子集群；若集群被 global/entity/apikey 路由规则引用，则拒绝删除 |
+| 说明 | 删除集群，自动级联清理关联的实例池和子集群；删除前会扫描全部 global/entity/apikey 路由规则（不经过分页），若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则拒绝删除 |
 
 ### 10.2 接口参数说明
 
@@ -1511,4 +2477,5 @@ Global 路由规则准备请求：
 2. 返回中不应出现 `ready`、`sub_clusters`、`scheduler`、`Instance.tags`、`llm_config.service_name`、`llm_config.group`。
 3. `basic.retries.max_retry_in_cluster` 对应底层 `max_retry_in_subcluster`。
 4. 更新时不支持修改 `sub_clusters`/`scheduler`，需通过 `instance_pool` 调整实例。
-5. 测试环境 `SkipTokenValidate=true`，无需认证头。
+5. v0.0.7 起，`llm_config.key` 已移除，测试用例中应使用 `llm_config.keys` + `llm_config.key_policy`；`keys` 为全量替换语义，更新时需传入完整列表。
+6. 测试环境 `SkipTokenValidate=true`，无需认证头。

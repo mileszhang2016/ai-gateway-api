@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -15,15 +15,16 @@
 package api_key
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
 )
 
 var ListRoute = &xreq.Endpoint{
@@ -44,7 +45,7 @@ type APIKeyListReq struct {
 }
 
 type APIKeyListResponse struct {
-	List       []*icluster_conf.APIKeyParam `json:"list"`
+	List       []*api_key.APIKeyParam `json:"list"`
 	Pagination struct {
 		Page     int `json:"page"`
 		PageSize int `json:"page_size"`
@@ -89,7 +90,7 @@ func ListAction(req *http.Request) (interface{}, error) {
 
 	productName := defaultProductName
 
-	filter := &icluster_conf.APIKeyFilter{
+	filter := &api_key.APIKeyFilter{
 		ProductName:    &productName,
 		Enabled:        listReq.Enabled,
 		EntityID:       listReq.EntityID,
@@ -105,14 +106,14 @@ func ListAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	list, err = newResponse(list)
+	list, err = newResponse(req.Context(), list)
 	if err != nil {
 		return nil, err
 	}
 
 	total := len(list)
 	if isPagination {
-		allList, err := container.APIKeyManager.FetchAPIKeyList(req.Context(), &icluster_conf.APIKeyFilter{
+		allList, err := container.APIKeyManager.FetchAPIKeyList(req.Context(), &api_key.APIKeyFilter{
 			ProductName: &productName,
 		})
 		if err != nil {
@@ -122,7 +123,7 @@ func ListAction(req *http.Request) (interface{}, error) {
 	}
 
 	if list == nil {
-		list = []*icluster_conf.APIKeyParam{}
+		list = []*api_key.APIKeyParam{}
 	}
 
 	resp := &APIKeyListResponse{
@@ -135,10 +136,10 @@ func ListAction(req *http.Request) (interface{}, error) {
 	return resp, nil
 }
 
-func newResponse(list []*icluster_conf.APIKeyParam) ([]*icluster_conf.APIKeyParam, error) {
+func newResponse(ctx context.Context, list []*api_key.APIKeyParam) ([]*api_key.APIKeyParam, error) {
 	for i, one := range list {
 		if one.Key != nil {
-			remainingQuota, err := icluster_conf.GetRemainingQuota(one)
+			remainingQuota, err := api_key.GetRemainingQuota(ctx, container.QuotaCacheSingleton, one)
 			if err != nil {
 				return nil, err
 			}

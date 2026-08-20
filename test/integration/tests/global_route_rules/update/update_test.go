@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
 var sm *testutil.ServerManager
@@ -44,8 +44,8 @@ func TestGlobalRouteRules_Update(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name":      "global-default",
-						"Cond":      "default_t()",
-						"targets":   []interface{}{map[string]interface{}{"ClusterName": "cluster_global", "Model": "", "Weight": 100}},
+						"cond":      "default_t()",
+						"targets":   []interface{}{map[string]interface{}{"cluster_name": "cluster_global", "model": "", "weight": 100}},
 						"fallbacks": []interface{}{},
 					},
 				},
@@ -66,12 +66,12 @@ func TestGlobalRouteRules_Update(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name":    "rule-a",
-						"Cond":    "default_t()",
+						"cond":    "default_t()",
 						"targets": []interface{}{
-							map[string]interface{}{"ClusterName": "cluster_a", "Model": "gpt-4", "Weight": 70},
-							map[string]interface{}{"ClusterName": "cluster_b", "Model": "", "Weight": 30},
+							map[string]interface{}{"cluster_name": "cluster_a", "model": "gpt-4", "weight": 70},
+							map[string]interface{}{"cluster_name": "cluster_b", "model": "", "weight": 30},
 						},
-						"fallbacks": []interface{}{map[string]interface{}{"ClusterName": "cluster_fallback", "Model": ""}},
+						"fallbacks": []interface{}{map[string]interface{}{"cluster_name": "cluster_fallback", "model": ""}},
 					},
 				},
 			},
@@ -86,8 +86,8 @@ func TestGlobalRouteRules_Update(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name":      "global-default",
-						"Cond":      "default_t()",
-						"targets":   []interface{}{map[string]interface{}{"ClusterName": "cluster_global", "Model": "", "Weight": 100}},
+						"cond":      "default_t()",
+						"targets":   []interface{}{map[string]interface{}{"cluster_name": "cluster_global", "model": "", "weight": 100}},
 						"fallbacks": []interface{}{},
 					},
 				},
@@ -107,13 +107,13 @@ func TestGlobalRouteRules_Update(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name":    "dup",
-						"Cond":    "default_t()",
-						"targets": []interface{}{map[string]interface{}{"ClusterName": "c1", "Weight": 100}},
+						"cond":    "default_t()",
+						"targets": []interface{}{map[string]interface{}{"cluster_name": "c1", "weight": 100}},
 					},
 					map[string]interface{}{
 						"name":    "dup",
-						"Cond":    "default_t()",
-						"targets": []interface{}{map[string]interface{}{"ClusterName": "c2", "Weight": 100}},
+						"cond":    "default_t()",
+						"targets": []interface{}{map[string]interface{}{"cluster_name": "c2", "weight": 100}},
 					},
 				},
 			},
@@ -125,10 +125,10 @@ func TestGlobalRouteRules_Update(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name":    "bad-weight",
-						"Cond":    "default_t()",
+						"cond":    "default_t()",
 						"targets": []interface{}{
-							map[string]interface{}{"ClusterName": "c1", "Weight": 60},
-							map[string]interface{}{"ClusterName": "c2", "Weight": 30},
+							map[string]interface{}{"cluster_name": "c1", "weight": 60},
+							map[string]interface{}{"cluster_name": "c2", "weight": 30},
 						},
 					},
 				},
@@ -141,9 +141,9 @@ func TestGlobalRouteRules_Update(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name":      "bad-fb",
-						"Cond":      "default_t()",
-						"targets":   []interface{}{map[string]interface{}{"ClusterName": "c1", "Weight": 100}},
-						"fallbacks": []interface{}{map[string]interface{}{"ClusterName": "", "Model": ""}},
+						"cond":      "default_t()",
+						"targets":   []interface{}{map[string]interface{}{"cluster_name": "c1", "weight": 100}},
+						"fallbacks": []interface{}{map[string]interface{}{"cluster_name": "", "model": ""}},
 					},
 				},
 			},
@@ -155,8 +155,8 @@ func TestGlobalRouteRules_Update(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name":    "bad-cond",
-						"Cond":    "not_a_valid_expr(",
-						"targets": []interface{}{map[string]interface{}{"ClusterName": "c1", "Weight": 100}},
+						"cond":    "not_a_valid_expr(",
+						"targets": []interface{}{map[string]interface{}{"cluster_name": "c1", "weight": 100}},
 					},
 				},
 			},
@@ -169,10 +169,10 @@ func TestGlobalRouteRules_Update(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name": "dup-target",
-						"Cond": "default_t()",
+						"cond": "default_t()",
 						"targets": []interface{}{
-							map[string]interface{}{"ClusterName": "c1", "Model": "m1", "Weight": 50},
-							map[string]interface{}{"ClusterName": "c1", "Model": "m1", "Weight": 50},
+							map[string]interface{}{"cluster_name": "c1", "model": "m1", "weight": 50},
+							map[string]interface{}{"cluster_name": "c1", "model": "m1", "weight": 50},
 						},
 					},
 				},
@@ -185,8 +185,8 @@ func TestGlobalRouteRules_Update(t *testing.T) {
 				"rules": []interface{}{
 					map[string]interface{}{
 						"name":    "bad-cluster",
-						"Cond":    "default_t()",
-						"targets": []interface{}{map[string]interface{}{"ClusterName": "-bad", "Weight": 100}},
+						"cond":    "default_t()",
+						"targets": []interface{}{map[string]interface{}{"cluster_name": "-bad", "weight": 100}},
 					},
 				},
 			},

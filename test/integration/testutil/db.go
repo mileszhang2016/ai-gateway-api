@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	_ "github.com/glebarez/go-sqlite"
-	_ "github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	_ "github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 // InitTestDB 初始化 SQLite 测试数据库
@@ -68,7 +68,7 @@ func InitTestDB(dbPath, ddlPath string) error {
 }
 
 // SeedTestData 插入默认测试数据
-// DDL 已插入默认 product/pool/bfe_cluster，这里补充 clusters 表缺少的默认集群记录
+// DDL 已插入默认 product/pool/bfe_cluster，这里补充 clusters / sub_clusters / lb_matrices 等默认集群关联数据
 func SeedTestData(dbPath string) error {
 	db, err := sql.Open("sqlite-strip", dbPath)
 	if err != nil {
@@ -85,17 +85,44 @@ func SeedTestData(dbPath string) error {
 
 	// 插入默认 cluster（AI_route 规则引用）
 	// clusters 表在 DDL 中未初始化，但 AI_route 设置规则时会校验该表
+	llmConfig := `{"model_endpoint":{"schema":"https","uri":"/v1/models","headers":null},"models":["deepseek-chat"],"model_mappings":null,"keys":[],"key_policy":null,"provider_type":"deepseek","provider":null,"match_prefix":null,"strip_prefix":null}`
 	_, err = db.Exec(`
 		INSERT OR IGNORE INTO clusters (
 			id, name, description, product_id, protocol,
-			healthcheck_host, healthcheck_uri, created_at, updated_at
+			healthcheck_host, healthcheck_uri, llm_config, created_at, updated_at
 		) VALUES (
 			1, 'BFE-AI_product.szyf', 'Default AI cluster for integration tests', ?, 'http',
-			'localhost', '/health', datetime('now'), datetime('now')
+			'localhost', '/health', ?, datetime('now'), datetime('now')
+		);
+	`, productID, llmConfig)
+	if err != nil {
+		return fmt.Errorf("seed cluster: %w", err)
+	}
+
+	// 为默认 cluster 绑定子集群与实例池，使其 instance_pool 非空
+	_, err = db.Exec(`
+		INSERT OR IGNORE INTO sub_clusters (
+			id, name, cluster_id, product_id, description, bns_name_id, enabled, role, created_at, updated_at
+		) VALUES (
+			1, 'BFE-AI_product.szyf', 1, ?, 'Default sub cluster for integration tests', 1, 1, 'COMMON',
+			datetime('now'), datetime('now')
 		);
 	`, productID)
 	if err != nil {
-		return fmt.Errorf("seed cluster: %w", err)
+		return fmt.Errorf("seed sub_cluster: %w", err)
+	}
+
+	// 为默认 cluster 写入负载均衡矩阵
+	lbMatrix := `{"BFE-AI_product.szyf":{"BFE-AI_product.szyf":100,"GSLB_BLACKHOLE":0}}`
+	_, err = db.Exec(`
+		INSERT OR IGNORE INTO lb_matrices (
+			cluster_id, lb_matrix, product_id, created_at, updated_at
+		) VALUES (
+			1, ?, ?, datetime('now'), datetime('now')
+		);
+	`, lbMatrix, productID)
+	if err != nil {
+		return fmt.Errorf("seed lb_matrix: %w", err)
 	}
 
 	// 预置 Auth 模块各测试用例依赖的产品线（原 /open-api/v1/products 创建接口已废弃）

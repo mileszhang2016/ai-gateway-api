@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
 var sm *testutil.ServerManager
@@ -36,7 +36,6 @@ func minClusterBody(name string) map[string]interface{} {
 		},
 		"llm_config": map[string]interface{}{
 			"models":        []string{"deepseek-chat"},
-			"key":           "sk-xxx",
 			"provider_type": "deepseek",
 		},
 	}
@@ -98,8 +97,25 @@ func TestClusters_Create(t *testing.T) {
 					},
 				},
 				"llm_config": map[string]interface{}{
-					"models":        []string{"deepseek-chat", "deepseek-coder"},
-					"key":           "sk-xxx",
+					"models": []string{"deepseek-chat", "deepseek-coder"},
+					"keys": []interface{}{
+						map[string]interface{}{
+							"name":   "primary",
+							"key":    "sk-aaaaaaaaaaaa",
+							"weight": 70,
+						},
+						map[string]interface{}{
+							"name":   "secondary",
+							"key":    "sk-bbbbbbbbbbbb",
+							"weight": 30,
+						},
+					},
+					"key_policy": map[string]interface{}{
+						"strategy":              "weighted_random",
+						"max_retries":           3,
+						"retry_backoff_initial": 100,
+						"retry_backoff_max":     5000,
+					},
 					"provider_type": "deepseek",
 				},
 			},
@@ -111,6 +127,11 @@ func TestClusters_Create(t *testing.T) {
 				testutil.AssertDataFieldEquals(t, resp, "name", clusterFull)
 				insts, _ := data["instance_pool"].([]interface{})
 				assert.Len(t, insts, 2)
+				llm, _ := data["llm_config"].(map[string]interface{})
+				keys, _ := llm["keys"].([]interface{})
+				assert.Len(t, keys, 2)
+				policy, _ := llm["key_policy"].(map[string]interface{})
+				assert.Equal(t, "weighted_random", policy["strategy"])
 			},
 		},
 		{
@@ -164,7 +185,7 @@ func TestClusters_Create(t *testing.T) {
 						"port":   0,
 					},
 				},
-				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+				"llm_config": map[string]interface{}{"models": []string{"m"}, "provider_type": "deepseek"},
 			},
 			wantCode: 422,
 		},
@@ -180,7 +201,7 @@ func TestClusters_Create(t *testing.T) {
 						"port":   8080,
 					},
 				},
-				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+				"llm_config": map[string]interface{}{"models": []string{"m"}, "provider_type": "deepseek"},
 			},
 			wantCode: 422,
 		},
@@ -196,7 +217,7 @@ func TestClusters_Create(t *testing.T) {
 						"port":   8080,
 					},
 				},
-				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+				"llm_config": map[string]interface{}{"models": []string{"m"}, "provider_type": "deepseek"},
 			},
 			wantCode: 422,
 		},
@@ -212,7 +233,7 @@ func TestClusters_Create(t *testing.T) {
 						"port":   8080,
 					},
 				},
-				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+				"llm_config": map[string]interface{}{"models": []string{"m"}, "provider_type": "deepseek"},
 			},
 			wantCode: 422,
 		},
@@ -234,7 +255,7 @@ func TestClusters_Create(t *testing.T) {
 						"port":   8081,
 					},
 				},
-				"llm_config": map[string]interface{}{"models": []string{"m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+				"llm_config": map[string]interface{}{"models": []string{"m"}, "provider_type": "deepseek"},
 			},
 			wantCode: 422,
 		},
@@ -250,7 +271,352 @@ func TestClusters_Create(t *testing.T) {
 						"port":   8080,
 					},
 				},
-				"llm_config": map[string]interface{}{"models": []string{"m", "m"}, "key": "sk-xxx", "provider_type": "deepseek"},
+				"llm_config": map[string]interface{}{"models": []string{"m", "m"}, "provider_type": "deepseek"},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-013 使用多 Key 创建集群",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models": []string{"deepseek-chat"},
+					"model_endpoint": map[string]interface{}{
+						"schema": "https",
+						"uri":    "/v1/models",
+						"headers": map[string]interface{}{
+							"Authorization": "Bearer ${API_KEY}",
+						},
+					},
+					"keys": []interface{}{
+						map[string]interface{}{
+							"name":   "primary",
+							"key":    "sk-aaaaaaaaaaaa",
+							"weight": 70,
+						},
+						map[string]interface{}{
+							"name":   "secondary",
+							"key":    "sk-bbbbbbbbbbbb",
+							"weight": 30,
+						},
+					},
+					"key_policy": map[string]interface{}{
+						"strategy":              "weighted_random",
+						"max_retries":           3,
+						"retry_backoff_initial": 100,
+						"retry_backoff_max":     5000,
+					},
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				llm, _ := data["llm_config"].(map[string]interface{})
+				keys, _ := llm["keys"].([]interface{})
+				assert.Len(t, keys, 2)
+				policy, _ := llm["key_policy"].(map[string]interface{})
+				assert.Equal(t, "weighted_random", policy["strategy"])
+			},
+		},
+		{
+			name: "CL-1-014 keys 权重和不为 100",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models": []string{"m"},
+					"keys": []interface{}{
+						map[string]interface{}{"name": "k1", "key": "sk-1", "weight": 60},
+						map[string]interface{}{"name": "k2", "key": "sk-2", "weight": 30},
+					},
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-015 keys 中存在重复 name",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models": []string{"m"},
+					"keys": []interface{}{
+						map[string]interface{}{"name": "same", "key": "sk-1", "weight": 50},
+						map[string]interface{}{"name": "same", "key": "sk-2", "weight": 50},
+					},
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-016 keys 元素缺少必填字段",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models": []string{"m"},
+					"keys": []interface{}{
+						map[string]interface{}{"name": "k1", "key": "sk-1"},
+					},
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-017 model_endpoint.headers 含 ${API_KEY} 但 keys 为空",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models": []string{"m"},
+					"model_endpoint": map[string]interface{}{
+						"schema": "https",
+						"uri":    "/v1/models",
+						"headers": map[string]interface{}{
+							"Authorization": "Bearer ${API_KEY}",
+						},
+					},
+					"keys":          []interface{}{},
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-018 key_policy 非法 strategy",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models": []string{"m"},
+					"keys": []interface{}{
+						map[string]interface{}{"name": "k1", "key": "sk-1", "weight": 100},
+					},
+					"key_policy": map[string]interface{}{
+						"strategy": "round_robin",
+					},
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-019 key_policy 退避参数非法",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models": []string{"m"},
+					"keys": []interface{}{
+						map[string]interface{}{"name": "k1", "key": "sk-1", "weight": 100},
+					},
+					"key_policy": map[string]interface{}{
+						"strategy":              "weighted_random",
+						"retry_backoff_initial": 1000,
+						"retry_backoff_max":     500,
+					},
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-020 合法前缀配置（strip_prefix=true）",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"openrouter/anthropic/claude-sonnet-4"},
+					"match_prefix":  "openrouter/",
+					"strip_prefix":  true,
+					"provider_type": "openrouter",
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				llm, _ := data["llm_config"].(map[string]interface{})
+				assert.Equal(t, "openrouter/", llm["match_prefix"])
+				assert.Equal(t, true, llm["strip_prefix"])
+			},
+		},
+		{
+			name: "CL-1-021 strip_prefix=true 但 match_prefix 为空",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"m"},
+					"strip_prefix":  true,
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-022 match_prefix 缺少尾部斜杠",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"m"},
+					"match_prefix":  "openrouter",
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-023 仅 match_prefix、strip_prefix=false",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"openrouter/anthropic/claude-sonnet-4"},
+					"match_prefix":  "openrouter/",
+					"strip_prefix":  false,
+					"provider_type": "openrouter",
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				llm, _ := data["llm_config"].(map[string]interface{})
+				assert.Equal(t, "openrouter/", llm["match_prefix"])
+				assert.Equal(t, false, llm["strip_prefix"])
+			},
+		},
+		{
+			name: "CL-1-024 未配置 match_prefix / strip_prefix",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"deepseek-chat"},
+					"provider_type": "deepseek",
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				llm, _ := data["llm_config"].(map[string]interface{})
+				v, ok := llm["match_prefix"]
+				if ok && v != nil {
+					assert.Equal(t, "", v, "match_prefix should be empty if present")
+				}
+			},
+		},
+		{
+			name: "CL-1-025 非法 strip_prefix 类型",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"llm_config": map[string]interface{}{
+					"models":        []string{"m"},
+					"match_prefix":  "openrouter/",
+					"strip_prefix":  "true",
+					"provider_type": "deepseek",
+				},
 			},
 			wantCode: 422,
 		},

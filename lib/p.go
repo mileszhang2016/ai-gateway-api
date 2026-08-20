@@ -20,6 +20,10 @@ func PInt64(v int64) *int64 {
 	return &v
 }
 
+func PFloat64(v float64) *float64 {
+	return &v
+}
+
 func PString(v string) *string {
 	return &v
 }

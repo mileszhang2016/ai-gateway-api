@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,14 +16,14 @@ package entity
 
 import (
 	"net/http"
-	"strings"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/validate"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 var EntityResetQuotaRoute = &xreq.Endpoint{
@@ -38,21 +38,21 @@ type ResetQuotaReq struct {
 }
 
 type ResetQuotaBody struct {
-	Quota  *int64  `json:"quota,omitempty"`
-	Reason *string `json:"reason,omitempty"`
+	Quota  *float64 `json:"quota,omitempty"`
+	Reason *string  `json:"reason,omitempty"`
 }
 
 type ResetQuotaResponse struct {
 	ID            *string           `json:"id"`
-	PreviousQuota *int64            `json:"previous_quota"`
-	NewQuota      *int64            `json:"new_quota"`
+	PreviousQuota *float64          `json:"previous_quota"`
+	NewQuota      *float64          `json:"new_quota"`
 	Balance       *ResetBalanceInfo `json:"balance"`
 }
 
 type ResetBalanceInfo struct {
-	PreviousRemaining int64 `json:"previous_remaining"`
-	NewRemaining      int64 `json:"new_remaining"`
-	Used              int64 `json:"used"`
+	PreviousRemaining float64 `json:"previous_remaining"`
+	NewRemaining      float64 `json:"new_remaining"`
+	Used              float64 `json:"used"`
 }
 
 func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
@@ -66,7 +66,7 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	entity, err := container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{
+	entity, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{
 		EntityID: resetReq.EntityID,
 	})
 	if err != nil {
@@ -81,8 +81,8 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapParamErrorWithMsg("Entity has no quota plan")
 	}
 
-	var previousQuota *int64
-	var previousRemaining int64
+	var previousQuota *float64
+	var previousRemaining float64
 
 	plan, err := container.QuotaPlanManager.FetchQuotaPlan(req.Context(), &quota.QuotaPlanFilter{
 		ID: entity.QuotaPlanID,
@@ -92,6 +92,15 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 	}
 	if plan != nil {
 		previousQuota = plan.Quota
+	}
+
+	// 校验重置配额值
+	unit := "total_token"
+	if plan != nil && plan.Unit != nil && *plan.Unit != "" {
+		unit = *plan.Unit
+	}
+	if err := validate.QuotaValue(bodyReq.Quota, unit); err != nil {
+		return nil, err
 	}
 
 	balance, err := container.QuotaPlanManager.FetchQuotaBalance(req.Context(), *entity.QuotaPlanID)
@@ -107,34 +116,6 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	// 重置 Redis 中的值为 quota 总量
-	if entity.EntityID != nil {
-		redisKey := stateful.AIUsedQuotaKey(*entity.EntityID)
-
-		var resetQuota int64
-		if bodyReq.Quota != nil {
-			resetQuota = *bodyReq.Quota
-		} else if plan != nil && plan.Quota != nil {
-			resetQuota = *plan.Quota
-		} else {
-			return nil, xerror.WrapParamErrorWithMsg("quota is required")
-		}
-
-		currentValue, err := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if err != nil {
-			if !strings.Contains(err.Error(), "redigo: nil returned") {
-				return nil, err
-			}
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, resetQuota)
-		} else {
-			delta := resetQuota - currentValue
-			_, err = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	newPlan, err := container.QuotaPlanManager.FetchQuotaPlan(req.Context(), &quota.QuotaPlanFilter{
 		ID: entity.QuotaPlanID,
 	})
@@ -147,7 +128,7 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	newRemaining := int64(0)
+	newRemaining := float64(0)
 	if newBalance != nil && newBalance.Remaining != nil {
 		newRemaining = *newBalance.Remaining
 	}

@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,9 +17,11 @@ package quota
 import (
 	"context"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
+	"github.com/shopspring/decimal"
+
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
 type QuotaPlanStorager struct {
@@ -120,7 +122,7 @@ func quotaPlanDataToParam(param *quota.QuotaPlanParam) *dao.TQuotaPlanParam {
 	return &dao.TQuotaPlanParam{
 		Unlimited:             param.Unlimited,
 		PassWhenNoEnoughQuota: param.PassWhenNoEnoughQuota,
-		Quota:                 param.Quota,
+		Quota:                 float64PtrToDecimalPtr(param.Quota),
 		Unit:                  param.Unit,
 		ResetPeriod:           param.ResetPeriod,
 	}
@@ -132,9 +134,21 @@ func quotaPlanParamToData(one *dao.TQuotaPlan) *quota.QuotaPlanParam {
 		ID:                    &one.ID,
 		Unlimited:             &one.Unlimited,
 		PassWhenNoEnoughQuota: &one.PassWhenNoEnoughQuota,
-		Quota:                 &one.Quota,
+		Quota:                 decimalToFloat64Ptr(one.Quota),
 		Unit:                  &one.Unit,
 		ResetPeriod:           &one.ResetPeriod,
 		CreateTime:            &createTime,
 	}
+}
+
+func float64PtrToDecimalPtr(v *float64) *decimal.Decimal {
+	if v == nil {
+		return nil
+	}
+	d := decimal.NewFromFloat(*v)
+	return &d
+}
+
+func decimalToFloat64Ptr(d decimal.Decimal) *float64 {
+	return lib.PFloat64(d.InexactFloat64())
 }

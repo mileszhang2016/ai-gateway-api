@@ -2,7 +2,9 @@
 
 ## 1. 模块概述
 
-InnerAPI 模块为 BFE/Conf Agent 提供只读配置导出接口，支持基于 `version` 的增量同步。所有接口均为 GET 请求，返回值包含 `WorkMode` 字段。v0.3.0 对应 OpenAPI 的模块精简不影响 InnerAPI 导出结构（底层表结构未变）。
+InnerAPI 模块为 BFE/Conf Agent 提供只读配置导出接口，支持基于 `version` 的增量同步。所有接口均为 GET 请求，返回值包含 `WorkMode` 字段。v0.3.0 对应 OpenAPI 的模块精简不影响 InnerAPI 导出结构（底层表结构未变）。v0.3.0 起，路由规则导出（`/configs/tls_conf/server_data_conf`）中的 `ClusterConf` 会包含模型定价表（`AIConf.ModelTable`），用于 BFE 按 provider 匹配可用模型。
+
+v0.0.7 起，Cluster 表导出（`/configs/gslb_data/cluster_table`）中的 `AIConf` 字段不再使用单 `Key`，而是输出 `Keys`（`[]{Name, Key, Weight}`）和 `KeyPolicy`（`{Strategy, MaxRetries, RetryBackoffInitial, RetryBackoffMax}`），以支持多 API-Key 路由。InnerAPI 应验证该导出结构与 OpenAPI 写入的多 Key 配置一致。
 
 ## 2. 接口列表
 
@@ -22,16 +24,16 @@ InnerAPI 模块为 BFE/Conf Agent 提供只读配置导出接口，支持基于 
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 导出 TLS/Server 配置 | 1 |
+| 导出 TLS/Server 配置 | 3 |
 | 导出 GSLB 配置 | 2 |
-| 导出集群表配置 | 1 |
+| 导出集群表配置 | 2 |
 | 导出证书配置 | 1 |
 | 导出额外文件 | 1 |
 | 导出 API-Key 配置 | 3 |
 | 导出请求体处理配置 | 1 |
 | 导出限流策略配置 | 1 |
 | 导出 AI 路由配置 | 2 |
-| **合计** | **13** |
+| **合计** | **15** |
 
 ## 4. 认证方式
 
@@ -100,6 +102,8 @@ innerapi/
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
 | IN-1-001 | 首次导出 TLS/Server 配置 | 正常参数 | 返回完整配置与 version |
+| IN-1-002 | 导出 ClusterConf 含多 Key AIConf | 返回数据 | 验证 ClusterConf.AIConf.Keys/KeyPolicy 与 OpenAPI 写入一致 |
+| IN-1-003 | 导出 ClusterConf 含模型定价表 | 返回数据 | 验证 ClusterConf.AIConf.ModelTable 与导入的 model prices 一致 |
 
 ### 6.4 测试场景详细设计
 
@@ -134,6 +138,105 @@ innerapi/
 | Data | 非空对象 | IsObject |
 | version | 非空字符串 | NotEmpty |
 | WorkMode | 非空字符串 | NotEmpty |
+
+---
+
+#### 6.4.2 IN-1-002：导出 ClusterConf 含多 Key AIConf（返回数据）
+
+##### 设计思路
+
+验证通过 OpenAPI 创建的 Cluster（含 `llm_config.keys`/`key_policy`）经 InnerAPI `/configs/tls_conf/server_data_conf` 导出后，`ClusterConf.Config.{cluster_name}.AIConf` 中正确输出 `Keys` 和 `KeyPolicy`。
+
+##### 前提数据准备
+
+1. 通过 POST `/open-api/v1/clusters` 创建集群 `cluster_inner_multi_keys`，其 `llm_config` 包含：
+   - `models`: ["deepseek-chat"]
+   - `keys`: 2 个 Key（name/key/weight）
+   - `key_policy`: strategy="weighted_random", max_retries=3, retry_backoff_initial=100, retry_backoff_max=5000
+
+##### 执行步骤
+
+1. 发送 GET 请求到 `/inner-api/v1/configs/tls_conf/server_data_conf`。
+2. 在返回的 `Data.ClusterConf.Config` 中找到目标集群。
+3. 校验该集群的 `AIConf.Keys` 和 `AIConf.KeyPolicy` 与写入一致。
+
+##### 请求参数
+
+无
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| Data.ClusterConf.Config.cluster_inner_multi_keys.AIConf.Keys | 长度为 2 | Len=2 |
+| Data.ClusterConf.Config.cluster_inner_multi_keys.AIConf.Keys[0].Name | "primary" | Equals |
+| Data.ClusterConf.Config.cluster_inner_multi_keys.AIConf.Keys[0].Key | "sk-aaaaaaaaaaaa" | Equals |
+| Data.ClusterConf.Config.cluster_inner_multi_keys.AIConf.Keys[0].Weight | 70 | Equals |
+| Data.ClusterConf.Config.cluster_inner_multi_keys.AIConf.KeyPolicy.Strategy | "weighted_random" | Equals |
+| Data.ClusterConf.Config.cluster_inner_multi_keys.AIConf.KeyPolicy.MaxRetries | 3 | Equals |
+| Data.ClusterConf.Config.cluster_inner_multi_keys.AIConf.KeyPolicy.RetryBackoffInitial | 100 | Equals |
+| Data.ClusterConf.Config.cluster_inner_multi_keys.AIConf.KeyPolicy.RetryBackoffMax | 5000 | Equals |
+
+---
+
+#### 6.4.3 IN-1-003：导出 ClusterConf 含模型定价表（返回数据）
+
+##### 设计思路
+
+验证通过 OpenAPI 导入模型定价后，`/configs/tls_conf/server_data_conf` 导出的 `ClusterConf.AIConf.ModelTable` 会按 cluster 的 `llm_config.provider` 匹配并输出对应模型列表。
+
+##### 前提数据准备
+
+1. 通过 POST `/open-api/v1/model-prices/import`（`mode=replace`）导入如下 `model-list.yaml`：
+
+   ```yaml
+   version: v1.0
+   default_currency: RMB
+   models:
+     - provider: openai
+       model: gpt-4o
+       base_model: gpt-4o
+       mode: chat
+       prices:
+         input_cost_per_token: 0.0001
+     - provider: openai
+       model: gpt-4o-mini
+       base_model: gpt-4o-mini
+       mode: chat
+       prices:
+         input_cost_per_token: 0.00001
+   ```
+
+2. 通过 POST `/open-api/v1/clusters` 创建集群 `cluster_inner_model_price`，其 `llm_config.provider="openai"`。
+
+##### 执行步骤
+
+1. 发送 GET 请求到 `/inner-api/v1/configs/tls_conf/server_data_conf`。
+2. 在返回的 `Data.ClusterConf.Config` 中找到目标集群。
+3. 校验该集群的 `AIConf.ModelTable` 与导入的模型定价一致。
+
+##### 请求参数
+
+无
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| Data.ClusterConf.Config.cluster_inner_model_price.AIConf.ModelTable.Currency | "RMB" | Equals |
+| Data.ClusterConf.Config.cluster_inner_model_price.AIConf.ModelTable.Models | 长度为 2 | Len=2 |
+| Data.ClusterConf.Config.cluster_inner_model_price.AIConf.ModelTable.Models[*].Provider | 全部为 "openai" | Equals |
+| Data.ClusterConf.Config.cluster_inner_model_price.AIConf.ModelTable.Models[*].Model | 包含 "gpt-4o" 和 "gpt-4o-mini" | Contains |
 
 ---
 
@@ -880,7 +983,7 @@ version=XXX
 
 ## 15. 依赖与数据准备
 
-1. 需要预先通过 OpenAPI 创建 API-Key、Entity、Cluster、证书、Global Route 等数据，才能验证导出内容非空。
+1. 需要预先通过 OpenAPI 创建 API-Key、Entity、Cluster、证书、Global Route 等数据，才能验证导出内容非空；验证模型定价表时需先导入 model prices 并创建对应 provider 的 Cluster。
 2. `/configs/gslb_data/gslb` 依赖正确的 `bfe_cluster` 参数，通常为 `BFE-AI_product.szyf`。
 3. InnerAPI 鉴权为 `McUserProbe`，测试环境需配置为可跳过或使用 Support Token。
 

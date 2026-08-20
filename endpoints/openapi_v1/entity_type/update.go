@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,12 +17,12 @@ package entity_type
 import (
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/validate"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/validate"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 var EntityTypeUpdateRoute = &xreq.Endpoint{
@@ -45,7 +45,7 @@ func EntityTypeUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	existing, err := container.EntityTypeManager.FetchEntityType(req.Context(), &quota.EntityTypeFilter{
+	existing, err := container.EntityTypeManager.FetchEntityType(req.Context(), &entity.EntityTypeFilter{
 		TypeName: updateReq.TypeName,
 	})
 	if err != nil {
@@ -55,7 +55,7 @@ func EntityTypeUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapRecordNotExist("Entity-Type")
 	}
 
-	param := &quota.EntityTypeParam{}
+	param := &entity.EntityTypeParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
 	}
@@ -70,14 +70,14 @@ func EntityTypeUpdateAction(req *http.Request) (interface{}, error) {
 		}
 	}
 
-	_, err = container.EntityTypeManager.UpdateEntityType(req.Context(), &quota.EntityTypeFilter{
+	_, err = container.EntityTypeManager.UpdateEntityType(req.Context(), &entity.EntityTypeFilter{
 		TypeName: updateReq.TypeName,
 	}, param)
 	if err != nil {
 		return nil, err
 	}
 
-	return container.EntityTypeManager.FetchEntityType(req.Context(), &quota.EntityTypeFilter{
+	return container.EntityTypeManager.FetchEntityType(req.Context(), &entity.EntityTypeFilter{
 		TypeName: updateReq.TypeName,
 	})
 }

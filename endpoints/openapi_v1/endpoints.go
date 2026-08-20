@@ -17,26 +17,27 @@ package openapi_v1
 import (
 	"github.com/gorilla/mux"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/middleware"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/api_key"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/auth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_cluster"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_pool"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/certificate"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/domain"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/entity"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/entity_type"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/global_route_rules"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/model_provider_type"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product_cluster"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product_pool"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route_tables"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/subcluster"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/tool"
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/openapi_v1/traffic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/middleware"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/auth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_cluster"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_pool"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/certificate"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/domain"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/entity_type"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/global_route_rules"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/model_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/model_provider_type"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product_cluster"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product_pool"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route_tables"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/subcluster"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/tool"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/traffic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 )
 
 func RegisterEndpoints(router *mux.Router) *mux.Router {
@@ -67,6 +68,7 @@ func endpoints() []*xreq.Endpoint {
 		global_route_rules.Endpoints,
 		route_tables.Endpoints,
 		model_provider_type.NewEndpoints(nil),
+		model_price.Endpoints,
 		tool.Endpoints,
 	)
 }

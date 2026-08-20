@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,11 +17,11 @@ package entity
 import (
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 var EntityGetQuotaPlanRoute = &xreq.Endpoint{
@@ -32,17 +32,17 @@ var EntityGetQuotaPlanRoute = &xreq.Endpoint{
 }
 
 type EntityGetQuotaPlanResponse struct {
-	Unlimited             *bool     `json:"unlimited"`
-	PassWhenNoEnoughQuota *bool     `json:"pass_when_no_enough_quota"`
-	Quota                 *int64    `json:"quota"`
-	Unit                  *string   `json:"unit"`
-	ResetPeriod           *string   `json:"reset_period"`
-	Balance               *Balance  `json:"balance"`
+	Unlimited             *bool    `json:"unlimited"`
+	PassWhenNoEnoughQuota *bool    `json:"pass_when_no_enough_quota"`
+	Quota                 *float64 `json:"quota"`
+	Unit                  *string  `json:"unit"`
+	ResetPeriod           *string  `json:"reset_period"`
+	Balance               *Balance `json:"balance"`
 }
 
 type Balance struct {
-	Used      int64 `json:"used"`
-	Remaining int64 `json:"remaining"`
+	Used      float64 `json:"used"`
+	Remaining float64 `json:"remaining"`
 }
 
 type GetQuotaPlanReq struct {
@@ -55,7 +55,7 @@ func EntityGetQuotaPlanAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	entity, err := container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{
+	entity, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{
 		EntityID: getReq.EntityID,
 	})
 	if err != nil {
@@ -77,11 +77,11 @@ func EntityGetQuotaPlanAction(req *http.Request) (interface{}, error) {
 			return nil, err
 		}
 		if balanceData != nil {
-			used := int64(0)
+			used := float64(0)
 			if balanceData.Used != nil {
 				used = *balanceData.Used
 			}
-			remaining := int64(0)
+			remaining := float64(0)
 			if balanceData.Remaining != nil {
 				remaining = *balanceData.Remaining
 			}
@@ -90,7 +90,7 @@ func EntityGetQuotaPlanAction(req *http.Request) (interface{}, error) {
 				Remaining: remaining,
 			}
 		} else {
-			remaining := int64(0)
+			remaining := float64(0)
 			if entity.QuotaPlan.Quota != nil {
 				remaining = *entity.QuotaPlan.Quota
 			}

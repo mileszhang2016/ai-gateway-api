@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 func TestHostname(t *testing.T) {
@@ -114,13 +114,54 @@ func TestAPIKeyValue(t *testing.T) {
 
 func TestQuotaPlan(t *testing.T) {
 	assert.NoError(t, QuotaPlan(nil))
-	q := int64(-1)
+	q := float64(-1)
 	assert.Error(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q}))
 	q = 100
 	unit := "invalid"
 	assert.Error(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q, Unit: &unit}))
 	unit = "total_token"
 	assert.NoError(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q, Unit: &unit}))
+
+	// RMB quota upper limit: 90,000,000.00 yuan
+	unit = "RMB"
+	q = 90000000.00
+	assert.NoError(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q, Unit: &unit}))
+	q = 90000000.00000001
+	assert.Error(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q, Unit: &unit}))
+	q = 90000001.00
+	assert.Error(t, QuotaPlan(&shared.QuotaPlanParam{Quota: &q, Unit: &unit}))
+}
+
+func TestQuotaValue(t *testing.T) {
+	q := float64(-1)
+	assert.Error(t, QuotaValue(&q, "total_token"))
+
+	q = 1.5
+	assert.Error(t, QuotaValue(&q, "total_token"))
+
+	q = 100
+	assert.NoError(t, QuotaValue(&q, "total_token"))
+
+	q = 100.123456789
+	assert.Error(t, QuotaValue(&q, "RMB"))
+
+	q = 100.12345678
+	assert.NoError(t, QuotaValue(&q, "RMB"))
+
+	q = 90000000.00
+	assert.NoError(t, QuotaValue(&q, "RMB"))
+
+	q = 90000000.00000001
+	assert.Error(t, QuotaValue(&q, "RMB"))
+
+	q = 90000001.00
+	assert.Error(t, QuotaValue(&q, "RMB"))
+
+	assert.NoError(t, QuotaValue(nil, "RMB"))
+
+	// Unknown unit: only non-negative check applies
+	q = 123.45
+	assert.NoError(t, QuotaValue(&q, "unknown"))
 }
 
 func TestRateLimitPolicy(t *testing.T) {
@@ -142,14 +183,15 @@ func TestRateLimitPolicy(t *testing.T) {
 
 func TestRouteRules(t *testing.T) {
 	name := "r1"
-	cond := "default_t()"
 	cluster := "cluster_1"
 	weight := 100
+
+	validCond := "default_t()"
 	rules := &shared.RouteRulesParam{
 		Rules: []*shared.AiRouteRuleParam{
 			{
 				Name:    &name,
-				Cond:    &cond,
+				Cond:    &validCond,
 				Targets: []*shared.AiRouteTargetParam{{ClusterName: &cluster, Weight: &weight}},
 			},
 		},
@@ -158,21 +200,141 @@ func TestRouteRules(t *testing.T) {
 
 	weight = 50
 	assert.Error(t, RouteRules(rules))
+	weight = 100
+
+	// valid cond with quoted path
+	quotedPathCond := "req_path_in(\"/v1\", false)"
+	rules.Rules[0].Cond = &quotedPathCond
+	assert.NoError(t, RouteRules(rules))
+
+	// invalid cond: missing quotes around path
+	missingQuoteCond := "req_path_in(/v1, false)"
+	rules.Rules[0].Cond = &missingQuoteCond
+	assert.Error(t, RouteRules(rules))
+
+	// invalid cond: unknown function
+	unknownFuncCond := "unknown_func()"
+	rules.Rules[0].Cond = &unknownFuncCond
+	assert.Error(t, RouteRules(rules))
+
+	// invalid cond: unmatched parenthesis
+	unmatchedParenCond := "default_t("
+	rules.Rules[0].Cond = &unmatchedParenCond
+	assert.Error(t, RouteRules(rules))
+}
+
+func TestConditionExpression(t *testing.T) {
+	cases := []struct {
+		name    string
+		cond    string
+		wantErr bool
+	}{
+		{"default_t", "default_t()", false},
+		{"req_path_in quoted", "req_path_in(\"/v1\", false)", false},
+		{"combined expression", "req_method_in(\"POST\") && req_path_in(\"/v1\", false)", false},
+		{"missing quotes", "req_path_in(/v1, false)", true},
+		{"unknown function", "unknown_func()", true},
+		{"unmatched parenthesis", "default_t(", true},
+		{"empty string", "", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ConditionExpression(tc.cond)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestLLMConfig(t *testing.T) {
-	key := "sk-xxx"
 	c := &icluster_conf.LLMConfig{
 		Models: []string{"m1"},
 		ModelMappings: []*icluster_conf.Mapping{
 			{SourceModel: lib.PString("old"), TargetModel: lib.PString("new")},
 		},
-		Key: &key,
+		Keys: []icluster_conf.APIKey{
+			{Name: lib.PString("key-primary"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(70)},
+			{Name: lib.PString("key-secondary"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(30)},
+		},
+		KeyPolicy: &icluster_conf.KeyPolicy{
+			Strategy:            lib.PString("weighted_random"),
+			MaxRetries:          lib.PInt(3),
+			RetryBackoffInitial: lib.PInt(500),
+			RetryBackoffMax:     lib.PInt(5000),
+		},
 	}
 	assert.NoError(t, LLMConfig(c))
 
-	c.Models = []string{"m1", "m1"}
-	assert.Error(t, LLMConfig(c))
+	// duplicate model
+	c2 := *c
+	c2.Models = []string{"m1", "m1"}
+	assert.Error(t, LLMConfig(&c2))
+
+	// total weight not 100
+	c3 := *c
+	c3.Keys = []icluster_conf.APIKey{
+		{Name: lib.PString("k1"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(50)},
+		{Name: lib.PString("k2"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(30)},
+	}
+	assert.Error(t, LLMConfig(&c3))
+
+	// duplicate key name
+	c4 := *c
+	c4.Keys = []icluster_conf.APIKey{
+		{Name: lib.PString("k1"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(50)},
+		{Name: lib.PString("k1"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(50)},
+	}
+	assert.Error(t, LLMConfig(&c4))
+
+	// API_KEY placeholder without keys
+	c5 := &icluster_conf.LLMConfig{
+		Models: []string{"m1"},
+		ModelEndpoint: &icluster_conf.Endpoint{
+			Schema: "https",
+			URI:    "/v1/models",
+			Headers: map[string]string{
+				"Authorization": "Bearer ${API_KEY}",
+			},
+		},
+	}
+	assert.Error(t, LLMConfig(c5))
+
+	// invalid key_policy retry_backoff_max < retry_backoff_initial
+	c6 := *c
+	c6.KeyPolicy = &icluster_conf.KeyPolicy{
+		Strategy:            lib.PString("weighted_random"),
+		MaxRetries:          lib.PInt(3),
+		RetryBackoffInitial: lib.PInt(500),
+		RetryBackoffMax:     lib.PInt(100),
+	}
+	assert.Error(t, LLMConfig(&c6))
+
+	// invalid key_policy strategy
+	c7 := *c
+	c7.KeyPolicy = &icluster_conf.KeyPolicy{
+		Strategy: lib.PString("invalid"),
+	}
+	assert.Error(t, LLMConfig(&c7))
+
+	// strip_prefix=true without match_prefix
+	c8 := *c
+	c8.StripPrefix = lib.PBool(true)
+	assert.Error(t, LLMConfig(&c8))
+
+	// match_prefix not ending with '/'
+	c9 := *c
+	c9.MatchPrefix = lib.PString("openrouter")
+	assert.Error(t, LLMConfig(&c9))
+
+	// valid prefix configuration
+	c10 := *c
+	c10.MatchPrefix = lib.PString("openrouter/")
+	c10.StripPrefix = lib.PBool(true)
+	assert.NoError(t, LLMConfig(&c10))
 }
 
 func TestInstancePool(t *testing.T) {

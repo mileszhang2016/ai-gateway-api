@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,14 +19,13 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 var EntityCreateRoute = &xreq.Endpoint{
@@ -37,7 +36,7 @@ var EntityCreateRoute = &xreq.Endpoint{
 }
 
 func EntityCreateAction(req *http.Request) (interface{}, error) {
-	param := &quota.EntityParam{}
+	param := &entity.EntityParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
 	}
@@ -46,7 +45,7 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	entityType, err := container.EntityTypeStorager.FetchEntityType(req.Context(), &quota.EntityTypeFilter{TypeName: param.Type})
+	entityType, err := container.EntityTypeStorager.FetchEntityType(req.Context(), &entity.EntityTypeFilter{TypeName: param.Type})
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +54,7 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 	}
 
 	if param.ParentID != nil && *param.ParentID != "" {
-		parentEntity, err := container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{EntityID: param.ParentID})
+		parentEntity, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{EntityID: param.ParentID})
 		if err != nil {
 			return nil, err
 		}
@@ -65,7 +64,7 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 		if parentEntity.Type == nil {
 			return nil, xerror.WrapParamErrorWithMsg("parent entity has no type")
 		}
-		parentType, err := container.EntityTypeStorager.FetchEntityType(req.Context(), &quota.EntityTypeFilter{TypeName: parentEntity.Type})
+		parentType, err := container.EntityTypeStorager.FetchEntityType(req.Context(), &entity.EntityTypeFilter{TypeName: parentEntity.Type})
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +76,7 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 		}
 	}
 
-	existingEntities, err := container.EntityManager.FetchEntityList(req.Context(), &quota.EntityFilter{Type: param.Type, Name: param.Name})
+	existingEntities, err := container.EntityManager.FetchEntityList(req.Context(), &entity.EntityFilter{Type: param.Type, Name: param.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -122,39 +121,11 @@ func EntityCreateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	if param.EntityID != nil && param.QuotaPlan != nil &&
-		(param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
-		param.QuotaPlan.Quota != nil &&
-		stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
-		redisKey := stateful.AIUsedQuotaKey(*param.EntityID)
-		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if errGet != nil {
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, *param.QuotaPlan.Quota)
-		} else {
-			delta := *param.QuotaPlan.Quota - currentValue
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-	}
-
-	if param.EntityID != nil && param.QuotaPlan != nil &&
-		param.QuotaPlan.Unlimited != nil && *param.QuotaPlan.Unlimited &&
-		stateful.DefaultClientSet != nil && stateful.DefaultClientSet.RedisClient != nil {
-		redisKey := stateful.AIUsedQuotaKey(*param.EntityID)
-		defaultQuota := int64(100000000)
-		currentValue, errGet := stateful.DefaultClientSet.RedisClient.GetInt64(redisKey)
-		if errGet != nil {
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, defaultQuota)
-		} else {
-			delta := defaultQuota - currentValue
-			_, _ = stateful.DefaultClientSet.RedisClient.IncrBy(redisKey, delta)
-		}
-	}
-
-	return container.EntityManager.FetchEntity(req.Context(), &quota.EntityFilter{EntityID: param.EntityID})
+	return container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{EntityID: param.EntityID})
 }
 
 func generateEntityID(ctx context.Context) (string, error) {
-	list, err := container.EntityManager.FetchEntityList(ctx, &quota.EntityFilter{})
+	list, err := container.EntityManager.FetchEntityList(ctx, &entity.EntityFilter{})
 	if err != nil {
 		return "", err
 	}

@@ -2,7 +2,7 @@
 
 ## 1. 模块概述
 
-API-Key 模块负责 API-Key 的管理，包括创建、查询、更新、删除 API-Key；管理 API-Key 的配额计划（QuotaPlan）、限流策略（RateLimitPolicy）、路由规则（RouteRules）及 Entity 挂载关系。v0.3.0 起支持导入外部 `key`，且列表/详情接口的 `quota_plan` 包含实时 `balance`；`PUT/PATCH` 更新时 `key` 字段忽略。
+API-Key 模块负责 API-Key 的管理，包括创建、查询、更新、删除 API-Key；管理 API-Key 的配额计划（QuotaPlan）、限流策略（RateLimitPolicy）、路由规则（RouteRules）及 Entity 挂载关系。v0.3.0 起支持导入外部 `key`，且列表/详情接口的 `quota_plan` 包含实时 `balance`；`PUT/PATCH` 更新时 `key` 字段忽略。配额计划 `unit` 支持 `total_token` 与 `RMB`，金额型配额使用 `DECIMAL(18,8)` 存储，余额同步精度为 1e8。
 
 ## 2. 接口列表
 
@@ -21,15 +21,15 @@ API-Key 模块负责 API-Key 的管理，包括创建、查询、更新、删除
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建 API-Key | 10 |
+| 创建 API-Key | 11 |
 | 查询 API-Key 列表 | 3 |
 | 查询单个 API-Key | 2 |
-| 全量更新 API-Key | 4 |
-| 部分更新 API-Key | 4 |
+| 全量更新 API-Key | 5 |
+| 部分更新 API-Key | 5 |
 | 删除 API-Key | 2 |
-| 查询配额计划 | 2 |
-| 重置配额余额 | 2 |
-| **合计** | **27** |
+| 查询配额计划 | 4 |
+| 重置配额余额 | 3 |
+| **合计** | **33** |
 
 ## 4. 认证方式
 
@@ -85,7 +85,7 @@ api_key/
 | unlimited_quota | bool | N | 默认 false | - |
 | models | []string | N | 默认 ["*"] | 每个元素为 AIModel |
 | subnet | []string | N | 默认 ["*"] | 每个元素为 CIDR 或 `"*"` |
-| quota_plan | object | N | 配额计划 | `quota` ≥0；`unit` 仅 `total_token`；`reset_period` ∈ {never, weekly, monthly} |
+| quota_plan | object | N | 配额计划 | `quota` ≥0；`unit` ∈ {`total_token`, `RMB`}；`reset_period` ∈ {never, weekly, monthly} |
 | rate_limit_policy | object | N | 限流策略 | enabled=true 时 rules 必填且至少配置 tpm/rpm/max_concurrency(≥0) 之一 |
 | route_rules | object | N | 路由规则 | 同公共 RouteRules 类型 |
 | entity_id | string | N | 挂载的 Entity ID | 若非空，Entity 必须存在 |
@@ -524,6 +524,51 @@ api_key/
 **ErrNum**：422  
 **ErrMsg**：包含规则名称重复的错误信息  
 **Data**：null
+
+---
+
+#### 6.4.11 AK-1-011：创建 API-Key 并指定 RMB 配额（正常参数）
+
+##### 设计思路
+
+验证 `quota_plan.unit=RMB` 时可使用小数配额，且创建后余额 `remaining` 等于配额。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`quota_plan.unit=RMB`、`quota=1234.5678`。
+2. 验证返回 `quota_plan.unit=RMB`、`quota=1234.5678`。
+3. 调用 quota-plan 接口，验证 `balance.remaining=1234.5678`、`balance.used=0`。
+
+##### 请求参数
+
+```json
+{
+    "description": "test-key-rmb-quota",
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 1234.5678,
+        "unit": "RMB",
+        "reset_period": "monthly"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unit | "RMB" | Equals |
+| quota_plan.quota | 1234.5678 | Equals |
+| quota_plan.balance | 不存在 | NotExists |
 
 ---
 
@@ -1018,6 +1063,59 @@ URI：`non-existent-id`
 
 ---
 
+#### 9.4.5 AK-4-005：全量更新 quota_plan 切换为 RMB（正常参数）
+
+##### 设计思路
+
+验证全量更新可将 `quota_plan.unit` 从 `total_token` 切换为 `RMB`，并同步按新的 RMB 配额重置余额。
+
+##### 前提数据准备
+
+已创建 `unit=total_token` 的 API-Key。
+
+##### 执行步骤
+
+1. 发送 PUT 请求，`quota_plan.unit=RMB`、`quota=999.99`。
+2. 验证返回 `quota_plan.unit=RMB`、`quota=999.99`。
+3. 调用 quota-plan 接口，验证 `balance.remaining=999.99`、`balance.used=0`。
+
+##### 请求参数
+
+```json
+{
+    "description": "test-key-rmb-update",
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 999.99,
+        "unit": "RMB",
+        "reset_period": "monthly"
+    },
+    "rate_limit_policy": {
+        "enabled": false,
+        "rules": {}
+    },
+    "route_rules": {
+        "enabled": false,
+        "rules": []
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unit | "RMB" | Equals |
+| quota_plan.quota | 999.99 | Equals |
+| quota_plan.balance | 不存在 | NotExists |
+
+---
+
 ## 10. 部分更新 API-Key
 
 ### 10.1 接口信息
@@ -1223,6 +1321,50 @@ URI：`non-existent-id`
 
 ---
 
+#### 10.4.5 AK-5-005：部分更新 quota_plan 切换为 RMB（正常参数）
+
+##### 设计思路
+
+验证 PATCH 可单独修改 `quota_plan.unit` 与 `quota`，切换为金额型配额后余额同步重置。
+
+##### 前提数据准备
+
+已创建 `unit=total_token` 的 API-Key。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`quota_plan.unit=RMB`、`quota=888.88`。
+2. 验证返回 `quota_plan.unit=RMB`、`quota=888.88`。
+3. 调用 quota-plan 接口，验证 `balance.remaining=888.88`、`balance.used=0`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 888.88,
+        "unit": "RMB",
+        "reset_period": "weekly"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unit | "RMB" | Equals |
+| quota_plan.quota | 888.88 | Equals |
+| quota_plan.balance | 不存在 | NotExists |
+
+---
+
 ## 11. 删除 API-Key
 
 ### 11.1 接口信息
@@ -1357,6 +1499,7 @@ URI：`non-existent-id`
 |------|------|---------|---------|
 | AK-7-001 | 查询配额计划含 balance | 正常参数 | 返回完整 quota_plan |
 | AK-7-002 | 查询无限配额 API-Key 的 quota-plan | 边界场景 | 验证行为 |
+| AK-7-003 | 配额计划余额反映真实使用情况 | 正常参数 | balance 与 quota_balances 表一致 |
 
 ### 12.4 测试场景详细设计
 
@@ -1426,6 +1569,79 @@ URI：`id`
 |------|--------|---------|
 | unlimited | true（若为 200） | Equals |
 | balance | 不存在（若为 200） | NotExists |
+
+---
+
+#### 12.4.3 AK-7-003：配额计划余额反映真实使用情况（正常参数）
+
+##### 设计思路
+
+验证独立 quota-plan 接口返回的 `balance` 与 `quota_balances` 表中的真实余额一致，而非固定返回总量。
+
+##### 前提数据准备
+
+已创建非无限配额 API-Key，并直接更新其 `quota_balances` 记录。
+
+##### 执行步骤
+
+1. 创建 API-Key 并 PATCH 为非无限配额，`quota=100`。
+2. 在测试数据库中将该 API-Key 对应 `quota_balances` 的 `used` 更新为 10，`remaining` 更新为 90。
+3. 发送 GET 请求到 `/open-api/v1/api-keys/{id}/quota-plan`。
+4. 验证返回 `balance.used=10`、`balance.remaining=90`。
+
+##### 请求参数
+
+URI：`id`
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota | 100 | Equals |
+| balance | 非空对象 | IsObject |
+| balance.used | 10 | Equals |
+| balance.remaining | 90 | Equals |
+
+---
+
+#### 12.4.4 AK-7-004：查询 RMB 配额余额精度（正常参数）
+
+##### 设计思路
+
+验证 `unit=RMB` 时，`quota` 与 `balance.remaining` 支持 8 位小数精度，且余额与数据库 `quota_balances` 真实记录一致。
+
+##### 前提数据准备
+
+已创建 `unit=RMB`、`quota=1000.12345678` 的 API-Key。
+
+##### 执行步骤
+
+1. 在测试数据库中将该 API-Key 对应 `quota_balances` 的 `used` 更新为 `1.23456789`，`remaining` 更新为 `998.88888889`。
+2. 发送 GET 请求到 `/open-api/v1/api-keys/{id}/quota-plan`。
+3. 验证返回 `unit=RMB`、`quota=1000.12345678`、`balance.used=1.23456789`、`balance.remaining=998.88888889`。
+
+##### 请求参数
+
+URI：`id`
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| unit | "RMB" | Equals |
+| quota | 1000.12345678 | Equals |
+| balance.used | 1.23456789 | Equals |
+| balance.remaining | 998.88888889 | Equals |
 
 ---
 
@@ -1555,6 +1771,47 @@ URI：`id`
 | new_quota | 500000 | Equals |
 | balance.new_remaining | 500000 | Equals |
 | balance.used | 0 | Equals |
+
+---
+
+#### 13.4.3 AK-8-003：重置 RMB 配额余额（正常参数）
+
+##### 设计思路
+
+验证 `unit=RMB` 时重置配额可指定小数新配额，余额精度保持 8 位小数。
+
+##### 前提数据准备
+
+已创建 `unit=RMB`、`quota=100.5` 的 API-Key，并产生一定用量。
+
+##### 执行步骤
+
+1. 发送 POST 请求到 `/open-api/v1/api-keys/{id}/quota-plan/reset`，`quota=200.8888`。
+2. 验证返回 `previous_quota=100.5`、`new_quota=200.8888`。
+3. 验证 `balance.used=0`、`balance.new_remaining=200.8888`。
+
+##### 请求参数
+
+```json
+{
+    "quota": 200.8888,
+    "reason": "adjust rmb quota"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| previous_quota | 100.5 | Equals |
+| new_quota | 200.8888 | Equals |
+| balance.used | 0 | Equals |
+| balance.new_remaining | 200.8888 | Equals |
 
 ---
 

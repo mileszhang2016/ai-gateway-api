@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
 )
 
 func TestClusterManager_ExportClusterTable(t *testing.T) {
@@ -54,7 +54,7 @@ func TestClusterManager_ExportClusterTable(t *testing.T) {
 				return []*Cluster{newTestClusterBase()}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
 		_, err := m.ExportClusterTable(ctx, "")
 		require.Error(t, err)
 	})
@@ -65,7 +65,7 @@ func TestClusterManager_ExportClusterTable(t *testing.T) {
 				return nil, errors.New("db down")
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
 		_, err := m.clusterTableConfGenerator(ctx)
 		require.Error(t, err)
 	})
@@ -109,7 +109,7 @@ func TestClusterManager_ExportGSLB(t *testing.T) {
 				return []*Cluster{c}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
 		_, err := m.ExportGSLB(ctx, "", "bfe1")
 		require.Error(t, err)
 	})
@@ -144,7 +144,7 @@ func newClusterManagerForExportGSLB(t *testing.T, version string) *ClusterManage
 			return []*Cluster{c}, nil
 		},
 	}
-	return NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil)
+	return NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
 }
 
 func TestClusterTableConf_clusterWithIPv6(t *testing.T) {
@@ -161,7 +161,7 @@ func TestClusterTableConf_clusterWithIPv6(t *testing.T) {
 			return []*Cluster{c}, nil
 		},
 	}
-	m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil)
+	m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
 	conf, err := m.ExportClusterTable(ctx, "old")
 	require.NoError(t, err)
 	require.NotNil(t, conf)

@@ -2,7 +2,7 @@
 
 ## 1. 模块概述
 
-Entity 模块用于管理组织架构实体（部门、团队、项目、个人等），支持层级关系、模型黑白名单、配额计划、限流策略、路由规则。v0.3.0 列表接口明确为分页结构 `{list, pagination}`，详情/创建/更新返回不含 `balance`。
+Entity 模块用于管理组织架构实体（部门、团队、项目、个人等），支持层级关系、模型黑白名单、配额计划、限流策略、路由规则。v0.3.0 列表接口明确为分页结构 `{list, pagination}`，详情/创建/更新返回不含 `balance`。配额计划 `unit` 支持 `total_token` 与 `RMB`，金额型配额使用 `DECIMAL(18,8)` 存储。
 
 ## 2. 接口列表
 
@@ -21,15 +21,15 @@ Entity 模块用于管理组织架构实体（部门、团队、项目、个人�
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建 Entity | 10 |
+| 创建 Entity | 11 |
 | 查询 Entity 列表 | 3 |
 | 查询单个 Entity | 2 |
-| 全量更新 Entity | 5 |
-| 部分更新 Entity | 3 |
+| 全量更新 Entity | 6 |
+| 部分更新 Entity | 4 |
 | 删除 Entity | 3 |
-| 查询配额计划 | 1 |
-| 重置配额余额 | 2 |
-| **合计** | **27** |
+| 查询配额计划 | 2 |
+| 重置配额余额 | 3 |
+| **合计** | **32** |
 
 ## 4. 认证方式
 
@@ -83,7 +83,7 @@ entity/
 | parent_id | string | N | 父 Entity ID，为空表示根节点 | 若非空，父 Entity 必须存在，且其父类型的 level 必须小于当前类型的 level |
 | allow_models | []string | N | 允许访问的模型白名单，默认 ["*"] | 每个元素为 AIModel |
 | block_models | []string | N | 禁止访问的模型黑名单，默认 [] | 每个元素为非空字符串 |
-| quota_plan | object | N | 配额计划，同 API-Key quota_plan 结构（不含 balance） | 同 QuotaPlan 类型 |
+| quota_plan | object | N | 配额计划，同 API-Key quota_plan 结构（不含 balance） | `quota` ≥0；`unit` ∈ {`total_token`, `RMB`}；`reset_period` ∈ {never, weekly, monthly} |
 | rate_limit_policy | object | N | 限流策略 | 同 RateLimitPolicy 类型 |
 | route_rules | object | N | 路由规则 | 同 RouteRules 类型 |
 
@@ -474,6 +474,53 @@ entity/
 **ErrNum**：422  
 **ErrMsg**：包含 name 非法的错误信息  
 **Data**：null
+
+---
+
+#### 6.4.11 E-1-011：创建 Entity 并指定 RMB 配额（正常参数）
+
+##### 设计思路
+
+验证 Entity 创建时可指定 `quota_plan.unit=RMB` 与小数配额，返回结构正确。
+
+##### 前提数据准备
+
+已创建 Entity-Type `department`。
+
+##### 执行步骤
+
+1. 发送 POST 请求，`quota_plan.unit=RMB`、`quota=5555.5555`。
+2. 验证返回 `quota_plan.unit=RMB`、`quota=5555.5555`、`quota_plan.balance` 不存在。
+3. 调用 quota-plan 接口，验证 `balance.remaining=5555.5555`、`balance.used=0`。
+
+##### 请求参数
+
+```json
+{
+    "name": "ent_rmb_quota",
+    "type": "department",
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 5555.5555,
+        "unit": "RMB",
+        "reset_period": "monthly"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| name | "ent_rmb_quota" | Equals |
+| quota_plan.unit | "RMB" | Equals |
+| quota_plan.quota | 5555.5555 | Equals |
+| quota_plan.balance | 不存在 | NotExists |
 
 ---
 
@@ -1025,6 +1072,61 @@ URI：`non_existent_id`
 
 ---
 
+#### 9.4.6 E-4-006：全量更新 quota_plan 切换为 RMB（正常参数）
+
+##### 设计思路
+
+验证全量更新可将 Entity 的 `quota_plan.unit` 切换为 `RMB`，并按新的金额配额重置余额。
+
+##### 前提数据准备
+
+已创建 `unit=total_token` 的 Entity。
+
+##### 执行步骤
+
+1. 发送 PUT 请求，`quota_plan.unit=RMB`、`quota=1234.56`。
+2. 验证返回 `quota_plan.unit=RMB`、`quota=1234.56`。
+3. 调用 quota-plan 接口，验证 `balance.remaining=1234.56`、`balance.used=0`。
+
+##### 请求参数
+
+```json
+{
+    "name": "ent_rmb_update",
+    "type": "department",
+    "allow_models": ["*"],
+    "block_models": [],
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 1234.56,
+        "unit": "RMB",
+        "reset_period": "monthly"
+    },
+    "rate_limit_policy": {
+        "enabled": false
+    },
+    "route_rules": {
+        "enabled": false,
+        "rules": []
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unit | "RMB" | Equals |
+| quota_plan.quota | 1234.56 | Equals |
+| quota_plan.balance | 不存在 | NotExists |
+
+---
+
 ## 10. 部分更新 Entity
 
 ### 10.1 接口信息
@@ -1185,6 +1287,50 @@ URI：`non_existent_id`
 **ErrNum**：422  
 **ErrMsg**：包含规则名称重复的错误信息  
 **Data**：null
+
+---
+
+#### 10.4.4 E-5-004：部分更新 quota_plan 切换为 RMB（正常参数）
+
+##### 设计思路
+
+验证 PATCH 可单独修改 Entity 的 `quota_plan.unit` 与 `quota`，切换为金额型配额后余额同步重置。
+
+##### 前提数据准备
+
+已创建 `unit=total_token` 的 Entity。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`quota_plan.unit=RMB`、`quota=777.7777`。
+2. 验证返回 `quota_plan.unit=RMB`、`quota=777.7777`。
+3. 调用 quota-plan 接口，验证 `balance.remaining=777.7777`、`balance.used=0`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 777.7777,
+        "unit": "RMB",
+        "reset_period": "weekly"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unit | "RMB" | Equals |
+| quota_plan.quota | 777.7777 | Equals |
+| quota_plan.balance | 不存在 | NotExists |
 
 ---
 
@@ -1388,6 +1534,42 @@ URI：`id`
 
 ---
 
+#### 12.4.2 E-7-002：查询 RMB 配额余额精度（正常参数）
+
+##### 设计思路
+
+验证 Entity 的 `unit=RMB` 配额余额支持 8 位小数精度，且与数据库真实余额一致。
+
+##### 前提数据准备
+
+已创建 `unit=RMB`、`quota=2000.12345678` 的 Entity。
+
+##### 执行步骤
+
+1. 在测试数据库中将该 Entity 对应 `quota_balances` 的 `used` 更新为 `2.34567890`，`remaining` 更新为 `1997.77777788`。
+2. 发送 GET 请求到 `/open-api/v1/entities/{id}/quota-plan`。
+3. 验证返回 `unit=RMB`、`quota=2000.12345678`、`balance.used=2.34567890`、`balance.remaining=1997.77777788`。
+
+##### 请求参数
+
+URI：`id`
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| unit | "RMB" | Equals |
+| quota | 2000.12345678 | Equals |
+| balance.used | 2.34567890 | Equals |
+| balance.remaining | 1997.77777788 | Equals |
+
+---
+
 ## 13. 重置配额余额
 
 ### 13.1 接口信息
@@ -1514,6 +1696,47 @@ URI：`id`
 | new_quota | 200000 | Equals |
 | balance.new_remaining | 200000 | Equals |
 | balance.used | 0 | Equals |
+
+---
+
+#### 13.4.3 E-8-003：重置 RMB 配额余额（正常参数）
+
+##### 设计思路
+
+验证 Entity 的 `unit=RMB` 配额重置可指定小数新配额，余额精度保持 8 位小数。
+
+##### 前提数据准备
+
+已创建 `unit=RMB`、`quota=50.5` 的 Entity，并产生一定用量。
+
+##### 执行步骤
+
+1. 发送 POST 请求到 `/open-api/v1/entities/{id}/quota-plan/reset`，`quota=300.1234`。
+2. 验证返回 `previous_quota=50.5`、`new_quota=300.1234`。
+3. 验证 `balance.used=0`、`balance.new_remaining=300.1234`。
+
+##### 请求参数
+
+```json
+{
+    "quota": 300.1234,
+    "reason": "adjust entity rmb quota"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| previous_quota | 50.5 | Equals |
+| new_quota | 300.1234 | Equals |
+| balance.used | 0 | Equals |
+| balance.new_remaining | 300.1234 | Equals |
 
 ---
 

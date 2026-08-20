@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,14 +17,14 @@ package gslb_data
 import (
 	"context"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/internal/testutil"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/ibasic"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/internal/testutil"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 type fakeClusterStorager struct {
-	fetchClusterListFn func(ctx context.Context, param *icluster_conf.ClusterFilter) ([]*icluster_conf.Cluster, error)
+	fetchClusterListFn  func(ctx context.Context, param *icluster_conf.ClusterFilter) ([]*icluster_conf.Cluster, error)
 	fetchLBMatrixListFn func(ctx context.Context) (map[int64]map[string]map[string]int, error)
 }
 
@@ -125,6 +125,7 @@ func setupClusterManager(storager icluster_conf.ClusterStorager, version string)
 		&fakeBFEClusterStorager{},
 		&fakePoolStorager{},
 		testutil.NewVersionControlManager(version),
+		nil,
 		nil,
 	)
 	return func() {

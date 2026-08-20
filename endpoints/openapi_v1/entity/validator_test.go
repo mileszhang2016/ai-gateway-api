@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,10 +17,10 @@ package entity
 import (
 	"testing"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/stretchr/testify/assert"
-	"github.com/infinity-ai-gateway/ai-gateway-api/lib"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
 )
 
 func validRouteRules() *shared.RouteRulesParam {
@@ -53,13 +53,13 @@ func TestValidateEntityParam(t *testing.T) {
 
 	cases := []struct {
 		name            string
-		param           *quota.EntityParam
+		param           *entity.EntityParam
 		requireNameType bool
 		wantErr         bool
 	}{
 		{
 			name: "create valid",
-			param: &quota.EntityParam{
+			param: &entity.EntityParam{
 				Name:       &validName,
 				Type:       &validType,
 				RouteRules: validRouteRules(),
@@ -69,19 +69,19 @@ func TestValidateEntityParam(t *testing.T) {
 		},
 		{
 			name:            "create missing name",
-			param:           &quota.EntityParam{Type: &validType},
+			param:           &entity.EntityParam{Type: &validType},
 			requireNameType: true,
 			wantErr:         true,
 		},
 		{
 			name:            "create missing type",
-			param:           &quota.EntityParam{Name: &validName},
+			param:           &entity.EntityParam{Name: &validName},
 			requireNameType: true,
 			wantErr:         true,
 		},
 		{
 			name: "create invalid name leading space",
-			param: &quota.EntityParam{
+			param: &entity.EntityParam{
 				Name:       &invalidNameWithSpace,
 				Type:       &validType,
 				RouteRules: validRouteRules(),
@@ -91,7 +91,7 @@ func TestValidateEntityParam(t *testing.T) {
 		},
 		{
 			name: "create invalid type",
-			param: &quota.EntityParam{
+			param: &entity.EntityParam{
 				Name:       &validName,
 				Type:       &invalidType,
 				RouteRules: validRouteRules(),
@@ -101,7 +101,7 @@ func TestValidateEntityParam(t *testing.T) {
 		},
 		{
 			name: "create duplicate route rule names",
-			param: &quota.EntityParam{
+			param: &entity.EntityParam{
 				Name: &validName,
 				Type: &validType,
 				RouteRules: &shared.RouteRulesParam{
@@ -116,13 +116,13 @@ func TestValidateEntityParam(t *testing.T) {
 		},
 		{
 			name:            "update empty body valid",
-			param:           &quota.EntityParam{},
+			param:           &entity.EntityParam{},
 			requireNameType: false,
 			wantErr:         false,
 		},
 		{
 			name: "update invalid name",
-			param: &quota.EntityParam{
+			param: &entity.EntityParam{
 				Name: &invalidNameWithSpace,
 			},
 			requireNameType: false,
@@ -130,7 +130,7 @@ func TestValidateEntityParam(t *testing.T) {
 		},
 		{
 			name: "update invalid type",
-			param: &quota.EntityParam{
+			param: &entity.EntityParam{
 				Type: &invalidType,
 			},
 			requireNameType: false,
@@ -138,9 +138,9 @@ func TestValidateEntityParam(t *testing.T) {
 		},
 		{
 			name: "update invalid quota plan unit",
-			param: &quota.EntityParam{
+			param: &entity.EntityParam{
 				QuotaPlan: &shared.QuotaPlanParam{
-					Quota: lib.PInt64(100),
+					Quota: lib.PFloat64(100),
 					Unit:  lib.PString("invalid"),
 				},
 			},
@@ -149,7 +149,7 @@ func TestValidateEntityParam(t *testing.T) {
 		},
 		{
 			name: "update invalid rate limit window",
-			param: &quota.EntityParam{
+			param: &entity.EntityParam{
 				RateLimitPolicy: &shared.RateLimitPolicyParam{
 					Enabled: lib.PBool(true),
 					Rules: &shared.RateLimitRules{

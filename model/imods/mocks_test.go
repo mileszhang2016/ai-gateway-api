@@ -1,4 +1,4 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,13 +20,14 @@ import (
 	"time"
 
 	"github.com/baidu/go-lib/log/log4go"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iai_route"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/itxn"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
-	"github.com/infinity-ai-gateway/ai-gateway-api/stateful"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 // fakeTxn is a TxnStorager mock that executes the callback directly.
@@ -38,67 +39,67 @@ func (f *fakeTxn) AtomExecute(ctx context.Context, do func(context.Context) erro
 
 var _ itxn.TxnStorager = (*fakeTxn)(nil)
 
-// fakeAPIKeyStorager implements icluster_conf.APIKeyStorager.
+// fakeAPIKeyStorager implements api_key.APIKeyStorager.
 type fakeAPIKeyStorager struct {
-	fetchListFn      func(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error)
-	createFn         func(ctx context.Context, param *icluster_conf.APIKeyParam) (int64, error)
-	updateFn         func(ctx context.Context, filter *icluster_conf.APIKeyFilter, param *icluster_conf.APIKeyParam) (int64, error)
-	deleteFn         func(ctx context.Context, filter *icluster_conf.APIKeyFilter) error
-	createTokenFn    func(ctx context.Context, param *icluster_conf.APIKeyTokenParam) (int64, error)
-	updateTokenFn    func(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter, param *icluster_conf.APIKeyTokenParam) error
-	fetchTokenListFn func(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter) ([]*icluster_conf.APIKeyTokenParam, error)
+	fetchListFn      func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error)
+	createFn         func(ctx context.Context, param *api_key.APIKeyParam) (int64, error)
+	updateFn         func(ctx context.Context, filter *api_key.APIKeyFilter, param *api_key.APIKeyParam) (int64, error)
+	deleteFn         func(ctx context.Context, filter *api_key.APIKeyFilter) error
+	createTokenFn    func(ctx context.Context, param *api_key.APIKeyTokenParam) (int64, error)
+	updateTokenFn    func(ctx context.Context, filter *api_key.APIKeyTokenFilter, param *api_key.APIKeyTokenParam) error
+	fetchTokenListFn func(ctx context.Context, filter *api_key.APIKeyTokenFilter) ([]*api_key.APIKeyTokenParam, error)
 }
 
-func (s *fakeAPIKeyStorager) FetchAPIKeyList(ctx context.Context, filter *icluster_conf.APIKeyFilter) ([]*icluster_conf.APIKeyParam, error) {
+func (s *fakeAPIKeyStorager) FetchAPIKeyList(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
 	if s.fetchListFn != nil {
 		return s.fetchListFn(ctx, filter)
 	}
 	return nil, nil
 }
 
-func (s *fakeAPIKeyStorager) CreateAPIKey(ctx context.Context, param *icluster_conf.APIKeyParam) (int64, error) {
+func (s *fakeAPIKeyStorager) CreateAPIKey(ctx context.Context, param *api_key.APIKeyParam) (int64, error) {
 	if s.createFn != nil {
 		return s.createFn(ctx, param)
 	}
 	return 0, nil
 }
 
-func (s *fakeAPIKeyStorager) UpdateAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter, param *icluster_conf.APIKeyParam) (int64, error) {
+func (s *fakeAPIKeyStorager) UpdateAPIKey(ctx context.Context, filter *api_key.APIKeyFilter, param *api_key.APIKeyParam) (int64, error) {
 	if s.updateFn != nil {
 		return s.updateFn(ctx, filter, param)
 	}
 	return 0, nil
 }
 
-func (s *fakeAPIKeyStorager) DeleteAPIKey(ctx context.Context, filter *icluster_conf.APIKeyFilter) error {
+func (s *fakeAPIKeyStorager) DeleteAPIKey(ctx context.Context, filter *api_key.APIKeyFilter) error {
 	if s.deleteFn != nil {
 		return s.deleteFn(ctx, filter)
 	}
 	return nil
 }
 
-func (s *fakeAPIKeyStorager) CreateAPIKeyToken(ctx context.Context, param *icluster_conf.APIKeyTokenParam) (int64, error) {
+func (s *fakeAPIKeyStorager) CreateAPIKeyToken(ctx context.Context, param *api_key.APIKeyTokenParam) (int64, error) {
 	if s.createTokenFn != nil {
 		return s.createTokenFn(ctx, param)
 	}
 	return 0, nil
 }
 
-func (s *fakeAPIKeyStorager) UpdateAPIKeyToken(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter, param *icluster_conf.APIKeyTokenParam) error {
+func (s *fakeAPIKeyStorager) UpdateAPIKeyToken(ctx context.Context, filter *api_key.APIKeyTokenFilter, param *api_key.APIKeyTokenParam) error {
 	if s.updateTokenFn != nil {
 		return s.updateTokenFn(ctx, filter, param)
 	}
 	return nil
 }
 
-func (s *fakeAPIKeyStorager) FetchAPIKeyTokenList(ctx context.Context, filter *icluster_conf.APIKeyTokenFilter) ([]*icluster_conf.APIKeyTokenParam, error) {
+func (s *fakeAPIKeyStorager) FetchAPIKeyTokenList(ctx context.Context, filter *api_key.APIKeyTokenFilter) ([]*api_key.APIKeyTokenParam, error) {
 	if s.fetchTokenListFn != nil {
 		return s.fetchTokenListFn(ctx, filter)
 	}
 	return nil, nil
 }
 
-var _ icluster_conf.APIKeyStorager = (*fakeAPIKeyStorager)(nil)
+var _ api_key.APIKeyStorager = (*fakeAPIKeyStorager)(nil)
 
 // fakeAIRouteRuleStorager implements iai_route.AIRouteRuleStorager.
 type fakeAIRouteRuleStorager struct {
@@ -204,28 +205,28 @@ func (s *fakeQuotaPlanStorager) DeleteQuotaPlan(ctx context.Context, filter *quo
 
 var _ quota.QuotaPlanStorager = (*fakeQuotaPlanStorager)(nil)
 
-// fakeEntityStorager implements quota.EntityStorager.
+// fakeEntityStorager implements entity.EntityStorager.
 type fakeEntityStorager struct {
-	createFn func(ctx context.Context, param *quota.EntityParam) (int64, error)
-	fetchFn  func(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error)
-	listFn   func(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error)
-	updateFn func(ctx context.Context, filter *quota.EntityFilter, param *quota.EntityParam) (int64, error)
-	deleteFn func(ctx context.Context, filter *quota.EntityFilter) error
+	createFn func(ctx context.Context, param *entity.EntityParam) (int64, error)
+	fetchFn  func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error)
+	listFn   func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error)
+	updateFn func(ctx context.Context, filter *entity.EntityFilter, param *entity.EntityParam) (int64, error)
+	deleteFn func(ctx context.Context, filter *entity.EntityFilter) error
 
 	mu      sync.Mutex
-	created []*quota.EntityParam
-	fetched []*quota.EntityFilter
-	listed  []*quota.EntityFilter
+	created []*entity.EntityParam
+	fetched []*entity.EntityFilter
+	listed  []*entity.EntityFilter
 	updated []updateEntityCall
-	deleted []*quota.EntityFilter
+	deleted []*entity.EntityFilter
 }
 
 type updateEntityCall struct {
-	filter *quota.EntityFilter
-	param  *quota.EntityParam
+	filter *entity.EntityFilter
+	param  *entity.EntityParam
 }
 
-func (s *fakeEntityStorager) CreateEntity(ctx context.Context, param *quota.EntityParam) (int64, error) {
+func (s *fakeEntityStorager) CreateEntity(ctx context.Context, param *entity.EntityParam) (int64, error) {
 	s.mu.Lock()
 	s.created = append(s.created, param)
 	s.mu.Unlock()
@@ -235,7 +236,7 @@ func (s *fakeEntityStorager) CreateEntity(ctx context.Context, param *quota.Enti
 	return 0, nil
 }
 
-func (s *fakeEntityStorager) FetchEntity(ctx context.Context, filter *quota.EntityFilter) (*quota.EntityParam, error) {
+func (s *fakeEntityStorager) FetchEntity(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
 	s.mu.Lock()
 	s.fetched = append(s.fetched, filter)
 	s.mu.Unlock()
@@ -245,7 +246,7 @@ func (s *fakeEntityStorager) FetchEntity(ctx context.Context, filter *quota.Enti
 	return nil, nil
 }
 
-func (s *fakeEntityStorager) FetchEntityList(ctx context.Context, filter *quota.EntityFilter) ([]*quota.EntityParam, error) {
+func (s *fakeEntityStorager) FetchEntityList(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
 	s.mu.Lock()
 	s.listed = append(s.listed, filter)
 	s.mu.Unlock()
@@ -255,7 +256,7 @@ func (s *fakeEntityStorager) FetchEntityList(ctx context.Context, filter *quota.
 	return nil, nil
 }
 
-func (s *fakeEntityStorager) UpdateEntity(ctx context.Context, filter *quota.EntityFilter, param *quota.EntityParam) (int64, error) {
+func (s *fakeEntityStorager) UpdateEntity(ctx context.Context, filter *entity.EntityFilter, param *entity.EntityParam) (int64, error) {
 	s.mu.Lock()
 	s.updated = append(s.updated, updateEntityCall{filter: filter, param: param})
 	s.mu.Unlock()
@@ -265,7 +266,7 @@ func (s *fakeEntityStorager) UpdateEntity(ctx context.Context, filter *quota.Ent
 	return 0, nil
 }
 
-func (s *fakeEntityStorager) DeleteEntity(ctx context.Context, filter *quota.EntityFilter) error {
+func (s *fakeEntityStorager) DeleteEntity(ctx context.Context, filter *entity.EntityFilter) error {
 	s.mu.Lock()
 	s.deleted = append(s.deleted, filter)
 	s.mu.Unlock()
@@ -275,7 +276,7 @@ func (s *fakeEntityStorager) DeleteEntity(ctx context.Context, filter *quota.Ent
 	return nil
 }
 
-var _ quota.EntityStorager = (*fakeEntityStorager)(nil)
+var _ entity.EntityStorager = (*fakeEntityStorager)(nil)
 
 // fakeVersionControlStorager implements iversion_control.VersionControlStorager.
 type fakeVersionControlStorager struct {
@@ -304,6 +305,7 @@ type fakeRouteRulesStorager struct {
 	updateFn    func(ctx context.Context, id int64, param *shared.RouteRulesParam) (int64, error)
 	deleteFn    func(ctx context.Context, id int64) error
 	fetchByIDFn func(ctx context.Context, id int64) (*shared.RouteRulesParam, error)
+	allFn       func(ctx context.Context) ([]*shared.RouteRulesParam, error)
 
 	mu          sync.Mutex
 	created     []createRouteRulesCall
@@ -312,6 +314,7 @@ type fakeRouteRulesStorager struct {
 	updated     []updateRouteRulesCall
 	deleted     []int64
 	fetchedByID []int64
+	fetchedAll  int
 }
 
 type createRouteRulesCall struct {
@@ -386,6 +389,16 @@ func (s *fakeRouteRulesStorager) FetchRouteRulesByID(ctx context.Context, id int
 	s.mu.Unlock()
 	if s.fetchByIDFn != nil {
 		return s.fetchByIDFn(ctx, id)
+	}
+	return nil, nil
+}
+
+func (s *fakeRouteRulesStorager) FetchAllRouteRules(ctx context.Context) ([]*shared.RouteRulesParam, error) {
+	s.mu.Lock()
+	s.fetchedAll++
+	s.mu.Unlock()
+	if s.allFn != nil {
+		return s.allFn(ctx)
 	}
 	return nil, nil
 }

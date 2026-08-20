@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"sync"
@@ -79,6 +80,21 @@ func (c *Client) Put(path string, body interface{}) (*APIResponse, error) {
 	return c.doRequest("PUT", c.BaseURL+path, body)
 }
 
+// PutWithQuery 发送带 Query 参数的 PUT 请求
+func (c *Client) PutWithQuery(path string, queryParams map[string]string, body interface{}) (*APIResponse, error) {
+	url := c.BaseURL + path
+	if len(queryParams) > 0 {
+		params := []string{}
+		for k, v := range queryParams {
+			params = append(params, fmt.Sprintf("%s=%s", k, v))
+		}
+		if len(params) > 0 {
+			url += "?" + strings.Join(params, "&")
+		}
+	}
+	return c.doRequest("PUT", url, body)
+}
+
 // Patch 发送 PATCH 请求
 func (c *Client) Patch(path string, body interface{}) (*APIResponse, error) {
 	return c.doRequest("PATCH", c.BaseURL+path, body)
@@ -91,6 +107,77 @@ func (c *Client) Delete(path string, body ...interface{}) (*APIResponse, error) 
 		reqBody = body[0]
 	}
 	return c.doRequest("DELETE", c.BaseURL+path, reqBody)
+}
+
+// DeleteWithQuery 发送带 Query 参数的 DELETE 请求
+func (c *Client) DeleteWithQuery(path string, queryParams map[string]string, body ...interface{}) (*APIResponse, error) {
+	url := c.BaseURL + path
+	if len(queryParams) > 0 {
+		params := []string{}
+		for k, v := range queryParams {
+			params = append(params, fmt.Sprintf("%s=%s", k, v))
+		}
+		if len(params) > 0 {
+			url += "?" + strings.Join(params, "&")
+		}
+	}
+	var reqBody interface{}
+	if len(body) > 0 {
+		reqBody = body[0]
+	}
+	return c.doRequest("DELETE", url, reqBody)
+}
+
+// PostMultipartFile 发送带有文件上传的 multipart/form-data POST 请求
+func (c *Client) PostMultipartFile(path, fieldName, fileName string, fileContent []byte, extraFields map[string]string) (*APIResponse, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	part, err := writer.CreateFormFile(fieldName, fileName)
+	if err != nil {
+		return nil, fmt.Errorf("create form file: %w", err)
+	}
+	if _, err := part.Write(fileContent); err != nil {
+		return nil, fmt.Errorf("write file content: %w", err)
+	}
+
+	for k, v := range extraFields {
+		if err := writer.WriteField(k, v); err != nil {
+			return nil, fmt.Errorf("write field %s: %w", k, err)
+		}
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart writer: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+path, &body)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	var apiResp APIResponse
+	if err := json.Unmarshal(respBody, &apiResp); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
+	}
+
+	return &apiResp, nil
 }
 
 // RawBody 发送带有原始 Body 的请求（用于发送非法 JSON 等非标准内容）

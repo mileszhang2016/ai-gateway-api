@@ -1,10 +1,10 @@
-// Copyright(c) 2026 The Infinity AI Gateway Authors.
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
 //
 //Licensed under the Apache License, Version 2.0 (the "License");
 //you may not use this file except in compliance with the License.
 //You may obtain a copy of the License at
 //
-//http: //www.apache.org/licenses/LICENSE-2.0
+//http://www.apache.org/licenses/LICENSE-2.0
 //
 //Unless required by applicable law or agreed to in writing, software
 //distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,33 +18,33 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/icluster_conf"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/infinity-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 const ConfigTopicProductAIRoute = "ai_route"
 
 // AiRouteDataExport defines the AI route configuration export structure
 type AiRouteDataExport struct {
-	Version                  string                         `json:"Version"`
-	RouteRules               map[string]*RouteTableExport   `json:"RouteRules"`
-	ApikeyRouteTableBindings map[string][]string            `json:"ApikeyRouteTableBindings"`
+	Version                  string                       `json:"Version"`
+	RouteRules               map[string]*RouteTableExport `json:"RouteRules"`
+	ApikeyRouteTableBindings map[string][]string          `json:"ApikeyRouteTableBindings"`
 }
 
 // RouteTableExport defines a single route table
 type RouteTableExport struct {
-	Type   string             `json:"type"`
-	Owner  string             `json:"owner"`
-	Rules  []*RouteRuleExport `json:"rules"`
+	Type  string             `json:"type"`
+	Owner string             `json:"owner"`
+	Rules []*RouteRuleExport `json:"rules"`
 }
 
 // RouteRuleExport defines a route rule
 type RouteRuleExport struct {
-	Name      string                  `json:"name"`
-	Cond      string                  `json:"Cond"`
-	Targets   []*AiRouteTargetExport  `json:"targets"`
+	Name      string                   `json:"name"`
+	Cond      string                   `json:"Cond"`
+	Targets   []*AiRouteTargetExport   `json:"targets"`
 	Fallbacks []*AiRouteFallbackExport `json:"fallbacks"`
 }
 
@@ -69,15 +69,15 @@ func (conf *AiRouteDataExport) UpdateVersion(version string) error {
 
 // AIRouteExporter manages AI route configuration export
 type AIRouteExporter struct {
-	apiKeyStorager   icluster_conf.APIKeyStorager
-	entityStorager   quota.EntityStorager
-	routeRulesStorager shared.RouteRulesStorager
+	apiKeyStorager        api_key.APIKeyStorager
+	entityStorager        entity.EntityStorager
+	routeRulesStorager    shared.RouteRulesStorager
 	versionControlManager *iversion_control.VersionControlManager
 }
 
 // NewAIRouteExporter creates a new AIRouteExporter instance
-func NewAIRouteExporter(apiKeyStorager icluster_conf.APIKeyStorager,
-	entityStorager quota.EntityStorager, routeRulesStorager shared.RouteRulesStorager,
+func NewAIRouteExporter(apiKeyStorager api_key.APIKeyStorager,
+	entityStorager entity.EntityStorager, routeRulesStorager shared.RouteRulesStorager,
 	versionControlManager *iversion_control.VersionControlManager) *AIRouteExporter {
 	return &AIRouteExporter{
 		apiKeyStorager:        apiKeyStorager,
@@ -112,16 +112,16 @@ func (e *AIRouteExporter) ConfigExport(ctx context.Context, lastVersion string) 
 
 // AIRouteGenerator generates AI route configuration data
 func (e *AIRouteExporter) AIRouteGenerator(ctx context.Context) (*iversion_control.ExportData, error) {
-	apiKeys, err := e.apiKeyStorager.FetchAPIKeyList(ctx, &icluster_conf.APIKeyFilter{})
+	apiKeys, err := e.apiKeyStorager.FetchAPIKeyList(ctx, &api_key.APIKeyFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("fetch api keys error: %s", err.Error())
 	}
 
-	entities, err := e.entityStorager.FetchEntityList(ctx, &quota.EntityFilter{})
+	entities, err := e.entityStorager.FetchEntityList(ctx, &entity.EntityFilter{})
 	if err != nil {
 		return nil, fmt.Errorf("fetch entities error: %s", err.Error())
 	}
-	entityMap := make(map[string]*quota.EntityParam)
+	entityMap := make(map[string]*entity.EntityParam)
 	for _, entity := range entities {
 		if entity.EntityID != nil {
 			entityMap[*entity.EntityID] = entity

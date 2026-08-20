@@ -1,6 +1,6 @@
 # AI Gateway API 集成测试设计方案
 
-**更新日期**：2026-07-27
+**更新日期**：2026-08-15
 **文档类型**：测试设计方案
 **目标读者**：后端开发工程师、测试工程师
 
@@ -31,9 +31,12 @@
 | OpenAPI - Clusters | `/open-api/v1/clusters` | 集群管理 |
 | OpenAPI - Certificate | `/open-api/v1/certificates` | 证书管理 |
 | OpenAPI - Model Provider Types | `/open-api/v1/model-provider-types` | 模型提供商类型 |
+| OpenAPI - Model Prices | `/open-api/v1/model-prices` | 模型定价管理 |
 | OpenAPI - Tools | `/open-api/v1/tools` | 工具接口（如从提供商拉取模型列表） |
 | OpenAPI - Expression Verify | `/open-api/v1/expression/verify` | 路由表达式校验 |
 | InnerAPI | `/inner-api/v1/configs` | 配置导出接口 |
+
+> **v0.4 更新**：新增 Provider/Model 前缀路由裁剪集成测试，覆盖 OpenAPI `/clusters` 对 `llm_config.match_prefix` / `strip_prefix` 的传入校验，以及 InnerAPI `/configs/tls_conf/server_data_conf` 对 `AIConf.MatchPrefix` / `StripPrefix` 的导出验证。详见 [8.1 相关文档](#81-相关文档)。
 
 ### 1.3 设计原则
 
@@ -140,7 +143,7 @@ ai-gateway-api/test/
 `integration/go.mod` 内容：
 
 ```go
-module github.com/infinity-ai-gateway/ai-gateway-api/integration
+module github.com/rainway-ai-gateway/ai-gateway-api/integration
 
 go 1.22
 
@@ -148,17 +151,17 @@ require (
     github.com/glebarez/go-sqlite v1.21.2        // 纯 Go SQLite 驱动，无 CGO
     github.com/gorilla/mux v1.8.0                 // HTTP 路由
     github.com/stretchr/testify v1.10.0           // 测试断言库
-    github.com/infinity-ai-gateway/ai-gateway-api v0.0.0  // 主项目
+    github.com/rainway-ai-gateway/ai-gateway-api v0.0.0  // 主项目
     gopkg.in/tylerb/graceful.v1 v1.2.15           // 优雅关闭
 )
 
-replace github.com/infinity-ai-gateway/ai-gateway-api => ../../
+replace github.com/rainway-ai-gateway/ai-gateway-api => ../../
 ```
 
 **说明**：
 - `integration` 作为独立 Go module，通过 `replace` 指令引用主项目源码
-- 必须引入 `github.com/infinity-ai-gateway/ai-gateway-api` 以触发 `stateful` 包的 `init()` 注册 `sqlite-strip` 驱动
-- 测试用例代码通过 `import "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"` 使用测试工具包
+- 必须引入 `github.com/rainway-ai-gateway/ai-gateway-api` 以触发 `stateful` 包的 `init()` 注册 `sqlite-strip` 驱动
+- 测试用例代码通过 `import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"` 使用测试工具包
 
 ### 3.2 测试配置文件
 
@@ -378,7 +381,7 @@ package api_key_test
 import (
     "os"
     "testing"
-    "github.com/infinity-ai-gateway/ai-gateway-api/integration/testutil"
+    "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 )
 
 var sm *testutil.ServerManager
@@ -535,6 +538,7 @@ func GenerateCert() (string, string)   // 生成自签名证书（用于测试�
 - `CL` - 集群模块
 - `CERT` - 证书模块
 - `MPT` - 模型提供商类型模块
+- `MP` - 模型定价模块
 - `TOOL` - 工具模块
 - `EV` - 表达式校验模块
 - InnerAPI 各子模块
@@ -680,13 +684,14 @@ integration/tests/{module}/
 | GRR Global Route Rules | 2 | 9 |
 | RT Route Tables | 1 | 10 |
 | BP 实例池 | 2 | 8 |
-| CL 集群 | 5 | 15 |
+| CL 集群 | 5 | 36 |
 | CERT 证书 | 6 | 11 |
 | MPT 模型提供商类型 | 1 | 3 |
+| MP 模型定价 | 9 | 30 |
 | TOOL 工具 | 1 | 6 |
 | EV 表达式校验 | 1 | 8 |
-| InnerAPI | 9 | 13 |
-| **总计** | **62** | **174** |
+| InnerAPI | 9 | 14 |
+| **总计** | **71** | **226** |
 
 ---
 
@@ -746,6 +751,8 @@ integration/tests/{module}/
 | 文档 | 路径 | 说明 |
 |------|------|------|
 | 测试使用说明 | `test/integration/README.md` | 集成测试详细使用说明 |
+| Cluster 模块用例设计 | `test/integration/tests/clusters/design.md` | 含 `llm_config.match_prefix` / `strip_prefix` 创建/更新校验用例 |
+| InnerAPI TlsConf 用例设计 | `test/integration/tests/innerapi/tls_conf/design.md` | 含 `AIConf.MatchPrefix` / `StripPrefix` 导出验证用例 |
 | OpenAPI 接口文档 | `design-docs/api-define/OpenAPI接口定义/README.md` | 各模块接口定义索引 |
 | InnerAPI 接口文档 | `design-docs/api-define/InnerAPI接口定义/README.md` | InnerAPI 接口详细设计索引 |
 | 系统设计文档 | `design-docs/sys-design/` | 系统总体与详细设计 |

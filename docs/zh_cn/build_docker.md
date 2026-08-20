@@ -46,7 +46,7 @@ Makefile 提供 `make docker` 目标用于本地构建。
 
 可通过环境变量覆盖：
 
-- DASHBOARD_VERSION : 控制面版本，来自 `infinity-ai-gateway/ai-gateway-web` 的 release 包
+- DASHBOARD_VERSION : 控制面版本，来自 `rainway-ai-gateway/ai-gateway-web` 的 release 包
 
 示例：
 

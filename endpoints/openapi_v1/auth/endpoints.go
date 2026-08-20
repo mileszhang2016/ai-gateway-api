@@ -14,7 +14,7 @@
 
 package auth
 
-import "github.com/infinity-ai-gateway/ai-gateway-api/lib/xreq"
+import "github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 
 var Endpoints = []*xreq.Endpoint{
 	SessionKeyByPasswordEndpoint,
