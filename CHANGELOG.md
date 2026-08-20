@@ -12,29 +12,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [0.0.7] - 2026-08-20
 
 ### Added
-- Cluster 多 API-Key 支持（`Keys` + `KeyPolicy`）及相关集成测试。
-- Provider/Model 前缀路由支持。
-- 模型定价（model-price）相关菜单与接口。
-- 路由规则 `Cond` 表达式语法校验。
-- OpenAPI/InnerAPI schema 集成测试。
-- `model/quotacache` 统一封装 Redis 配额操作。
-- API-Key token 导出增加 `key_id` 字段。
-- 新增 `AGENTS.md` 供 AI 代理协作参考。
+- Multi-API-Key support for clusters (`Keys` + `KeyPolicy`) with integration tests.
+- Provider/Model prefix routing support.
+- Model pricing (model-price) menu and endpoints.
+- Route rule `Cond` expression syntax validation.
+- OpenAPI/InnerAPI schema integration tests.
+- Centralized Redis quota operations in `model/quotacache`.
+- Export `key_id` field in API-Key tokens.
+- Added `AGENTS.md` for AI agent collaboration guidelines.
 
 ### Changed
-- 品牌/组织迁移：`infinity-ai-gateway` → `rainway-ai-gateway`。
-- 配额 RMB 转换统一使用 `github.com/bfenetworks/go-lib/quota`。
-- 导出的 `QuotaPlan` 移除冗余 `Currency` 字段并更新 InnerAPI 文档。
-- 路由规则字段名统一为 `snake_case`。
-- `cluster_conf` 切换到原生 BFE `cluster_conf.AIConf`。
-- 模型层与存储层目录结构对齐重构。
+- Rebranded organization migration: `infinity-ai-gateway` → `rainway-ai-gateway`.
+- Unified RMB quota conversion using `github.com/bfenetworks/go-lib/quota`.
+- Removed redundant `Currency` from exported `QuotaPlan` and updated InnerAPI docs.
+- Normalized route rule field names to `snake_case`.
+- Switched `cluster_conf` to native BFE `cluster_conf.AIConf`.
+- Restructured `model` and `storage/rdb` package layouts to align with each other.
 
 ### Fixed
-- `/api-keys/{id}/quota-plan` 返回真实配额余额。
-- 删除集群/模型时检查是否被路由规则引用。
-- 删除集群时扫描全部路由规则做引用检查 (#57)。
-- 模型定价 `limits` 值校验为非负整数 (#66)。
-- 其它 Quota、Redis 同步与 OpenAPI 响应细节修复。
+- `/api-keys/{id}/quota-plan` now returns the real quota balance.
+- Prevent deletion of clusters/models referenced by route rules.
+- Scan all route rules when checking cluster/model deletion references (#57).
+- Validate model-pricing `limits` values as non-negative integers (#66).
+- Various fixes for quota, Redis sync, and OpenAPI response details.
 
 ## [0.0.6] - 2026-08-05
 
