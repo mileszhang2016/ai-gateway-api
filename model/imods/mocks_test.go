@@ -19,7 +19,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/baidu/go-lib/log/log4go"
+	"github.com/bfenetworks/go-lib/log/log4go"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
