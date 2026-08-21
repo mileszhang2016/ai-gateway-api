@@ -1,6 +1,7 @@
 package innerapi
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -171,11 +172,128 @@ func testModAPIKeySchema(t *testing.T) {
 	testutil.AssertSuccess(t, innerResp)
 	if innerResp.Data != nil && string(innerResp.Data) != "null" {
 		testutil.AssertSchema(t, innerResp, ModAPIKeySchema)
+		assertModAPIKeyFieldDetails(t, innerResp.Data)
 	}
 
 	t.Cleanup(func() {
 		testutil.DeleteAPIKey(apiKeyID)
 	})
+}
+
+// assertModAPIKeyFieldDetails 校验 /configs/mod-api-key 响应中 tokens 和 QuotaPlans 的字段细节：
+// token 的 enabled 为 bool，不包含 status/update_time；QuotaPlan 不包含 CreateTime/ResetMode；Tags 包含 TagLevel。
+func assertModAPIKeyFieldDetails(t *testing.T, data []byte) {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal mod-api-key data: %v", err)
+	}
+
+	tokens, ok := payload["tokens"].(map[string]interface{})
+	if !ok {
+		t.Fatal("tokens is not an object")
+	}
+	for product, productTokens := range tokens {
+		productTokenMap, ok := productTokens.(map[string]interface{})
+		if !ok {
+			t.Fatalf("tokens.%s is not an object", product)
+		}
+		for key, token := range productTokenMap {
+			tokenMap, ok := token.(map[string]interface{})
+			if !ok {
+				t.Fatalf("tokens.%s.%s is not an object", product, key)
+			}
+			if _, ok := tokenMap["status"]; ok {
+				t.Errorf("tokens.%s.%s should not contain status", product, key)
+			}
+			if _, ok := tokenMap["update_time"]; ok {
+				t.Errorf("tokens.%s.%s should not contain update_time", product, key)
+			}
+			if enabled, ok := tokenMap["enabled"].(bool); !ok {
+				t.Errorf("tokens.%s.%s.enabled should be bool", product, key)
+			} else if !enabled {
+				t.Errorf("tokens.%s.%s.enabled should be true", product, key)
+			}
+			if keyID, ok := tokenMap["key_id"].(string); !ok || keyID == "" {
+				t.Errorf("tokens.%s.%s.key_id should be non-empty string", product, key)
+			}
+			if expiredTime, ok := tokenMap["expired_time"].(float64); !ok {
+				t.Errorf("tokens.%s.%s.expired_time should be number", product, key)
+			} else if expiredTime != -1 {
+				// ok, can be -1 or a timestamp
+			}
+			if _, ok := tokenMap["unlimited_quota"].(bool); !ok {
+				t.Errorf("tokens.%s.%s.unlimited_quota should be bool", product, key)
+			}
+			if models, ok := tokenMap["allow_models"].(string); ok && models == "*" {
+				t.Errorf("tokens.%s.%s.allow_models should not be '*', got %q", product, key, models)
+			}
+			if quotaPlans, ok := tokenMap["quota_plans"].([]interface{}); ok {
+				for i, qp := range quotaPlans {
+					if _, ok := qp.(string); !ok {
+						t.Errorf("tokens.%s.%s.quota_plans[%d] should be string", product, key, i)
+					}
+				}
+			}
+			if tags, ok := tokenMap["Tags"].([]interface{}); ok {
+				for i, tag := range tags {
+					tagMap, ok := tag.(map[string]interface{})
+					if !ok {
+						t.Fatalf("tokens.%s.%s.Tags[%d] is not an object", product, key, i)
+					}
+					if _, ok := tagMap["TagName"].(string); !ok {
+						t.Errorf("tokens.%s.%s.Tags[%d].TagName should be string", product, key, i)
+					}
+					if _, ok := tagMap["TagValue"].(string); !ok {
+						t.Errorf("tokens.%s.%s.Tags[%d].TagValue should be string", product, key, i)
+					}
+					if _, ok := tagMap["TagLevel"].(float64); !ok {
+						t.Errorf("tokens.%s.%s.Tags[%d].TagLevel should be int", product, key, i)
+					}
+				}
+			}
+		}
+	}
+
+	quotaPlans, ok := payload["QuotaPlans"].(map[string]interface{})
+	if !ok {
+		t.Fatal("QuotaPlans is not an object")
+	}
+	for product, plans := range quotaPlans {
+		planList, ok := plans.([]interface{})
+		if !ok {
+			t.Fatalf("QuotaPlans.%s is not an array", product)
+		}
+		for i, plan := range planList {
+			planMap, ok := plan.(map[string]interface{})
+			if !ok {
+				t.Fatalf("QuotaPlans.%s[%d] is not an object", product, i)
+			}
+			if _, ok := planMap["CreateTime"]; ok {
+				t.Errorf("QuotaPlans.%s[%d] should not contain CreateTime", product, i)
+			}
+			if _, ok := planMap["ResetMode"]; ok {
+				t.Errorf("QuotaPlans.%s[%d] should not contain ResetMode", product, i)
+			}
+			if id, ok := planMap["Id"].(string); !ok || id == "" {
+				t.Errorf("QuotaPlans.%s[%d].Id should be non-empty string", product, i)
+			}
+			if _, ok := planMap["Unlimited"].(bool); !ok {
+				t.Errorf("QuotaPlans.%s[%d].Unlimited should be bool", product, i)
+			}
+			if _, ok := planMap["PassNoQuota"].(bool); !ok {
+				t.Errorf("QuotaPlans.%s[%d].PassNoQuota should be bool", product, i)
+			}
+			if redisKey, ok := planMap["RedisKey"].(string); !ok || redisKey == "" {
+				t.Errorf("QuotaPlans.%s[%d].RedisKey should be non-empty string", product, i)
+			}
+			if _, ok := planMap["ExpiredTime"].(float64); !ok {
+				t.Errorf("QuotaPlans.%s[%d].ExpiredTime should be number", product, i)
+			}
+			if _, ok := planMap["Quota"].(float64); !ok {
+				t.Errorf("QuotaPlans.%s[%d].Quota should be number", product, i)
+			}
+		}
+	}
 }
 
 func testModBodyProcessSchema(t *testing.T) {
