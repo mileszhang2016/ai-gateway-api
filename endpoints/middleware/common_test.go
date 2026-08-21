@@ -18,7 +18,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/baidu/go-lib/log/log4go"
+	"github.com/bfenetworks/go-lib/log/log4go"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )

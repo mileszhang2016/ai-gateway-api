@@ -2,12 +2,10 @@ github.com/BurntSushi/toml v0.3.1 h1:WXkYYl6Yr3qBf1K79EBnL4mak0OimBfB0XUf9Vl28OQ
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/DATA-DOG/go-sqlmock v1.4.0 h1:yxQ63CFIA8Sxkh0vqIofuNrsXl/LZ42TpeTLV4Nb5HM=
 github.com/DATA-DOG/go-sqlmock v1.4.0/go.mod h1:3TucWNLPFOLcHhha1CPp7Kis1UG2h/AqGROPyOeZzsM=
-github.com/baidu/go-lib v0.0.0-20210316014414-55daa983069e h1:AFtIzBRgufWYEdQLFtymsBHFexUulILN3A/5E6376WA=
-github.com/baidu/go-lib v0.0.0-20210316014414-55daa983069e/go.mod h1:FneHDqz3wLeDGdWfRyW4CzBbCwaqesLGIFb09N80/ww=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
-github.com/bfenetworks/bfe v1.8.5-0.20260815094932-927738429881 h1:EdmtGC1yocZz3oYRwxdK4j0QKA3ADQwhianbjGW0RR4=
-github.com/bfenetworks/bfe v1.8.5-0.20260815094932-927738429881/go.mod h1:R4CJtbaLSG9DM68ftxO3tze9mh+1EPJJkLZdyjJChNo=
+github.com/bfenetworks/bfe v1.8.5 h1:UJCA4SthVQ4Yrkt8NygqCA9sWPlGLipx0w929EAtQSw=
+github.com/bfenetworks/bfe v1.8.5/go.mod h1:1HUaOph1899XtuKTdU/vqgonFfxdqJ66xf9nLtHF+2A=
 github.com/bfenetworks/go-lib v0.0.3 h1:504FrMW0qTKTODuUgkVGCy6DORBdZOgC78zGD9LwpKU=
 github.com/bfenetworks/go-lib v0.0.3/go.mod h1:DNiKiff30CaX7uOUGJpP85VyTn+JSFoY9gfG2AxmPgM=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
