@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/baidu/go-lib/log"
-	"github.com/baidu/go-lib/log/log4go"
+	"github.com/bfenetworks/go-lib/log"
+	"github.com/bfenetworks/go-lib/log/log4go"
 )
 
 type LoggerConfig struct {
