@@ -62,6 +62,8 @@ func TestModelPrice_Import(t *testing.T) {
 
 		provider1 := testutil.UniqueName("provider")
 		provider2 := testutil.UniqueName("provider")
+		createProvidersForYAML(t, []string{provider1, provider2})
+
 		yaml := buildYAML([]map[string]interface{}{
 			{
 				"provider": provider1,
@@ -124,6 +126,8 @@ func TestModelPrice_Import(t *testing.T) {
 		}
 
 		newProvider := testutil.UniqueName("provider")
+		createProvidersForYAML(t, []string{newProvider})
+
 		yaml := buildYAML([]map[string]interface{}{
 			{
 				"provider": provider,
@@ -174,6 +178,7 @@ func TestModelPrice_Import(t *testing.T) {
 
 	t.Run("MP-1-003 默认 replace 模式", func(t *testing.T) {
 		provider := testutil.UniqueName("provider")
+		createProvidersForYAML(t, []string{provider})
 		yaml := buildYAML([]map[string]interface{}{
 			{
 				"provider": provider,
@@ -207,9 +212,11 @@ func TestModelPrice_Import(t *testing.T) {
 	})
 
 	t.Run("MP-1-004 非法 mode", func(t *testing.T) {
+		provider := testutil.UniqueName("provider")
+		createProvidersForYAML(t, []string{provider})
 		yaml := buildYAML([]map[string]interface{}{
 			{
-				"provider": testutil.UniqueName("provider"),
+				"provider": provider,
 				"model":    "m",
 				"mode":     "chat",
 				"prices": map[string]float64{
@@ -238,9 +245,11 @@ func TestModelPrice_Import(t *testing.T) {
 	})
 
 	t.Run("MP-1-007 limits 包含负数", func(t *testing.T) {
+		provider := testutil.UniqueName("provider")
+		createProvidersForYAML(t, []string{provider})
 		yaml := buildYAML([]map[string]interface{}{
 			{
-				"provider": testutil.UniqueName("provider"),
+				"provider": provider,
 				"model":    "m",
 				"mode":     "chat",
 				"limits": map[string]interface{}{
@@ -263,6 +272,7 @@ func TestModelPrice_Import(t *testing.T) {
 
 	t.Run("MP-1-006 重复三元组", func(t *testing.T) {
 		provider := testutil.UniqueName("provider")
+		createProvidersForYAML(t, []string{provider})
 		yaml := buildYAML([]map[string]interface{}{
 			{
 				"provider": provider,
@@ -290,6 +300,15 @@ func TestModelPrice_Import(t *testing.T) {
 		}
 		testutil.AssertErrCode(t, resp, 422)
 	})
+}
+
+func createProvidersForYAML(t *testing.T, names []string) {
+	t.Helper()
+	for _, name := range names {
+		if _, err := testutil.CreateProvider(name); err != nil {
+			t.Fatalf("setup provider %s failed: %v", name, err)
+		}
+	}
 }
 
 func buildYAML(models []map[string]interface{}) string {

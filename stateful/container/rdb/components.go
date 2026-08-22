@@ -39,6 +39,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprotocol"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
@@ -48,17 +49,18 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
+	apiKeyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/auth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/basic"
-	apiKeyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
 	entityStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/model_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/protocol"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/provider"
 	quotaStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/quota"
 	rateLimitPolicyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/rate_limit_policy"
-	routeRulesStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_rules"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
+	routeRulesStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_rules"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/txn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/version_control"
 
@@ -84,6 +86,11 @@ func Init() error {
 	container.ClusterStoragerSingleton = cluster_conf.NewRDBClusterStorager(
 		stateful.NewBFEDBContext,
 		container.SubClusterStoragerSingleton)
+
+	container.ProviderStoragerSingleton = provider.NewRDBProviderStorager(stateful.NewBFEDBContext)
+	container.ProviderManager = iprovider.NewProviderManager(
+		container.TxnStoragerSingleton,
+		container.ProviderStoragerSingleton)
 
 	container.APIKeyStorager = apiKeyStorage.NewAPIKeyStorager(
 		stateful.NewBFEDBContext,
@@ -132,7 +139,8 @@ func Init() error {
 	container.ModelPriceStorager = model_price.NewRDBModelPriceStorager(stateful.NewBFEDBContext)
 	container.ModelPriceManager = imodel_price.NewManager(
 		container.TxnStoragerSingleton,
-		container.ModelPriceStorager)
+		container.ModelPriceStorager,
+		container.ProviderStoragerSingleton)
 
 	container.RouteRuleManager = iroute_conf.NewRouteRuleManager(
 		container.TxnStoragerSingleton,
@@ -142,6 +150,7 @@ func Init() error {
 		container.VersionControlManager,
 		container.DomainStoragerSingleton)
 	container.RouteRuleManager.SetModelPriceStorager(container.ModelPriceStorager)
+	container.RouteRuleManager.SetProviderStorager(container.ProviderStoragerSingleton)
 
 	// Initialize route rules components before cluster manager because the
 	// cluster delete checker depends on RouteRulesManager.
@@ -156,6 +165,7 @@ func Init() error {
 		container.SubClusterStoragerSingleton,
 		container.BFEClusterStoragerSingleton,
 		container.PoolStoragerSingleton,
+		container.ProviderStoragerSingleton,
 		container.VersionControlManager,
 		map[string]func(context.Context, *ibasic.Product, *icluster_conf.Cluster) error{
 			"rules":       container.RouteRuleManager.ClusterDeleteChecker,

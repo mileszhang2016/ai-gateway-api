@@ -1,0 +1,266 @@
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package provider
+
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
+)
+
+// RDBProviderStorager implements iprovider.ProviderStorager using RDB.
+type RDBProviderStorager struct {
+	dbCtxFactory lib.DBContextFactory
+}
+
+var _ iprovider.ProviderStorager = &RDBProviderStorager{}
+
+// NewRDBProviderStorager creates a new RDB-backed provider storager.
+func NewRDBProviderStorager(dbCtxFactory lib.DBContextFactory) *RDBProviderStorager {
+	return &RDBProviderStorager{
+		dbCtxFactory: dbCtxFactory,
+	}
+}
+
+func (s *RDBProviderStorager) CreateProvider(ctx context.Context, param *iprovider.ProviderParam) (int64, error) {
+	dbCtx, err := s.dbCtxFactory(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	data, err := toDAOParam(param)
+	if err != nil {
+		return 0, err
+	}
+
+	return dao.TProviderCreate(dbCtx, data)
+}
+
+func (s *RDBProviderStorager) UpdateProvider(ctx context.Context, name string, param *iprovider.ProviderParam) error {
+	dbCtx, err := s.dbCtxFactory(ctx)
+	if err != nil {
+		return err
+	}
+
+	data, err := toDAOParam(param)
+	if err != nil {
+		return err
+	}
+
+	_, err = dao.TProviderUpdate(dbCtx, data, &dao.TProviderParam{Name: &name})
+	return err
+}
+
+func (s *RDBProviderStorager) DeleteProvider(ctx context.Context, name string) error {
+	dbCtx, err := s.dbCtxFactory(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = dao.TProviderDelete(dbCtx, &dao.TProviderParam{Name: &name})
+	return err
+}
+
+func (s *RDBProviderStorager) FetchProvider(ctx context.Context, filter *iprovider.ProviderFilter) (*iprovider.Provider, error) {
+	dbCtx, err := s.dbCtxFactory(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	where := filterToDAOParam(filter)
+	one, err := dao.TProviderOne(dbCtx, where)
+	if err != nil {
+		return nil, err
+	}
+	if one == nil {
+		return nil, nil
+	}
+	return fromDAO(one), nil
+}
+
+func (s *RDBProviderStorager) FetchProviderList(ctx context.Context, filter *iprovider.ProviderFilter) ([]*iprovider.Provider, int64, error) {
+	dbCtx, err := s.dbCtxFactory(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	where := filterToDAOParam(filter)
+
+	page := 1
+	pageSize := 50
+	if filter != nil {
+		if filter.Page != nil && *filter.Page > 0 {
+			page = *filter.Page
+		}
+		if filter.PageSize != nil && *filter.PageSize > 0 {
+			pageSize = *filter.PageSize
+			if pageSize > 1000 {
+				pageSize = 1000
+			}
+		}
+	}
+
+	list, err := dao.TProviderListWithPagination(dbCtx, where, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total, err := dao.TProviderCount(dbCtx, where)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rst := make([]*iprovider.Provider, 0, len(list))
+	for _, one := range list {
+		rst = append(rst, fromDAO(one))
+	}
+	return rst, total, nil
+}
+
+func toDAOParam(param *iprovider.ProviderParam) (*dao.TProviderParam, error) {
+	if param == nil {
+		return nil, nil
+	}
+
+	iprovider.FillDefaults(param)
+
+	modelEndpoint, err := marshalJSON(param.ModelEndpoint)
+	if err != nil {
+		return nil, err
+	}
+	models, err := marshalJSON(param.Models)
+	if err != nil {
+		return nil, err
+	}
+	keys, err := marshalJSON(param.Keys)
+	if err != nil {
+		return nil, err
+	}
+	instancePool, err := marshalJSON(param.InstancePool)
+	if err != nil {
+		return nil, err
+	}
+	modelProtocols, err := marshalJSON(param.ModelProtocols)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dao.TProviderParam{
+		Name:           param.Name,
+		Description:    param.Description,
+		ModelEndpoint:  modelEndpoint,
+		Models:         models,
+		Keys:           keys,
+		InstancePool:   instancePool,
+		ModelProtocols: modelProtocols,
+	}, nil
+}
+
+func filterToDAOParam(filter *iprovider.ProviderFilter) *dao.TProviderParam {
+	if filter == nil {
+		return nil
+	}
+	return &dao.TProviderParam{
+		ID:    filter.ID,
+		Name:  filter.Name,
+		Names: filter.Names,
+	}
+}
+
+func fromDAO(one *dao.TProvider) *iprovider.Provider {
+	if one == nil {
+		return nil
+	}
+
+	createTime := one.CreatedAt.Unix()
+	updateTime := one.UpdatedAt.Unix()
+
+	return &iprovider.Provider{
+		ID:             one.ID,
+		Name:           one.Name,
+		Description:    one.Description,
+		ModelEndpoint:  unmarshalEndpoint(one.ModelEndpoint),
+		Models:         unmarshalStringSlice(one.Models),
+		Keys:           unmarshalKeys(one.Keys),
+		InstancePool:   unmarshalInstancePool(one.InstancePool),
+		ModelProtocols: unmarshalStringSlice(one.ModelProtocols),
+		CreateTime:     createTime,
+		UpdateTime:     updateTime,
+	}
+}
+
+func marshalJSON(v interface{}) (*string, error) {
+	if v == nil {
+		return lib.PString("{}"), nil
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return lib.PString(string(data)), nil
+}
+
+func unmarshalEndpoint(s string) *iprovider.ProviderEndpoint {
+	if s == "" || s == "null" {
+		return iprovider.DefaultModelEndpoint()
+	}
+	var e iprovider.ProviderEndpoint
+	if err := json.Unmarshal([]byte(s), &e); err != nil {
+		return iprovider.DefaultModelEndpoint()
+	}
+	if e.Schema == "" {
+		e.Schema = "https"
+	}
+	if e.URI == "" {
+		e.URI = "/v1/models"
+	}
+	return &e
+}
+
+func unmarshalStringSlice(s string) []string {
+	if s == "" || s == "null" {
+		return nil
+	}
+	var rst []string
+	if err := json.Unmarshal([]byte(s), &rst); err != nil {
+		return nil
+	}
+	return rst
+}
+
+func unmarshalKeys(s string) []iprovider.ProviderKey {
+	if s == "" || s == "null" {
+		return nil
+	}
+	var rst []iprovider.ProviderKey
+	if err := json.Unmarshal([]byte(s), &rst); err != nil {
+		return nil
+	}
+	return rst
+}
+
+func unmarshalInstancePool(s string) []iprovider.ProviderInstance {
+	if s == "" || s == "null" {
+		return nil
+	}
+	var rst []iprovider.ProviderInstance
+	if err := json.Unmarshal([]byte(s), &rst); err != nil {
+		return nil
+	}
+	return rst
+}

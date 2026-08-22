@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tool
+package provider
 
 import (
 	"testing"
@@ -22,7 +22,7 @@ import (
 )
 
 func TestEndpoints(t *testing.T) {
-	require.Len(t, Endpoints, 1)
+	require.Len(t, Endpoints, 6)
 	for _, ep := range Endpoints {
 		require.NotNil(t, ep)
 		assert.NotEmpty(t, ep.Path)

@@ -37,6 +37,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprotocol"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
@@ -94,6 +95,10 @@ var (
 	// Model pricing
 	ModelPriceStorager imodel_price.ModelPriceStorager
 	ModelPriceManager  *imodel_price.Manager
+
+	// Providers
+	ProviderStoragerSingleton iprovider.ProviderStorager
+	ProviderManager           *iprovider.ProviderManager
 
 	EntityTypeManager      *entity.EntityTypeManager
 	EntityManager          *entity.EntityManager

@@ -30,9 +30,8 @@
 | OpenAPI - ALB Pool | `/open-api/v1/alb-pool` | 实例池管理 |
 | OpenAPI - Clusters | `/open-api/v1/clusters` | 集群管理 |
 | OpenAPI - Certificate | `/open-api/v1/certificates` | 证书管理 |
-| OpenAPI - Model Provider Types | `/open-api/v1/model-provider-types` | 模型提供商类型 |
+| OpenAPI - Providers | `/open-api/v1/providers` | 模型提供商管理 |
 | OpenAPI - Model Prices | `/open-api/v1/model-prices` | 模型定价管理 |
-| OpenAPI - Tools | `/open-api/v1/tools` | 工具接口（如从提供商拉取模型列表） |
 | OpenAPI - Expression Verify | `/open-api/v1/expression/verify` | 路由表达式校验 |
 | InnerAPI | `/inner-api/v1/configs` | 配置导出接口 |
 

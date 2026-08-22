@@ -40,6 +40,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 )
 
@@ -98,6 +99,19 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 		providerModelTable = imodel_price.GroupByProvider(allPrices)
 	}
 
+	providerKeyTable := map[string][]iprovider.ProviderKey{}
+	if rm.providerStorager != nil {
+		providers, _, err := rm.providerStorager.FetchProviderList(ctx, &iprovider.ProviderFilter{})
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range providers {
+			if p != nil {
+				providerKeyTable[p.Name] = p.Keys
+			}
+		}
+	}
+
 	products, err := rm.productStorager.FetchProducts(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -135,7 +149,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 		Version:     emptyVersion,
 		RouteTable:  newRouteTableFile(emptyVersion, productMapID2Name, routeRules),
 		HostTable:   newHostTableConf(emptyVersion, productMapID2Name, domains),
-		ClusterConf: icluster_conf.NewBfeClusterConf(emptyVersion, clusters, providerModelTable),
+		ClusterConf: icluster_conf.NewBfeClusterConf(emptyVersion, clusters, providerModelTable, providerKeyTable),
 	}
 
 	return &iversion_control.ExportData{

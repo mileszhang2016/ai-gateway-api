@@ -38,13 +38,9 @@ func setupCluster(t *testing.T) string {
 	clusterName := testutil.UniqueClusterName()
 	_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
 		"name": clusterName,
-		"instance_pool": []interface{}{
-			map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080},
-		},
 		"llm_config": map[string]interface{}{
-			"models":        []string{"deepseek-chat"},
-			"provider_type": "deepseek",
-			"provider":      "deepseek",
+			"models":   []string{"deepseek-chat"},
+			"provider": "deepseek",
 		},
 	})
 	require.NoError(t, err)

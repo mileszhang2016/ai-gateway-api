@@ -74,9 +74,6 @@ func updateActionProcess(req *http.Request, param *UpsertParam) (*ClusterData, e
 	}
 
 	_modelParam := clusterParamControlModel4Update(param)
-	if len(param.InstancePool) > 0 {
-		_modelParam.InstancePool = Instancesc2i(param.InstancePool)
-	}
 
 	if err := container.ClusterManager.UpdateCluster(req.Context(), product, cluster, _modelParam); err != nil {
 		return nil, err

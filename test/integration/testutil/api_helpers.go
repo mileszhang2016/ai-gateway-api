@@ -70,9 +70,9 @@ func CreateAPIKey(description string, entityID string) (string, error) {
 	return id.(string), nil
 }
 
-// CreateCluster 创建 Cluster，返回 name
-func CreateCluster(name string) (string, error) {
-	resp, err := GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+// CreateProvider 创建 Provider，返回 name
+func CreateProvider(name string, opts ...map[string]interface{}) (string, error) {
+	body := map[string]interface{}{
 		"name": name,
 		"instance_pool": []interface{}{
 			map[string]interface{}{
@@ -82,9 +82,58 @@ func CreateCluster(name string) (string, error) {
 				"port":   8080,
 			},
 		},
+		"model_protocols": []string{"openai"},
+		"models":          []string{"deepseek-chat"},
+		"keys": []interface{}{
+			map[string]interface{}{
+				"name": "key-primary",
+				"key":  "sk-aaaaaaaaaaaa",
+			},
+			map[string]interface{}{
+				"name": "key-secondary",
+				"key":  "sk-bbbbbbbbbbbb",
+			},
+		},
+	}
+	for _, opt := range opts {
+		for k, v := range opt {
+			body[k] = v
+		}
+	}
+	resp, err := GetClient().Post("/open-api/v1/providers", body)
+	if err != nil {
+		return "", err
+	}
+	if resp.ErrNum != 200 {
+		return "", fmt.Errorf("create provider failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	return name, nil
+}
+
+// DeleteProvider 删除 Provider
+func DeleteProvider(name string) error {
+	resp, err := GetClient().Delete("/open-api/v1/providers/" + name)
+	if err != nil {
+		return err
+	}
+	if resp.ErrNum != 200 && resp.ErrNum != 404 {
+		return fmt.Errorf("delete provider failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	return nil
+}
+
+// CreateCluster 创建 Cluster，返回 name
+func CreateCluster(name string) (string, error) {
+	providerName := UniqueProviderName()
+	if _, err := CreateProvider(providerName); err != nil {
+		return "", fmt.Errorf("create provider for cluster: %w", err)
+	}
+
+	resp, err := GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+		"name": name,
 		"llm_config": map[string]interface{}{
-			"models":        []string{"deepseek-chat"},
-			"provider_type": "deepseek",
+			"models":   []string{"deepseek-chat"},
+			"provider": providerName,
 		},
 	})
 	if err != nil {
@@ -126,7 +175,13 @@ func ImportModelPricesWithResult(yamlContent []byte, mode string) (ImportModelPr
 }
 
 // CreateModelPrice 创建模型定价记录，返回记录 id
+// 若 body 中包含 provider 且该 provider 不存在，则自动创建。
 func CreateModelPrice(body map[string]interface{}) (int64, error) {
+	if providerName, ok := body["provider"].(string); ok && providerName != "" {
+		if _, err := CreateProvider(providerName); err != nil {
+			return 0, fmt.Errorf("auto-create provider for model price: %w", err)
+		}
+	}
 	resp, err := GetClient().Post("/open-api/v1/model-prices", body)
 	if err != nil {
 		return 0, err

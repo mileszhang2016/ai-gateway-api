@@ -124,6 +124,7 @@ func setupClusterManager(storager icluster_conf.ClusterStorager, version string)
 		&fakeSubClusterStorager{},
 		&fakeBFEClusterStorager{},
 		&fakePoolStorager{},
+		nil,
 		testutil.NewVersionControlManager(version),
 		nil,
 		nil,

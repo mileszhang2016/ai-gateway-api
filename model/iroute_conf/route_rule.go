@@ -41,6 +41,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
@@ -191,12 +192,19 @@ type RouteRuleManager struct {
 	productStorager       ibasic.ProductStorager
 	domainStorager        DomainStorager
 	modelPriceStorager    imodel_price.ModelPriceStorager
+	providerStorager      iprovider.ProviderStorager
 }
 
 // SetModelPriceStorager sets the optional model price storager used to enrich
 // exported cluster conf with AIConf.ModelTable.
 func (rm *RouteRuleManager) SetModelPriceStorager(storager imodel_price.ModelPriceStorager) {
 	rm.modelPriceStorager = storager
+}
+
+// SetProviderStorager sets the optional provider storager used to resolve
+// provider API keys when exporting cluster conf AIConf.Keys.
+func (rm *RouteRuleManager) SetProviderStorager(storager iprovider.ProviderStorager) {
+	rm.providerStorager = storager
 }
 
 func (rm *RouteRuleManager) ExpressionVerify(ctx context.Context, expression string) (err error) {

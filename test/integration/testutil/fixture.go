@@ -96,6 +96,11 @@ func UniqueCertName() string {
 	return UniqueName("cert")
 }
 
+// UniqueProviderName 生成唯一的 Provider 名称
+func UniqueProviderName() string {
+	return UniqueName("provider")
+}
+
 // UniqueTokenName 生成唯一的 Token 名称
 func UniqueTokenName() string {
 	return UniqueName("token")

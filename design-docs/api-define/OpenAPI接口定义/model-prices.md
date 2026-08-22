@@ -35,7 +35,7 @@
 | 字段 | 类型 | 说明 | 合法性条件 |
 |------|------|------|------------|
 | `id` | int64 | 模型定价记录唯一标识 | 系统生成 |
-| `provider` | string | Provider / Cluster 标识 | 必填；非空；长度 1-255 |
+| `provider` | string | Provider 标识 | 必填；非空；长度 1-255；必须引用 `/providers` 中已存在的 provider |
 | `model` | string | 模型名 | 必填；非空；长度 1-255 |
 | `base_model` | string | 归一化模型名 | 必填；非空；长度 1-255 |
 | `mode` | string | 请求模式 | 必填；枚举值见下表 |
@@ -198,7 +198,7 @@ models:
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `provider` | Y | Provider / Cluster 标识，对应 `model_prices.provider` |
+| `provider` | Y | Provider 标识，对应 `model_prices.provider`；必须引用 `/providers` 中已存在的 provider |
 | `model` | Y | 模型名，对应 `model_prices.model` |
 | `base_model` | Y | 归一化模型名，对应 `model_prices.base_model` |
 | `mode` | Y | 模型模式，枚举值同第 1 节 `mode` 枚举 |
@@ -284,10 +284,11 @@ models:
 1. 解析 YAML，校验 `version`、`default_currency`（必须为 `RMB`）；
 2. 校验每条记录的 `(provider, model, mode)` 唯一性；
 3. 校验必填字段：`provider`、`model`、`base_model`、`mode`、`prices`；
-4. 校验 `prices` 中至少包含一个价格字段，且所有价格字段为非负数；
-5. 校验 `limits` 中所有限制字段值为非负整数；
-6. `replace` 模式：先清空 `model_prices` 表，再写入新数据；
-7. `merge` 模式：对已有 `(provider, model, mode)` 记录更新，新增记录插入。
+4. 校验 `provider` 必须引用 `/providers` 中已存在的 provider；不存在的 provider 应作为 error 返回，并跳过该条记录；
+5. 校验 `prices` 中至少包含一个价格字段，且所有价格字段为非负数；
+6. 校验 `limits` 中所有限制字段值为非负整数；
+7. `replace` 模式：先清空 `model_prices` 表，再写入新数据；
+8. `merge` 模式：对已有 `(provider, model, mode)` 记录更新，新增记录插入。
 
 **权限**
 
@@ -548,14 +549,15 @@ Data 为 null。
 ## 4. 校验规则
 
 1. `provider`、`model`、`base_model`、`mode` 必填；
-2. `(provider, model, mode)` 组合不能重复；
-3. `prices` 必填，至少包含一个价格字段；
-4. 所有价格字段必须为非负数；
-5. `price_currency` 当前只支持 `RMB`；
-6. `mode` 必须是预定义枚举值；
-7. `capabilities`、`supported_parameters` 若传入，其元素应取自对应枚举值（非枚举值可接收但建议告警或记录，便于后续收敛）；
-8. `limits`、`prices`、`metadata` 的键名应取自对应枚举值（非枚举键可接收但建议告警或记录，便于后续收敛）；
-9. `limits` 中所有限制字段值必须为非负整数；
-10. `/v1/model-prices/import` 仅接受 YAML 文件，且 `default_currency` 必须为 `RMB`。
+2. `provider` 必须引用 `/providers` 中已存在的 provider；
+3. `(provider, model, mode)` 组合不能重复；
+4. `prices` 必填，至少包含一个价格字段；
+5. 所有价格字段必须为非负数；
+6. `price_currency` 当前只支持 `RMB`；
+7. `mode` 必须是预定义枚举值；
+8. `capabilities`、`supported_parameters` 若传入，其元素应取自对应枚举值（非枚举值可接收但建议告警或记录，便于后续收敛）；
+9. `limits`、`prices`、`metadata` 的键名应取自对应枚举值（非枚举键可接收但建议告警或记录，便于后续收敛）；
+10. `limits` 中所有限制字段值必须为非负整数；
+11. `/v1/model-prices/import` 仅接受 YAML 文件，且 `default_currency` 必须为 `RMB`；导入时每条记录的 `provider` 必须引用已存在的 provider，否则作为 error 返回并跳过该条记录。
 
 ---

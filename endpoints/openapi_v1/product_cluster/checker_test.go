@@ -17,9 +17,9 @@ package product_cluster
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCheckLLMConfig(t *testing.T) {
@@ -34,36 +34,22 @@ func TestCheckLLMConfig(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "empty models",
+			name:    "empty provider and models",
 			config:  &icluster_conf.LLMConfig{},
 			wantErr: true,
 		},
 		{
-			name: "valid with models",
+			name: "valid with provider and models",
 			config: &icluster_conf.LLMConfig{
-				Models: []string{"gpt-4"},
+				Provider: lib.PString("openai"),
+				Models:   []string{"gpt-4"},
 			},
 			wantErr: false,
-		},
-		{
-			name: "valid model endpoint http",
-			config: &icluster_conf.LLMConfig{
-				Models:        []string{"gpt-4"},
-				ModelEndpoint: &icluster_conf.Endpoint{Schema: "http"},
-			},
-			wantErr: false,
-		},
-		{
-			name: "invalid model endpoint schema",
-			config: &icluster_conf.LLMConfig{
-				Models:        []string{"gpt-4"},
-				ModelEndpoint: &icluster_conf.Endpoint{Schema: "ftp"},
-			},
-			wantErr: true,
 		},
 		{
 			name: "strip prefix without match prefix",
 			config: &icluster_conf.LLMConfig{
+				Provider:    lib.PString("openai"),
 				Models:      []string{"gpt-4"},
 				StripPrefix: lib.PBool(true),
 			},
@@ -72,6 +58,7 @@ func TestCheckLLMConfig(t *testing.T) {
 		{
 			name: "match prefix missing trailing slash",
 			config: &icluster_conf.LLMConfig{
+				Provider:    lib.PString("openai"),
 				Models:      []string{"gpt-4"},
 				MatchPrefix: lib.PString("openrouter"),
 			},
@@ -80,6 +67,7 @@ func TestCheckLLMConfig(t *testing.T) {
 		{
 			name: "valid prefix config",
 			config: &icluster_conf.LLMConfig{
+				Provider:    lib.PString("openai"),
 				Models:      []string{"gpt-4"},
 				MatchPrefix: lib.PString("openrouter/"),
 				StripPrefix: lib.PBool(true),
@@ -229,60 +217,6 @@ func TestCheckEPPServer(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := CheckEPPServer(tc.server)
-			if tc.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestCheckInstancePool(t *testing.T) {
-	cases := []struct {
-		name      string
-		instances []*Instance
-		wantErr   bool
-	}{
-		{
-			name:      "empty pool",
-			instances: []*Instance{},
-			wantErr:   true,
-		},
-		{
-			name: "missing port",
-			instances: []*Instance{
-				{Name: "host1", Addr: "192.0.2.1", Weight: 100},
-			},
-			wantErr: true,
-		},
-		{
-			name: "all weights zero",
-			instances: []*Instance{
-				{Name: "host1", Addr: "192.0.2.1", Weight: 0, Port: 8080},
-			},
-			wantErr: true,
-		},
-		{
-			name: "valid single instance",
-			instances: []*Instance{
-				{Name: "host1", Addr: "192.0.2.1", Weight: 100, Port: 8080},
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid multiple instances",
-			instances: []*Instance{
-				{Name: "host1", Addr: "192.0.2.1", Weight: 50, Port: 8080},
-				{Name: "host2", Addr: "192.0.2.2", Weight: 50, Port: 8080},
-			},
-			wantErr: false,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := checkInstancePool(tc.instances)
 			if tc.wantErr {
 				assert.Error(t, err)
 			} else {

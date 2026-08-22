@@ -442,6 +442,25 @@ CREATE INDEX model_prices_mode ON model_prices (mode);
 CREATE TRIGGER model_prices_updated_at AFTER UPDATE ON model_prices
   FOR EACH ROW BEGIN UPDATE model_prices SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
+-- create providers
+DROP TABLE IF EXISTS providers;
+CREATE TABLE providers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  model_endpoint TEXT,
+  models TEXT,
+  keys TEXT,
+  instance_pool TEXT NOT NULL,
+  model_protocols TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE INDEX providers_name ON providers (name);
+CREATE TRIGGER providers_updated_at AFTER UPDATE ON providers
+  FOR EACH ROW BEGIN UPDATE providers SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
 -- create rate_limit_policies
 DROP TABLE IF EXISTS rate_limit_policies;
 CREATE TABLE rate_limit_policies (
