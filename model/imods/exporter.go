@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
@@ -27,19 +26,11 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 // ConfigTopicProductAPIKeyRule is the configuration topic for API key rules
 const ConfigTopicProductAPIKeyRule = "mod_api_key_rule"
-
-const (
-	TokenStatusEnabled   = 1
-	TokenStatusDisabled  = 2
-	TokenStatusExpired   = 3
-	TokenStatusExhausted = 4
-)
 
 // ModAPIKeyRuleConf defines the configuration structure for API key rules module
 type ModAPIKeyRuleConf struct {
@@ -57,6 +48,7 @@ type TokenRuleFile struct {
 type ApikeyTag struct {
 	TagName  string //eg entity.type
 	TagValue string //eg entity.name
+	TagLevel int
 }
 
 type ActionFile struct {
@@ -68,19 +60,15 @@ type QuotaPlan struct {
 	Unlimited   bool
 	PassNoQuota bool
 	RedisKey    string
-	CreateTime  int64
 	ExpiredTime int64 // -1 means never expired
 	Quota       int64 // 配额总量
-	ResetMode   int   // 0 – 非周期性；1 – 周期性的配额包
 	Unit        string
 }
 
 type TokenFile struct {
 	Key            string  `json:"key"`
 	KeyID          string  `json:"key_id"`
-	Enabled        int     `json:"enabled"`
-	Status         int     `json:"status"`
-	UpdateTime     int64   `json:"update_time"`
+	Enabled        bool    `json:"enabled"`
 	ExpiredTime    int64   `json:"expired_time"` // -1 means never expired
 	UnlimitedQuota bool    `json:"unlimited_quota"`
 	Models         *string `json:"allow_models"` // allowed models
@@ -199,27 +187,6 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 		return nil, err
 	}
 
-	// Populate QuotaPlan for status calculation. The raw storager does not load
-	// associated objects, but GetRemainingQuota needs QuotaPlan.Quota to decide
-	// whether the token is exhausted.
-	for _, one := range apiKeyList {
-		if one.QuotaPlanID != nil && rlm.quotaPlanStorager != nil {
-			quotaPlan, err := rlm.quotaPlanStorager.FetchQuotaPlan(ctx, &quota.QuotaPlanFilter{ID: one.QuotaPlanID})
-			if err != nil {
-				return nil, err
-			}
-			if quotaPlan != nil {
-				one.QuotaPlan = &shared.QuotaPlanParam{
-					Unlimited:             quotaPlan.Unlimited,
-					PassWhenNoEnoughQuota: quotaPlan.PassWhenNoEnoughQuota,
-					Quota:                 quotaPlan.Quota,
-					Unit:                  quotaPlan.Unit,
-					ResetPeriod:           quotaPlan.ResetPeriod,
-				}
-			}
-		}
-	}
-
 	apiKey2Config := make(map[string]map[string]*TokenFile)
 	for _, one := range apiKeyList {
 		if _, ok := apiKey2Config[*one.ProductName]; !ok {
@@ -232,43 +199,16 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 			expiredTime = *one.ExpiredTime
 		}
 
-		status := TokenStatusDisabled
-		var remainQuota float64
-		if one.Enable != nil && *one.Enable {
-			isUnlimited := one.UnlimitedQuota != nil && *one.UnlimitedQuota
-			if !isUnlimited {
-				status = TokenStatusEnabled
-				remainingQuota, err := api_key.GetRemainingQuota(ctx, rlm.quotaCache, one)
-				if err != nil {
-					return nil, err
-				}
-
-				if remainingQuota != nil {
-					remainQuota = *remainingQuota
-					if expiredTime != int64(UnlimitedQuota) && time.Now().Local().Unix() >= expiredTime {
-						status = TokenStatusExpired
-					} else if remainQuota <= 0 {
-						status = TokenStatusExhausted
-					}
-				}
-			} else {
-				status = TokenStatusEnabled
-			}
-		}
+		enabled := one.Enable != nil && *one.Enable
 
 		items := apiKey2Config[*one.ProductName]
 
 		tokenFile := &TokenFile{
 			Key:            *one.Key,
 			KeyID:          *one.ID,
-			Enabled:        2,
-			Status:         status,
+			Enabled:        enabled,
 			ExpiredTime:    expiredTime,
-			UpdateTime:     one.KeyCreateAt.Unix(),
 			UnlimitedQuota: one.UnlimitedQuota != nil && *one.UnlimitedQuota,
-		}
-		if one.Enable != nil && *one.Enable {
-			tokenFile.Enabled = 1
 		}
 
 		// Collect allow_models and block_models from entity hierarchy
@@ -310,12 +250,14 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 				// Rule 3: intersection empty → disable the token, models empty
 				modelsStr := ""
 				tokenFile.Models = &modelsStr
-				tokenFile.Enabled = 2
+				enabled = false
 			} else {
 				modelsStr := strings.Join(finalAllowModels, ",")
 				tokenFile.Models = &modelsStr
 			}
 		}
+
+		tokenFile.Enabled = enabled
 
 		// Merge block_models from entity hierarchy (union of all)
 		if len(entityBlockModels) > 0 {
@@ -432,10 +374,25 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context,
 	tags := make([]ApikeyTag, 0)
 
 	if entity.EntityID != nil && entity.Type != nil && entity.Name != nil {
-		tags = append(tags, ApikeyTag{
+		tag := ApikeyTag{
 			TagName:  *entity.Type,
 			TagValue: *entity.Name,
-		})
+		}
+
+		// Query entity type level for TagLevel.
+		// By business constraint, every entity type must exist and have a valid level.
+		if rlm.entityTypeStorager != nil {
+			entityType, err := rlm.entityTypeStorager.FetchEntityType(ctx, &entpkg.EntityTypeFilter{TypeName: entity.Type})
+			if err != nil {
+				return nil, nil, err
+			}
+			if entityType == nil || entityType.Level == nil {
+				return nil, nil, fmt.Errorf("entity type %s not found or level invalid", *entity.Type)
+			}
+			tag.TagLevel = *entityType.Level
+		}
+
+		tags = append(tags, tag)
 	}
 
 	if entity.QuotaPlanID != nil && rlm.quotaPlanStorager != nil {
@@ -586,18 +543,6 @@ func convertQuotaPlanToExport(qp *quota.QuotaPlanParam, id string, redisKeyID st
 	}
 	if qp.Unit != nil {
 		result.Unit = *qp.Unit
-	}
-	if qp.ResetPeriod != nil {
-		if *qp.ResetPeriod == "weekly" || *qp.ResetPeriod == "monthly" {
-			result.ResetMode = 1
-		} else {
-			result.ResetMode = 0
-		}
-	} else {
-		result.ResetMode = 0
-	}
-	if qp.CreateTime != nil {
-		result.CreateTime = *qp.CreateTime
 	}
 
 	return result

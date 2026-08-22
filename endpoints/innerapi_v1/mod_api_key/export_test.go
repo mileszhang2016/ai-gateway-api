@@ -126,6 +126,28 @@ func (f *fakeEntityStoragerForRule) DeleteEntity(ctx context.Context, filter *en
 	return nil
 }
 
+type fakeEntityTypeStoragerForRule struct{}
+
+func (f *fakeEntityTypeStoragerForRule) CreateEntityType(ctx context.Context, param *entity.EntityTypeParam) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeEntityTypeStoragerForRule) FetchEntityType(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
+	return nil, nil
+}
+
+func (f *fakeEntityTypeStoragerForRule) FetchEntityTypeList(ctx context.Context, filter *entity.EntityTypeFilter) ([]*entity.EntityTypeParam, error) {
+	return nil, nil
+}
+
+func (f *fakeEntityTypeStoragerForRule) UpdateEntityType(ctx context.Context, filter *entity.EntityTypeFilter, param *entity.EntityTypeParam) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeEntityTypeStoragerForRule) DeleteEntityType(ctx context.Context, filter *entity.EntityTypeFilter) error {
+	return nil
+}
+
 func setupAPIKeyRuleManager(version string) func() {
 	origConfig := stateful.DefaultConfig
 	stateful.DefaultConfig = &stateful.Config{
@@ -141,7 +163,8 @@ func setupAPIKeyRuleManager(version string) func() {
 		&fakeAPIKeyStoragerForRule{},
 		&fakeAIRouteRuleStoragerForRule{},
 		&fakeQuotaPlanStoragerForRule{},
-		&fakeEntityStoragerForRule{}, nil)
+		&fakeEntityStoragerForRule{},
+		&fakeEntityTypeStoragerForRule{}, nil)
 	return func() {
 		container.APIKeyRuleManager = old
 		stateful.DefaultConfig = origConfig

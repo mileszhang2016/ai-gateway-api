@@ -222,10 +222,10 @@ type ModAPIKeyRuleConf struct {
 
 1. 构造 AI 路由对应的 API-Key 规则（`buildAIRouteAPIKeyRules`）；
 2. 遍历所有 `api_keys`，为每个 key 生成 `TokenFile`；
-3. **预加载每个 API-Key 关联的 `QuotaPlan`**（raw storager 不会自动填充关联对象，而 `GetRemainingQuota` 需要 `QuotaPlan.Quota` 判断 token 是否耗尽）；
-4. 计算 token 状态（`enabled/disabled/expired/exhausted`）；
-5. 合并 Entity 层级的 `allow_models`（交集）与 `block_models`（并集）；
-6. 收集 API-Key 自身及 Entity 层级向上的配额计划，**跳过 `unlimited=true` 的配额计划**；
+3. 根据 API-Key 的 `enabled` 字段及 Entity 层级的 `allow_models` 交集结果，确定导出的 `enabled`（布尔值）；`expired`/`exhausted` 状态由 BFE 根据 `expired_time` 和实时 Redis 配额余额自行判断，不再由导出层计算；
+4. 合并 Entity 层级的 `allow_models`（交集）与 `block_models`（并集）；
+5. 收集 API-Key 自身及 Entity 层级向上的配额计划，**跳过 `unlimited=true` 的配额计划**；
+6. 为每个 Entity 标签补充 `TagLevel`（取自对应 `EntityType.Level`）；
 7. 输出 `QuotaPlans`、`Tokens`、`Config`。
 
 > 详见《API-Key 与 Entity 关联及模型继承.md》。

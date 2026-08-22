@@ -224,6 +224,7 @@ func Init() error {
 		container.AIRouteRuleStorager,
 		container.QuotaPlanStorager,
 		container.EntityStorager,
+		container.EntityTypeStorager,
 		container.QuotaCacheSingleton,
 	)
 

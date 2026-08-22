@@ -278,6 +278,52 @@ func (s *fakeEntityStorager) DeleteEntity(ctx context.Context, filter *entity.En
 
 var _ entity.EntityStorager = (*fakeEntityStorager)(nil)
 
+// fakeEntityTypeStorager implements entity.EntityTypeStorager.
+type fakeEntityTypeStorager struct {
+	createFn func(ctx context.Context, param *entity.EntityTypeParam) (int64, error)
+	fetchFn  func(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error)
+	listFn   func(ctx context.Context, filter *entity.EntityTypeFilter) ([]*entity.EntityTypeParam, error)
+	updateFn func(ctx context.Context, filter *entity.EntityTypeFilter, param *entity.EntityTypeParam) (int64, error)
+	deleteFn func(ctx context.Context, filter *entity.EntityTypeFilter) error
+}
+
+func (s *fakeEntityTypeStorager) CreateEntityType(ctx context.Context, param *entity.EntityTypeParam) (int64, error) {
+	if s.createFn != nil {
+		return s.createFn(ctx, param)
+	}
+	return 0, nil
+}
+
+func (s *fakeEntityTypeStorager) FetchEntityType(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
+	if s.fetchFn != nil {
+		return s.fetchFn(ctx, filter)
+	}
+	return nil, nil
+}
+
+func (s *fakeEntityTypeStorager) FetchEntityTypeList(ctx context.Context, filter *entity.EntityTypeFilter) ([]*entity.EntityTypeParam, error) {
+	if s.listFn != nil {
+		return s.listFn(ctx, filter)
+	}
+	return nil, nil
+}
+
+func (s *fakeEntityTypeStorager) UpdateEntityType(ctx context.Context, filter *entity.EntityTypeFilter, param *entity.EntityTypeParam) (int64, error) {
+	if s.updateFn != nil {
+		return s.updateFn(ctx, filter, param)
+	}
+	return 0, nil
+}
+
+func (s *fakeEntityTypeStorager) DeleteEntityType(ctx context.Context, filter *entity.EntityTypeFilter) error {
+	if s.deleteFn != nil {
+		return s.deleteFn(ctx, filter)
+	}
+	return nil
+}
+
+var _ entity.EntityTypeStorager = (*fakeEntityTypeStorager)(nil)
+
 // fakeVersionControlStorager implements iversion_control.VersionControlStorager.
 type fakeVersionControlStorager struct {
 	upsertFn func(ctx context.Context, css *iversion_control.ExportData) (string, error)

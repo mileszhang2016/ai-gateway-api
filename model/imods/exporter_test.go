@@ -41,7 +41,8 @@ func newTestAPIKeyRuleManager() *APIKeyRuleManager {
 		&fakeAPIKeyStorager{},
 		&fakeAIRouteRuleStorager{},
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{}, nil)
+		&fakeEntityStorager{},
+		&fakeEntityTypeStorager{}, nil)
 }
 
 func TestAPIKeyRuleManager_ConfigExport(t *testing.T) {
@@ -80,7 +81,8 @@ func TestAPIKeyRuleManager_ConfigExport(t *testing.T) {
 		apiKeyStore,
 		aiRouteStore,
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{}, nil)
+		&fakeEntityStorager{},
+		&fakeEntityTypeStorager{}, nil)
 
 	conf, err := m.ConfigExport(ctx, "")
 	require.NoError(t, err)
@@ -180,13 +182,23 @@ func TestAPIKeyRuleManager_ConfigExport_Concurrent(t *testing.T) {
 		},
 	}
 
+	entityTypeStore := &fakeEntityTypeStorager{
+		fetchFn: func(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
+			if filter.TypeName != nil && *filter.TypeName == "team" {
+				return &entity.EntityTypeParam{TypeName: lib.PString("team"), Level: lib.PInt(2)}, nil
+			}
+			return nil, nil
+		},
+	}
+
 	m := NewAPIKeyRuleManager(
 		&fakeTxn{},
 		iversion_control.NewVersionControllerManager(&fakeTxn{}, versionStore),
 		apiKeyStore,
 		aiRouteStore,
 		quotaPlanStore,
-		entityStore, nil)
+		entityStore,
+		entityTypeStore, nil)
 
 	// Increase concurrency to maximize the chance of triggering the race.
 	prevMaxProcs := runtime.GOMAXPROCS(runtime.NumCPU())
@@ -341,13 +353,26 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator(t *testing.T) {
 		},
 	}
 
+	entityTypeStore := &fakeEntityTypeStorager{
+		fetchFn: func(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
+			if filter.TypeName != nil && *filter.TypeName == "team" {
+				return &entity.EntityTypeParam{
+					TypeName: lib.PString("team"),
+					Level:    lib.PInt(2),
+				}, nil
+			}
+			return nil, nil
+		},
+	}
+
 	m := NewAPIKeyRuleManager(
 		&fakeTxn{},
 		iversion_control.NewVersionControllerManager(&fakeTxn{}, &fakeVersionControlStorager{}),
 		apiKeyStore,
 		aiRouteStore,
 		quotaPlanStore,
-		entityStore, nil)
+		entityStore,
+		entityTypeStore, nil)
 
 	data, err := m.APIKeyRuleGenerator(ctx)
 	require.NoError(t, err)
@@ -359,13 +384,13 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator(t *testing.T) {
 	assert.NotNil(t, conf.Tokens["AI_product"]["ak-key-1"])
 	token := conf.Tokens["AI_product"]["ak-key-1"]
 	assert.Equal(t, "key-1", token.KeyID)
-	assert.Equal(t, TokenStatusEnabled, token.Status)
-	assert.Equal(t, 1, token.Enabled)
+	assert.True(t, token.Enabled)
 	assert.Equal(t, "gpt-4", *token.Models)
 	assert.Equal(t, "gpt-2", *token.BlockModels)
 	assert.Equal(t, "10.0.0.0/8", *token.Subnet)
 	assert.NotEmpty(t, token.QuotaPlans)
 	assert.NotEmpty(t, token.Tags)
+	assert.Equal(t, 2, token.Tags[0].TagLevel)
 }
 
 func TestAPIKeyRuleManager_APIKeyRuleGenerator_Unlimited(t *testing.T) {
@@ -402,7 +427,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Unlimited(t *testing.T) {
 	require.NoError(t, err)
 	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
 	token := conf.Tokens["AI_product"]["ak-key-1"]
-	assert.Equal(t, TokenStatusEnabled, token.Status)
+	assert.True(t, token.Enabled)
 	assert.True(t, token.UnlimitedQuota)
 }
 
@@ -455,7 +480,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_FalseUnlimitedWithEmptyQuotaPlans
 	require.NoError(t, err)
 	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
 	token := conf.Tokens["AI_product"]["ak-key-1"]
-	assert.Equal(t, TokenStatusEnabled, token.Status)
+	assert.True(t, token.Enabled)
 	assert.Empty(t, token.QuotaPlans)
 	assert.True(t, token.UnlimitedQuota)
 }
@@ -493,7 +518,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_MinimalParamsWithNoQuotaPlan(t *t
 	require.NoError(t, err)
 	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
 	token := conf.Tokens["AI_product"]["ak-key-1"]
-	assert.Equal(t, TokenStatusEnabled, token.Status)
+	assert.True(t, token.Enabled)
 	assert.Empty(t, token.QuotaPlans)
 	assert.True(t, token.UnlimitedQuota)
 }
@@ -548,7 +573,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_FalseUnlimitedWithNonUnlimitedQuo
 	require.NoError(t, err)
 	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
 	token := conf.Tokens["AI_product"]["ak-key-1"]
-	assert.Equal(t, TokenStatusEnabled, token.Status)
+	assert.True(t, token.Enabled)
 	assert.False(t, token.UnlimitedQuota)
 	assert.NotEmpty(t, token.QuotaPlans)
 }
@@ -591,7 +616,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Expired(t *testing.T) {
 	require.NoError(t, err)
 	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
 	token := conf.Tokens["AI_product"]["ak-key-1"]
-	assert.Equal(t, TokenStatusExpired, token.Status)
+	assert.True(t, token.Enabled)
+	assert.Equal(t, pastExpire, token.ExpiredTime)
 }
 
 func TestAPIKeyRuleManager_APIKeyRuleGenerator_Exhausted(t *testing.T) {
@@ -633,7 +659,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Exhausted(t *testing.T) {
 	require.NoError(t, err)
 	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
 	token := conf.Tokens["AI_product"]["ak-key-1"]
-	assert.Equal(t, TokenStatusExhausted, token.Status)
+	assert.True(t, token.Enabled)
+	assert.Equal(t, futureExpire, token.ExpiredTime)
 }
 
 func TestAPIKeyRuleManager_APIKeyRuleGenerator_Disabled(t *testing.T) {
@@ -668,8 +695,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_Disabled(t *testing.T) {
 	require.NoError(t, err)
 	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
 	token := conf.Tokens["AI_product"]["ak-key-1"]
-	assert.Equal(t, TokenStatusDisabled, token.Status)
-	assert.Equal(t, 2, token.Enabled)
+	assert.False(t, token.Enabled)
 }
 
 func TestAPIKeyRuleManager_APIKeyRuleGenerator_ModelIntersectionEmpty(t *testing.T) {
@@ -719,7 +745,7 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_ModelIntersectionEmpty(t *testing
 	conf := data.DataWithoutVersion.(*ModAPIKeyRuleConf)
 	token := conf.Tokens["AI_product"]["ak-key-1"]
 	assert.Equal(t, "", *token.Models)
-	assert.Equal(t, 2, token.Enabled)
+	assert.False(t, token.Enabled)
 }
 
 func TestAPIKeyRuleManager_APIKeyRuleGenerator_EntityHierarchy(t *testing.T) {
@@ -789,11 +815,24 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_EntityHierarchy(t *testing.T) {
 		},
 	}
 
+	entityTypeStore := &fakeEntityTypeStorager{
+		fetchFn: func(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
+			if filter.TypeName != nil && *filter.TypeName == "team" {
+				return &entity.EntityTypeParam{TypeName: lib.PString("team"), Level: lib.PInt(2)}, nil
+			}
+			if filter.TypeName != nil && *filter.TypeName == "org" {
+				return &entity.EntityTypeParam{TypeName: lib.PString("org"), Level: lib.PInt(1)}, nil
+			}
+			return nil, nil
+		},
+	}
+
 	m := newTestAPIKeyRuleManager()
 	m.apiKeyStorager = apiKeyStore
 	m.aiRouteStorager = aiRouteStore
 	m.quotaPlanStorager = quotaPlanStore
 	m.entityStorager = entityStore
+	m.entityTypeStorager = entityTypeStore
 
 	data, err := m.APIKeyRuleGenerator(ctx)
 	require.NoError(t, err)
@@ -801,6 +840,8 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_EntityHierarchy(t *testing.T) {
 	token := conf.Tokens["AI_product"]["ak-key-1"]
 	assert.Equal(t, "gpt-4", *token.Models)
 	assert.Len(t, token.Tags, 2)
+	assert.Equal(t, 2, token.Tags[0].TagLevel)
+	assert.Equal(t, 1, token.Tags[1].TagLevel)
 	assert.Contains(t, token.QuotaPlans, "entity-1")
 }
 
@@ -844,9 +885,19 @@ func TestAPIKeyRuleManager_FetchQuotaPlansWithEntityHierarchy(t *testing.T) {
 		},
 	}
 
+	entityTypeStore := &fakeEntityTypeStorager{
+		fetchFn: func(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
+			if filter.TypeName != nil && *filter.TypeName == "team" {
+				return &entity.EntityTypeParam{TypeName: lib.PString("team"), Level: lib.PInt(2)}, nil
+			}
+			return nil, nil
+		},
+	}
+
 	m := newTestAPIKeyRuleManager()
 	m.quotaPlanStorager = quotaPlanStore
 	m.entityStorager = entityStore
+	m.entityTypeStorager = entityTypeStore
 	collectedQuotaPlans := make(map[string][]*QuotaPlan)
 
 	ids, tags, err := m.fetchQuotaPlansWithEntityHierarchy(ctx, apiKey, "AI_product", collectedQuotaPlans)
@@ -854,6 +905,7 @@ func TestAPIKeyRuleManager_FetchQuotaPlansWithEntityHierarchy(t *testing.T) {
 	assert.Len(t, ids, 1)
 	assert.Len(t, tags, 1)
 	assert.Equal(t, "team-a", tags[0].TagValue)
+	assert.Equal(t, 2, tags[0].TagLevel)
 }
 
 func TestAPIKeyRuleManager_FetchEntityModelHierarchy(t *testing.T) {

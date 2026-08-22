@@ -49,7 +49,7 @@ func TestInnerAPI_ModApiKey(t *testing.T) {
 		testutil.AssertDataFieldNotEmpty(t, resp, "QuotaPlans")
 		testutil.AssertDataFieldNotEmpty(t, resp, "tokens")
 
-		// 验证导出的 token 包含 key_id 且不包含 name
+		// 验证导出的 token 包含 key_id 且不包含 name/status/update_time，enabled 为 bool
 		var data map[string]interface{}
 		if err := testutil.UnmarshalData(resp, &data); err != nil {
 			t.Fatalf("parse data failed: %v", err)
@@ -75,6 +75,43 @@ func TestInnerAPI_ModApiKey(t *testing.T) {
 			}
 			if _, ok := tokenMap["name"]; ok {
 				t.Errorf("token %s should not contain name", key)
+			}
+			if _, ok := tokenMap["status"]; ok {
+				t.Errorf("token %s should not contain status", key)
+			}
+			if _, ok := tokenMap["update_time"]; ok {
+				t.Errorf("token %s should not contain update_time", key)
+			}
+			enabled, ok := tokenMap["enabled"].(bool)
+			if !ok {
+				t.Errorf("token %s enabled should be bool", key)
+			}
+			if !enabled {
+				t.Errorf("token %s should be enabled", key)
+			}
+		}
+
+		// 验证 QuotaPlans 不包含 CreateTime、ResetMode
+		quotaPlans, ok := data["QuotaPlans"].(map[string]interface{})
+		if !ok {
+			t.Fatal("QuotaPlans is not an object")
+		}
+		for product, plans := range quotaPlans {
+			planList, ok := plans.([]interface{})
+			if !ok {
+				t.Fatalf("QuotaPlans.%s is not an array", product)
+			}
+			for i, plan := range planList {
+				planMap, ok := plan.(map[string]interface{})
+				if !ok {
+					t.Fatalf("QuotaPlans.%s[%d] is not an object", product, i)
+				}
+				if _, ok := planMap["CreateTime"]; ok {
+					t.Errorf("QuotaPlans.%s[%d] should not contain CreateTime", product, i)
+				}
+				if _, ok := planMap["ResetMode"]; ok {
+					t.Errorf("QuotaPlans.%s[%d] should not contain ResetMode", product, i)
+				}
 			}
 		}
 	})
