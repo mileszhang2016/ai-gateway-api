@@ -82,4 +82,40 @@ func TestProvider_Delete(t *testing.T) {
 			testutil.DeleteProvider(providerName)
 		})
 	})
+
+	t.Run("PV-5-004 删除被 ModelPrice 引用的 Provider", func(t *testing.T) {
+		providerName := testutil.UniqueProviderName()
+		if _, err := testutil.CreateProvider(providerName); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+
+		id, err := testutil.CreateModelPrice(map[string]interface{}{
+			"provider":   providerName,
+			"model":      "test-model",
+			"base_model": "test-model",
+			"mode":       "chat",
+			"prices": map[string]interface{}{
+				"input_cost_per_token": 0.001,
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup model price failed: %v", err)
+		}
+
+		resp, err := testutil.GetClient().Delete("/open-api/v1/providers/" + providerName)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		resp, err = testutil.GetClient().Get("/open-api/v1/providers/" + providerName)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 404)
+
+		t.Cleanup(func() {
+			testutil.DeleteModelPrice(id)
+		})
+	})
 }

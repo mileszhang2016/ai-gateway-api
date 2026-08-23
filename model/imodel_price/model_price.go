@@ -19,7 +19,6 @@ import (
 	"fmt"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
-	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 )
 
@@ -63,44 +62,26 @@ type ModelPriceStorager interface {
 	DeleteAllModelPrices(ctx context.Context) error
 	FetchModelPrice(ctx context.Context, filter *ModelPriceFilter) (*ModelPrice, error)
 	FetchModelPriceList(ctx context.Context, filter *ModelPriceFilter) ([]*ModelPrice, int64, error)
+	ListProviders(ctx context.Context) ([]string, error)
 }
 
 // Manager provides business-level operations for model pricing records.
 type Manager struct {
-	txn              itxn.TxnStorager
-	storager         ModelPriceStorager
-	providerStorager iprovider.ProviderStorager
+	txn      itxn.TxnStorager
+	storager ModelPriceStorager
 }
 
 // NewManager creates a new Manager instance.
-func NewManager(txn itxn.TxnStorager, storager ModelPriceStorager, providerStorager iprovider.ProviderStorager) *Manager {
+func NewManager(txn itxn.TxnStorager, storager ModelPriceStorager) *Manager {
 	return &Manager{
-		txn:              txn,
-		storager:         storager,
-		providerStorager: providerStorager,
+		txn:      txn,
+		storager: storager,
 	}
-}
-
-func (m *Manager) checkProviderExists(ctx context.Context, provider string) error {
-	if provider == "" {
-		return nil
-	}
-	existing, err := m.providerStorager.FetchProvider(ctx, &iprovider.ProviderFilter{Name: &provider})
-	if err != nil {
-		return err
-	}
-	if existing == nil {
-		return xerror.WrapRecordNotExist("provider")
-	}
-	return nil
 }
 
 // CreateModelPrice creates a single model price record.
 func (m *Manager) CreateModelPrice(ctx context.Context, param *ModelPrice) (int64, error) {
 	if err := ValidateModelPrice(param); err != nil {
-		return 0, err
-	}
-	if err := m.checkProviderExists(ctx, param.Provider); err != nil {
 		return 0, err
 	}
 	return m.storager.CreateModelPrice(ctx, param)
@@ -111,22 +92,12 @@ func (m *Manager) UpdateModelPrice(ctx context.Context, filter *ModelPriceFilter
 	if err := ValidateModelPrice(param); err != nil {
 		return 0, err
 	}
-	if err := m.checkProviderExists(ctx, param.Provider); err != nil {
-		return 0, err
-	}
 	return m.storager.UpdateModelPrice(ctx, filter, param)
 }
 
-// ProviderDeleteChecker returns an error if any model price references the provider.
-func (m *Manager) ProviderDeleteChecker(ctx context.Context, providerName string) error {
-	prices, _, err := m.storager.FetchModelPriceList(ctx, &ModelPriceFilter{Provider: &providerName})
-	if err != nil {
-		return err
-	}
-	if len(prices) > 0 {
-		return xerror.WrapConflictErrorWithMsg("provider %s is referenced by model prices", providerName)
-	}
-	return nil
+// ListProviders returns all distinct provider names in model_prices.
+func (m *Manager) ListProviders(ctx context.Context) ([]string, error) {
+	return m.storager.ListProviders(ctx)
 }
 
 // DeleteModelPrice deletes model price records matched by filter.
@@ -162,9 +133,6 @@ func (m *Manager) ImportModelPrices(ctx context.Context, entries []*ModelPrice, 
 
 	for _, entry := range entries {
 		if err := ValidateModelPrice(entry); err != nil {
-			return 0, 0, err
-		}
-		if err := m.checkProviderExists(ctx, entry.Provider); err != nil {
 			return 0, 0, err
 		}
 	}

@@ -142,8 +142,7 @@ func Init() error {
 	container.ModelPriceStorager = model_price.NewRDBModelPriceStorager(stateful.NewBFEDBContext)
 	container.ModelPriceManager = imodel_price.NewManager(
 		container.TxnStoragerSingleton,
-		container.ModelPriceStorager,
-		container.ProviderStoragerSingleton)
+		container.ModelPriceStorager)
 
 	container.RouteRuleManager = iroute_conf.NewRouteRuleManager(
 		container.TxnStoragerSingleton,

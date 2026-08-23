@@ -524,6 +524,11 @@ models:
 	testutil.AssertSuccess(t, updateResp)
 	testutil.AssertSchema(t, updateResp, ModelPriceSchema)
 
+	getProvidersResp, err := testutil.GetClient().Get("/open-api/v1/model-prices/actions/get-providers")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, getProvidersResp)
+	testutil.AssertSchema(t, getProvidersResp, ModelPriceGetProvidersResponseSchema)
+
 	t.Cleanup(func() {
 		testutil.DeleteModelPrice(modelPriceID)
 		testutil.DeleteModelPriceByQuery(schemaProvider, "schema-test-model", "chat")

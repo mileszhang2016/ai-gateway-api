@@ -43,7 +43,6 @@ func DeleteAction(req *http.Request) (interface{}, error) {
 
 	err := container.ProviderManager.DeleteProvider(req.Context(), name,
 		container.ClusterManager.ProviderDeleteChecker,
-		container.ModelPriceManager.ProviderDeleteChecker,
 	)
 	if err != nil {
 		return nil, err

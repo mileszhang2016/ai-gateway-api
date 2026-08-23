@@ -22,6 +22,7 @@
 | 独立生命周期 | provider 可独立创建、更新、删除；cluster 通过引用 provider 获取后端能力。 |
 | 数据安全 | cluster 不再存储 key 明文，只通过 name 引用 provider 中的 key。 |
 | BFE 无感知 | 生成给 BFE 的配置保持原结构；变化仅在 `ai-gateway-api` 内部做“provider → 老配置”的转换。 |
+| 弱引用 model-prices | `/model-prices` 的 `provider` 字段不再强制引用 `/providers`，降低配置顺序约束。 |
 
 ## 3. 概念定义
 
@@ -29,7 +30,7 @@
 |------|------|
 | **Provider** | 一个模型提供方，包含接入端点、可用模型、API Key、实例池、支持的协议。 |
 | **Cluster** | 一个转发集群，决定把流量按什么模型、什么权重、什么策略转发到某个 provider。 |
-| **Model Price** | 一个 (provider, model, mode) 的价格记录，`provider` 必须引用已存在的 provider。 |
+| **Model Price** | 一个 (provider, model, mode) 的价格记录，`provider` 仅作为价格归集标识，不强制引用已存在的 provider。 |
 
 ## 4. 数据模型
 
@@ -113,7 +114,7 @@
 | DELETE | `/providers/{provider_name}` | 删除 provider |
 | POST | `/providers/{provider_name}/discover-models` | 触发模型发现 |
 
-删除 provider 前，须校验无 `/clusters`、无 `/model-prices` 记录引用。
+删除 provider 前，须校验无 `/clusters` 引用；`/model-prices` 中的同名 provider 不再作为阻塞条件。
 
 ### 5.2 `/clusters` 改造
 
@@ -126,8 +127,9 @@ URL 与 HTTP Method 不变，请求/响应体变化：
 
 ### 5.3 `/model-prices` 改造
 
-- `provider` 字段必须引用 `/providers` 中已存在的 provider。
-- 导入 `model-list.yaml` 时，不存在的 provider 作为 error 返回并跳过。
+- `provider` 字段含义保持为“Provider / Cluster 标识”，仅用于价格归集和查找；不再强制引用 `/providers` 中已存在的 provider。
+- 新增 `GET /model-prices/actions/get-providers`：返回 `/model-prices` 数据中所有 `provider` 名称的去重列表。
+- 导入 `model-list.yaml` 时，不再校验 provider 存在性，未知 provider 可正常写入。
 
 ## 6. 代码分层影响
 
@@ -140,7 +142,7 @@ URL 与 HTTP Method 不变，请求/响应体变化：
 - `model/icluster_conf/exporter.go` 在生成 `AIConf` 时：
   - 从 provider 读取 `instance_pool` 生成 BFE 实例池/子集群/集群。
   - 按 `name` join provider `keys` 与 cluster `llm_config.keys` 生成带明文的 `AIConf.Keys`。
-- `model/imodel_price/Manager` 注入 `iprovider.ProviderStorager`，校验 model-prices 的 provider 引用。
+- `model/imodel_price/Manager` 不再注入 `iprovider.ProviderStorager` 校验 model-prices 的 provider 引用；新增 `ListProviders(ctx)` 方法用于 `GET /model-prices/actions/get-providers`。
 
 ### 6.2 存储层
 
@@ -148,12 +150,14 @@ URL 与 HTTP Method 不变，请求/响应体变化：
 - 新增 `table_providers.go` DAO。
 - `storage/rdb/cluster_conf/pool.go` 数据来源不变（仍从 `pools` 表读取），但写入源头由 cluster 顶层变为 provider `instance_pool`。
 - `clusters` 表结构不变；`llm_config` JSON 结构变化。
+- `storage/rdb/model_price/` 新增 `ListProviders(ctx) ([]string, error)` 方法，按 `provider` 字段聚合去重。
 
 ### 6.3 接口层
 
 - 新增 `endpoints/openapi_v1/provider/`。
 - 移除 `endpoints/openapi_v1/tool/`（`/tools/get-models-from-provider` 能力由 `/providers/{name}/discover-models` 替代）。
 - 移除 `/model-provider-types`；模型访问协议枚举作为 `providers.model_protocols` 的合法性约束在 `providers.md` 中定义。
+- `endpoints/openapi_v1/model_price/` 新增 `GET /model-prices/actions/get-providers` handler。
 
 ## 7. 数据库设计
 
@@ -184,13 +188,13 @@ CREATE TABLE `providers` (
 
 ### 7.3 `model_prices` 表变化
 
-- `provider` 字段语义收紧为必须引用 `providers.name`。
+- `provider` 字段为普通字符串，仅作为价格归集标识，不建立外键约束；保留普通索引以支持查询与聚合。
 
 ### 7.4 关系
 
-- `providers.name` ← `clusters.llm_config.provider`
-- `providers.name` ← `model_prices.provider`
-- 删除 provider 前须校验无上述引用。
+- `providers.name` ← `clusters.llm_config.provider`（强引用）
+- `providers.name` ← `model_prices.provider`（按名称弱关联，非强制）
+- 删除 provider 前须校验无 `clusters` 引用；`model_prices` 同名记录不再阻塞删除。
 
 ## 8. BFE 配置生成转换
 
@@ -209,9 +213,13 @@ BFE 接收到的配置结构和字段与重构前完全一致：
 
 ## 9. 配置顺序
 
+推荐顺序（`/model-prices` 可独立维护）：
+
 ```
 /providers → /model-prices → /clusters → 路由规则
 ```
+
+> 说明：`/model-prices` 与 `/providers` 之间为弱引用关系，实际配置时无需等待 `/providers` 数据就绪即可写入 `/model-prices`。
 
 ## 10. 数据迁移
 
@@ -227,7 +235,7 @@ BFE 接收到的配置结构和字段与重构前完全一致：
    - `keys` = 原 `llm_config.keys` 去掉 `weight`
    - `model_protocols` = 根据 `provider_type` 映射
 4. 更新 cluster：删除 `instance_pool`、`model_endpoint`、`provider_type`；`keys` 改为 `{name, weight}`。
-5. 更新 `model-prices` 中 provider 字段对应关系。
+5. `model-prices` 中 `provider` 字段保持原值，不再强制要求对应 provider 存在。
 
 ### 10.2 兼容性
 
@@ -244,6 +252,7 @@ BFE 接收到的配置结构和字段与重构前完全一致：
 | 多 cluster 共享 provider | 修改 provider 影响所有引用 cluster | 更新时给出引用列表确认；删除时强制无引用。 |
 | 模型发现失败 | discover-models 可能失败 | 辅助能力，支持手动维护 `models`。 |
 | provider 命名冲突 | 多个 cluster 可能指向同一物理 provider | 提供手动合并能力；自动迁移以首次出现为准并告警。 |
+| 历史 price 记录与实际 provider 脱节 | 成本计算时可能找不到对应 provider 的 metadata | 通过 `GET /model-prices/actions/get-providers` 与 `GET /providers` 对比，定期识别并补录缺失 provider。 |
 
 ## 12. 待确认事项
 

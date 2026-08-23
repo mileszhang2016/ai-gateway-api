@@ -283,8 +283,7 @@
 **执行逻辑**
 
 1. 校验该 provider 未被任何 `/clusters` 引用；若被引用，返回 `409 Conflict`。
-2. 校验该 provider 未被任何 `/model-prices` 记录引用；若被引用，返回 `409 Conflict`。
-3. 删除 provider。
+2. 删除 provider。 `/model-prices` 中的同名 `provider` 不再作为阻塞条件。
 
 **返回数据（Data内容）**
 
@@ -348,5 +347,5 @@ Data 为 null。
    - 每个元素 `name` 必填，长度 1-128，同一 provider 内唯一；
    - 每个元素 `key` 必填且非空，长度 1-512。
 8. `model_protocols` 必填，至少 1 个元素，元素不可重复，取值须为枚举值：`openai`、`anthropic`、`gemini`。
-9. 删除 provider 前，须校验无 cluster、无 model-prices 记录引用，否则返回 `409 Conflict`。
+9. 删除 provider 前，须校验无 cluster 引用，否则返回 `409 Conflict`；`/model-prices` 记录不再作为阻塞条件。
 10. 触发模型发现时，若 `keys` 为空，应返回 `422`（无法构造认证请求）。

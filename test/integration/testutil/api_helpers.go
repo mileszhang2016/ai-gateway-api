@@ -175,11 +175,19 @@ func ImportModelPricesWithResult(yamlContent []byte, mode string) (ImportModelPr
 }
 
 // CreateModelPrice 创建模型定价记录，返回记录 id
-// 若 body 中包含 provider 且该 provider 不存在，则自动创建。
+// 若 body 中包含 provider 且该 provider 不存在，则自动创建（已存在则跳过）。
 func CreateModelPrice(body map[string]interface{}) (int64, error) {
 	if providerName, ok := body["provider"].(string); ok && providerName != "" {
-		if _, err := CreateProvider(providerName); err != nil {
-			return 0, fmt.Errorf("auto-create provider for model price: %w", err)
+		resp, err := GetClient().Get("/open-api/v1/providers/" + providerName)
+		if err != nil {
+			return 0, fmt.Errorf("check provider existence: %w", err)
+		}
+		if resp.ErrNum == 404 {
+			if _, err := CreateProvider(providerName); err != nil {
+				return 0, fmt.Errorf("auto-create provider for model price: %w", err)
+			}
+		} else if resp.ErrNum != 200 {
+			return 0, fmt.Errorf("check provider existence failed: %d %s", resp.ErrNum, resp.ErrMsg)
 		}
 	}
 	resp, err := GetClient().Post("/open-api/v1/model-prices", body)

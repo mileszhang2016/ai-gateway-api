@@ -164,7 +164,7 @@ classDiagram
     Rules "1" --> "0..3" TPMConfig : tpm
     Rules "1" --> "0..3" RPMConfig : rpm
     Provider "1" --> "*" Cluster : 被引用
-    Provider "1" --> "*" ModelPrice : 被引用
+    Provider "1" ..> "*" ModelPrice : 按名称关联（非强制）
     Cluster "1" --> "1" LLMConfig : llm_config
 ```
 
@@ -186,7 +186,7 @@ classDiagram
 - **运行时层级生效逻辑**：API-Key挂载到Entity后，运行时生效的QuotaPlan和RateLimitPolicy为该API-Key自身直接拥有的 + 该Entity直接拥有的 + 该Entity所有祖先Entity直接拥有的（去重）。
 - **GlobalRouteTable → RouteRules → AiRouteRule → AiRouteTarget/AiRouteFallback**：Global路由表通过嵌套的 RouteRules 管理规则，每条规则包含转发目标（targets）和降级目标（fallbacks）。
 - **Provider → Cluster**：一个 Provider 可被多个 Cluster 引用；Cluster 通过 `llm_config.provider` 关联 Provider，并只保留“转发策略”。
-- **Provider → ModelPrice**：一个 Provider 可被多条 ModelPrice 记录引用；`model-prices.provider` 必须引用已存在的 Provider。
+- **Provider → ModelPrice**：一个 Provider 的名称可被多条 ModelPrice 记录使用；`model-prices.provider` 不强制引用已存在的 Provider。
 - **Cluster → LLMConfig**：一个 Cluster 包含 1 个 LLMConfig，用于描述 AI 转发策略（models、key 引用与权重、model_mappings、provider 引用等）。设置 LLMConfig 即开启 AI 网关能力。
 
 

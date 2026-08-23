@@ -56,3 +56,11 @@ var ModelPriceImportResultSchema = &testutil.ObjectSchema{
 		"errors":         {Type: testutil.TypeArray},
 	},
 }
+
+// ModelPriceGetProvidersResponseSchema /model-prices/actions/get-providers 返回 schema
+var ModelPriceGetProvidersResponseSchema = &testutil.ObjectSchema{
+	Required: []string{"providers"},
+	Fields: map[string]testutil.FieldSpec{
+		"providers": {Type: testutil.TypeArray},
+	},
+}

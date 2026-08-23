@@ -19,7 +19,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,14 +30,15 @@ func (f *fakeTxn) AtomExecute(ctx context.Context, do func(context.Context) erro
 }
 
 type fakeModelPriceStorager struct {
-	createFn    func(ctx context.Context, param *ModelPrice) (int64, error)
-	updateFn    func(ctx context.Context, filter *ModelPriceFilter, param *ModelPrice) (int64, error)
-	deleteFn    func(ctx context.Context, filter *ModelPriceFilter) error
-	deleteAllFn func(ctx context.Context) error
-	fetchFn     func(ctx context.Context, filter *ModelPriceFilter) (*ModelPrice, error)
-	fetchListFn func(ctx context.Context, filter *ModelPriceFilter) ([]*ModelPrice, int64, error)
-	created     []*ModelPrice
-	updated     []struct {
+	createFn      func(ctx context.Context, param *ModelPrice) (int64, error)
+	updateFn      func(ctx context.Context, filter *ModelPriceFilter, param *ModelPrice) (int64, error)
+	deleteFn      func(ctx context.Context, filter *ModelPriceFilter) error
+	deleteAllFn   func(ctx context.Context) error
+	fetchFn       func(ctx context.Context, filter *ModelPriceFilter) (*ModelPrice, error)
+	fetchListFn   func(ctx context.Context, filter *ModelPriceFilter) ([]*ModelPrice, int64, error)
+	listProviders func(ctx context.Context) ([]string, error)
+	created       []*ModelPrice
+	updated       []struct {
 		filter *ModelPriceFilter
 		param  *ModelPrice
 	}
@@ -95,48 +95,17 @@ func (s *fakeModelPriceStorager) FetchModelPriceList(ctx context.Context, filter
 	return nil, 0, nil
 }
 
-type fakeProviderStorager struct {
-	fetchFn     func(ctx context.Context, filter *iprovider.ProviderFilter) (*iprovider.Provider, error)
-	fetchListFn func(ctx context.Context, filter *iprovider.ProviderFilter) ([]*iprovider.Provider, int64, error)
-}
-
-func (s *fakeProviderStorager) CreateProvider(ctx context.Context, param *iprovider.ProviderParam) (int64, error) {
-	return 1, nil
-}
-
-func (s *fakeProviderStorager) UpdateProvider(ctx context.Context, name string, param *iprovider.ProviderParam) error {
-	return nil
-}
-
-func (s *fakeProviderStorager) DeleteProvider(ctx context.Context, name string) error {
-	return nil
-}
-
-func (s *fakeProviderStorager) FetchProvider(ctx context.Context, filter *iprovider.ProviderFilter) (*iprovider.Provider, error) {
-	if s.fetchFn != nil {
-		return s.fetchFn(ctx, filter)
+func (s *fakeModelPriceStorager) ListProviders(ctx context.Context) ([]string, error) {
+	if s.listProviders != nil {
+		return s.listProviders(ctx)
 	}
-	if filter != nil && filter.Name != nil {
-		return &iprovider.Provider{Name: *filter.Name}, nil
-	}
-	return &iprovider.Provider{Name: "openai"}, nil
-}
-
-func (s *fakeProviderStorager) FetchProviderList(ctx context.Context, filter *iprovider.ProviderFilter) ([]*iprovider.Provider, int64, error) {
-	if s.fetchListFn != nil {
-		return s.fetchListFn(ctx, filter)
-	}
-	return nil, 0, nil
-}
-
-func providerStoragerAlwaysExists() *fakeProviderStorager {
-	return &fakeProviderStorager{}
+	return nil, nil
 }
 
 func TestManagerCreateModelPrice(t *testing.T) {
 	ctx := context.Background()
 	store := &fakeModelPriceStorager{}
-	m := NewManager(&fakeTxn{}, store, providerStoragerAlwaysExists())
+	m := NewManager(&fakeTxn{}, store)
 
 	id, err := m.CreateModelPrice(ctx, validModelPrice())
 	require.NoError(t, err)
@@ -150,7 +119,7 @@ func TestManagerCreateModelPrice(t *testing.T) {
 func TestManagerUpdateModelPrice(t *testing.T) {
 	ctx := context.Background()
 	store := &fakeModelPriceStorager{}
-	m := NewManager(&fakeTxn{}, store, providerStoragerAlwaysExists())
+	m := NewManager(&fakeTxn{}, store)
 
 	id := int64(7)
 	affected, err := m.UpdateModelPrice(ctx, &ModelPriceFilter{ID: &id}, validModelPrice())
@@ -166,7 +135,7 @@ func TestManagerUpdateModelPrice(t *testing.T) {
 func TestManagerDeleteModelPrice(t *testing.T) {
 	ctx := context.Background()
 	store := &fakeModelPriceStorager{}
-	m := NewManager(&fakeTxn{}, store, providerStoragerAlwaysExists())
+	m := NewManager(&fakeTxn{}, store)
 
 	id := int64(7)
 	err := m.DeleteModelPrice(ctx, &ModelPriceFilter{ID: &id})
@@ -183,7 +152,7 @@ func TestManagerFetchModelPrice(t *testing.T) {
 			return expected, nil
 		},
 	}
-	m := NewManager(&fakeTxn{}, store, providerStoragerAlwaysExists())
+	m := NewManager(&fakeTxn{}, store)
 
 	id := int64(7)
 	one, err := m.FetchModelPrice(ctx, &ModelPriceFilter{ID: &id})
@@ -199,7 +168,7 @@ func TestManagerFetchModelPriceList(t *testing.T) {
 			return expected, 1, nil
 		},
 	}
-	m := NewManager(&fakeTxn{}, store, providerStoragerAlwaysExists())
+	m := NewManager(&fakeTxn{}, store)
 
 	list, total, err := m.FetchModelPriceList(ctx, &ModelPriceFilter{})
 	require.NoError(t, err)
@@ -209,7 +178,7 @@ func TestManagerFetchModelPriceList(t *testing.T) {
 
 func TestManagerImportModelPricesInvalidMode(t *testing.T) {
 	ctx := context.Background()
-	m := NewManager(&fakeTxn{}, &fakeModelPriceStorager{}, providerStoragerAlwaysExists())
+	m := NewManager(&fakeTxn{}, &fakeModelPriceStorager{})
 
 	_, _, err := m.ImportModelPrices(ctx, []*ModelPrice{validModelPrice()}, "unknown")
 	assert.Error(t, err)
@@ -218,7 +187,7 @@ func TestManagerImportModelPricesInvalidMode(t *testing.T) {
 
 func TestManagerImportModelPricesInvalidEntry(t *testing.T) {
 	ctx := context.Background()
-	m := NewManager(&fakeTxn{}, &fakeModelPriceStorager{}, providerStoragerAlwaysExists())
+	m := NewManager(&fakeTxn{}, &fakeModelPriceStorager{})
 
 	_, _, err := m.ImportModelPrices(ctx, []*ModelPrice{validModelPrice(), {}}, string(ImportModeReplace))
 	assert.Error(t, err)
@@ -227,7 +196,7 @@ func TestManagerImportModelPricesInvalidEntry(t *testing.T) {
 func TestManagerImportModelPricesReplace(t *testing.T) {
 	ctx := context.Background()
 	store := &fakeModelPriceStorager{}
-	m := NewManager(&fakeTxn{}, store, providerStoragerAlwaysExists())
+	m := NewManager(&fakeTxn{}, store)
 
 	imported, skipped, err := m.ImportModelPrices(ctx, []*ModelPrice{validModelPrice()}, string(ImportModeReplace))
 	require.NoError(t, err)
@@ -255,7 +224,7 @@ func TestManagerImportModelPricesMerge(t *testing.T) {
 			return []*ModelPrice{existing}, 1, nil
 		},
 	}
-	m := NewManager(&fakeTxn{}, store, providerStoragerAlwaysExists())
+	m := NewManager(&fakeTxn{}, store)
 
 	imported, skipped, err := m.ImportModelPrices(ctx, []*ModelPrice{validModelPrice(), newOne}, string(ImportModeMerge))
 	require.NoError(t, err)
@@ -274,9 +243,23 @@ func TestManagerImportModelPricesStorageError(t *testing.T) {
 			return errors.New("delete failed")
 		},
 	}
-	m := NewManager(&fakeTxn{}, store, providerStoragerAlwaysExists())
+	m := NewManager(&fakeTxn{}, store)
 
 	_, _, err := m.ImportModelPrices(ctx, []*ModelPrice{validModelPrice()}, string(ImportModeReplace))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "delete failed")
+}
+
+func TestManagerListProviders(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeModelPriceStorager{
+		listProviders: func(ctx context.Context) ([]string, error) {
+			return []string{"deepseek", "openai"}, nil
+		},
+	}
+	m := NewManager(&fakeTxn{}, store)
+
+	providers, err := m.ListProviders(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"deepseek", "openai"}, providers)
 }
