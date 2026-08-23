@@ -302,6 +302,13 @@ CREATE INDEX api_keys_route_rules_id ON api_keys (route_rules_id);
 CREATE TRIGGER api_keys_updated_at AFTER UPDATE ON api_keys
   FOR EACH ROW BEGIN UPDATE api_keys SET updated_at = CURRENT_TIMESTAMP WHERE inner_id = OLD.inner_id; END;
 
+-- create api_key_id_seq
+DROP TABLE IF EXISTS api_key_id_seq;
+CREATE TABLE api_key_id_seq (
+  product_name TEXT NOT NULL PRIMARY KEY,
+  next_seq INTEGER NOT NULL DEFAULT 1
+);
+
 -- create api_key_tokens
 DROP TABLE IF EXISTS api_key_tokens;
 CREATE TABLE api_key_tokens (

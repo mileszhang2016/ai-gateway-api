@@ -572,6 +572,49 @@ api_key/
 
 ---
 
+#### 6.4.12 AK-1-012：并发创建 API-Key（并发安全，未启用）
+
+##### 设计思路
+
+验证 Issue #80 修复后，多个并发 POST `/open-api/v1/api-keys` 请求不会生成重复 ID，也不会触发 422 Duplicate id 或 500。设计使用 50 个 goroutine 同时发送最小参数创建请求，收集返回的 `id` 并校验唯一性。
+
+> **未启用原因**：当前集成测试环境使用 SQLite 文件数据库，50 并发写会导致数据库锁竞争超时，测试无法稳定运行。Issue #80 的并发正确性由 DAO 层单元测试 `TestTAPIKeyIDSeqAllocate_Concurrent`（50 goroutine）覆盖；生产环境使用 MySQL 行锁，可支撑更高并发。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 启动 `concurrency` 个 goroutine（默认 50）。
+2. 每个 goroutine 同时 POST `/open-api/v1/api-keys`，`description` 带唯一索引。
+3. 等待所有 goroutine 完成。
+4. 断言所有响应 `ErrNum=200`。
+5. 断言返回的 `id` 数量为 `concurrency` 且互不相同。
+6. 断言所有 `id` 均符合 `api-key-{seq}` 格式。
+
+##### 请求参数
+
+```json
+{
+    "description": "concurrent-test-key-{idx}"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200（全部请求）
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| id | 非空字符串，格式 `api-key-%d` | RegexMatch |
+| 所有请求的 id | 互不相同 | Unique |
+
+---
+
 ## 7. 查询 API-Key 列表
 
 ### 7.1 接口信息

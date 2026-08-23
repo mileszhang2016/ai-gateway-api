@@ -95,6 +95,9 @@ func Init() error {
 	container.APIKeyStorager = apiKeyStorage.NewAPIKeyStorager(
 		stateful.NewBFEDBContext,
 	)
+	container.APIKeyIDGenerator = apiKeyStorage.NewRDBAPIKeyIDGenerator(
+		stateful.NewBFEDBContext,
+	)
 
 	container.AIRouteRuleStorager = ai_route.NewRDBAIRouteRuleStorager(
 		stateful.NewBFEDBContext,

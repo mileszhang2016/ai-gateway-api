@@ -294,6 +294,14 @@ CREATE TABLE api_keys (
   INDEX idx_route_rules_id (route_rules_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 comment = "api keys";
 
+-- create api_key_id_seq
+DROP TABLE IF EXISTS `api_key_id_seq`;
+CREATE TABLE `api_key_id_seq` (
+  `product_name` varchar(255) NOT NULL COMMENT '产品线名称',
+  `next_seq` bigint NOT NULL DEFAULT '1' COMMENT '下一个可用序号',
+  PRIMARY KEY (`product_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='API-Key ID 序号分配表';
+
 -- create api_key_tokens
 DROP TABLE IF EXISTS `api_key_tokens`;
 CREATE TABLE api_key_tokens (

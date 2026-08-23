@@ -59,6 +59,7 @@ var (
 	DomainStoragerSingleton         iroute_conf.DomainStorager
 	ClusterStoragerSingleton        icluster_conf.ClusterStorager
 	APIKeyStorager                  api_key.APIKeyStorager
+	APIKeyIDGenerator               api_key.APIKeyIDGenerator
 	PoolStoragerSingleton           icluster_conf.PoolStorager
 	SubClusterStoragerSingleton     icluster_conf.SubClusterStorager
 	CertificateStoragerSingleton    iprotocol.CertificateStorager
