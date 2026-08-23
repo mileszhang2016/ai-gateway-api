@@ -388,9 +388,6 @@ func TestBuildAuthHeader(t *testing.T) {
 
 	k, v = BuildAuthHeader("anthropic", "sk-xxx")
 	assert.Equal(t, "x-api-key", k)
-
-	k, v = BuildAuthHeader("gemini", "xxx")
-	assert.Equal(t, "x-goog-api-key", k)
 }
 
 func TestParseModelDiscoveryResponse(t *testing.T) {
@@ -407,8 +404,8 @@ func TestParseModelDiscoveryResponse(t *testing.T) {
 		assert.Equal(t, []string{"claude-3-opus-20240229", "claude-3-sonnet-20240229"}, models)
 	})
 
-	t.Run("models array with name", func(t *testing.T) {
-		models, err := ParseModelDiscoveryResponse([]byte(`{"models":[{"name":"m1"},{"name":"m2"}]}`), "gemini")
+	t.Run("generic fallback models array with name", func(t *testing.T) {
+		models, err := ParseModelDiscoveryResponse([]byte(`{"models":[{"name":"m1"},{"name":"m2"}]}`), "custom-protocol")
 		require.NoError(t, err)
 		assert.Equal(t, []string{"m1", "m2"}, models)
 	})
@@ -419,8 +416,8 @@ func TestParseModelDiscoveryResponse(t *testing.T) {
 		assert.Equal(t, []string{"m1", "m2"}, models)
 	})
 
-	t.Run("single model object", func(t *testing.T) {
-		models, err := ParseModelDiscoveryResponse([]byte(`{"models":{"name":"m1"}}`), "gemini")
+	t.Run("generic fallback single model object", func(t *testing.T) {
+		models, err := ParseModelDiscoveryResponse([]byte(`{"models":{"name":"m1"}}`), "custom-protocol")
 		require.NoError(t, err)
 		assert.Equal(t, []string{"m1"}, models)
 	})

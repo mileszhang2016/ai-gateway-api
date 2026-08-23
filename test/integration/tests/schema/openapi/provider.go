@@ -45,7 +45,7 @@ var ProviderSchema = &testutil.ObjectSchema{
 		"models":          {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
 		"keys":            {Type: testutil.TypeArray, Elem: ProviderKeySchema},
 		"instance_pool":   {Type: testutil.TypeArray, Elem: ProviderInstanceSchema},
-		"model_protocols": {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString, Enum: []interface{}{"openai", "anthropic", "gemini"}}},
+		"model_protocols": {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString, Enum: []interface{}{"openai", "anthropic"}}},
 		"create_time":     {Type: testutil.TypeInt},
 		"update_time":     {Type: testutil.TypeInt},
 	},

@@ -79,7 +79,7 @@ provider/
 | `models` | []string | N | 支持的模型列表，元素非空且不可重复 |
 | `keys` | []object | N | API-Key 列表，元素为 `{name, key}`；同一 Provider 内 `name` 唯一 |
 | `instance_pool` | []object | Y | 后端实例池，至少 1 个元素 |
-| `model_protocols` | []string | Y | 支持的模型访问协议，至少 1 个元素，枚举：`openai`、`anthropic`、`gemini` |
+| `model_protocols` | []string | Y | 支持的模型访问协议，至少 1 个元素，枚举：`openai`、`anthropic` |
 
 ##### `instance_pool` 元素结构
 
@@ -250,5 +250,5 @@ provider/
 1. Provider 名称全局唯一，测试中使用 `testutil.UniqueProviderName()` 生成唯一名称。
 2. `keys` 作为数组，按**全量替换**处理；更新时如需保留旧 Key，需传入完整列表。
 3. `instance_pool` 中 `(name, addr)` 组合不能重复；`name` 为空字符串时系统会默认填充为 `addr`。
-4. `model_protocols` 当前枚举值为 `openai`、`anthropic`、`gemini`。
+4. `model_protocols` 当前枚举值为 `openai`、`anthropic`。
 5. 当前集成测试未覆盖 `/providers/{provider_name}/discover-models` 接口。

@@ -45,7 +45,7 @@
 | `models` | []string | 该 provider 支持的模型列表 | - | 非必填；元素非空且不可重复；可通过模型发现接口自动填充 |
 | `keys` | []ProviderKey | 该 provider 可用的 API Key 明文 | - | 非必填；默认空数组 `[]`；元素须满足 表：ProviderKey 结构 |
 | `instance_pool` | []Instance | Provider 对应的后端实例池 | 系统自动据此创建实例池和子集群 | 必填；至少 1 个元素；同一 provider 内，对于 `name` 不为空的实例，`name` 不能重复；同一 provider 内 `(name, addr)` 组合不能重复；至少有一个实例 `weight > 0` |
-| `model_protocols` | []string | 支持的模型访问协议 | 首期枚举：`openai`、`anthropic`、`gemini` | 必填；至少 1 个元素；元素不可重复；枚举值见下方 |
+| `model_protocols` | []string | 支持的模型访问协议 | 首期枚举：`openai`、`anthropic` | 必填；至少 1 个元素；元素不可重复；枚举值见下方 |
 | `create_time` | int64 | 创建时间 | - | 系统生成 |
 | `update_time` | int64 | 更新时间 | - | 系统生成 |
 
@@ -80,7 +80,6 @@
 |--------|------|
 | `openai` | OpenAI 兼容协议（含大多数国产兼容平台） |
 | `anthropic` | Anthropic Claude Messages API |
-| `gemini` | Google Gemini API |
 
 > 一个 provider 可同时支持多种协议（如聚合平台），但 `model_protocols` 至少包含一个。
 
@@ -346,6 +345,6 @@ Data 为 null。
 7. `keys` 非必填，默认空数组 `[]`；若非空：
    - 每个元素 `name` 必填，长度 1-128，同一 provider 内唯一；
    - 每个元素 `key` 必填且非空，长度 1-512。
-8. `model_protocols` 必填，至少 1 个元素，元素不可重复，取值须为枚举值：`openai`、`anthropic`、`gemini`。
+8. `model_protocols` 必填，至少 1 个元素，元素不可重复，取值须为枚举值：`openai`、`anthropic`。
 9. 删除 provider 前，须校验无 cluster 引用，否则返回 `409 Conflict`；`/model-prices` 记录不再作为阻塞条件。
 10. 触发模型发现时，若 `keys` 为空，应返回 `422`（无法构造认证请求）。

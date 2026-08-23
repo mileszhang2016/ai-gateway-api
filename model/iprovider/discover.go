@@ -230,7 +230,7 @@ func parseModelDiscoveryResponseGeneric(data map[string]interface{}, protocol st
 		}
 	}
 
-	// Gemini sometimes returns { "models": { "name": ... } } for a single model.
+	// Some providers return { "models": { "name": ... } } for a single model.
 	if single, ok := data["models"].(map[string]interface{}); ok {
 		if name, ok := single["name"].(string); ok && name != "" {
 			return []string{name}, nil
