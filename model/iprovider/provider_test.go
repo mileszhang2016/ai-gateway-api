@@ -226,6 +226,32 @@ func TestProviderManager_DiscoverModels(t *testing.T) {
 		assert.True(t, updated)
 	})
 
+	t.Run("success anthropic", func(t *testing.T) {
+		updated := false
+		store := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return &Provider{
+					Name:           "anthropic",
+					Keys:           []ProviderKey{{Name: "k1", Key: "sk-xxx"}},
+					InstancePool:   []ProviderInstance{{Addr: "api.anthropic.com", Port: 443}},
+					ModelProtocols: []string{"anthropic"},
+					ModelEndpoint:  &ProviderEndpoint{Schema: "https", URI: "/v1/models"},
+				}, nil
+			},
+			updateFn: func(ctx context.Context, name string, param *ProviderParam) error {
+				updated = true
+				assert.Equal(t, []string{"claude-3-opus-20240229"}, param.Models)
+				return nil
+			},
+		}
+		caller := &fakeDiscoverCaller{body: []byte(`{"models":[{"model_id":"claude-3-opus-20240229","display_name":"Claude 3 Opus"}]}`)}
+		m := NewProviderManager(&fakeTxn{}, store)
+		models, err := m.DiscoverModelsWithCaller(ctx, "anthropic", caller)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"claude-3-opus-20240229"}, models)
+		assert.True(t, updated)
+	})
+
 	t.Run("no keys", func(t *testing.T) {
 		store := &fakeProviderStorager{
 			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
@@ -374,14 +400,21 @@ func TestParseModelDiscoveryResponse(t *testing.T) {
 		assert.Equal(t, []string{"m1", "m2"}, models)
 	})
 
+	t.Run("anthropic models", func(t *testing.T) {
+		body := []byte(`{"models":[{"model_id":"claude-3-opus-20240229","display_name":"Claude 3 Opus"},{"model_id":"claude-3-sonnet-20240229","display_name":"Claude 3 Sonnet"}]}`)
+		models, err := ParseModelDiscoveryResponse(body, "anthropic")
+		require.NoError(t, err)
+		assert.Equal(t, []string{"claude-3-opus-20240229", "claude-3-sonnet-20240229"}, models)
+	})
+
 	t.Run("models array with name", func(t *testing.T) {
 		models, err := ParseModelDiscoveryResponse([]byte(`{"models":[{"name":"m1"},{"name":"m2"}]}`), "gemini")
 		require.NoError(t, err)
 		assert.Equal(t, []string{"m1", "m2"}, models)
 	})
 
-	t.Run("models array of strings", func(t *testing.T) {
-		models, err := ParseModelDiscoveryResponse([]byte(`{"models":["m1","m2"]}`), "openai")
+	t.Run("generic fallback models array of strings", func(t *testing.T) {
+		models, err := ParseModelDiscoveryResponse([]byte(`{"models":["m1","m2"]}`), "custom-protocol")
 		require.NoError(t, err)
 		assert.Equal(t, []string{"m1", "m2"}, models)
 	})

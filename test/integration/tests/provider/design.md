@@ -25,12 +25,12 @@ Provider 与 Cluster 概念分离后：
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建 Provider | 13 |
+| 创建 Provider | 14 |
 | 查询 Provider 列表 | 3 |
 | 查询 Provider 详情 | 2 |
 | 更新 Provider | 4 |
 | 删除 Provider | 3 |
-| **合计** | **25** |
+| **合计** | **26** |
 
 ## 4. 认证方式
 
@@ -118,6 +118,7 @@ provider/
 |----------|----------|----------|
 | PV-1-001 | 最小参数创建 Provider | 200，返回的 `description` 为空字符串，`models`/`keys` 为空数组 |
 | PV-1-002 | 完整参数创建 Provider | 200，返回的 `models`、`keys`、`instance_pool` 与输入一致 |
+| PV-1-002a | 创建 anthropic 协议 Provider | 200，返回的 `model_protocols` 为 `["anthropic"]` |
 | PV-1-003 | 重复 Provider 名称 | 555 |
 | PV-1-004 | 缺少 `instance_pool` | 422 |
 | PV-1-005 | 缺少 `model_protocols` | 422 |

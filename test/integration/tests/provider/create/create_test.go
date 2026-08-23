@@ -40,6 +40,7 @@ func minProviderBody(name string) map[string]interface{} {
 func TestProvider_Create(t *testing.T) {
 	providerMin := testutil.UniqueProviderName()
 	providerFull := testutil.UniqueProviderName()
+	providerAnthropic := testutil.UniqueProviderName()
 	providerDup := testutil.UniqueProviderName()
 
 	tests := []struct {
@@ -105,6 +106,34 @@ func TestProvider_Create(t *testing.T) {
 				assert.Len(t, keys, 2)
 				insts, _ := data["instance_pool"].([]interface{})
 				assert.Len(t, insts, 1)
+			},
+		},
+		{
+			name: "PV-1-002a 创建 anthropic 协议 Provider",
+			body: map[string]interface{}{
+				"name": providerAnthropic,
+				"keys": []interface{}{
+					map[string]interface{}{
+						"name": "key-primary",
+						"key":  "sk-ant-aaaaaaaaaaaa",
+					},
+				},
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"name":   "backend-1",
+						"addr":   "api.anthropic.com",
+						"weight": 100,
+						"port":   443,
+					},
+				},
+				"model_protocols": []string{"anthropic"},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				protocols, _ := data["model_protocols"].([]interface{})
+				assert.Equal(t, []interface{}{"anthropic"}, protocols)
 			},
 		},
 		{
@@ -292,6 +321,7 @@ func TestProvider_Create(t *testing.T) {
 	t.Cleanup(func() {
 		testutil.DeleteProvider(providerMin)
 		testutil.DeleteProvider(providerFull)
+		testutil.DeleteProvider(providerAnthropic)
 		testutil.DeleteProvider(providerDup)
 	})
 }

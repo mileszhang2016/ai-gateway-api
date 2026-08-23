@@ -21,7 +21,8 @@ const (
 // FieldSpec 描述单个字段的校验规则
 type FieldSpec struct {
 	Type   FieldType
-	Elem   *ObjectSchema // 数组元素 schema（TypeArray 时使用）
+	Elem   *ObjectSchema // 数组元素为对象时的 schema（TypeArray 时使用，与 Item 二选一）
+	Item   *FieldSpec    // 数组元素为原始类型时的 schema（TypeArray 时使用，与 Elem 二选一）
 	Nested *ObjectSchema // 嵌套对象 schema（TypeObject 时使用）
 	Enum   []interface{} // 可选：枚举值校验
 }
@@ -253,6 +254,12 @@ func validateValue(path string, value interface{}, spec *FieldSpec, optional boo
 				} else {
 					errs = append(errs, schemaError{path: itemPath, message: fmt.Sprintf("expected object, got %T", item)})
 				}
+			}
+		}
+		if spec.Item != nil {
+			for i, item := range arr {
+				itemPath := fmt.Sprintf("%s[%d]", path, i)
+				errs = append(errs, validateValue(itemPath, item, spec.Item, false)...)
 			}
 		}
 	case TypeObject:

@@ -771,7 +771,7 @@ func TestAppendAdvancedRuleCluster(t *testing.T) {
 
 func TestNewBfeClusterConf(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterBase()}, nil, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterBase()}, nil, nil, nil)
 		require.NotNil(t, conf)
 		require.NotNil(t, conf.Config)
 		assert.Equal(t, "v1", *conf.Version)
@@ -787,26 +787,26 @@ func TestNewBfeClusterConf(t *testing.T) {
 		conf := NewBfeClusterConf("v1", []*Cluster{
 			newTestClusterBase(),
 			{ID: RouteAdvancedModeClusterID, Name: RouteAdvancedModeClusterName},
-		}, nil, nil)
+		}, nil, nil, nil)
 		require.Len(t, *conf.Config, 1)
 	})
 
 	t.Run("EPP addrs", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterEPP()}, nil, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic.EPPAddr)
 		assert.Equal(t, []string{"epp.example.com:8080"}, *cConf.GslbBasic.EPPAddr)
 	})
 
 	t.Run("https conf", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterHTTPS()}, nil, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterHTTPS()}, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.HTTPSConf)
 		assert.True(t, *cConf.HTTPSConf.RSInsecureSkipVerify)
 	})
 
 	t.Run("domain pool disable checks", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterDomain()}, nil, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterDomain()}, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		assert.True(t, *cConf.ClusterBasic.DisableHealthCheck)
 		assert.True(t, *cConf.ClusterBasic.DisableHostHeader)
@@ -819,7 +819,10 @@ func TestNewBfeClusterConf(t *testing.T) {
 				{Name: "key-secondary", Key: "sk-bbbbbbbbbbbb"},
 			},
 		}
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterLLM()}, nil, providerKeyTable)
+		providerProtocolTable := map[string][]string{
+			"openai": {"openai"},
+		}
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterLLM()}, nil, providerKeyTable, providerProtocolTable)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.AIConf)
 		require.Len(t, cConf.AIConf.Keys, 2)
@@ -838,6 +841,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 		assert.Equal(t, "new", (*cConf.AIConf.ModelMapping)["old"])
 		assert.Equal(t, "openrouter/", cConf.AIConf.MatchPrefix)
 		assert.True(t, cConf.AIConf.StripPrefix)
+		assert.Equal(t, []string{"openai"}, cConf.AIConf.ModelProtocols)
 	})
 
 	t.Run("disabled sticky sessions with empty hash_header falls back to CLIENT_IP_ONLY", func(t *testing.T) {
@@ -847,7 +851,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 			HashStrategy:  ClusterHashStrategyClientIDOnlyI,
 			HashHeader:    "",
 		}
-		conf := NewBfeClusterConf("v1", []*Cluster{c}, nil, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{c}, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic)
 		require.NotNil(t, cConf.GslbBasic.HashConf)

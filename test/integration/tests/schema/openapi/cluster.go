@@ -87,18 +87,6 @@ var PassiveHealthCheckSchema = &testutil.ObjectSchema{
 	},
 }
 
-// EndpointSchema model_endpoint schema
-// headers 在未配置时为 null，设为可选。
-var EndpointSchema = &testutil.ObjectSchema{
-	Required: []string{"schema", "uri"},
-	Optional: []string{"headers"},
-	Fields: map[string]testutil.FieldSpec{
-		"schema":  {Type: testutil.TypeString},
-		"uri":     {Type: testutil.TypeString},
-		"headers": {Type: testutil.TypeObject},
-	},
-}
-
 // ModelMappingSchema 模型映射 schema
 var ModelMappingSchema = &testutil.ObjectSchema{
 	Required: []string{"source_model", "target_model"},
@@ -134,12 +122,11 @@ var KeyPolicySchema = &testutil.ObjectSchema{
 var LLMConfigSchema = &testutil.ObjectSchema{
 	Required: []string{"models", "provider"},
 	Optional: []string{
-		"model_endpoint", "model_mappings", "keys",
+		"model_mappings", "keys",
 		"key_policy", "match_prefix", "strip_prefix",
 	},
 	Fields: map[string]testutil.FieldSpec{
-		"model_endpoint": {Type: testutil.TypeObject, Nested: EndpointSchema},
-		"models":         {Type: testutil.TypeArray},
+		"models":         {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
 		"model_mappings": {Type: testutil.TypeArray, Elem: ModelMappingSchema},
 		"keys":           {Type: testutil.TypeArray, Elem: ClusterKeySchema},
 		"key_policy":     {Type: testutil.TypeObject, Nested: KeyPolicySchema},

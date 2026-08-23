@@ -142,6 +142,7 @@ URL 与 HTTP Method 不变，请求/响应体变化：
 - `model/icluster_conf/exporter.go` 在生成 `AIConf` 时：
   - 从 provider 读取 `instance_pool` 生成 BFE 实例池/子集群/集群。
   - 按 `name` join provider `keys` 与 cluster `llm_config.keys` 生成带明文的 `AIConf.Keys`。
+  - 将 provider `model_protocols` 透传到 `AIConf.ModelProtocols`，供 BFE 做请求协议风格匹配。
 - `model/imodel_price/Manager` 不再注入 `iprovider.ProviderStorager` 校验 model-prices 的 provider 引用；新增 `ListProviders(ctx)` 方法用于 `GET /model-prices/actions/get-providers`。
 
 ### 6.2 存储层
@@ -209,6 +210,7 @@ BFE 接收到的配置结构和字段与重构前完全一致：
 | `AIConf.KeyPolicy` | `cluster.llm_config.key_policy` |
 | `AIConf.Provider` | `cluster.llm_config.provider` |
 | `AIConf.MatchPrefix` / `StripPrefix` | `cluster.llm_config.match_prefix` / `strip_prefix` |
+| `AIConf.ModelProtocols` | `provider.model_protocols`（按 `cluster.llm_config.provider` 引用透传） |
 | `AIConf.ModelTable` | 由 `provider` 查询 `model-prices` 自动填充 |
 
 ## 9. 配置顺序

@@ -2,9 +2,9 @@
 
 ## 1. 模块概述
 
-`/inner-api/v1/configs/tls_conf/server_data_conf` 是 InnerAPI 的核心导出接口之一，负责将 AI 网关管理面的集群、路由、证书等配置聚合为 BFE 可识别的 `server_data_conf`。其中 `ClusterConf.Config.<cluster_name>.AIConf` 承载 AI 转发所需的模型映射、API-Key、Key 路由策略、模型定价表以及本次新增的 `MatchPrefix` / `StripPrefix` 前缀路由裁剪开关。
+`/inner-api/v1/configs/tls_conf/server_data_conf` 是 InnerAPI 的核心导出接口之一，负责将 AI 网关管理面的集群、路由、证书等配置聚合为 BFE 可识别的 `server_data_conf`。其中 `ClusterConf.Config.<cluster_name>.AIConf` 承载 AI 转发所需的模型映射、API-Key、Key 路由策略、模型定价表、`MatchPrefix` / `StripPrefix` 前缀路由裁剪开关以及模型访问协议 `ModelProtocols`。
 
-本文档覆盖 `AIConf.MatchPrefix` / `StripPrefix` 在 InnerAPI 导出结果中的正确性验证。
+本文档覆盖 `AIConf.MatchPrefix` / `AIConf.StripPrefix` 与 `AIConf.ModelProtocols` 在 InnerAPI 导出结果中的正确性验证。
 
 ## 2. 接口列表
 
@@ -16,8 +16,8 @@
 
 | 场景 | 测试用例数 |
 |------|-----------|
-| AIConf 含 MatchPrefix/StripPrefix | 3（编号 IN-TLS-1-004 ~ IN-TLS-1-006，与现有 IN-1-001 ~ IN-1-003 区分） |
-| **合计** | **3** |
+| AIConf 含 MatchPrefix/StripPrefix/ModelProtocols | 4（编号 IN-TLS-1-004 ~ IN-TLS-1-007，与现有 IN-1-001 ~ IN-1-003 区分） |
+| **合计** | **4** |
 
 ## 4. 前置条件
 
@@ -78,6 +78,14 @@ innerapi/tls_conf/
 - **预期**：
   - `AIConf.MatchPrefix == "openrouter/"`；
   - `AIConf.StripPrefix == false`。
+
+#### IN-TLS-1-007 AIConf 包含 ModelProtocols（anthropic）
+
+- **前置**：通过 OpenAPI 创建 Provider，设置 `model_protocols=["anthropic"]`；再创建引用该 Provider 的 Cluster。
+- **请求**：`GET /inner-api/v1/configs/tls_conf/server_data_conf`
+- **预期**：
+  - `ErrNum == 200`；
+  - `ClusterConf.Config.<cluster>.AIConf.ModelProtocols == ["anthropic"]`。
 
 ## 7. 数据清理
 

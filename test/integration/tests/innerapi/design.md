@@ -24,7 +24,7 @@ v0.0.7 起，Cluster 表导出（`/configs/gslb_data/cluster_table`）中的 `AI
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 导出 TLS/Server 配置 | 3 |
+| 导出 TLS/Server 配置 | 4 |
 | 导出 GSLB 配置 | 2 |
 | 导出集群表配置 | 2 |
 | 导出证书配置 | 1 |
@@ -33,7 +33,7 @@ v0.0.7 起，Cluster 表导出（`/configs/gslb_data/cluster_table`）中的 `AI
 | 导出请求体处理配置 | 1 |
 | 导出限流策略配置 | 1 |
 | 导出 AI 路由配置 | 2 |
-| **合计** | **15** |
+| **合计** | **16** |
 
 ## 4. 认证方式
 
@@ -104,6 +104,7 @@ innerapi/
 | IN-1-001 | 首次导出 TLS/Server 配置 | 正常参数 | 返回完整配置与 version |
 | IN-1-002 | 导出 ClusterConf 含多 Key AIConf | 返回数据 | 验证 ClusterConf.AIConf.Keys/KeyPolicy 与 OpenAPI 写入一致 |
 | IN-1-003 | 导出 ClusterConf 含模型定价表 | 返回数据 | 验证 ClusterConf.AIConf.ModelTable 与导入的 model prices 一致 |
+| IN-1-004 | 导出 ClusterConf 含 ModelProtocols（对应 IN-TLS-1-007） | 返回数据 | 验证 ClusterConf.AIConf.ModelProtocols 与 OpenAPI 写入一致 |
 
 ### 6.4 测试场景详细设计
 
@@ -237,6 +238,41 @@ innerapi/
 | Data.ClusterConf.Config.cluster_inner_model_price.AIConf.ModelTable.Models | 长度为 2 | Len=2 |
 | Data.ClusterConf.Config.cluster_inner_model_price.AIConf.ModelTable.Models[*].Provider | 全部为 "openai" | Equals |
 | Data.ClusterConf.Config.cluster_inner_model_price.AIConf.ModelTable.Models[*].Model | 包含 "gpt-4o" 和 "gpt-4o-mini" | Contains |
+
+---
+
+#### 6.4.4 IN-1-004：导出 ClusterConf 含 ModelProtocols（返回数据，对应 IN-TLS-1-007）
+
+##### 设计思路
+
+验证通过 OpenAPI 创建的 Provider（含 `model_protocols=["anthropic"]`）经 InnerAPI `/configs/tls_conf/server_data_conf` 导出后，`ClusterConf.Config.{cluster_name}.AIConf` 中正确输出 `ModelProtocols`。
+
+##### 前提数据准备
+
+1. 通过 POST `/open-api/v1/providers` 创建 Provider，设置 `model_protocols=["anthropic"]`。
+2. 通过 POST `/open-api/v1/clusters` 创建集群 `cluster_inner_model_protocols`，其 `llm_config.provider` 指向上述 Provider。
+
+##### 执行步骤
+
+1. 发送 GET 请求到 `/inner-api/v1/configs/tls_conf/server_data_conf`。
+2. 在返回的 `Data.ClusterConf.Config` 中找到目标集群。
+3. 校验该集群的 `AIConf.ModelProtocols` 与 Provider 写入一致。
+
+##### 请求参数
+
+无
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| Data.ClusterConf.Config.cluster_inner_model_protocols.AIConf.ModelProtocols | 长度为 1 | Len=1 |
+| Data.ClusterConf.Config.cluster_inner_model_protocols.AIConf.ModelProtocols[0] | "anthropic" | Equals |
 
 ---
 

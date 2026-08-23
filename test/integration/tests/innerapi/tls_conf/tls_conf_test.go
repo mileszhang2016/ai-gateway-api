@@ -322,6 +322,44 @@ models:
 		assert.Equal(t, false, aiconf["StripPrefix"])
 	})
 
+	t.Run("IN-TLS-1-007 AIConf 包含 ModelProtocols（anthropic）", func(t *testing.T) {
+		providerName := testutil.UniqueProviderName()
+		_, err := testutil.CreateProvider(providerName, map[string]interface{}{
+			"models":          []string{"claude-3-opus-20240229"},
+			"model_protocols": []string{"anthropic"},
+		})
+		if err != nil {
+			t.Fatalf("setup provider failed: %v", err)
+		}
+		defer testutil.DeleteProvider(providerName)
+
+		clusterName := testutil.UniqueClusterName()
+		_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
+			"llm_config": map[string]interface{}{
+				"models":   []string{"claude-3-opus-20240229"},
+				"provider": providerName,
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterName)
+
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		aiconf := extractAIConf(t, resp, clusterName)
+		protocols, ok := aiconf["ModelProtocols"].([]interface{})
+		if !assert.True(t, ok, "AIConf.ModelProtocols should be an array") {
+			return
+		}
+		assert.Equal(t, []interface{}{"anthropic"}, protocols)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteCertificate(certName)
 	})

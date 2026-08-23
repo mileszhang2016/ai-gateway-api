@@ -911,7 +911,8 @@ func normalizeBFEHashStrategy(sticky *ClusterStickySessions) int32 {
 
 func NewBfeClusterConf(version string, clusters []*Cluster,
 	providerModelTable map[string][]*imodel_price.ModelPrice,
-	providerKeyTable map[string][]iprovider.ProviderKey) *cluster_conf.BfeClusterConf {
+	providerKeyTable map[string][]iprovider.ProviderKey,
+	providerProtocolTable map[string][]string) *cluster_conf.BfeClusterConf {
 	clusterConfMap := cluster_conf.ClusterToConf{}
 
 	int322intp := func(i int32) *int {
@@ -1011,7 +1012,8 @@ func NewBfeClusterConf(version string, clusters []*Cluster,
 				}
 			}
 			providerKeys := providerKeyTable[provider]
-			clusterConf.AIConf = newAIConf(cluster.LLMConfig, modelTable, providerKeys)
+			providerProtocols := providerProtocolTable[provider]
+			clusterConf.AIConf = newAIConf(cluster.LLMConfig, modelTable, providerKeys, providerProtocols)
 		}
 
 		clusterConfMap[cluster.Name] = clusterConf
@@ -1022,11 +1024,13 @@ func NewBfeClusterConf(version string, clusters []*Cluster,
 	}
 }
 
-func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable, providerKeys []iprovider.ProviderKey) *cluster_conf.AIConf {
+func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,
+	providerKeys []iprovider.ProviderKey, providerModelProtocols []string) *cluster_conf.AIConf {
 	aiConf := &cluster_conf.AIConf{
-		Type:         0,
-		ModelMapping: convertToBFEModelMapping(llmConfig.ModelMappings),
-		Keys:         []cluster_conf.AIKey{},
+		Type:           0,
+		ModelMapping:   convertToBFEModelMapping(llmConfig.ModelMappings),
+		Keys:           []cluster_conf.AIKey{},
+		ModelProtocols: providerModelProtocols,
 	}
 
 	if llmConfig.Provider != nil {

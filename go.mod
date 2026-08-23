@@ -28,6 +28,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+replace github.com/bfenetworks/bfe => ../bfe
+
 require (
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/asergeyev/nradix v0.0.0-20170505151046-3872ab85bb56 // indirect

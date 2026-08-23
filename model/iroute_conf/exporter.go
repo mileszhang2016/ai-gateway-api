@@ -100,6 +100,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 	}
 
 	providerKeyTable := map[string][]iprovider.ProviderKey{}
+	providerProtocolTable := map[string][]string{}
 	if rm.providerStorager != nil {
 		providers, _, err := rm.providerStorager.FetchProviderList(ctx, &iprovider.ProviderFilter{})
 		if err != nil {
@@ -108,6 +109,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 		for _, p := range providers {
 			if p != nil {
 				providerKeyTable[p.Name] = p.Keys
+				providerProtocolTable[p.Name] = p.ModelProtocols
 			}
 		}
 	}
@@ -149,7 +151,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 		Version:     emptyVersion,
 		RouteTable:  newRouteTableFile(emptyVersion, productMapID2Name, routeRules),
 		HostTable:   newHostTableConf(emptyVersion, productMapID2Name, domains),
-		ClusterConf: icluster_conf.NewBfeClusterConf(emptyVersion, clusters, providerModelTable, providerKeyTable),
+		ClusterConf: icluster_conf.NewBfeClusterConf(emptyVersion, clusters, providerModelTable, providerKeyTable, providerProtocolTable),
 	}
 
 	return &iversion_control.ExportData{

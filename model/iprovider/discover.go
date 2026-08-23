@@ -120,6 +120,30 @@ func (m *ProviderManager) DiscoverModelsWithCaller(ctx context.Context, name str
 	return models, err
 }
 
+// modelParser describes how to extract model names from a provider discovery response.
+type modelParser struct {
+	ListPath  string // JSON key of the array containing model entries
+	IDField   string // field used as the canonical model identifier
+	NameField string // fallback field used when IDField is absent or empty
+}
+
+// modelProtocolParsers maps model protocol names to their discovery response parsers.
+// The definitions formerly lived in conf/ai/model_definition.json; they are now
+// maintained in code so that /providers/{name}/discover-models can select the right
+// parser based on provider.model_protocols.
+var modelProtocolParsers = map[string]modelParser{
+	"openai": {
+		ListPath:  "data",
+		IDField:   "id",
+		NameField: "object",
+	},
+	"anthropic": {
+		ListPath:  "models",
+		IDField:   "model_id",
+		NameField: "display_name",
+	},
+}
+
 // ParseModelDiscoveryResponse extracts a model name list from a provider discovery response.
 func ParseModelDiscoveryResponse(body []byte, protocol string) ([]string, error) {
 	var data map[string]interface{}
@@ -127,6 +151,45 @@ func ParseModelDiscoveryResponse(body []byte, protocol string) ([]string, error)
 		return nil, err
 	}
 
+	// Use protocol-specific parser when available.
+	if parser, ok := modelProtocolParsers[protocol]; ok {
+		return parseWithModelParser(data, parser, protocol)
+	}
+
+	// Fallback to generic discovery heuristics for unknown protocols.
+	return parseModelDiscoveryResponseGeneric(data, protocol)
+}
+
+func parseWithModelParser(data map[string]interface{}, parser modelParser, protocol string) ([]string, error) {
+	list, ok := data[parser.ListPath].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unable to extract models from %s response: %q array not found", protocol, parser.ListPath)
+	}
+
+	models := make([]string, 0, len(list))
+	for _, item := range list {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if id, ok := m[parser.IDField].(string); ok && id != "" {
+			models = append(models, id)
+			continue
+		}
+		if parser.NameField != "" {
+			if name, ok := m[parser.NameField].(string); ok && name != "" {
+				models = append(models, name)
+			}
+		}
+	}
+
+	if len(models) == 0 {
+		return nil, fmt.Errorf("unable to extract models from %s response: no valid entries in %q array", protocol, parser.ListPath)
+	}
+	return models, nil
+}
+
+func parseModelDiscoveryResponseGeneric(data map[string]interface{}, protocol string) ([]string, error) {
 	// Try common OpenAI-style "data" array first.
 	if list, ok := data["data"].([]interface{}); ok {
 		models := make([]string, 0, len(list))

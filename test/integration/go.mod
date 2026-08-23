@@ -51,3 +51,5 @@ require (
 )
 
 replace github.com/rainway-ai-gateway/ai-gateway-api => ../../
+
+replace github.com/bfenetworks/bfe => ../../../bfe

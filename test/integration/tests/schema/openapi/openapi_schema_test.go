@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -277,9 +278,44 @@ func testProviderSchema(t *testing.T) {
 	testutil.AssertSuccess(t, patchResp)
 	testutil.AssertSchema(t, patchResp, ProviderSchema)
 
+	// Also validate anthropic protocol provider creation.
+	anthropicProviderName := testutil.UniqueProviderName()
+	anthropicResp, err := testutil.GetClient().Post("/open-api/v1/providers", map[string]interface{}{
+		"name":            anthropicProviderName,
+		"description":     "schema test anthropic",
+		"model_protocols": []string{"anthropic"},
+		"models":          []string{"claude-3-5-sonnet-20241022"},
+		"instance_pool": []interface{}{
+			map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080},
+		},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, anthropicResp)
+	testutil.AssertSchema(t, anthropicResp, ProviderSchema)
+	assertProviderModelProtocols(t, anthropicResp.Data, []string{"anthropic"})
+
 	t.Cleanup(func() {
 		testutil.DeleteProvider(providerName)
+		testutil.DeleteProvider(anthropicProviderName)
 	})
+}
+
+// assertProviderModelProtocols 校验 Provider 响应中的 model_protocols 字段值。
+func assertProviderModelProtocols(t *testing.T, data []byte, want []string) {
+	t.Helper()
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal provider data: %v", err)
+	}
+	protocols, ok := payload["model_protocols"].([]interface{})
+	if !ok || len(protocols) != len(want) {
+		t.Fatalf("expected model_protocols=%v, got %v", want, payload["model_protocols"])
+	}
+	for i, v := range want {
+		if protocols[i] != v {
+			t.Fatalf("expected model_protocols[%d]=%q, got %v", i, v, protocols[i])
+		}
+	}
 }
 
 // ---------- clusters ----------

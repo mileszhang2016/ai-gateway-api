@@ -78,16 +78,69 @@ func setupAPIKeyWithRoute(t *testing.T, clusterName string) string {
 func testServerDataConfSchema(t *testing.T) {
 	clusterName := setupCluster(t)
 
+	// Create an anthropic provider and cluster to verify AIConf.ModelProtocols export.
+	anthropicProviderName := testutil.UniqueProviderName()
+	_, err := testutil.CreateProvider(anthropicProviderName, map[string]interface{}{
+		"model_protocols": []string{"anthropic"},
+		"models":          []string{"claude-3-5-sonnet-20241022"},
+	})
+	require.NoError(t, err)
+
+	anthropicClusterName := testutil.UniqueClusterName()
+	_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+		"name": anthropicClusterName,
+		"llm_config": map[string]interface{}{
+			"models":   []string{"claude-3-5-sonnet-20241022"},
+			"provider": anthropicProviderName,
+		},
+	})
+	require.NoError(t, err)
+
 	resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
 	require.NoError(t, err)
 	testutil.AssertSuccess(t, resp)
 	if resp.Data != nil && string(resp.Data) != "null" {
 		testutil.AssertSchema(t, resp, ServerDataConfSchema)
+		assertServerDataConfModelProtocols(t, resp.Data, anthropicClusterName)
 	}
 
 	t.Cleanup(func() {
 		testutil.DeleteCluster(clusterName)
+		testutil.DeleteCluster(anthropicClusterName)
+		testutil.DeleteProvider(anthropicProviderName)
 	})
+}
+
+// assertServerDataConfModelProtocols 校验导出结果中指定 cluster 的 AIConf.ModelProtocols。
+func assertServerDataConfModelProtocols(t *testing.T, data []byte, clusterName string) {
+	t.Helper()
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal server_data_conf data: %v", err)
+	}
+	clusterConf, ok := payload["ClusterConf"].(map[string]interface{})
+	if !ok {
+		t.Fatal("ClusterConf is not an object")
+	}
+	config, ok := clusterConf["Config"].(map[string]interface{})
+	if !ok {
+		t.Fatal("ClusterConf.Config is not an object")
+	}
+	cluster, ok := config[clusterName].(map[string]interface{})
+	if !ok {
+		t.Fatalf("cluster %s not found in ClusterConf.Config", clusterName)
+	}
+	aiconf, ok := cluster["AIConf"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("AIConf not found for cluster %s", clusterName)
+	}
+	modelProtocols, ok := aiconf["ModelProtocols"].([]interface{})
+	if !ok || len(modelProtocols) != 1 {
+		t.Fatalf("expected AIConf.ModelProtocols=[anthropic] for cluster %s, got %v", clusterName, aiconf["ModelProtocols"])
+	}
+	if modelProtocols[0] != "anthropic" {
+		t.Fatalf("expected ModelProtocols[0]=anthropic for cluster %s, got %v", clusterName, modelProtocols[0])
+	}
 }
 
 func testGSLBSchema(t *testing.T) {
