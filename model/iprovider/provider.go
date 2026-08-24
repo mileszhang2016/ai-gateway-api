@@ -470,21 +470,6 @@ func HasModel(provider *Provider, model string) bool {
 	return false
 }
 
-// BuildDiscoverURL builds the URL used for model discovery.
-func BuildDiscoverURL(endpoint *ProviderEndpoint, instance ProviderInstance) string {
-	schema := "https"
-	uri := "/v1/models"
-	if endpoint != nil {
-		if endpoint.Schema != "" {
-			schema = endpoint.Schema
-		}
-		if endpoint.URI != "" {
-			uri = endpoint.URI
-		}
-	}
-	return fmt.Sprintf("%s://%s:%d%s", schema, instance.Addr, instance.Port, uri)
-}
-
 // BuildAuthHeader returns the auth header name/value for the given protocol.
 func BuildAuthHeader(protocol, key string) (string, string) {
 	switch protocol {

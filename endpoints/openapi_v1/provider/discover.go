@@ -15,19 +15,19 @@
 package provider
 
 import (
+	"encoding/json"
 	"net/http"
-
-	"github.com/gorilla/mux"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
-// DiscoverEndpoint triggers model discovery for a provider.
+// DiscoverEndpoint triggers model discovery.
 var DiscoverEndpoint = &xreq.Endpoint{
-	Path:       "/providers/{provider_name}/discover-models",
+	Path:       "/providers/tools/discover-models",
 	Method:     http.MethodPost,
 	Handler:    xreq.Convert(DiscoverAction),
 	Authorizer: iauth.FA(iauth.FeatureProvider, iauth.ActionUpdate),
@@ -37,14 +37,14 @@ type discoverResponse struct {
 	Models []string `json:"models"`
 }
 
-// DiscoverAction handles POST /providers/{provider_name}/discover-models.
+// DiscoverAction handles POST /providers/tools/discover-models.
 func DiscoverAction(req *http.Request) (interface{}, error) {
-	name := mux.Vars(req)["provider_name"]
-	if name == "" {
-		return nil, xerror.WrapParamErrorWithMsg("provider_name is required")
+	var param iprovider.DiscoverModelsParam
+	if err := json.NewDecoder(req.Body).Decode(&param); err != nil {
+		return nil, xerror.WrapParamErrorWithMsg("invalid request body: %v", err)
 	}
 
-	models, err := container.ProviderManager.DiscoverModels(req.Context(), name)
+	models, err := container.ProviderManager.DiscoverModels(req.Context(), &param)
 	if err != nil {
 		return nil, err
 	}

@@ -201,78 +201,121 @@ func TestProviderManager_DiscoverModels(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("success openai", func(t *testing.T) {
-		updated := false
-		store := &fakeProviderStorager{
-			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
-				return &Provider{
-					Name:           "deepseek",
-					Keys:           []ProviderKey{{Name: "k1", Key: "sk-xxx"}},
-					InstancePool:   []ProviderInstance{{Addr: "api.deepseek.com", Port: 443}},
-					ModelProtocols: []string{"openai"},
-					ModelEndpoint:  &ProviderEndpoint{Schema: "https", URI: "/v1/models"},
-				}, nil
-			},
-			updateFn: func(ctx context.Context, name string, param *ProviderParam) error {
-				updated = true
-				assert.Equal(t, []string{"m1", "m2"}, param.Models)
-				return nil
-			},
+		param := &DiscoverModelsParam{
+			ModelProtocol: "openai",
+			Schema:        "https",
+			Addr:          "api.deepseek.com",
+			Port:          443,
+			URI:           "/v1/models",
+			APIKey:        "sk-xxx",
 		}
 		caller := &fakeDiscoverCaller{body: []byte(`{"data":[{"id":"m1"},{"id":"m2"}]}`)}
-		m := NewProviderManager(&fakeTxn{}, store)
-		models, err := m.DiscoverModelsWithCaller(ctx, "deepseek", caller)
+		m := NewProviderManager(&fakeTxn{}, &fakeProviderStorager{})
+		models, err := m.DiscoverModelsWithCaller(ctx, param, caller)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"m1", "m2"}, models)
-		assert.True(t, updated)
 	})
 
 	t.Run("success anthropic", func(t *testing.T) {
-		updated := false
-		store := &fakeProviderStorager{
-			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
-				return &Provider{
-					Name:           "anthropic",
-					Keys:           []ProviderKey{{Name: "k1", Key: "sk-xxx"}},
-					InstancePool:   []ProviderInstance{{Addr: "api.anthropic.com", Port: 443}},
-					ModelProtocols: []string{"anthropic"},
-					ModelEndpoint:  &ProviderEndpoint{Schema: "https", URI: "/v1/models"},
-				}, nil
-			},
-			updateFn: func(ctx context.Context, name string, param *ProviderParam) error {
-				updated = true
-				assert.Equal(t, []string{"claude-3-opus-20240229"}, param.Models)
-				return nil
-			},
+		param := &DiscoverModelsParam{
+			ModelProtocol: "anthropic",
+			Schema:        "https",
+			Addr:          "api.anthropic.com",
+			Port:          443,
+			URI:           "/v1/models",
+			APIKey:        "sk-xxx",
 		}
 		caller := &fakeDiscoverCaller{body: []byte(`{"models":[{"model_id":"claude-3-opus-20240229","display_name":"Claude 3 Opus"}]}`)}
-		m := NewProviderManager(&fakeTxn{}, store)
-		models, err := m.DiscoverModelsWithCaller(ctx, "anthropic", caller)
+		m := NewProviderManager(&fakeTxn{}, &fakeProviderStorager{})
+		models, err := m.DiscoverModelsWithCaller(ctx, param, caller)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"claude-3-opus-20240229"}, models)
-		assert.True(t, updated)
 	})
 
-	t.Run("no keys", func(t *testing.T) {
-		store := &fakeProviderStorager{
-			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
-				return &Provider{
-					Name:           "deepseek",
-					InstancePool:   []ProviderInstance{{Addr: "api.deepseek.com", Port: 443}},
-					ModelProtocols: []string{"openai"},
-				}, nil
-			},
+	t.Run("default uri", func(t *testing.T) {
+		param := &DiscoverModelsParam{
+			ModelProtocol: "openai",
+			Schema:        "https",
+			Addr:          "api.example.com",
+			Port:          443,
+			APIKey:        "sk-xxx",
 		}
-		m := NewProviderManager(&fakeTxn{}, store)
-		_, err := m.DiscoverModelsWithCaller(ctx, "deepseek", &fakeDiscoverCaller{})
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "no keys")
+		caller := &fakeDiscoverCaller{body: []byte(`{"data":[{"id":"m1"}]}`)}
+		m := NewProviderManager(&fakeTxn{}, &fakeProviderStorager{})
+		models, err := m.DiscoverModelsWithCaller(ctx, param, caller)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"m1"}, models)
 	})
 
-	t.Run("not found", func(t *testing.T) {
+	t.Run("no apikey", func(t *testing.T) {
+		param := &DiscoverModelsParam{
+			ModelProtocol: "openai",
+			Schema:        "https",
+			Addr:          "api.example.com",
+			Port:          443,
+		}
+		caller := &fakeDiscoverCaller{body: []byte(`{"data":[{"id":"m1"}]}`)}
 		m := NewProviderManager(&fakeTxn{}, &fakeProviderStorager{})
-		_, err := m.DiscoverModelsWithCaller(ctx, "deepseek", &fakeDiscoverCaller{})
+		models, err := m.DiscoverModelsWithCaller(ctx, param, caller)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"m1"}, models)
+	})
+
+	t.Run("invalid model_protocol", func(t *testing.T) {
+		param := &DiscoverModelsParam{
+			ModelProtocol: "unknown",
+			Schema:        "https",
+			Addr:          "api.example.com",
+			Port:          443,
+		}
+		m := NewProviderManager(&fakeTxn{}, &fakeProviderStorager{})
+		_, err := m.DiscoverModelsWithCaller(ctx, param, &fakeDiscoverCaller{})
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "provider Record Not Exist")
+		assert.Contains(t, err.Error(), "invalid model_protocol")
+	})
+
+	t.Run("missing addr", func(t *testing.T) {
+		param := &DiscoverModelsParam{
+			ModelProtocol: "openai",
+			Schema:        "https",
+			Port:          443,
+		}
+		m := NewProviderManager(&fakeTxn{}, &fakeProviderStorager{})
+		_, err := m.DiscoverModelsWithCaller(ctx, param, &fakeDiscoverCaller{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "addr is required")
+	})
+
+	t.Run("url and auth header", func(t *testing.T) {
+		param := &DiscoverModelsParam{
+			ModelProtocol: "openai",
+			Schema:        "https",
+			Addr:          "api.example.com",
+			Port:          443,
+			URI:           "/v1/models",
+			APIKey:        "sk-xxx",
+		}
+		caller := &fakeDiscoverCaller{body: []byte(`{"data":[{"id":"m1"}]}`)}
+		m := NewProviderManager(&fakeTxn{}, &fakeProviderStorager{})
+		_, err := m.DiscoverModelsWithCaller(ctx, param, caller)
+		require.NoError(t, err)
+		assert.Equal(t, "https://api.example.com:443/v1/models", caller.lastURL)
+		assert.Equal(t, "Bearer sk-xxx", caller.lastHeaders["Authorization"])
+	})
+
+	t.Run("no auth header when apikey empty", func(t *testing.T) {
+		param := &DiscoverModelsParam{
+			ModelProtocol: "openai",
+			Schema:        "http",
+			Addr:          "api.example.com",
+			Port:          80,
+		}
+		caller := &fakeDiscoverCaller{body: []byte(`{"data":[{"id":"m1"}]}`)}
+		m := NewProviderManager(&fakeTxn{}, &fakeProviderStorager{})
+		_, err := m.DiscoverModelsWithCaller(ctx, param, caller)
+		require.NoError(t, err)
+		assert.Equal(t, "http://api.example.com:80/v1/models", caller.lastURL)
+		assert.Empty(t, caller.lastHeaders["Authorization"])
 	})
 }
 
@@ -375,10 +418,66 @@ func TestHasModel(t *testing.T) {
 	assert.False(t, HasModel(nil, "m1"))
 }
 
-func TestBuildDiscoverURL(t *testing.T) {
-	inst := ProviderInstance{Addr: "api.example.com", Port: 443}
-	url := BuildDiscoverURL(&ProviderEndpoint{Schema: "https", URI: "/v1/models"}, inst)
-	assert.Equal(t, "https://api.example.com:443/v1/models", url)
+func TestValidateDiscoverModelsParam(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		require.NoError(t, ValidateDiscoverModelsParam(&DiscoverModelsParam{
+			ModelProtocol: "openai",
+			Schema:        "https",
+			Addr:          "api.example.com",
+			Port:          443,
+			URI:           "/v1/models",
+			APIKey:        "sk-xxx",
+		}))
+	})
+
+	t.Run("nil", func(t *testing.T) {
+		require.Error(t, ValidateDiscoverModelsParam(nil))
+	})
+
+	t.Run("missing model_protocol", func(t *testing.T) {
+		require.Error(t, ValidateDiscoverModelsParam(&DiscoverModelsParam{
+			Schema: "https",
+			Addr:   "api.example.com",
+			Port:   443,
+		}))
+	})
+
+	t.Run("invalid model_protocol", func(t *testing.T) {
+		require.Error(t, ValidateDiscoverModelsParam(&DiscoverModelsParam{
+			ModelProtocol: "unknown",
+			Schema:        "https",
+			Addr:          "api.example.com",
+			Port:          443,
+		}))
+	})
+
+	t.Run("invalid schema", func(t *testing.T) {
+		require.Error(t, ValidateDiscoverModelsParam(&DiscoverModelsParam{
+			ModelProtocol: "openai",
+			Schema:        "ftp",
+			Addr:          "api.example.com",
+			Port:          443,
+		}))
+	})
+
+	t.Run("invalid port", func(t *testing.T) {
+		require.Error(t, ValidateDiscoverModelsParam(&DiscoverModelsParam{
+			ModelProtocol: "openai",
+			Schema:        "https",
+			Addr:          "api.example.com",
+			Port:          0,
+		}))
+	})
+
+	t.Run("uri must start with slash", func(t *testing.T) {
+		require.Error(t, ValidateDiscoverModelsParam(&DiscoverModelsParam{
+			ModelProtocol: "openai",
+			Schema:        "https",
+			Addr:          "api.example.com",
+			Port:          443,
+			URI:           "v1/models",
+		}))
+	})
 }
 
 func TestBuildAuthHeader(t *testing.T) {

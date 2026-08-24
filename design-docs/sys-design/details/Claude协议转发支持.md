@@ -9,7 +9,7 @@ BFE 数据面在 AI Gateway 路径上已支持 OpenAI 兼容协议的转发。�
 ## 2. 目标
 
 - 让 BFE 在导出配置中拿到每个 cluster 对应 provider 支持的协议列表（`AIConf.ModelProtocols`）。
-- 让 `/providers/{name}/discover-models` 在 `model_protocols=anthropic` 时能正确解析 Anthropic `/v1/models` 响应。
+- 让 `/providers/tools/discover-models` 在请求参数 `model_protocol=anthropic` 时能正确解析 Anthropic `/v1/models` 响应。
 - 清理已废弃的 `ai-gateway-api/conf/ai` 目录。
 - 保持 `/providers`、`/clusters` 等 OpenAPI 接口契约不变。
 

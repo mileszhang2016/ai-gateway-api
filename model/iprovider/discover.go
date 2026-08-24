@@ -25,6 +25,16 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 )
 
+// DiscoverModelsParam holds the input for a stateless model discovery request.
+type DiscoverModelsParam struct {
+	ModelProtocol string `json:"model_protocol"`
+	Schema        string `json:"schema"`
+	Addr          string `json:"addr"`
+	Port          int    `json:"port"`
+	URI           string `json:"uri"`
+	APIKey        string `json:"apikey"`
+}
+
 // DiscoverCaller abstracts the HTTP call used by DiscoverModels.
 type DiscoverCaller interface {
 	Call(ctx context.Context, method, url string, headers map[string]string) ([]byte, error)
@@ -65,59 +75,77 @@ func (c *HTTPDiscoverCaller) Call(ctx context.Context, method, url string, heade
 	return io.ReadAll(resp.Body)
 }
 
-// DiscoverModels triggers model discovery for the named provider and updates its models list.
-// It uses the first model protocol to choose the auth header style and the first instance pool
-// entry as the request target. The discovered models are written back to the provider record.
-func (m *ProviderManager) DiscoverModels(ctx context.Context, name string) ([]string, error) {
-	return m.DiscoverModelsWithCaller(ctx, name, NewHTTPDiscoverCaller())
+// DiscoverModels triggers a stateless model discovery and returns the model name list.
+// It does not read or write any provider record.
+func (m *ProviderManager) DiscoverModels(ctx context.Context, param *DiscoverModelsParam) ([]string, error) {
+	return m.DiscoverModelsWithCaller(ctx, param, NewHTTPDiscoverCaller())
 }
 
 // DiscoverModelsWithCaller triggers model discovery using the supplied caller (for tests).
-func (m *ProviderManager) DiscoverModelsWithCaller(ctx context.Context, name string, caller DiscoverCaller) ([]string, error) {
-	var models []string
-	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		provider, err := m.storager.FetchProvider(ctx, &ProviderFilter{Name: &name})
-		if err != nil {
-			return err
-		}
-		if provider == nil {
-			return xerror.WrapRecordNotExist("provider")
-		}
+func (m *ProviderManager) DiscoverModelsWithCaller(ctx context.Context, param *DiscoverModelsParam, caller DiscoverCaller) ([]string, error) {
+	if err := ValidateDiscoverModelsParam(param); err != nil {
+		return nil, err
+	}
 
-		if len(provider.Keys) == 0 {
-			return xerror.WrapParamErrorWithMsg("provider has no keys for authentication")
-		}
-		if len(provider.InstancePool) == 0 {
-			return xerror.WrapParamErrorWithMsg("provider has no instances for discovery")
-		}
-		if len(provider.ModelProtocols) == 0 {
-			return xerror.WrapParamErrorWithMsg("provider has no model_protocols")
-		}
+	uri := param.URI
+	if uri == "" {
+		uri = "/v1/models"
+	}
+	url := fmt.Sprintf("%s://%s:%d%s", param.Schema, param.Addr, param.Port, uri)
 
-		protocol := provider.ModelProtocols[0]
-		key := provider.Keys[0].Key
-		host := provider.InstancePool[0]
-		url := BuildDiscoverURL(provider.ModelEndpoint, host)
+	headers := make(map[string]string)
+	if param.APIKey != "" {
+		headerName, headerValue := BuildAuthHeader(param.ModelProtocol, param.APIKey)
+		headers[headerName] = headerValue
+	}
 
-		headerName, headerValue := BuildAuthHeader(protocol, key)
-		headers := map[string]string{headerName: headerValue}
+	body, err := caller.Call(ctx, http.MethodGet, url, headers)
+	if err != nil {
+		return nil, xerror.WrapParamErrorWithMsg("model discovery request failed: %v", err)
+	}
 
-		body, err := caller.Call(ctx, http.MethodGet, url, headers)
-		if err != nil {
-			return xerror.WrapParamErrorWithMsg("model discovery request failed: %v", err)
-		}
+	models, err := ParseModelDiscoveryResponse(body, param.ModelProtocol)
+	if err != nil {
+		return nil, xerror.WrapParamErrorWithMsg("model discovery response parse failed: %v", err)
+	}
 
-		models, err = ParseModelDiscoveryResponse(body, protocol)
-		if err != nil {
-			return xerror.WrapParamErrorWithMsg("model discovery response parse failed: %v", err)
-		}
+	return models, nil
+}
 
-		param := &ProviderParam{
-			Models: models,
-		}
-		return m.storager.UpdateProvider(ctx, name, param)
-	})
-	return models, err
+// ValidateDiscoverModelsParam validates a model discovery request.
+func ValidateDiscoverModelsParam(param *DiscoverModelsParam) error {
+	if param == nil {
+		return xerror.WrapParamErrorWithMsg("request body is required")
+	}
+	if param.ModelProtocol == "" {
+		return xerror.WrapParamErrorWithMsg("model_protocol is required")
+	}
+	if !ValidModelProtocols[param.ModelProtocol] {
+		return xerror.WrapParamErrorWithMsg("invalid model_protocol: %s", param.ModelProtocol)
+	}
+	if param.Schema == "" {
+		return xerror.WrapParamErrorWithMsg("schema is required")
+	}
+	if param.Schema != "http" && param.Schema != "https" {
+		return xerror.WrapParamErrorWithMsg("schema must be http or https")
+	}
+	if param.Addr == "" {
+		return xerror.WrapParamErrorWithMsg("addr is required")
+	}
+	if param.Port <= 0 || param.Port > 65535 {
+		return xerror.WrapParamErrorWithMsg("port must be between 1 and 65535")
+	}
+	if param.URI != "" && !startsWithSlash(param.URI) {
+		return xerror.WrapParamErrorWithMsg("uri must start with '/'")
+	}
+	if len(param.APIKey) > MaxProviderKeyLength {
+		return xerror.WrapParamErrorWithMsg("apikey length must be <= %d", MaxProviderKeyLength)
+	}
+	return nil
+}
+
+func startsWithSlash(s string) bool {
+	return len(s) > 0 && s[0] == '/'
 }
 
 // modelParser describes how to extract model names from a provider discovery response.
@@ -129,8 +157,8 @@ type modelParser struct {
 
 // modelProtocolParsers maps model protocol names to their discovery response parsers.
 // The definitions formerly lived in conf/ai/model_definition.json; they are now
-// maintained in code so that /providers/{name}/discover-models can select the right
-// parser based on provider.model_protocols.
+// maintained in code so that /providers/tools/discover-models can select the right
+// parser based on model_protocol.
 var modelProtocolParsers = map[string]modelParser{
 	"openai": {
 		ListPath:  "data",

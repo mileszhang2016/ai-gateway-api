@@ -112,7 +112,7 @@
 | GET | `/providers/{provider_name}` | 查询单个 provider |
 | PATCH | `/providers/{provider_name}` | 部分更新 provider |
 | DELETE | `/providers/{provider_name}` | 删除 provider |
-| POST | `/providers/{provider_name}/discover-models` | 触发模型发现 |
+| POST | `/providers/tools/discover-models` | 触发模型发现 |
 
 删除 provider 前，须校验无 `/clusters` 引用；`/model-prices` 中的同名 provider 不再作为阻塞条件。
 
@@ -156,7 +156,7 @@ URL 与 HTTP Method 不变，请求/响应体变化：
 ### 6.3 接口层
 
 - 新增 `endpoints/openapi_v1/provider/`。
-- 移除 `endpoints/openapi_v1/tool/`（`/tools/get-models-from-provider` 能力由 `/providers/{name}/discover-models` 替代）。
+- 移除 `endpoints/openapi_v1/tool/`（`/tools/get-models-from-provider` 能力由 `/providers/tools/discover-models` 替代）。
 - 移除 `/model-provider-types`；模型访问协议枚举作为 `providers.model_protocols` 的合法性约束在 `providers.md` 中定义。
 - `endpoints/openapi_v1/model_price/` 新增 `GET /model-prices/actions/get-providers` handler。
 
@@ -262,5 +262,5 @@ BFE 接收到的配置结构和字段与重构前完全一致：
 |------|------|------|
 | 1 | API 版本策略 | 是否需要在 `/v2` 引入新语义，保留 `/v1` 兼容层？ |
 | 2 | `model_protocols` 默认值 | 是否允许不传，默认 `["openai"]`？ |
-| 3 | 模型发现认证 key 选择 | 首期使用 provider `keys` 第一个 key，后续按需扩展。 |
+| 3 | 模型发现认证 key | 由调用方通过 `apikey` 参数传入，认证头风格由 `model_protocol` 决定。 |
 | 4 | provider 是否保留 `provider_type` | 本期不保留；由 `model_protocols` + `name` 共同表达。 |

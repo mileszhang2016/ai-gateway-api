@@ -19,7 +19,7 @@ Provider 与 Cluster 概念分离后：
 | PV-3 | 查询 Provider 详情 | GET | `/open-api/v1/providers/{provider_name}` | - |
 | PV-4 | 更新 Provider | PATCH | `/open-api/v1/providers/{provider_name}` | 全量替换 `keys`、`models` 等数组字段 |
 | PV-5 | 删除 Provider | DELETE | `/open-api/v1/providers/{provider_name}` | 删除前检查 cluster/model-price 引用 |
-| PV-6 | 触发模型发现 | POST | `/open-api/v1/providers/{provider_name}/discover-models` | 当前集成测试未覆盖 |
+| PV-6 | 触发模型发现 | POST | `/open-api/v1/providers/tools/discover-models` | 当前集成测试未覆盖；无状态工具接口，不绑定 Provider |
 
 ## 3. 测试用例统计
 
@@ -251,4 +251,4 @@ provider/
 2. `keys` 作为数组，按**全量替换**处理；更新时如需保留旧 Key，需传入完整列表。
 3. `instance_pool` 中 `(name, addr)` 组合不能重复；`name` 为空字符串时系统会默认填充为 `addr`。
 4. `model_protocols` 当前枚举值为 `openai`、`anthropic`。
-5. 当前集成测试未覆盖 `/providers/{provider_name}/discover-models` 接口。
+5. `/providers/tools/discover-models` 集成测试见 `discover/discover_test.go`，覆盖 OpenAI/Anthropic 协议、默认 URI、参数校验等场景。

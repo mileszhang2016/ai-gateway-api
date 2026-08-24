@@ -66,10 +66,16 @@ func (s *fakeProviderStorager) FetchProviderList(ctx context.Context, filter *Pr
 }
 
 type fakeDiscoverCaller struct {
-	body []byte
-	err  error
+	body        []byte
+	err         error
+	lastMethod  string
+	lastURL     string
+	lastHeaders map[string]string
 }
 
 func (c *fakeDiscoverCaller) Call(ctx context.Context, method, url string, headers map[string]string) ([]byte, error) {
+	c.lastMethod = method
+	c.lastURL = url
+	c.lastHeaders = headers
 	return c.body, c.err
 }
