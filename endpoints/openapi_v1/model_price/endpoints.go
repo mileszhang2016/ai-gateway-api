@@ -28,4 +28,5 @@ var Endpoints = []*xreq.Endpoint{
 	DeleteEndpoint,
 	UpdateByQueryEndpoint,
 	DeleteByQueryEndpoint,
+	GetProvidersEndpoint,
 }

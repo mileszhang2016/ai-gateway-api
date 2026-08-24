@@ -85,10 +85,10 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/gslb_data/cluster_table
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| Name | string | 实例名称，对应 OpenAPI `instance_pool[].hostname` |
+| Name | string | 实例名称，对应所属 provider `instance_pool[].name` |
 | Addr | string | 实例 IP 地址；IPv6 地址会被 `[]` 包裹 |
-| Port | int | 实例端口，对应 `instance_pool[].ports.Default` |
-| Weight | int | 实例权重，对应 `instance_pool[].weight`；`0` 表示该实例不接收流量 |
+| Port | int | 实例端口，对应所属 provider `instance_pool[].port` |
+| Weight | int | 实例权重，对应所属 provider `instance_pool[].weight`；`0` 表示该实例不接收流量 |
 
 ## 4. 配置未变化返回示例
 

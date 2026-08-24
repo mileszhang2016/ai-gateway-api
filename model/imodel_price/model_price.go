@@ -62,6 +62,7 @@ type ModelPriceStorager interface {
 	DeleteAllModelPrices(ctx context.Context) error
 	FetchModelPrice(ctx context.Context, filter *ModelPriceFilter) (*ModelPrice, error)
 	FetchModelPriceList(ctx context.Context, filter *ModelPriceFilter) ([]*ModelPrice, int64, error)
+	ListProviders(ctx context.Context) ([]string, error)
 }
 
 // Manager provides business-level operations for model pricing records.
@@ -92,6 +93,11 @@ func (m *Manager) UpdateModelPrice(ctx context.Context, filter *ModelPriceFilter
 		return 0, err
 	}
 	return m.storager.UpdateModelPrice(ctx, filter, param)
+}
+
+// ListProviders returns all distinct provider names in model_prices.
+func (m *Manager) ListProviders(ctx context.Context) ([]string, error) {
+	return m.storager.ListProviders(ctx)
 }
 
 // DeleteModelPrice deletes model price records matched by filter.

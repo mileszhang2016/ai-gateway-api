@@ -1,0 +1,52 @@
+package openapi
+
+import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
+
+// ProviderEndpointSchema provider model_endpoint schema
+var ProviderEndpointSchema = &testutil.ObjectSchema{
+	Required: []string{"schema", "uri"},
+	Fields: map[string]testutil.FieldSpec{
+		"schema": {Type: testutil.TypeString},
+		"uri":    {Type: testutil.TypeString},
+	},
+}
+
+// ProviderKeySchema provider keys element schema
+var ProviderKeySchema = &testutil.ObjectSchema{
+	Required: []string{"name", "key"},
+	Fields: map[string]testutil.FieldSpec{
+		"name": {Type: testutil.TypeString},
+		"key":  {Type: testutil.TypeString},
+	},
+}
+
+// ProviderInstanceSchema provider instance_pool element schema
+var ProviderInstanceSchema = &testutil.ObjectSchema{
+	Required: []string{"name", "addr", "weight", "port"},
+	Fields: map[string]testutil.FieldSpec{
+		"name":   {Type: testutil.TypeString},
+		"addr":   {Type: testutil.TypeString},
+		"weight": {Type: testutil.TypeInt},
+		"port":   {Type: testutil.TypeInt},
+	},
+}
+
+// ProviderSchema Provider 数据模型 schema
+var ProviderSchema = &testutil.ObjectSchema{
+	Required: []string{
+		"id", "name", "description", "model_endpoint", "models", "keys",
+		"instance_pool", "model_protocols", "create_time", "update_time",
+	},
+	Fields: map[string]testutil.FieldSpec{
+		"id":              {Type: testutil.TypeInt},
+		"name":            {Type: testutil.TypeString},
+		"description":     {Type: testutil.TypeString},
+		"model_endpoint":  {Type: testutil.TypeObject, Nested: ProviderEndpointSchema},
+		"models":          {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
+		"keys":            {Type: testutil.TypeArray, Elem: ProviderKeySchema},
+		"instance_pool":   {Type: testutil.TypeArray, Elem: ProviderInstanceSchema},
+		"model_protocols": {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString, Enum: []interface{}{"openai", "anthropic"}}},
+		"create_time":     {Type: testutil.TypeInt},
+		"update_time":     {Type: testutil.TypeInt},
+	},
+}

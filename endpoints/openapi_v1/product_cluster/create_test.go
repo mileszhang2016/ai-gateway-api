@@ -17,10 +17,10 @@ package product_cluster
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNormalizeStickySessions(t *testing.T) {
@@ -123,12 +123,10 @@ func TestValidateStickySessions(t *testing.T) {
 func TestUpsertParamValidate_StickySessions(t *testing.T) {
 	base := func() *UpsertParam {
 		return &UpsertParam{
-			Name:        lib.PString("test-cluster"),
-			InstancePool: []*Instance{
-				{Name: "rs1", Addr: "127.0.0.1", Port: 80, Weight: 10},
-			},
+			Name: lib.PString("test-cluster"),
 			LLMConfig: &icluster_conf.LLMConfig{
-				Models: []string{"gpt-4"},
+				Provider: lib.PString("openai"),
+				Models:   []string{"gpt-4"},
 			},
 		}
 	}

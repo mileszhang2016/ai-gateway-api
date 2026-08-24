@@ -204,6 +204,7 @@ type ExportTPMConfig struct {
 	WindowMinutes int      `json:"window_minutes"`
 	MaxTokens     int      `json:"max_tokens"`
 	StepMinutes   int      `json:"step_minutes"`
+	RedisKey      string   `json:"redis_key"`
 }
 
 // ExportRPMConfig 定义导出的 RPM 配置
@@ -213,6 +214,7 @@ type ExportRPMConfig struct {
 	WindowMinutes int      `json:"window_minutes"`
 	MaxRequests   int      `json:"max_requests"`
 	Burst         int      `json:"burst"`
+	RedisKey      string   `json:"redis_key"`
 }
 
 // ExportRateLimitPolicyConfig 定义导出的限流策略配置

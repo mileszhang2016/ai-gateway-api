@@ -54,7 +54,7 @@ func TestClusterManager_ExportClusterTable(t *testing.T) {
 				return []*Cluster{newTestClusterBase()}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
 		_, err := m.ExportClusterTable(ctx, "")
 		require.Error(t, err)
 	})
@@ -65,7 +65,7 @@ func TestClusterManager_ExportClusterTable(t *testing.T) {
 				return nil, errors.New("db down")
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		_, err := m.clusterTableConfGenerator(ctx)
 		require.Error(t, err)
 	})
@@ -109,7 +109,7 @@ func TestClusterManager_ExportGSLB(t *testing.T) {
 				return []*Cluster{c}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
 		_, err := m.ExportGSLB(ctx, "", "bfe1")
 		require.Error(t, err)
 	})
@@ -144,7 +144,7 @@ func newClusterManagerForExportGSLB(t *testing.T, version string) *ClusterManage
 			return []*Cluster{c}, nil
 		},
 	}
-	return NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
+	return NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
 }
 
 func TestClusterTableConf_clusterWithIPv6(t *testing.T) {
@@ -161,7 +161,7 @@ func TestClusterTableConf_clusterWithIPv6(t *testing.T) {
 			return []*Cluster{c}, nil
 		},
 	}
-	m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
+	m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
 	conf, err := m.ExportClusterTable(ctx, "old")
 	require.NoError(t, err)
 	require.NotNil(t, conf)

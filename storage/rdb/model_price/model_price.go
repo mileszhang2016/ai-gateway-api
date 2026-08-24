@@ -144,6 +144,32 @@ func (s *RDBModelPriceStorager) FetchModelPriceList(ctx context.Context, filter 
 	return rst, total, nil
 }
 
+func (s *RDBModelPriceStorager) ListProviders(ctx context.Context) ([]string, error) {
+	dbCtx, err := s.dbCtxFactory(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := dbCtx.Conn().QueryContext(dbCtx, fmt.Sprintf("SELECT DISTINCT provider FROM %s ORDER BY provider", dao.TModelPriceTableName()))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var providers []string
+	for rows.Next() {
+		var provider string
+		if err := rows.Scan(&provider); err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return providers, nil
+}
+
 func toDAOParam(param *imodel_price.ModelPrice) (*dao.TModelPriceParam, error) {
 	if param == nil {
 		return nil, nil

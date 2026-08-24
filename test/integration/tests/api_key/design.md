@@ -16,6 +16,7 @@ API-Key 模块负责 API-Key 的管理，包括创建、查询、更新、删除
 | AK-6 | 删除 API-Key | DELETE | `/open-api/v1/api-keys/{id}` | 级联删除专属资源 |
 | AK-7 | 查询配额计划 | GET | `/open-api/v1/api-keys/{id}/quota-plan` | 返回完整 quota_plan 含 balance |
 | AK-8 | 重置配额余额 | POST | `/open-api/v1/api-keys/{id}/quota-plan/reset` | 重置余额，可指定新 quota |
+| AK-9 | 更新配额计划（余额差异化调整） | PUT/PATCH | `/open-api/v1/api-keys/{id}` | 变更 quota_plan 时按 diff 调整余额 |
 
 ## 3. 测试用例统计
 
@@ -29,7 +30,8 @@ API-Key 模块负责 API-Key 的管理，包括创建、查询、更新、删除
 | 删除 API-Key | 2 |
 | 查询配额计划 | 4 |
 | 重置配额余额 | 3 |
-| **合计** | **33** |
+| 更新配额计划（余额差异化调整） | 6 |
+| **合计** | **39** |
 
 ## 4. 认证方式
 
@@ -54,8 +56,10 @@ api_key/
 │   └── delete_test.go
 ├── quota_query/
 │   └── quota_query_test.go
-└── quota_reset/
-    └── quota_reset_test.go
+├── quota_reset/
+│   └── quota_reset_test.go
+└── quota_update/
+    └── quota_update_test.go
 ```
 
 ## 6. 创建 API-Key
@@ -569,6 +573,49 @@ api_key/
 | quota_plan.unit | "RMB" | Equals |
 | quota_plan.quota | 1234.5678 | Equals |
 | quota_plan.balance | 不存在 | NotExists |
+
+---
+
+#### 6.4.12 AK-1-012：并发创建 API-Key（并发安全，未启用）
+
+##### 设计思路
+
+验证 Issue #80 修复后，多个并发 POST `/open-api/v1/api-keys` 请求不会生成重复 ID，也不会触发 422 Duplicate id 或 500。设计使用 50 个 goroutine 同时发送最小参数创建请求，收集返回的 `id` 并校验唯一性。
+
+> **未启用原因**：当前集成测试环境使用 SQLite 文件数据库，50 并发写会导致数据库锁竞争超时，测试无法稳定运行。Issue #80 的并发正确性由 DAO 层单元测试 `TestTAPIKeyIDSeqAllocate_Concurrent`（50 goroutine）覆盖；生产环境使用 MySQL 行锁，可支撑更高并发。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 启动 `concurrency` 个 goroutine（默认 50）。
+2. 每个 goroutine 同时 POST `/open-api/v1/api-keys`，`description` 带唯一索引。
+3. 等待所有 goroutine 完成。
+4. 断言所有响应 `ErrNum=200`。
+5. 断言返回的 `id` 数量为 `concurrency` 且互不相同。
+6. 断言所有 `id` 均符合 `api-key-{seq}` 格式。
+
+##### 请求参数
+
+```json
+{
+    "description": "concurrent-test-key-{idx}"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200（全部请求）
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| id | 非空字符串，格式 `api-key-%d` | RegexMatch |
+| 所有请求的 id | 互不相同 | Unique |
 
 ---
 
@@ -1815,14 +1862,292 @@ URI：`id`
 
 ---
 
-## 14. 依赖与数据准备
+## 14. 更新配额计划时的余额调整
+
+### 14.1 接口信息
+
+| 项目 | 值 |
+|------|-----|
+| 模块 | API-Key |
+| 接口名称 | 更新配额计划（余额差异化调整） |
+| 方法 | `PUT` / `PATCH` |
+| 路径 | `/open-api/v1/api-keys/{id}` |
+| 说明 | 当请求体中包含 `quota_plan` 且 `quota`/`unit`/`unlimited` 任一发生变化时，按 diff 规则调整 `quota_balances` 与 Redis；普通属性修改不触发余额变更。 |
+
+### 14.2 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| AK-9-001 | 仅修改 quota（total_token）保留 used | 正常参数 | `remaining = 新 quota - used` |
+| AK-9-002 | RMB 配额仅修改 quota 保留 used | 正常参数 | 小数精度保持 8 位 |
+| AK-9-003 | 修改 unit 重置 used 与 remaining | 正常参数 | `used=0`，`remaining=新 quota` |
+| AK-9-004 | unlimited false -> true 重置为 sentinel | 正常参数 | `used=0`，`remaining=100000000` |
+| AK-9-005 | unlimited true -> false 按新 quota 初始化 | 正常参数 | `used=0`，`remaining=新 quota` |
+| AK-9-006 | 普通属性修改不影响配额余额 | 正常参数 | 修改 `enabled`/`description` 等，余额不变 |
+
+### 14.3 测试场景详细设计
+
+#### 14.3.1 AK-9-001：仅修改 quota（total_token）保留 used
+
+##### 设计思路
+
+验证单位不变、仅调额时，历史已用量 `used` 被保留，`remaining` 按新 quota 重新计算。
+
+##### 前提数据准备
+
+已创建 `unit=total_token`、`quota=1000` 的 API-Key，并在 `quota_balances` 中写入 `used=200`、`remaining=800`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，仅修改 `quota_plan.quota=500`（同单位）。
+2. 通过 GET `/api-keys/{id}/quota-plan` 查询余额。
+3. 验证 `balance.used=200`、`balance.remaining=300`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 500,
+        "unit": "total_token"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.quota | 500 | Equals |
+| balance.used | 200 | Equals |
+| balance.remaining | 300 | Equals |
+
+---
+
+#### 14.3.2 AK-9-002：RMB 配额仅修改 quota 保留 used
+
+##### 设计思路
+
+验证 `unit=RMB` 时，仅调额同样保留 `used`，小数计算精度保持 8 位。
+
+##### 前提数据准备
+
+已创建 `unit=RMB`、`quota=1000.1234` 的 API-Key，并在 `quota_balances` 中写入 `used=123.4567`、`remaining=876.6667`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`quota_plan.quota=800.0000`。
+2. 查询 quota-plan 接口。
+3. 验证 `balance.used=123.4567`、`balance.remaining=676.5433`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 800.0000,
+        "unit": "RMB"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.quota | 800.0000 | InDelta(1e-5) |
+| balance.used | 123.4567 | InDelta(1e-5) |
+| balance.remaining | 676.5433 | InDelta(1e-5) |
+
+---
+
+#### 14.3.3 AK-9-003：修改 unit 重置 used 与 remaining
+
+##### 设计思路
+
+验证 `unit` 变化时，由于新旧单位无法直接换算，`used` 清零并按新 quota 重置。
+
+##### 前提数据准备
+
+已创建 `unit=total_token`、`quota=1000` 的 API-Key，并在 `quota_balances` 中写入 `used=200`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，将 `unit` 改为 `RMB`，`quota=888.88`。
+2. 查询 quota-plan 接口。
+3. 验证 `balance.used=0`、`balance.remaining=888.88`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 888.88,
+        "unit": "RMB"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unit | "RMB" | Equals |
+| balance.used | 0 | Equals |
+| balance.remaining | 888.88 | InDelta(1e-5) |
+
+---
+
+#### 14.3.4 AK-9-004：unlimited 由 false 改为 true 重置为 sentinel
+
+##### 设计思路
+
+验证切换为无限配额时，`used` 清零，`remaining` 置为 sentinel 值 `100000000`。
+
+##### 前提数据准备
+
+已创建有限配额 API-Key，并在 `quota_balances` 中写入非零 `used`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`quota_plan.unlimited=true`。
+2. 查询 quota-plan 接口。
+3. 验证 `balance.used=0`、`balance.remaining=100000000`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": true
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unlimited | true | Equals |
+| balance.used | 0 | Equals |
+| balance.remaining | 100000000 | Equals |
+
+---
+
+#### 14.3.5 AK-9-005：unlimited 由 true 改为 false 按新 quota 初始化
+
+##### 设计思路
+
+验证从无限配额切回有限配额时，按新 `quota` 初始化余额。
+
+##### 前提数据准备
+
+已创建 `unlimited=true` 的 API-Key。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`quota_plan.unlimited=false`、`quota=500`、`unit=total_token`。
+2. 查询 quota-plan 接口。
+3. 验证 `balance.used=0`、`balance.remaining=500`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 500,
+        "unit": "total_token"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unlimited | false | Equals |
+| balance.used | 0 | Equals |
+| balance.remaining | 500 | Equals |
+
+---
+
+#### 14.3.6 AK-9-006：普通属性修改不影响配额余额
+
+##### 设计思路
+
+验证仅修改 API-Key 普通属性（如 `enabled`、`description`）时，不触发 `ApplyQuotaPlanChange`，余额保持不变。
+
+##### 前提数据准备
+
+已创建有限配额 API-Key，并在 `quota_balances` 中写入 `used=200`、`remaining=800`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，修改 `enabled=false`、`description="updated-desc"`。
+2. 查询 quota-plan 接口。
+3. 验证 `balance.used=200`、`balance.remaining=800`。
+
+##### 请求参数
+
+```json
+{
+    "enabled": false,
+    "description": "updated-desc"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| enabled | false | Equals |
+| balance.used | 200 | Equals |
+| balance.remaining | 800 | Equals |
+
+---
+
+## 15. 依赖与数据准备
 
 1. **Entity 数据**：AK 挂载用例需要预先创建 Entity-Type 与 Entity。
 2. **证书/集群**：如测试 route_rules 中 `ClusterName` 有效性，可预先创建 Cluster。
 3. **Redis Mock**：配额余额相关用例依赖测试环境内存 Redis Mock。
 4. **外部 key 唯一性**：导入 key 用例需保证 key 在测试数据库中全局唯一。
 
-## 15. 注意事项
+## 16. 注意事项
 
 1. v0.3.0 已删除 `/api-keys/actions/generate`，测试方案不再覆盖该接口。
 2. 创建/更新接口返回的 `quota_plan` 不含 `balance`；仅列表、详情及独立 quota-plan 接口含 `balance`。

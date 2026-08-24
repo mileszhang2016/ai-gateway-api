@@ -604,6 +604,9 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 	if c == nil {
 		return xerror.WrapParamErrorWithMsg("llm_config is required")
 	}
+	if c.Provider == nil || *c.Provider == "" {
+		return xerror.WrapParamErrorWithMsg("llm_config.provider is required")
+	}
 	if len(c.Models) == 0 {
 		return xerror.WrapParamErrorWithMsg("llm_config.models is required")
 	}
@@ -616,14 +619,6 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 			return xerror.WrapParamErrorWithMsg("duplicate model in llm_config.models: %s", model)
 		}
 		modelSet[model] = struct{}{}
-	}
-
-	if c.ModelEndpoint != nil {
-		switch c.ModelEndpoint.Schema {
-		case "", "http", "https":
-		default:
-			return xerror.WrapParamErrorWithMsg("llm_config.model_endpoint.schema must be http or https")
-		}
 	}
 
 	sourceSet := map[string]struct{}{}
@@ -640,7 +635,7 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 		sourceSet[*mapping.SourceModel] = struct{}{}
 	}
 
-	// Validate keys
+	// Validate key references
 	if len(c.Keys) > 0 {
 		nameSet := map[string]struct{}{}
 		totalWeight := 0
@@ -655,13 +650,6 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 				return xerror.WrapParamErrorWithMsg("duplicate name in llm_config.keys: %s", *key.Name)
 			}
 			nameSet[*key.Name] = struct{}{}
-
-			if key.Key == nil || *key.Key == "" {
-				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].key is required", i)
-			}
-			if len(*key.Key) > MaxLLMKeyLength {
-				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].key length must be <= %d", i, MaxLLMKeyLength)
-			}
 
 			if key.Weight == nil {
 				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].weight is required", i)
@@ -693,15 +681,6 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 		if c.KeyPolicy.RetryBackoffInitial != nil && c.KeyPolicy.RetryBackoffMax != nil &&
 			*c.KeyPolicy.RetryBackoffMax < *c.KeyPolicy.RetryBackoffInitial {
 			return xerror.WrapParamErrorWithMsg("llm_config.key_policy.retry_backoff_max must be >= retry_backoff_initial")
-		}
-	}
-
-	// Validate API_KEY placeholder
-	if c.ModelEndpoint != nil && len(c.ModelEndpoint.Headers) > 0 && len(c.Keys) == 0 {
-		for _, value := range c.ModelEndpoint.Headers {
-			if strings.Contains(value, "${API_KEY}") {
-				return xerror.WrapParamErrorWithMsg("llm_config.model_endpoint.headers contains ${API_KEY} but keys is empty")
-			}
 		}
 	}
 

@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 var sm *testutil.ServerManager
@@ -42,6 +42,7 @@ func TestClusters_Detail(t *testing.T) {
 	assert.NotContains(t, data, "ready")
 	assert.NotContains(t, data, "sub_clusters")
 	assert.NotContains(t, data, "scheduler")
+	assert.NotContains(t, data, "instance_pool")
 	assert.Contains(t, data, "llm_config")
 
 	sticky, ok := data["sticky_sessions"].(map[string]interface{})

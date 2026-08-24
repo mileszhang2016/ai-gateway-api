@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHostname(t *testing.T) {
@@ -252,13 +252,14 @@ func TestConditionExpression(t *testing.T) {
 
 func TestLLMConfig(t *testing.T) {
 	c := &icluster_conf.LLMConfig{
-		Models: []string{"m1"},
+		Provider: lib.PString("openai"),
+		Models:   []string{"m1"},
 		ModelMappings: []*icluster_conf.Mapping{
 			{SourceModel: lib.PString("old"), TargetModel: lib.PString("new")},
 		},
-		Keys: []icluster_conf.APIKey{
-			{Name: lib.PString("key-primary"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(70)},
-			{Name: lib.PString("key-secondary"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(30)},
+		Keys: []icluster_conf.ClusterKeyRef{
+			{Name: lib.PString("key-primary"), Weight: lib.PInt(70)},
+			{Name: lib.PString("key-secondary"), Weight: lib.PInt(30)},
 		},
 		KeyPolicy: &icluster_conf.KeyPolicy{
 			Strategy:            lib.PString("weighted_random"),
@@ -276,30 +277,23 @@ func TestLLMConfig(t *testing.T) {
 
 	// total weight not 100
 	c3 := *c
-	c3.Keys = []icluster_conf.APIKey{
-		{Name: lib.PString("k1"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(50)},
-		{Name: lib.PString("k2"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(30)},
+	c3.Keys = []icluster_conf.ClusterKeyRef{
+		{Name: lib.PString("k1"), Weight: lib.PInt(50)},
+		{Name: lib.PString("k2"), Weight: lib.PInt(30)},
 	}
 	assert.Error(t, LLMConfig(&c3))
 
 	// duplicate key name
 	c4 := *c
-	c4.Keys = []icluster_conf.APIKey{
-		{Name: lib.PString("k1"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(50)},
-		{Name: lib.PString("k1"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(50)},
+	c4.Keys = []icluster_conf.ClusterKeyRef{
+		{Name: lib.PString("k1"), Weight: lib.PInt(50)},
+		{Name: lib.PString("k1"), Weight: lib.PInt(50)},
 	}
 	assert.Error(t, LLMConfig(&c4))
 
-	// API_KEY placeholder without keys
+	// missing provider
 	c5 := &icluster_conf.LLMConfig{
 		Models: []string{"m1"},
-		ModelEndpoint: &icluster_conf.Endpoint{
-			Schema: "https",
-			URI:    "/v1/models",
-			Headers: map[string]string{
-				"Authorization": "Bearer ${API_KEY}",
-			},
-		},
 	}
 	assert.Error(t, LLMConfig(c5))
 

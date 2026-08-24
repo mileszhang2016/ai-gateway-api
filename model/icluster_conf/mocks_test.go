@@ -20,6 +20,7 @@ import (
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
@@ -192,6 +193,46 @@ func (f *fakePoolStorager) DeletePool(ctx context.Context, pool *Pool) error {
 		return f.deletePoolFn(ctx, pool)
 	}
 	return nil
+}
+
+type fakeProviderStorager struct {
+	fetchFn     func(ctx context.Context, filter *iprovider.ProviderFilter) (*iprovider.Provider, error)
+	fetchListFn func(ctx context.Context, filter *iprovider.ProviderFilter) ([]*iprovider.Provider, int64, error)
+}
+
+func (f *fakeProviderStorager) CreateProvider(ctx context.Context, param *iprovider.ProviderParam) (int64, error) {
+	return 1, nil
+}
+
+func (f *fakeProviderStorager) UpdateProvider(ctx context.Context, name string, param *iprovider.ProviderParam) error {
+	return nil
+}
+
+func (f *fakeProviderStorager) DeleteProvider(ctx context.Context, name string) error {
+	return nil
+}
+
+func (f *fakeProviderStorager) FetchProvider(ctx context.Context, filter *iprovider.ProviderFilter) (*iprovider.Provider, error) {
+	if f.fetchFn != nil {
+		return f.fetchFn(ctx, filter)
+	}
+	if filter != nil && filter.Name != nil {
+		return &iprovider.Provider{
+			Name:           *filter.Name,
+			Models:         []string{"m1", "m2"},
+			Keys:           []iprovider.ProviderKey{{Name: "k1", Key: "sk-xxx"}},
+			InstancePool:   []iprovider.ProviderInstance{{Name: "rs1", Addr: "127.0.0.1", Port: 80, Weight: 10}},
+			ModelProtocols: []string{"openai"},
+		}, nil
+	}
+	return &iprovider.Provider{Name: "openai"}, nil
+}
+
+func (f *fakeProviderStorager) FetchProviderList(ctx context.Context, filter *iprovider.ProviderFilter) ([]*iprovider.Provider, int64, error) {
+	if f.fetchListFn != nil {
+		return f.fetchListFn(ctx, filter)
+	}
+	return nil, 0, nil
 }
 
 type fakeSubClusterStorager struct {

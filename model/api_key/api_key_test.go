@@ -328,6 +328,35 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, created)
 	})
+
+	t.Run("update does not sync redis", func(t *testing.T) {
+		store := &fakeAPIKeyStorager{
+			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
+				return []*APIKeyParam{{
+					Key:         ptrString("k1"),
+					InnerID:     ptrInt64(1),
+					QuotaPlanID: ptrInt64(10),
+				}}, nil
+			},
+			updateAPIKeyFn: func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		quotaPlanStore := &fakeQuotaPlanStorager{
+			updateQuotaPlanFn: func(ctx context.Context, id int64, param *shared.QuotaPlanParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		cache := &fakeQuotaCache{}
+		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, &fakeQuotaBalanceStorager{}, cache)
+		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
+			Description: ptrString("new desc"),
+			QuotaPlan:   &shared.QuotaPlanParam{Quota: ptrFloat64(200)},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, cache.setRemainingCalls)
+		assert.Empty(t, cache.resetToQuotaCalls)
+	})
 }
 
 func TestAPIKeyManager_CreateAPIKey(t *testing.T) {

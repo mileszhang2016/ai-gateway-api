@@ -294,6 +294,14 @@ CREATE TABLE api_keys (
   INDEX idx_route_rules_id (route_rules_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 comment = "api keys";
 
+-- create api_key_id_seq
+DROP TABLE IF EXISTS `api_key_id_seq`;
+CREATE TABLE `api_key_id_seq` (
+  `product_name` varchar(255) NOT NULL COMMENT '产品线名称',
+  `next_seq` bigint NOT NULL DEFAULT '1' COMMENT '下一个可用序号',
+  PRIMARY KEY (`product_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='API-Key ID 序号分配表';
+
 -- create api_key_tokens
 DROP TABLE IF EXISTS `api_key_tokens`;
 CREATE TABLE api_key_tokens (
@@ -420,6 +428,22 @@ CREATE TABLE `model_prices` (
   INDEX `idx_provider` (`provider`),
   INDEX `idx_mode` (`mode`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型定价表';
+
+-- create providers (模型提供商表)
+DROP TABLE IF EXISTS `providers`;
+CREATE TABLE `providers` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
+  `name` VARCHAR(255) NOT NULL COMMENT 'Provider 标识',
+  `description` VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '描述',
+  `model_endpoint` JSON COMMENT '模型发现端点配置',
+  `models` JSON COMMENT '支持的模型列表',
+  `keys` JSON COMMENT 'API key 列表',
+  `instance_pool` JSON NOT NULL COMMENT '实例池列表',
+  `model_protocols` JSON NOT NULL COMMENT '支持的模型协议列表',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY `uk_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型提供商表';
 
 -- create rate_limit_policies (限流策略表)
 DROP TABLE IF EXISTS `rate_limit_policies`;

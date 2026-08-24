@@ -193,9 +193,6 @@ func (m *EntityManager) FetchEntityList(ctx context.Context, filter *EntityFilte
 
 // UpdateEntity 更新 Entity
 func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
-	var updatedEntityID *string
-	var updatedQuotaPlan *shared.QuotaPlanParam
-
 	if param.ParentID != nil && *param.ParentID != "" && param.Type != nil && m.entityTypeStorager != nil {
 		if err := m.checkEntityLevel(ctx, *param.Type, *param.ParentID); err != nil {
 			return 0, err
@@ -282,34 +279,9 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 		}
 
 		affected, err = m.storager.UpdateEntity(ctx, &EntityFilter{EntityID: one.EntityID}, param)
-		if err != nil {
-			return err
-		}
-		updatedEntityID = one.EntityID
-		if param.QuotaPlan != nil {
-			updatedQuotaPlan = param.QuotaPlan
-		}
-		return nil
+		return err
 	})
-	if err != nil {
-		return affected, err
-	}
-
-	// Sync Redis remaining quota after DB transaction commits (best-effort).
-	if updatedEntityID != nil && updatedQuotaPlan != nil && m.quotaCache != nil {
-		if updatedQuotaPlan.Unlimited != nil && *updatedQuotaPlan.Unlimited {
-			defaultQuota := float64(100000000)
-			if cacheErr := m.quotaCache.SetRemaining(ctx, *updatedEntityID, &defaultQuota, updatedQuotaPlan.Unit); cacheErr != nil {
-				stateful.AccessLogger.Warn("failed to set quota cache for entity %s: %v", *updatedEntityID, cacheErr)
-			}
-		} else if updatedQuotaPlan.Quota != nil {
-			if cacheErr := m.quotaCache.SetRemaining(ctx, *updatedEntityID, updatedQuotaPlan.Quota, updatedQuotaPlan.Unit); cacheErr != nil {
-				stateful.AccessLogger.Warn("failed to set quota cache for entity %s: %v", *updatedEntityID, cacheErr)
-			}
-		}
-	}
-
-	return affected, nil
+	return affected, err
 }
 
 // DeleteEntity 删除 Entity

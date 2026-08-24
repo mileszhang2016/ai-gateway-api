@@ -23,13 +23,14 @@ Model Price 模块负责模型定价数据的管理，支持：
 | MP-7 | 按组合键修改单条 | PUT | `/open-api/v1/model-prices` | 需传 provider + model + mode |
 | MP-8 | 按 ID 删除单条 | DELETE | `/open-api/v1/model-prices/{id}` | - |
 | MP-9 | 按组合键删除单条 | DELETE | `/open-api/v1/model-prices` | 需传 provider + model + mode |
+| MP-10 | 查询 Provider 名称列表 | GET | `/open-api/v1/model-prices/actions/get-providers` | 返回 model-prices 中所有 provider 去重列表 |
 
 ## 3. 测试用例统计
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 整表导入 | 7 |
-| 新增单条记录 | 7 |
+| 整表导入 | 8 |
+| 新增单条记录 | 8 |
 | 分页列表查询 | 4 |
 | 按 ID 查询单条 | 2 |
 | 按组合键查询单条 | 3 |
@@ -37,7 +38,8 @@ Model Price 模块负责模型定价数据的管理，支持：
 | 按组合键修改单条 | 3 |
 | 按 ID 删除单条 | 2 |
 | 按组合键删除单条 | 2 |
-| **合计** | **34** |
+| 查询 Provider 名称列表 | 2 |
+| **合计** | **38** |
 
 ## 4. 认证方式
 
@@ -58,8 +60,10 @@ model_price/
 │   └── one_test.go
 ├── update/
 │   └── update_test.go
-└── delete/
-    └── delete_test.go
+├── delete/
+│   └── delete_test.go
+└── get_providers/
+    └── get_providers_test.go
 ```
 
 ## 6. 测试数据约定
@@ -144,6 +148,7 @@ MP-{接口编号}-{场景编号}
 | MP-1-005 | 非法 YAML | 异常参数 | 文件内容非合法 YAML，返回 422 |
 | MP-1-006 | 重复三元组 | 异常参数 | YAML 内 (provider,model,mode) 重复，返回 422 |
 | MP-1-007 | limits 包含负数 | 合法性条件 | 返回 422 |
+| MP-1-008 | 未知 provider 可导入 | 正常参数 | provider 不存在于 `/providers` 时仍可导入 |
 
 ### 7.4 测试场景详细设计
 
@@ -262,6 +267,32 @@ models:
 
 ---
 
+#### MP-1-008：未知 provider 可导入（正常参数）
+
+##### 设计思路
+
+验证 `/model-prices/import` 不再校验 provider 是否已存在于 `/providers`。
+
+##### 执行步骤
+
+1. 构造一个不存在于 `/providers` 的 provider 名称。
+2. 构造包含该 provider 的 `model-list.yaml`。
+3. 以 `mode=replace` 调用导入接口。
+4. 验证返回 200，`imported_count=1`。
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| imported_count | 1 | Equals |
+| skipped_count | 0 | Equals |
+| errors | 空数组 | Len=0 |
+
+---
+
 ## 8. 新增单条记录（MP-2）
 
 ### 8.1 接口信息
@@ -280,7 +311,7 @@ models:
 
 | 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
 |--------|------|------|------|------------|
-| provider | string | Y | Provider 标识 | 非空 |
+| provider | string | Y | Provider / Cluster 标识 | 非空；不强制要求已存在于 `/providers` |
 | model | string | Y | 模型名 | 非空 |
 | base_model | string | Y | 归一化模型名 | 非空 |
 | mode | string | Y | 请求模式 | 枚举值 |
@@ -305,6 +336,7 @@ models:
 | MP-2-005 | prices 包含负数 | 合法性条件 | 返回 422 |
 | MP-2-006 | 重复三元组 | 异常参数 | 返回 422 |
 | MP-2-007 | limits 包含负数 | 合法性条件 | 返回 422 |
+| MP-2-008 | 未知 provider 可创建 | 正常参数 | provider 不存在于 `/providers` 时仍可创建 |
 
 ### 8.4 测试场景详细设计
 
@@ -380,6 +412,30 @@ models:
 
 **ErrNum**：422  
 **ErrMsg**：包含 limit 错误信息
+
+---
+
+#### MP-2-008：未知 provider 可创建（正常参数）
+
+##### 设计思路
+
+验证 `/model-prices` 的 `provider` 字段不再强制引用 `/providers` 中已存在的 provider。
+
+##### 执行步骤
+
+1. 构造一个不存在于 `/providers` 的 provider 名称。
+2. POST `/open-api/v1/model-prices`，Body 含必填字段。
+3. 验证返回 200，记录创建成功。
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| provider | 与请求一致 | Equals |
+| price_currency | "RMB" | Equals |
 
 ---
 
@@ -802,7 +858,84 @@ models:
 
 ---
 
-## 16. 附录
+## 16. 查询 Provider 名称列表（MP-10）
+
+### 16.1 接口信息
+
+| 项目 | 值 |
+|------|-----|
+| 模块 | Model Price |
+| 接口名称 | 查询 Provider 名称列表 |
+| 方法 | GET |
+| 路径 | `/open-api/v1/model-prices/actions/get-providers` |
+| 说明 | 返回 `model_prices` 表中所有 `provider` 名称的去重列表，按字典序排列 |
+
+### 16.2 返回数据字段
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| providers | []string | provider 名称去重列表 |
+
+### 16.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| MP-10-001 | 空列表 | 正常参数 | 无 price 记录时返回空数组 |
+| MP-10-002 | 返回去重 provider 列表 | 正常参数 | 创建多条记录后返回去重列表 |
+
+### 16.4 测试场景详细设计
+
+#### MP-10-001：空列表
+
+##### 设计思路
+
+验证无记录时返回空数组。
+
+##### 执行步骤
+
+1. 确保当前无 model price 记录（可先 replace 导入空列表）。
+2. GET `/open-api/v1/model-prices/actions/get-providers`。
+3. 验证返回 200，`providers` 为空数组。
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| providers | [] | Len=0 |
+
+---
+
+#### MP-10-002：返回去重 provider 列表
+
+##### 设计思路
+
+验证返回的 provider 列表按字典序排列且已去重。
+
+##### 前提数据准备
+
+已创建 `(a-provider, m1, chat)`、`(b-provider, m2, chat)`、`(a-provider, m3, chat)` 三条记录。
+
+##### 执行步骤
+
+1. GET `/open-api/v1/model-prices/actions/get-providers`。
+2. 验证返回 200，`providers` 为 `["a-provider", "b-provider"]`。
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| providers | ["a-provider", "b-provider"] | Equals |
+| providers 长度 | 2 | Len=2 |
+
+---
+
+## 17. 附录
 
 ### 16.1 通用断言说明
 

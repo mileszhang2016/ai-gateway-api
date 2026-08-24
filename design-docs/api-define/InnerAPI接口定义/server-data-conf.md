@@ -157,6 +157,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
                     },
                     "MatchPrefix": "deepseek/",
                     "StripPrefix": true,
+                    "ModelProtocols": ["openai"],
                     "ModelTable": {
                         "Models": [
                             {
@@ -201,6 +202,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
 | KeyPolicy.RetryBackoffMax | int | 最大退避时间，单位毫秒 |
 | MatchPrefix | string | 需要匹配的 provider/model 前缀；对应 OpenAPI `llm_config.match_prefix` |
 | StripPrefix | bool | 是否裁剪 `MatchPrefix` 前缀；对应 OpenAPI `llm_config.strip_prefix` |
+| ModelProtocols | []string | 该集群所属 provider 支持的模型访问协议；来源为 OpenAPI `/providers` 的 `model_protocols`。枚举值如 `openai`、`anthropic`；为空数组时 BFE 兜底为仅支持 `openai` |
 | ModelTable | object | 该 cluster 的成本定价表；无 `Currency` 字段 |
 | ModelTable.Models | array | 模型定价条目列表 |
 | ModelTable.Models[].Provider | string | Provider 名 |

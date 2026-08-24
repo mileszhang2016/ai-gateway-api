@@ -35,7 +35,7 @@
 | 字段 | 类型 | 说明 | 合法性条件 |
 |------|------|------|------------|
 | `id` | int64 | 模型定价记录唯一标识 | 系统生成 |
-| `provider` | string | Provider / Cluster 标识 | 必填；非空；长度 1-255 |
+| `provider` | string | Provider / Cluster 标识 | 必填；非空；长度 1-255；仅作为价格归集标识，不强制校验在 `/providers` 中存在 |
 | `model` | string | 模型名 | 必填；非空；长度 1-255 |
 | `base_model` | string | 归一化模型名 | 必填；非空；长度 1-255 |
 | `mode` | string | 请求模式 | 必填；枚举值见下表 |
@@ -198,7 +198,7 @@ models:
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `provider` | Y | Provider / Cluster 标识，对应 `model_prices.provider` |
+| `provider` | Y | Provider / Cluster 标识，对应 `model_prices.provider`；仅作为价格归集标识，不强制校验在 `/providers` 中存在 |
 | `model` | Y | 模型名，对应 `model_prices.model` |
 | `base_model` | Y | 归一化模型名，对应 `model_prices.base_model` |
 | `mode` | Y | 模型模式，枚举值同第 1 节 `mode` 枚举 |
@@ -317,7 +317,47 @@ models:
 
 ---
 
-### 3.2 新增单条记录
+### 3.2 查询所有 Provider 名称列表
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 查询 `/model-prices` 数据中包含的所有 `provider` 名称的去重列表 | - |
+| 端点 | /model-prices/actions/get-providers | - |
+| 版本 | v1 | - |
+| method | GET | - |
+
+**处理逻辑**
+
+1. 从 `model_prices` 表中按 `provider` 字段聚合去重；
+2. 返回按字典序排列的 `provider` 名称列表。
+
+**返回数据（Data内容）**
+
+| 参数名 | 类型 | 参数含义 | 补充描述 |
+| - | - | - | - |
+| providers | []string | provider 名称列表 | 去重、按字典序排列 |
+
+**成功返回示例**
+
+```json
+{
+    "ErrNum": 200,
+    "ErrMsg": "success",
+    "Data": {
+        "providers": [
+            "deepseek",
+            "openai",
+            "qwen"
+        ]
+    }
+}
+```
+
+---
+
+### 3.3 新增单条记录
 
 **基本信息**
 
@@ -364,7 +404,7 @@ models:
 
 ---
 
-### 3.3 分页列表查询
+### 3.4 分页列表查询
 
 **基本信息**
 
@@ -393,7 +433,7 @@ models:
 
 ---
 
-### 3.4 按 ID 查询单条记录
+### 3.5 按 ID 查询单条记录
 
 **基本信息**
 
@@ -416,7 +456,7 @@ models:
 
 ---
 
-### 3.5 按组合键查询单条记录
+### 3.6 按组合键查询单条记录
 
 **基本信息**
 
@@ -441,7 +481,7 @@ models:
 
 ---
 
-### 3.6 按 ID 修改单条记录
+### 3.7 按 ID 修改单条记录
 
 **基本信息**
 
@@ -468,7 +508,7 @@ models:
 
 ---
 
-### 3.7 按组合键修改单条记录
+### 3.8 按组合键修改单条记录
 
 **基本信息**
 
@@ -497,7 +537,7 @@ models:
 
 ---
 
-### 3.8 按 ID 删除单条记录
+### 3.9 按 ID 删除单条记录
 
 **基本信息**
 
@@ -520,7 +560,7 @@ Data 为 null。
 
 ---
 
-### 3.9 按组合键删除单条记录
+### 3.10 按组合键删除单条记录
 
 **基本信息**
 
@@ -548,14 +588,15 @@ Data 为 null。
 ## 4. 校验规则
 
 1. `provider`、`model`、`base_model`、`mode` 必填；
-2. `(provider, model, mode)` 组合不能重复；
-3. `prices` 必填，至少包含一个价格字段；
-4. 所有价格字段必须为非负数；
-5. `price_currency` 当前只支持 `RMB`；
-6. `mode` 必须是预定义枚举值；
-7. `capabilities`、`supported_parameters` 若传入，其元素应取自对应枚举值（非枚举值可接收但建议告警或记录，便于后续收敛）；
-8. `limits`、`prices`、`metadata` 的键名应取自对应枚举值（非枚举键可接收但建议告警或记录，便于后续收敛）；
-9. `limits` 中所有限制字段值必须为非负整数；
-10. `/v1/model-prices/import` 仅接受 YAML 文件，且 `default_currency` 必须为 `RMB`。
+2. `provider` 仅作为价格归集标识，不强制引用 `/providers` 中已存在的 provider；
+3. `(provider, model, mode)` 组合不能重复；
+4. `prices` 必填，至少包含一个价格字段；
+5. 所有价格字段必须为非负数；
+6. `price_currency` 当前只支持 `RMB`；
+7. `mode` 必须是预定义枚举值；
+8. `capabilities`、`supported_parameters` 若传入，其元素应取自对应枚举值（非枚举值可接收但建议告警或记录，便于后续收敛）；
+9. `limits`、`prices`、`metadata` 的键名应取自对应枚举值（非枚举键可接收但建议告警或记录，便于后续收敛）；
+10. `limits` 中所有限制字段值必须为非负整数；
+11. `/v1/model-prices/import` 仅接受 YAML 文件，且 `default_currency` 必须为 `RMB`；导入时不再校验 `provider` 是否已存在于 `/providers`。
 
 ---

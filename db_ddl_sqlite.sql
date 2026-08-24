@@ -302,6 +302,13 @@ CREATE INDEX api_keys_route_rules_id ON api_keys (route_rules_id);
 CREATE TRIGGER api_keys_updated_at AFTER UPDATE ON api_keys
   FOR EACH ROW BEGIN UPDATE api_keys SET updated_at = CURRENT_TIMESTAMP WHERE inner_id = OLD.inner_id; END;
 
+-- create api_key_id_seq
+DROP TABLE IF EXISTS api_key_id_seq;
+CREATE TABLE api_key_id_seq (
+  product_name TEXT NOT NULL PRIMARY KEY,
+  next_seq INTEGER NOT NULL DEFAULT 1
+);
+
 -- create api_key_tokens
 DROP TABLE IF EXISTS api_key_tokens;
 CREATE TABLE api_key_tokens (
@@ -441,6 +448,25 @@ CREATE INDEX model_prices_provider ON model_prices (provider);
 CREATE INDEX model_prices_mode ON model_prices (mode);
 CREATE TRIGGER model_prices_updated_at AFTER UPDATE ON model_prices
   FOR EACH ROW BEGIN UPDATE model_prices SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create providers
+DROP TABLE IF EXISTS providers;
+CREATE TABLE providers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  model_endpoint TEXT,
+  models TEXT,
+  keys TEXT,
+  instance_pool TEXT NOT NULL,
+  model_protocols TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE INDEX providers_name ON providers (name);
+CREATE TRIGGER providers_updated_at AFTER UPDATE ON providers
+  FOR EACH ROW BEGIN UPDATE providers SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
 -- create rate_limit_policies
 DROP TABLE IF EXISTS rate_limit_policies;

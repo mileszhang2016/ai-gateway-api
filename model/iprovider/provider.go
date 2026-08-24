@@ -1,0 +1,503 @@
+// Copyright(c) 2026 The Rainway AI Gateway (壬远AI网关) Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package iprovider
+
+import (
+	"context"
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+)
+
+const (
+	MaxProviderNameLength         = 64
+	MaxProviderKeyLength          = 512
+	MaxProviderDescriptionLength  = 256
+	MaxProviderInstanceNameLength = 128
+)
+
+var (
+	providerNameToken = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
+
+	ValidModelProtocols = map[string]bool{
+		"openai":    true,
+		"anthropic": true,
+	}
+)
+
+// ProviderEndpoint describes the provider's model-discovery endpoint.
+type ProviderEndpoint struct {
+	Schema string `json:"schema"`
+	URI    string `json:"uri"`
+}
+
+// ProviderKey is an API key defined on a provider.
+type ProviderKey struct {
+	Name string `json:"name"`
+	Key  string `json:"key"`
+}
+
+// ProviderInstance is a single upstream instance owned by a provider.
+// It mirrors icluster_conf.Instance so the provider package can stay free of
+// cluster-conf dependencies and avoid an import cycle.
+type ProviderInstance struct {
+	Name    string `json:"name"`
+	Addr    string `json:"addr"`
+	Port    int    `json:"port"`
+	Weight  int64  `json:"weight"`
+	Disable bool   `json:"disable"`
+}
+
+// Provider represents a model provider.
+type Provider struct {
+	ID             int64              `json:"id"`
+	Name           string             `json:"name"`
+	Description    string             `json:"description"`
+	ModelEndpoint  *ProviderEndpoint  `json:"model_endpoint"`
+	Models         []string           `json:"models"`
+	Keys           []ProviderKey      `json:"keys"`
+	InstancePool   []ProviderInstance `json:"instance_pool"`
+	ModelProtocols []string           `json:"model_protocols"`
+	CreateTime     int64              `json:"create_time"`
+	UpdateTime     int64              `json:"update_time"`
+}
+
+// ProviderParam is used to create or update a provider.
+type ProviderParam struct {
+	ID             *int64             `json:"id,omitempty"`
+	Name           *string            `json:"name"`
+	Description    *string            `json:"description,omitempty"`
+	ModelEndpoint  *ProviderEndpoint  `json:"model_endpoint,omitempty"`
+	Models         []string           `json:"models,omitempty"`
+	Keys           []ProviderKey      `json:"keys,omitempty"`
+	InstancePool   []ProviderInstance `json:"instance_pool"`
+	ModelProtocols []string           `json:"model_protocols"`
+}
+
+// ProviderFilter is used to query providers.
+type ProviderFilter struct {
+	ID            *int64
+	Name          *string
+	Names         []string
+	ModelProtocol *string
+	Page          *int
+	PageSize      *int
+}
+
+// ProviderStorager defines persistence operations for providers.
+type ProviderStorager interface {
+	CreateProvider(ctx context.Context, param *ProviderParam) (int64, error)
+	UpdateProvider(ctx context.Context, name string, param *ProviderParam) error
+	DeleteProvider(ctx context.Context, name string) error
+	FetchProvider(ctx context.Context, filter *ProviderFilter) (*Provider, error)
+	FetchProviderList(ctx context.Context, filter *ProviderFilter) ([]*Provider, int64, error)
+}
+
+// NewProviderManager creates a ProviderManager.
+func NewProviderManager(txn itxn.TxnStorager, storager ProviderStorager) *ProviderManager {
+	return &ProviderManager{
+		txn:      txn,
+		storager: storager,
+	}
+}
+
+// ProviderManager provides business-level operations for providers.
+type ProviderManager struct {
+	txn      itxn.TxnStorager
+	storager ProviderStorager
+}
+
+// CreateProvider creates a new provider after validation.
+func (m *ProviderManager) CreateProvider(ctx context.Context, param *ProviderParam) (int64, error) {
+	if err := ValidateProviderParam(param); err != nil {
+		return 0, err
+	}
+
+	var id int64
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		existing, err := m.storager.FetchProvider(ctx, &ProviderFilter{Name: param.Name})
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			return xerror.WrapRecordExisted("provider")
+		}
+
+		id, err = m.storager.CreateProvider(ctx, param)
+		return err
+	})
+	return id, err
+}
+
+// UpdateProvider updates an existing provider.
+func (m *ProviderManager) UpdateProvider(ctx context.Context, name string, param *ProviderParam) error {
+	if err := ValidateProviderParam(param); err != nil {
+		return err
+	}
+
+	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		existing, err := m.storager.FetchProvider(ctx, &ProviderFilter{Name: &name})
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			return xerror.WrapRecordNotExist("provider")
+		}
+
+		return m.storager.UpdateProvider(ctx, name, param)
+	})
+}
+
+// DeleteProvider deletes a provider if it is not referenced.
+func (m *ProviderManager) DeleteProvider(ctx context.Context, name string,
+	refCheckers ...func(context.Context, string) error) error {
+
+	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		existing, err := m.storager.FetchProvider(ctx, &ProviderFilter{Name: &name})
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			return xerror.WrapRecordNotExist("provider")
+		}
+
+		for _, checker := range refCheckers {
+			if err := checker(ctx, name); err != nil {
+				return err
+			}
+		}
+
+		return m.storager.DeleteProvider(ctx, name)
+	})
+}
+
+// FetchProvider fetches a single provider by filter.
+func (m *ProviderManager) FetchProvider(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+	return m.storager.FetchProvider(ctx, filter)
+}
+
+// FetchProviderList fetches a paginated list of providers.
+func (m *ProviderManager) FetchProviderList(ctx context.Context, filter *ProviderFilter) ([]*Provider, int64, error) {
+	if filter == nil || filter.ModelProtocol == nil || *filter.ModelProtocol == "" {
+		return m.storager.FetchProviderList(ctx, filter)
+	}
+
+	// model_protocols is stored as a JSON array in RDB. Cross-database JSON
+	// containment queries differ between MySQL and SQLite, so we apply the
+	// filter in memory for correctness and portability. This is acceptable
+	// because the provider table is small.
+	proto := *filter.ModelProtocol
+	storageFilter := &ProviderFilter{
+		Page:     intPtr(1),
+		PageSize: intPtr(1000),
+	}
+	all, _, err := m.storager.FetchProviderList(ctx, storageFilter)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	matched := make([]*Provider, 0, len(all))
+	for _, p := range all {
+		for _, mp := range p.ModelProtocols {
+			if mp == proto {
+				matched = append(matched, p)
+				break
+			}
+		}
+	}
+
+	page := 1
+	pageSize := 50
+	if filter.Page != nil && *filter.Page > 0 {
+		page = *filter.Page
+	}
+	if filter.PageSize != nil && *filter.PageSize > 0 {
+		pageSize = *filter.PageSize
+		if pageSize > 1000 {
+			pageSize = 1000
+		}
+	}
+
+	start := (page - 1) * pageSize
+	if start > len(matched) {
+		start = len(matched)
+	}
+	end := start + pageSize
+	if end > len(matched) {
+		end = len(matched)
+	}
+
+	return matched[start:end], int64(len(matched)), nil
+}
+
+func intPtr(v int) *int {
+	return &v
+}
+
+// ValidateProviderParam validates a provider create/update request.
+func ValidateProviderParam(param *ProviderParam) error {
+	if param == nil {
+		return xerror.WrapParamErrorWithMsg("provider is required")
+	}
+	if param.Name == nil || *param.Name == "" {
+		return xerror.WrapParamErrorWithMsg("provider name is required")
+	}
+	if err := ProviderName(*param.Name); err != nil {
+		return err
+	}
+
+	if param.Description != nil {
+		if err := validateProviderDescription(*param.Description); err != nil {
+			return err
+		}
+	}
+
+	if err := validateProviderInstancePool(param.InstancePool); err != nil {
+		return err
+	}
+
+	if len(param.ModelProtocols) == 0 {
+		return xerror.WrapParamErrorWithMsg("model_protocols is required")
+	}
+	seenProtocol := map[string]bool{}
+	for i, p := range param.ModelProtocols {
+		if p == "" {
+			return xerror.WrapParamErrorWithMsg("model_protocols[%d] cannot be empty", i)
+		}
+		if !ValidModelProtocols[p] {
+			return xerror.WrapParamErrorWithMsg("invalid model_protocols[%d]: %s", i, p)
+		}
+		if seenProtocol[p] {
+			return xerror.WrapParamErrorWithMsg("duplicate model_protocol: %s", p)
+		}
+		seenProtocol[p] = true
+	}
+
+	if param.ModelEndpoint != nil {
+		if param.ModelEndpoint.Schema == "" {
+			param.ModelEndpoint.Schema = "https"
+		}
+		if param.ModelEndpoint.Schema != "http" && param.ModelEndpoint.Schema != "https" {
+			return xerror.WrapParamErrorWithMsg("model_endpoint.schema must be http or https")
+		}
+		if param.ModelEndpoint.URI == "" {
+			param.ModelEndpoint.URI = "/v1/models"
+		}
+		if !strings.HasPrefix(param.ModelEndpoint.URI, "/") {
+			return xerror.WrapParamErrorWithMsg("model_endpoint.uri must start with '/'")
+		}
+	}
+
+	if len(param.Models) > 0 {
+		seenModel := map[string]bool{}
+		for i, m := range param.Models {
+			if strings.TrimSpace(m) == "" {
+				return xerror.WrapParamErrorWithMsg("models[%d] cannot be empty", i)
+			}
+			if seenModel[m] {
+				return xerror.WrapParamErrorWithMsg("duplicate model: %s", m)
+			}
+			seenModel[m] = true
+		}
+	}
+
+	if len(param.Keys) > 0 {
+		seenKey := map[string]bool{}
+		for i, k := range param.Keys {
+			if strings.TrimSpace(k.Name) == "" {
+				return xerror.WrapParamErrorWithMsg("keys[%d].name is required", i)
+			}
+			if len(k.Name) < 1 || len(k.Name) > 128 {
+				return xerror.WrapParamErrorWithMsg("keys[%d].name length must be between 1 and 128", i)
+			}
+			if seenKey[k.Name] {
+				return xerror.WrapParamErrorWithMsg("duplicate key name: %s", k.Name)
+			}
+			seenKey[k.Name] = true
+
+			if strings.TrimSpace(k.Key) == "" {
+				return xerror.WrapParamErrorWithMsg("keys[%d].key is required", i)
+			}
+			if len(k.Key) > MaxProviderKeyLength {
+				return xerror.WrapParamErrorWithMsg("keys[%d].key length must be <= %d", i, MaxProviderKeyLength)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ProviderName validates a provider name.
+func ProviderName(s string) error {
+	if len(s) < 1 || len(s) > MaxProviderNameLength {
+		return xerror.WrapParamErrorWithMsg("provider name length must be between 1 and %d", MaxProviderNameLength)
+	}
+	if !providerNameToken.MatchString(s) {
+		return xerror.WrapParamErrorWithMsg("provider name contains invalid characters")
+	}
+	first := s[0]
+	last := s[len(s)-1]
+	if first == '.' || first == '-' || first == '_' || last == '.' || last == '-' || last == '_' {
+		return xerror.WrapParamErrorWithMsg("provider name cannot start or end with '.', '-', or '_'")
+	}
+	return nil
+}
+
+func validateProviderDescription(s string) error {
+	if len(s) > MaxProviderDescriptionLength {
+		return xerror.WrapParamErrorWithMsg("description length must be <= %d", MaxProviderDescriptionLength)
+	}
+	for _, r := range s {
+		if r < 32 || r == 127 {
+			return xerror.WrapParamErrorWithMsg("description contains control characters")
+		}
+	}
+	return nil
+}
+
+func validateProviderInstancePool(instances []ProviderInstance) error {
+	if len(instances) == 0 {
+		return xerror.WrapParamErrorWithMsg("instance_pool is required")
+	}
+	nameSet := map[string]struct{}{}
+	comboSet := map[string]struct{}{}
+	hasPositiveWeight := false
+	for i, inst := range instances {
+		if inst.Name != "" {
+			if len(inst.Name) > MaxProviderInstanceNameLength {
+				return xerror.WrapParamErrorWithMsg("instance_pool[%d]: instance name length must be <= %d", i, MaxProviderInstanceNameLength)
+			}
+		}
+		if strings.TrimSpace(inst.Addr) == "" {
+			return xerror.WrapParamErrorWithMsg("instance_pool[%d]: instance addr is required", i)
+		}
+		if inst.Port <= 0 || inst.Port > 65535 {
+			return xerror.WrapParamErrorWithMsg("instance_pool[%d]: instance port must be between 1 and 65535", i)
+		}
+		if inst.Weight < 0 || inst.Weight > 100 {
+			return xerror.WrapParamErrorWithMsg("instance_pool[%d]: instance weight must be between 0 and 100", i)
+		}
+		if inst.Weight > 0 {
+			hasPositiveWeight = true
+		}
+		if inst.Name != "" {
+			if _, ok := nameSet[inst.Name]; ok {
+				return xerror.WrapParamErrorWithMsg("instance_pool: duplicate instance name: %s", inst.Name)
+			}
+			nameSet[inst.Name] = struct{}{}
+		}
+		key := fmt.Sprintf("%s|%s", inst.Name, inst.Addr)
+		if _, ok := comboSet[key]; ok {
+			return xerror.WrapParamErrorWithMsg("instance_pool: duplicate instance name/addr combination: %s", key)
+		}
+		comboSet[key] = struct{}{}
+	}
+	if !hasPositiveWeight {
+		return xerror.WrapParamErrorWithMsg("instance_pool must have at least one instance with weight > 0")
+	}
+	return nil
+}
+
+// DefaultModelEndpoint returns the default model discovery endpoint.
+func DefaultModelEndpoint() *ProviderEndpoint {
+	return &ProviderEndpoint{Schema: "https", URI: "/v1/models"}
+}
+
+// FillDefaults fills default values for a provider param.
+func FillDefaults(param *ProviderParam) {
+	if param == nil {
+		return
+	}
+	if param.ModelEndpoint == nil {
+		param.ModelEndpoint = DefaultModelEndpoint()
+	} else {
+		if param.ModelEndpoint.Schema == "" {
+			param.ModelEndpoint.Schema = "https"
+		}
+		if param.ModelEndpoint.URI == "" {
+			param.ModelEndpoint.URI = "/v1/models"
+		}
+	}
+	if param.Models == nil {
+		param.Models = []string{}
+	}
+	if param.Keys == nil {
+		param.Keys = []ProviderKey{}
+	}
+}
+
+// NowUnix returns the current Unix timestamp in seconds.
+func NowUnix() int64 {
+	return time.Now().Unix()
+}
+
+// KeyMap builds a map from key name to key value.
+func KeyMap(keys []ProviderKey) map[string]string {
+	m := make(map[string]string, len(keys))
+	for _, k := range keys {
+		m[k.Name] = k.Key
+	}
+	return m
+}
+
+// HasModel reports whether model is in the provider's models list.
+func HasModel(provider *Provider, model string) bool {
+	if provider == nil {
+		return false
+	}
+	for _, m := range provider.Models {
+		if m == model {
+			return true
+		}
+	}
+	return false
+}
+
+// BuildDiscoverURL builds the URL used for model discovery.
+func BuildDiscoverURL(endpoint *ProviderEndpoint, instance ProviderInstance) string {
+	schema := "https"
+	uri := "/v1/models"
+	if endpoint != nil {
+		if endpoint.Schema != "" {
+			schema = endpoint.Schema
+		}
+		if endpoint.URI != "" {
+			uri = endpoint.URI
+		}
+	}
+	return fmt.Sprintf("%s://%s:%d%s", schema, instance.Addr, instance.Port, uri)
+}
+
+// BuildAuthHeader returns the auth header name/value for the given protocol.
+func BuildAuthHeader(protocol, key string) (string, string) {
+	switch protocol {
+	case "anthropic":
+		return "x-api-key", key
+	case "openai":
+		fallthrough
+	default:
+		return "Authorization", "Bearer " + key
+	}
+}
+
+// ProviderNamePtr returns a pointer to a provider name for use in filters.
+func ProviderNamePtr(s string) *string {
+	return lib.PString(s)
+}

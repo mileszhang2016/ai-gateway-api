@@ -2466,7 +2466,7 @@ Global 路由规则准备请求：
 
 ## 11. 依赖与数据准备
 
-1. 模型提供商类型 `provider_type` 取值可参考 `/model-provider-types`。
+1. 模型协议 `provider_type` 取值参考 `providers.model_protocols` 枚举，或由 `/providers` 接口返回的 provider 对象中的 `model_protocols` 字段。
 2. 创建集群会级联写入实例池、子集群、lb_matrices，测试后需清理。
 3. 测试环境数据库需包含产品线初始化数据，以支持 `{product_name}.{cluster_name}` 实例池命名。
 4. 涉及 global/entity/apikey 路由规则的用例，需先通过对应接口写入规则，测试结束后清理规则或清空 `rules` 数组，避免影响其他用例。
