@@ -212,7 +212,10 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 		}
 	}
 
-	var affected int64
+	var (
+		affected              int64
+		rateLimitKeysToDelete []string
+	)
 	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		var err error
 
@@ -250,9 +253,16 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 
 		if param.RateLimitPolicy != nil && m.rateLimitPolicyStorager != nil {
 			if one.RateLimitPolicyID != nil {
+				oldPolicy, err := m.rateLimitPolicyStorager.FetchRateLimitPolicy(ctx, *one.RateLimitPolicyID)
+				if err != nil {
+					return err
+				}
 				_, err = m.rateLimitPolicyStorager.UpdateRateLimitPolicy(ctx, *one.RateLimitPolicyID, param.RateLimitPolicy)
 				if err != nil {
 					return err
+				}
+				if oldPolicy != nil && oldPolicy.Rules != nil {
+					rateLimitKeysToDelete = shared.DiffRateLimitRedisKeys(*one.RateLimitPolicyID, oldPolicy.Rules, param.RateLimitPolicy.Rules)
 				}
 			} else {
 				rateLimitPolicyID, err := m.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
@@ -281,12 +291,24 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 		affected, err = m.storager.UpdateEntity(ctx, &EntityFilter{EntityID: one.EntityID}, param)
 		return err
 	})
-	return affected, err
+	if err != nil {
+		return affected, err
+	}
+
+	if len(rateLimitKeysToDelete) > 0 {
+		m.cleanupRedisKeys(ctx, "", rateLimitKeysToDelete)
+	}
+	return affected, nil
 }
 
 // DeleteEntity 删除 Entity
 func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) error {
-	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+	var (
+		quotaKey      string
+		rateLimitKeys []string
+	)
+
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		list, err := m.storager.FetchEntityList(ctx, filter)
 		if err != nil {
 			return err
@@ -296,6 +318,20 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 		}
 
 		one := list[0]
+
+		if one.EntityID != nil && *one.EntityID != "" {
+			quotaKey = *one.EntityID
+		}
+
+		if one.RateLimitPolicyID != nil && m.rateLimitPolicyStorager != nil {
+			policy, err := m.rateLimitPolicyStorager.FetchRateLimitPolicy(ctx, *one.RateLimitPolicyID)
+			if err != nil {
+				return err
+			}
+			if policy != nil && policy.Rules != nil {
+				rateLimitKeys = shared.BuildRateLimitRedisKeys(*one.RateLimitPolicyID, policy.Rules)
+			}
+		}
 
 		children, err := m.storager.FetchEntityList(ctx, &EntityFilter{ParentID: one.EntityID})
 		if err != nil {
@@ -331,6 +367,35 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 
 		return m.storager.DeleteEntity(ctx, filter)
 	})
+	if err != nil {
+		return err
+	}
+
+	// 事务提交成功后清理 Redis Key
+	m.cleanupRedisKeys(ctx, quotaKey, rateLimitKeys)
+	return nil
+}
+
+// cleanupRedisKeys 清理 Quota Key 与 Rate-Limit Key，错误仅记录日志不返回。
+func (m *EntityManager) cleanupRedisKeys(ctx context.Context, quotaKey string, rateLimitKeys []string) {
+	if m.quotaCache == nil {
+		return
+	}
+
+	var keysToDelete []string
+	if quotaKey != "" {
+		keysToDelete = append(keysToDelete, stateful.AIUsedQuotaKey(quotaKey))
+	}
+	if len(rateLimitKeys) > 0 {
+		keysToDelete = append(keysToDelete, rateLimitKeys...)
+	}
+	if len(keysToDelete) == 0 {
+		return
+	}
+
+	if err := m.quotaCache.DeleteKeys(ctx, keysToDelete); err != nil {
+		stateful.AccessLogger.Warn("failed to cleanup redis keys for entity: %v", err)
+	}
 }
 
 func (m *EntityManager) populateAssociatedData(ctx context.Context, one *EntityParam) error {

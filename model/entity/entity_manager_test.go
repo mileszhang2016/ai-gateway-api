@@ -21,6 +21,7 @@ import (
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -278,6 +279,47 @@ func TestEntityManager_DeleteEntity(t *testing.T) {
 		assert.Equal(t, rateLimitID, rateLimitStore.deleted[0])
 		assert.Len(t, routeRulesStore.deleted, 1)
 		assert.Equal(t, routeRulesID, routeRulesStore.deleted[0])
+	})
+
+	t.Run("cleanup redis keys after delete", func(t *testing.T) {
+		entityID := "ent-cleanup"
+		rateLimitID := int64(300)
+
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				if filter.EntityID != nil && *filter.EntityID == entityID {
+					return []*EntityParam{{
+						EntityID:          &entityID,
+						RateLimitPolicyID: &rateLimitID,
+					}}, nil
+				}
+				return nil, nil
+			},
+			deleteFn: func(ctx context.Context, filter *EntityFilter) error {
+				return nil
+			},
+		}
+		rateLimitStore := &fakeSharedRateLimitPolicyStorager{
+			fetchFn: func(ctx context.Context, id int64) (*shared.RateLimitPolicyParam, error) {
+				return &shared.RateLimitPolicyParam{
+					Rules: &shared.RateLimitRules{
+						TpmConfigs: []shared.TPMConfig{{Name: "tpm-1", Model: "*", WindowMinutes: 1, MaxTokens: 100, StepMinutes: 1}},
+						RpmConfigs: []shared.RPMConfig{{Name: "rpm-1", Model: "*", WindowMinutes: 1, MaxRequests: 10}},
+					},
+				}, nil
+			},
+		}
+		cache := &fakeQuotaCache{}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{},
+			&fakeSharedQuotaPlanStorager{}, rateLimitStore, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, cache)
+
+		require.NoError(t, m.DeleteEntity(ctx, &EntityFilter{EntityID: &entityID}))
+		require.Len(t, cache.deleteKeysCalls, 1)
+		assert.ElementsMatch(t, []string{
+			stateful.AIUsedQuotaKey(entityID),
+			"default_bfe_rlp-300_RL_TPM_rlp-300_tpm-1",
+			"default_bfe_rlp-300_RL_RPM_rlp-300_rpm-1",
+		}, cache.deleteKeysCalls[0])
 	})
 
 	t.Run("cannot delete entity with children", func(t *testing.T) {
@@ -663,6 +705,51 @@ func TestEntityManager_UpdateEntity_RateLimitPolicy(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), affected)
 		require.Len(t, rateLimitStore.updated, 1)
+	})
+
+	t.Run("cleanup redis keys for removed rate-limit rules", func(t *testing.T) {
+		entityID := "ent-1"
+		innerID := int64(100)
+		rateLimitID := int64(300)
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				return []*EntityParam{{InnerID: &innerID, EntityID: &entityID, RateLimitPolicyID: &rateLimitID}}, nil
+			},
+			updateFn: func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		rateLimitStore := &fakeSharedRateLimitPolicyStorager{
+			fetchFn: func(ctx context.Context, id int64) (*shared.RateLimitPolicyParam, error) {
+				return &shared.RateLimitPolicyParam{
+					Rules: &shared.RateLimitRules{
+						TpmConfigs: []shared.TPMConfig{
+							{Name: "keep", Model: "*", WindowMinutes: 1, MaxTokens: 100, StepMinutes: 1},
+							{Name: "remove", Model: "*", WindowMinutes: 1, MaxTokens: 200, StepMinutes: 1},
+						},
+					},
+				}, nil
+			},
+			updateFn: func(ctx context.Context, id int64, param *shared.RateLimitPolicyParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		cache := &fakeQuotaCache{}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{},
+			rateLimitStore, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, cache)
+
+		_, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{
+			RateLimitPolicy: &shared.RateLimitPolicyParam{
+				Rules: &shared.RateLimitRules{
+					TpmConfigs: []shared.TPMConfig{
+						{Name: "keep", Model: "*", WindowMinutes: 1, MaxTokens: 150, StepMinutes: 1},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+		require.Len(t, cache.deleteKeysCalls, 1)
+		assert.Equal(t, []string{"default_bfe_rlp-300_RL_TPM_rlp-300_remove"}, cache.deleteKeysCalls[0])
 	})
 }
 

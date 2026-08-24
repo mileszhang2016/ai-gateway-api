@@ -22,6 +22,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 const ConfigTopicProductRateLimitPolicy = "mod_ai_rate_limit"
@@ -165,7 +166,7 @@ func (m *RateLimitPolicyManager) RateLimitPolicyGenerator(ctx context.Context) (
 					exportPolicy.Rules.MaxConcurrency = *policy.MaxConcurrency
 				}
 
-				for idx, tpm := range policy.TpmConfigs {
+				for _, tpm := range policy.TpmConfigs {
 					models := []string{"*"}
 					if tpm.Model != "" && tpm.Model != "*" {
 						models = []string{tpm.Model}
@@ -176,11 +177,11 @@ func (m *RateLimitPolicyManager) RateLimitPolicyGenerator(ctx context.Context) (
 						WindowMinutes: tpm.WindowMinutes,
 						MaxTokens:     tpm.MaxTokens,
 						StepMinutes:   tpm.StepMinutes,
-						RedisKey:      fmt.Sprintf("RL_TPM_rlp-%d_%d", policyID, idx),
+						RedisKey:      shared.BuildBFERateLimitRedisKey(policyID, "RL_TPM", tpm.Name),
 					})
 				}
 
-				for idx, rpm := range policy.RpmConfigs {
+				for _, rpm := range policy.RpmConfigs {
 					models := []string{"*"}
 					if rpm.Model != "" && rpm.Model != "*" {
 						models = []string{rpm.Model}
@@ -191,7 +192,7 @@ func (m *RateLimitPolicyManager) RateLimitPolicyGenerator(ctx context.Context) (
 						WindowMinutes: rpm.WindowMinutes,
 						MaxRequests:   rpm.MaxRequests,
 						Burst:         1,
-						RedisKey:      fmt.Sprintf("RL_RPM_rlp-%d_%d", policyID, idx),
+						RedisKey:      shared.BuildBFERateLimitRedisKey(policyID, "RL_RPM", rpm.Name),
 					})
 				}
 

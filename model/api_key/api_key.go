@@ -291,7 +291,12 @@ func (rppm *APIKeyManager) populateAssociatedData(ctx context.Context, one *APIK
 
 // DeleteAPIKey deletes an API key based on filter criteria
 func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilter) error {
-	return rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
+	var (
+		quotaKey        string
+		rateLimitKeys   []string
+	)
+
+	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		list, err := rppm.storager.FetchAPIKeyList(ctx, filter)
 		if err != nil {
 			return err
@@ -301,6 +306,20 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 		}
 
 		one := list[0]
+
+		if one.Key != nil {
+			quotaKey = *one.Key
+		}
+
+		if one.RateLimitPolicyID != nil && rppm.rateLimitPolicyStorager != nil {
+			policy, err := rppm.rateLimitPolicyStorager.FetchRateLimitPolicy(ctx, *one.RateLimitPolicyID)
+			if err != nil {
+				return err
+			}
+			if policy != nil && policy.Rules != nil {
+				rateLimitKeys = shared.BuildRateLimitRedisKeys(*one.RateLimitPolicyID, policy.Rules)
+			}
+		}
 
 		if one.QuotaPlanID != nil && rppm.quotaBalanceStorager != nil {
 			if err := rppm.quotaBalanceStorager.DeleteQuotaBalance(ctx, *one.QuotaPlanID); err != nil {
@@ -328,10 +347,41 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 
 		return rppm.storager.DeleteAPIKey(ctx, filter)
 	})
+	if err != nil {
+		return err
+	}
+
+	// 事务提交成功后清理 Redis Key
+	rppm.cleanupRedisKeys(ctx, quotaKey, rateLimitKeys)
+	return nil
+}
+
+// cleanupRedisKeys 清理 Quota Key 与 Rate-Limit Key，错误仅记录日志不返回。
+func (rppm *APIKeyManager) cleanupRedisKeys(ctx context.Context, quotaKey string, rateLimitKeys []string) {
+	if rppm.quotaCache == nil {
+		return
+	}
+
+	var keysToDelete []string
+	if quotaKey != "" {
+		keysToDelete = append(keysToDelete, stateful.AIUsedQuotaKey(quotaKey))
+	}
+	if len(rateLimitKeys) > 0 {
+		keysToDelete = append(keysToDelete, rateLimitKeys...)
+	}
+	if len(keysToDelete) == 0 {
+		return
+	}
+
+	if err := rppm.quotaCache.DeleteKeys(ctx, keysToDelete); err != nil {
+		stateful.AccessLogger.Warn("failed to cleanup redis keys for api key: %v", err)
+	}
 }
 
 // UpdateAPIKey updates an existing API key
 func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) error {
+	var rateLimitKeysToDelete []string
+
 	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		list, err := rppm.storager.FetchAPIKeyList(ctx, filter)
 		if err != nil {
@@ -371,9 +421,16 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 
 		if param.RateLimitPolicy != nil && rppm.rateLimitPolicyStorager != nil {
 			if one.RateLimitPolicyID != nil {
+				oldPolicy, err := rppm.rateLimitPolicyStorager.FetchRateLimitPolicy(ctx, *one.RateLimitPolicyID)
+				if err != nil {
+					return err
+				}
 				_, err = rppm.rateLimitPolicyStorager.UpdateRateLimitPolicy(ctx, *one.RateLimitPolicyID, param.RateLimitPolicy)
 				if err != nil {
 					return err
+				}
+				if oldPolicy != nil && oldPolicy.Rules != nil {
+					rateLimitKeysToDelete = shared.DiffRateLimitRedisKeys(*one.RateLimitPolicyID, oldPolicy.Rules, param.RateLimitPolicy.Rules)
 				}
 			} else {
 				rateLimitPolicyID, err := rppm.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
@@ -404,7 +461,14 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		}, param)
 		return err
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	if len(rateLimitKeysToDelete) > 0 {
+		rppm.cleanupRedisKeys(ctx, "", rateLimitKeysToDelete)
+	}
+	return nil
 }
 
 // CreateAPIKey creates a new API key

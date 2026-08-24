@@ -29,10 +29,10 @@
     "enabled": false,
     "rules": {
       "tpm": [
-        {"name": "1分钟窗口", "model": "*", "window_minutes": 1, "max_tokens": 10000, "step_minutes": 1}
+        {"name": "tpm_1min", "model": "*", "window_minutes": 1, "max_tokens": 10000, "step_minutes": 1}
       ],
       "rpm": [
-        {"name": "1分钟请求", "model": "*", "window_minutes": 1, "max_requests": 100}
+        {"name": "rpm_1min", "model": "*", "window_minutes": 1, "max_requests": 100}
       ],
       "max_concurrency": -1
     }
@@ -156,10 +156,10 @@
         "enabled": true,
         "rules": {
             "tpm": [
-                {"name": "1分钟窗口", "model": "*", "window_minutes": 1, "max_tokens": 10000, "step_minutes": 1}
+                {"name": "tpm_1min", "model": "*", "window_minutes": 1, "max_tokens": 10000, "step_minutes": 1}
             ],
             "rpm": [
-                {"name": "1分钟请求", "model": "*", "window_minutes": 1, "max_requests": 100}
+                {"name": "rpm_1min", "model": "*", "window_minutes": 1, "max_requests": 100}
             ],
             "max_concurrency": 50
         }
@@ -228,8 +228,8 @@
         "rate_limit_policy": {
             "enabled": true,
             "rules": {
-                "tpm": [{"name": "1分钟窗口", "model": "*", "window_minutes": 1, "max_tokens": 10000, "step_minutes": 1}],
-                "rpm": [{"name": "1分钟请求", "model": "*", "window_minutes": 1, "max_requests": 100}],
+                "tpm": [{"name": "tpm_1min", "model": "*", "window_minutes": 1, "max_tokens": 10000, "step_minutes": 1}],
+                "rpm": [{"name": "rpm_1min", "model": "*", "window_minutes": 1, "max_requests": 100}],
                 "max_concurrency": 50
             }
         },

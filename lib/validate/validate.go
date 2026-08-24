@@ -38,6 +38,8 @@ var (
 	nameToken = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 	// entityTypeToken matches the character set used by EntityTypeName.
 	entityTypeToken = regexp.MustCompile(`^[a-z0-9_-]+$`)
+	// rateLimitNameToken matches the character set used by rate-limit rule names.
+	rateLimitNameToken = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 )
 
 const (
@@ -444,6 +446,9 @@ func RateLimitPolicy(p *shared.RateLimitPolicyParam) error {
 		if len(tpm.Name) > MaxRateLimitNameLength {
 			return xerror.WrapParamErrorWithMsg("tpm name length must be <= %d", MaxRateLimitNameLength)
 		}
+		if !rateLimitNameToken.MatchString(tpm.Name) {
+			return xerror.WrapParamErrorWithMsg("tpm name can only contain letters, digits, '_' and '-'")
+		}
 		if _, ok := nameSet[tpm.Name]; ok {
 			return xerror.WrapParamErrorWithMsg("duplicate rate limit name: %s", tpm.Name)
 		}
@@ -477,6 +482,9 @@ func RateLimitPolicy(p *shared.RateLimitPolicyParam) error {
 		}
 		if len(rpm.Name) > MaxRateLimitNameLength {
 			return xerror.WrapParamErrorWithMsg("rpm name length must be <= %d", MaxRateLimitNameLength)
+		}
+		if !rateLimitNameToken.MatchString(rpm.Name) {
+			return xerror.WrapParamErrorWithMsg("rpm name can only contain letters, digits, '_' and '-'")
 		}
 		if _, ok := nameSet[rpm.Name]; ok {
 			return xerror.WrapParamErrorWithMsg("duplicate rate limit name: %s", rpm.Name)

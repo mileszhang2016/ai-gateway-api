@@ -33,4 +33,9 @@ type QuotaCache interface {
 	// ResetToQuota resets the Redis remaining quota to the given quota amount.
 	// Semantically it is equivalent to SetRemaining.
 	ResetToQuota(ctx context.Context, key string, quota *float64, unit *string) error
+
+	// DeleteKeys removes the given Redis keys.
+	// The caller must pass the complete Redis keys (including any prefix);
+	// the implementation deletes them as-is.
+	DeleteKeys(ctx context.Context, keys []string) error
 }

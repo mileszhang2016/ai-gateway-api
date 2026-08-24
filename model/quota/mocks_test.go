@@ -411,9 +411,11 @@ var _ api_key.APIKeyStorager = (*fakeAPIKeyStorager)(nil)
 type fakeQuotaCache struct {
 	setRemainingCalls []quotaCacheSetRemainingCall
 	resetToQuotaCalls []quotaCacheResetToQuotaCall
+	deleteKeysCalls   [][]string
 	getRemainingFn    func(ctx context.Context, key string, unit *string) (float64, error)
 	setRemainingFn    func(ctx context.Context, key string, quota *float64, unit *string) error
 	resetToQuotaFn    func(ctx context.Context, key string, quota *float64, unit *string) error
+	deleteKeysFn      func(ctx context.Context, keys []string) error
 }
 
 type quotaCacheSetRemainingCall struct {
@@ -447,6 +449,14 @@ func (c *fakeQuotaCache) ResetToQuota(ctx context.Context, key string, quota *fl
 	c.resetToQuotaCalls = append(c.resetToQuotaCalls, quotaCacheResetToQuotaCall{key: key, quota: quota, unit: unit})
 	if c.resetToQuotaFn != nil {
 		return c.resetToQuotaFn(ctx, key, quota, unit)
+	}
+	return nil
+}
+
+func (c *fakeQuotaCache) DeleteKeys(ctx context.Context, keys []string) error {
+	c.deleteKeysCalls = append(c.deleteKeysCalls, keys)
+	if c.deleteKeysFn != nil {
+		return c.deleteKeysFn(ctx, keys)
 	}
 	return nil
 }

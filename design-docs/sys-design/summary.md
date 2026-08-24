@@ -28,6 +28,7 @@
 | 配额余额同步机制 | [details/配额余额同步机制.md](./details/配额余额同步机制.md) | 描述 Redis 实时计数与数据库定时同步的混合架构，包括 `QuotaResetScheduler` 调度器、`BalanceSyncManager` 的余额同步与过期重置、`QuotaPlanManager.ApplyQuotaPlanChange` 对 quota_plan 变更的差异化处理、`model/quotacache` 对 Redis 操作的封装、自然周/月重置逻辑、Redis Key 生命周期以及 OpenAPI 查询余额的处理；包含 RMB 配额定点精度设计。 |
 | Provider 与 Cluster 概念分离 | [details/provider与cluster概念分离.md](./details/provider与cluster概念分离.md) | 描述 Provider 与 Cluster 解耦后的数据模型、接口变化、BFE 配置生成转换、引用关系、迁移策略与风险。 |
 | Claude 协议转发支持 | [details/Claude协议转发支持.md](./details/Claude协议转发支持.md) | 描述 ai-gateway-api 控制面为支持 BFE 转发 Claude Messages API 所需配合的修改，包括 `AIConf.ModelProtocols` 透传、模型发现解析器下沉与废弃配置清理。 |
+| Redis Key 清理机制 | [details/Redis Key 清理机制.md](./details/Redis%20Key%20清理机制.md) | 描述 API-Key / Entity 删除及 rate-limit 规则变更时的 Redis Key 清理逻辑，包括 Quota Key 与 Rate-Limit Key 格式、触发场景、对 BFE 的影响以及控制面立即清理实现方案。 |
 | 模型定价管理 | [api-define/OpenAPI接口定义/model-prices.md](../api-define/OpenAPI接口定义/model-prices.md) | 描述 `/model-prices` 管理接口、`model-list.yaml` 导入格式、`ModelPrice` 数据模型与校验规则，是 InnerAPI `AIConf.ModelTable` 的数据源。 |
 
 ---

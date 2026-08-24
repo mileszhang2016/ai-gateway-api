@@ -102,6 +102,14 @@ func (m *MockRedisClient) IncrBy(key string, delta int64) (int64, error) {
 	return m.data[key], nil
 }
 
+// Delete 删除 key
+func (m *MockRedisClient) Delete(key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.data, key)
+	return nil
+}
+
 // Reset 清空所有数据
 func (m *MockRedisClient) Reset() {
 	m.mu.Lock()

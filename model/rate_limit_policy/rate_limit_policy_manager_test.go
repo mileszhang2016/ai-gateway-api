@@ -244,10 +244,10 @@ func TestRateLimitPolicyManager_RateLimitPolicyGenerator(t *testing.T) {
 		policy := conf.RateLimitPolicies["rlp-101"]
 		require.NotNil(t, policy.Rules)
 		require.Len(t, policy.Rules.TPM, 2)
-		assert.Equal(t, "RL_TPM_rlp-101_0", policy.Rules.TPM[0].RedisKey)
-		assert.Equal(t, "RL_TPM_rlp-101_1", policy.Rules.TPM[1].RedisKey)
+		assert.Equal(t, "default_bfe_rlp-101_RL_TPM_rlp-101_tpm-1", policy.Rules.TPM[0].RedisKey)
+		assert.Equal(t, "default_bfe_rlp-101_RL_TPM_rlp-101_tpm-2", policy.Rules.TPM[1].RedisKey)
 		require.Len(t, policy.Rules.RPM, 1)
-		assert.Equal(t, "RL_RPM_rlp-101_0", policy.Rules.RPM[0].RedisKey)
+		assert.Equal(t, "default_bfe_rlp-101_RL_RPM_rlp-101_rpm-1", policy.Rules.RPM[0].RedisKey)
 	})
 
 	t.Run("disabled policy is skipped", func(t *testing.T) {
