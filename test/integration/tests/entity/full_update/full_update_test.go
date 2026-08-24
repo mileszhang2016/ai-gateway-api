@@ -221,6 +221,52 @@ func TestEntity_FullUpdate(t *testing.T) {
 		assert.InDelta(t, float64(0), balance["used"], 0.00001)
 	})
 
+	t.Run("E-4-003 全量更新 name 为含大写字母", func(t *testing.T) {
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         "BadName",
+			"type":         typeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 422 {
+			t.Errorf("expected ErrNum=422, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+	})
+
+	t.Run("E-4-004 全量更新 name 以 - 结尾", func(t *testing.T) {
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         "badname-",
+			"type":         typeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 422 {
+			t.Errorf("expected ErrNum=422, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteEntity(entityID)
 		testutil.DeleteEntityType(typeName)

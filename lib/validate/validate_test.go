@@ -94,6 +94,24 @@ func TestEntityTypeName(t *testing.T) {
 	assert.Error(t, EntityTypeName("-dep"))
 }
 
+func TestEntityName(t *testing.T) {
+	assert.NoError(t, EntityName("dep"))
+	assert.NoError(t, EntityName("dep_01"))
+	assert.NoError(t, EntityName("ai-gateway"))
+	assert.NoError(t, EntityName(strings.Repeat("a", 64)))
+
+	assert.Error(t, EntityName(""))
+	assert.Error(t, EntityName(strings.Repeat("a", 65)))
+	assert.Error(t, EntityName("Dep"))
+	assert.Error(t, EntityName("dep 1"))
+	assert.Error(t, EntityName("部门"))
+	assert.Error(t, EntityName("dep@1"))
+	assert.Error(t, EntityName("-dep"))
+	assert.Error(t, EntityName("_dep"))
+	assert.Error(t, EntityName("dep-"))
+	assert.Error(t, EntityName("dep_"))
+}
+
 func TestAPIKeyDescription(t *testing.T) {
 	assert.NoError(t, APIKeyDescription("valid desc"))
 	assert.Error(t, APIKeyDescription(""))

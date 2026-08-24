@@ -45,6 +45,7 @@ const (
 	MaxTokenNameLength      = 64
 	MaxClusterNameLength    = 64
 	MaxEntityTypeNameLength = 32
+	MaxEntityNameLength     = 64
 	MaxDescriptionLength    = 256
 	MaxAPIDescriptionLength = 512
 	MaxLLMKeyLength         = 512
@@ -255,15 +256,18 @@ func ClusterName(s string) error {
 }
 
 // EntityName validates an entity name.
+// Rules are aligned with EntityTypeName, except the length limit (64 vs 32).
 func EntityName(s string) error {
-	if len(s) == 0 || len(s) > 64 {
-		return xerror.WrapParamErrorWithMsg("entity name length must be between 1 and 64")
+	if err := validateName(s, 1, MaxEntityNameLength, "name"); err != nil {
+		return err
 	}
-	if err := NoControlChars(s); err != nil {
-		return xerror.WrapParamErrorWithMsg("entity name: %v", err)
+	if err := validateNamePattern(s, entityTypeToken, "name"); err != nil {
+		return err
 	}
-	if err := NoLeadingTrailingSpace(s); err != nil {
-		return xerror.WrapParamErrorWithMsg("entity name: %v", err)
+	first := s[0]
+	last := s[len(s)-1]
+	if first == '-' || first == '_' || last == '-' || last == '_' {
+		return xerror.WrapParamErrorWithMsg("name cannot start or end with '-' or '_'")
 	}
 	return nil
 }
