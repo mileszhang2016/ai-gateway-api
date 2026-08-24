@@ -145,28 +145,32 @@ func TestAPIKeyRuleManager_ConfigExport_Concurrent(t *testing.T) {
 	}
 
 	quotaPlanStore := &fakeQuotaPlanStorager{
-		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
-			if filter.ID != nil {
-				return &quota.QuotaPlanParam{
-					ID:        filter.ID,
+		listFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) ([]*quota.QuotaPlanParam, error) {
+			plans := make([]*quota.QuotaPlanParam, 5)
+			for i := 0; i < 5; i++ {
+				id := int64(i + 1)
+				plans[i] = &quota.QuotaPlanParam{
+					ID:        lib.PInt64(id),
 					Unlimited: lib.PBool(false),
 					Quota:     lib.PFloat64(100),
-				}, nil
+				}
 			}
-			return nil, nil
+			return plans, nil
 		},
 	}
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
-			if filter.EntityID != nil {
-				return &entity.EntityParam{
-					EntityID: filter.EntityID,
-					Name:     filter.EntityID,
+		listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
+			entities := make([]*entity.EntityParam, 10)
+			for i := 0; i < 10; i++ {
+				id := fmt.Sprintf("entity-%d", i)
+				entities[i] = &entity.EntityParam{
+					EntityID: lib.PString(id),
+					Name:     lib.PString(id),
 					Type:     lib.PString("team"),
-				}, nil
+				}
 			}
-			return nil, nil
+			return entities, nil
 		},
 	}
 
@@ -183,11 +187,10 @@ func TestAPIKeyRuleManager_ConfigExport_Concurrent(t *testing.T) {
 	}
 
 	entityTypeStore := &fakeEntityTypeStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
-			if filter.TypeName != nil && *filter.TypeName == "team" {
-				return &entity.EntityTypeParam{TypeName: lib.PString("team"), Level: lib.PInt(2)}, nil
-			}
-			return nil, nil
+		listFn: func(ctx context.Context, filter *entity.EntityTypeFilter) ([]*entity.EntityTypeParam, error) {
+			return []*entity.EntityTypeParam{
+				{TypeName: lib.PString("team"), Level: lib.PInt(2)},
+			}, nil
 		},
 	}
 
@@ -326,42 +329,39 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator(t *testing.T) {
 	}
 
 	quotaPlanStore := &fakeQuotaPlanStorager{
-		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
-			if filter.ID != nil && *filter.ID == quotaPlanID {
-				return &quota.QuotaPlanParam{
+		listFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) ([]*quota.QuotaPlanParam, error) {
+			return []*quota.QuotaPlanParam{
+				{
 					ID:        lib.PInt64(quotaPlanID),
 					Unlimited: lib.PBool(false),
 					Quota:     lib.PFloat64(1000),
-				}, nil
-			}
-			return nil, nil
+				},
+			}, nil
 		},
 	}
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
-			if filter.EntityID != nil && *filter.EntityID == entityID {
-				return &entity.EntityParam{
+		listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
+			return []*entity.EntityParam{
+				{
 					EntityID:    lib.PString(entityID),
 					Name:        lib.PString("team-a"),
 					Type:        lib.PString("team"),
 					AllowModels: []string{"gpt-4", "claude"},
 					BlockModels: []string{"gpt-2"},
-				}, nil
-			}
-			return nil, nil
+				},
+			}, nil
 		},
 	}
 
 	entityTypeStore := &fakeEntityTypeStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
-			if filter.TypeName != nil && *filter.TypeName == "team" {
-				return &entity.EntityTypeParam{
+		listFn: func(ctx context.Context, filter *entity.EntityTypeFilter) ([]*entity.EntityTypeParam, error) {
+			return []*entity.EntityTypeParam{
+				{
 					TypeName: lib.PString("team"),
 					Level:    lib.PInt(2),
-				}, nil
-			}
-			return nil, nil
+				},
+			}, nil
 		},
 	}
 
@@ -546,15 +546,14 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_FalseUnlimitedWithNonUnlimitedQuo
 	}
 
 	quotaPlanStore := &fakeQuotaPlanStorager{
-		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
-			if filter.ID != nil && *filter.ID == quotaPlanID {
-				return &quota.QuotaPlanParam{
-					ID:        filter.ID,
+		listFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) ([]*quota.QuotaPlanParam, error) {
+			return []*quota.QuotaPlanParam{
+				{
+					ID:        lib.PInt64(quotaPlanID),
 					Unlimited: lib.PBool(false),
 					Quota:     lib.PFloat64(100),
-				}, nil
-			}
-			return nil, nil
+				},
+			}, nil
 		},
 	}
 
@@ -727,10 +726,12 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_ModelIntersectionEmpty(t *testing
 	}
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
-			return &entity.EntityParam{
-				EntityID:    lib.PString(entityID),
-				AllowModels: []string{"claude"},
+		listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
+			return []*entity.EntityParam{
+				{
+					EntityID:    lib.PString(entityID),
+					AllowModels: []string{"claude"},
+				},
 			}, nil
 		},
 	}
@@ -779,51 +780,44 @@ func TestAPIKeyRuleManager_APIKeyRuleGenerator_EntityHierarchy(t *testing.T) {
 	}
 
 	quotaPlanStore := &fakeQuotaPlanStorager{
-		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
-			if filter.ID != nil && *filter.ID == quotaPlanID {
-				return &quota.QuotaPlanParam{
+		listFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) ([]*quota.QuotaPlanParam, error) {
+			return []*quota.QuotaPlanParam{
+				{
 					ID:        lib.PInt64(quotaPlanID),
 					Unlimited: lib.PBool(false),
 					Quota:     lib.PFloat64(500),
-				}, nil
-			}
-			return nil, nil
+				},
+			}, nil
 		},
 	}
 
 	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
-			if filter.EntityID != nil && *filter.EntityID == entityID {
-				return &entity.EntityParam{
+		listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
+			return []*entity.EntityParam{
+				{
 					EntityID:    lib.PString(entityID),
 					Name:        lib.PString("team-a"),
 					Type:        lib.PString("team"),
 					ParentID:    &parentID,
 					QuotaPlanID: &quotaPlanID,
 					AllowModels: []string{"gpt-4"},
-				}, nil
-			}
-			if filter.EntityID != nil && *filter.EntityID == parentID {
-				return &entity.EntityParam{
+				},
+				{
 					EntityID:    lib.PString(parentID),
 					Name:        lib.PString("org-a"),
 					Type:        lib.PString("org"),
 					AllowModels: []string{"gpt-4", "claude"},
-				}, nil
-			}
-			return nil, nil
+				},
+			}, nil
 		},
 	}
 
 	entityTypeStore := &fakeEntityTypeStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
-			if filter.TypeName != nil && *filter.TypeName == "team" {
-				return &entity.EntityTypeParam{TypeName: lib.PString("team"), Level: lib.PInt(2)}, nil
-			}
-			if filter.TypeName != nil && *filter.TypeName == "org" {
-				return &entity.EntityTypeParam{TypeName: lib.PString("org"), Level: lib.PInt(1)}, nil
-			}
-			return nil, nil
+		listFn: func(ctx context.Context, filter *entity.EntityTypeFilter) ([]*entity.EntityTypeParam, error) {
+			return []*entity.EntityTypeParam{
+				{TypeName: lib.PString("team"), Level: lib.PInt(2)},
+				{TypeName: lib.PString("org"), Level: lib.PInt(1)},
+			}, nil
 		},
 	}
 
@@ -859,48 +853,30 @@ func TestAPIKeyRuleManager_FetchQuotaPlansWithEntityHierarchy(t *testing.T) {
 		EntityID:    &entityID,
 	}
 
-	quotaPlanStore := &fakeQuotaPlanStorager{
-		fetchFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) (*quota.QuotaPlanParam, error) {
-			if filter.ID != nil && *filter.ID == quotaPlanID {
-				return &quota.QuotaPlanParam{
-					ID:        lib.PInt64(quotaPlanID),
-					Unlimited: lib.PBool(false),
-					Quota:     lib.PFloat64(100),
-				}, nil
-			}
-			return nil, nil
+	quotaPlanMap := map[int64]*quota.QuotaPlanParam{
+		quotaPlanID: {
+			ID:        lib.PInt64(quotaPlanID),
+			Unlimited: lib.PBool(false),
+			Quota:     lib.PFloat64(100),
 		},
 	}
 
-	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
-			if filter.EntityID != nil && *filter.EntityID == entityID {
-				return &entity.EntityParam{
-					EntityID: lib.PString(entityID),
-					Name:     lib.PString("team-a"),
-					Type:     lib.PString("team"),
-				}, nil
-			}
-			return nil, nil
+	entityMap := map[string]*entity.EntityParam{
+		entityID: {
+			EntityID: lib.PString(entityID),
+			Name:     lib.PString("team-a"),
+			Type:     lib.PString("team"),
 		},
 	}
 
-	entityTypeStore := &fakeEntityTypeStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityTypeFilter) (*entity.EntityTypeParam, error) {
-			if filter.TypeName != nil && *filter.TypeName == "team" {
-				return &entity.EntityTypeParam{TypeName: lib.PString("team"), Level: lib.PInt(2)}, nil
-			}
-			return nil, nil
-		},
+	entityTypeMap := map[string]*entity.EntityTypeParam{
+		"team": {TypeName: lib.PString("team"), Level: lib.PInt(2)},
 	}
 
 	m := newTestAPIKeyRuleManager()
-	m.quotaPlanStorager = quotaPlanStore
-	m.entityStorager = entityStore
-	m.entityTypeStorager = entityTypeStore
 	collectedQuotaPlans := make(map[string][]*QuotaPlan)
 
-	ids, tags, err := m.fetchQuotaPlansWithEntityHierarchy(ctx, apiKey, "AI_product", collectedQuotaPlans)
+	ids, tags, err := m.fetchQuotaPlansWithEntityHierarchy(ctx, apiKey, "AI_product", collectedQuotaPlans, entityMap, quotaPlanMap, entityTypeMap)
 	require.NoError(t, err)
 	assert.Len(t, ids, 1)
 	assert.Len(t, tags, 1)
@@ -915,31 +891,23 @@ func TestAPIKeyRuleManager_FetchEntityModelHierarchy(t *testing.T) {
 	parentID := "parent-1"
 	entityID := "entity-1"
 
-	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
-			if filter.EntityID != nil && *filter.EntityID == entityID {
-				return &entity.EntityParam{
-					EntityID:    lib.PString(entityID),
-					ParentID:    &parentID,
-					AllowModels: []string{"gpt-4", "claude"},
-					BlockModels: []string{"gpt-2"},
-				}, nil
-			}
-			if filter.EntityID != nil && *filter.EntityID == parentID {
-				return &entity.EntityParam{
-					EntityID:    lib.PString(parentID),
-					AllowModels: []string{"gpt-4"},
-					BlockModels: []string{"bloom"},
-				}, nil
-			}
-			return nil, nil
+	entityMap := map[string]*entity.EntityParam{
+		entityID: {
+			EntityID:    lib.PString(entityID),
+			ParentID:    &parentID,
+			AllowModels: []string{"gpt-4", "claude"},
+			BlockModels: []string{"gpt-2"},
+		},
+		parentID: {
+			EntityID:    lib.PString(parentID),
+			AllowModels: []string{"gpt-4"},
+			BlockModels: []string{"bloom"},
 		},
 	}
 
 	m := newTestAPIKeyRuleManager()
-	m.entityStorager = entityStore
 
-	allow, block, err := m.fetchEntityModelHierarchy(ctx, entityID)
+	allow, block, err := m.fetchEntityModelHierarchy(ctx, entityMap, entityID)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"gpt-4"}, allow)
 	assert.Equal(t, []string{"gpt-2", "bloom"}, block)
@@ -949,38 +917,12 @@ func TestAPIKeyRuleManager_FetchEntityModelHierarchy_EntityNotFound(t *testing.T
 	setupState()
 	ctx := context.Background()
 
-	entityStore := &fakeEntityStorager{
-		fetchFn: func(ctx context.Context, filter *entity.EntityFilter) (*entity.EntityParam, error) {
-			return nil, nil
-		},
-	}
-
 	m := newTestAPIKeyRuleManager()
-	m.entityStorager = entityStore
 
-	allow, block, err := m.fetchEntityModelHierarchy(ctx, "missing")
+	allow, block, err := m.fetchEntityModelHierarchy(ctx, map[string]*entity.EntityParam{}, "missing")
 	require.NoError(t, err)
 	assert.Nil(t, allow)
 	assert.Empty(t, block)
-}
-
-func TestAPIKeyRuleManager_CollectEntityModels_Star(t *testing.T) {
-	setupState()
-	ctx := context.Background()
-
-	entityStore := &fakeEntityStorager{}
-	m := newTestAPIKeyRuleManager()
-	m.entityStorager = entityStore
-
-	var allAllowModels [][]string
-	var allBlockModels []string
-	m.collectEntityModels(ctx, &entity.EntityParam{
-		AllowModels: []string{"*"},
-		BlockModels: []string{"*"},
-	}, &allAllowModels, &allBlockModels)
-
-	assert.Empty(t, allAllowModels)
-	assert.Empty(t, allBlockModels)
 }
 
 func TestAPIKeyRuleManager_ContainsQuotaPlan(t *testing.T) {
@@ -993,4 +935,136 @@ func TestAPIKeyRuleManager_ContainsQuotaPlan(t *testing.T) {
 	assert.True(t, containsQuotaPlan(collectedQuotaPlans, "AI_product", "qp-1"))
 	assert.False(t, containsQuotaPlan(collectedQuotaPlans, "AI_product", "qp-2"))
 	assert.False(t, containsQuotaPlan(collectedQuotaPlans, "other", "qp-1"))
+}
+
+
+func TestAPIKeyRuleManager_ConfigExport_Performance(t *testing.T) {
+	setupState()
+	ctx := context.Background()
+
+	const numKeys = 690
+	const numEntities = 100
+	const numQuotaPlans = 20
+
+	// Build 3-level entity hierarchy: leaf -> middle -> root.
+	entityList := make([]*entity.EntityParam, 0, numEntities)
+	for i := 0; i < numEntities; i++ {
+		entityID := fmt.Sprintf("entity-%d", i)
+		entityType := "team"
+		var parentID *string
+		if i%3 == 0 {
+			// root
+			entityType = "org"
+		} else {
+			// middle -> root, or leaf -> middle
+			parent := fmt.Sprintf("entity-%d", i-1)
+			parentID = &parent
+		}
+
+		var quotaPlanID *int64
+		if i%2 == 0 {
+			qpID := int64(i%numQuotaPlans + 1)
+			quotaPlanID = &qpID
+		}
+
+		entityList = append(entityList, &entity.EntityParam{
+			EntityID:    lib.PString(entityID),
+			Name:        lib.PString(entityID),
+			Type:        lib.PString(entityType),
+			ParentID:    parentID,
+			QuotaPlanID: quotaPlanID,
+			AllowModels: []string{"gpt-4", "claude", "gpt-3.5"},
+			BlockModels: []string{"gpt-2"},
+		})
+	}
+
+	quotaPlanList := make([]*quota.QuotaPlanParam, 0, numQuotaPlans)
+	for i := 1; i <= numQuotaPlans; i++ {
+		id := int64(i)
+		quotaPlanList = append(quotaPlanList, &quota.QuotaPlanParam{
+			ID:        lib.PInt64(id),
+			Unlimited: lib.PBool(false),
+			Quota:     lib.PFloat64(1000),
+		})
+	}
+
+	entityTypeList := []*entity.EntityTypeParam{
+		{TypeName: lib.PString("team"), Level: lib.PInt(2)},
+		{TypeName: lib.PString("org"), Level: lib.PInt(1)},
+	}
+
+	apiKeyStore := &fakeAPIKeyStorager{
+		fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+			keys := make([]*api_key.APIKeyParam, numKeys)
+			for i := 0; i < numKeys; i++ {
+				id := fmt.Sprintf("key-%d", i)
+				quotaPlanID := int64(i%numQuotaPlans + 1)
+				entityID := fmt.Sprintf("entity-%d", i%numEntities)
+				keys[i] = &api_key.APIKeyParam{
+					ID:          lib.PString(id),
+					Key:         lib.PString(fmt.Sprintf("ak-%s", id)),
+					ProductName: lib.PString("AI_product"),
+					Enable:      lib.PBool(true),
+					QuotaPlanID: &quotaPlanID,
+					EntityID:    lib.PString(entityID),
+					Models:      []string{"gpt-4"},
+					KeyCreateAt: lib.PTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.Local)),
+				}
+			}
+			return keys, nil
+		},
+	}
+
+	quotaPlanStore := &fakeQuotaPlanStorager{
+		listFn: func(ctx context.Context, filter *quota.QuotaPlanFilter) ([]*quota.QuotaPlanParam, error) {
+			return quotaPlanList, nil
+		},
+	}
+
+	entityStore := &fakeEntityStorager{
+		listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
+			return entityList, nil
+		},
+	}
+
+	entityTypeStore := &fakeEntityTypeStorager{
+		listFn: func(ctx context.Context, filter *entity.EntityTypeFilter) ([]*entity.EntityTypeParam, error) {
+			return entityTypeList, nil
+		},
+	}
+
+	aiRouteStore := &fakeAIRouteRuleStorager{
+		fetchFn: func(ctx context.Context, filter *iai_route.AIRouteFilter) ([]*iai_route.Rule, error) {
+			return nil, nil
+		},
+	}
+
+	versionStore := &fakeVersionControlStorager{
+		upsertFn: func(ctx context.Context, css *iversion_control.ExportData) (string, error) {
+			return "v-performance", nil
+		},
+	}
+
+	m := NewAPIKeyRuleManager(
+		&fakeTxn{},
+		iversion_control.NewVersionControllerManager(&fakeTxn{}, versionStore),
+		apiKeyStore,
+		aiRouteStore,
+		quotaPlanStore,
+		entityStore,
+		entityTypeStore, nil)
+
+	start := time.Now()
+	conf, err := m.ConfigExport(ctx, "")
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, conf)
+	assert.Len(t, conf.Tokens["AI_product"], numKeys)
+	assert.NotEmpty(t, conf.QuotaPlans["AI_product"])
+
+	t.Logf("ConfigExport with %d keys, %d entities, %d quota plans took %d ms",
+		numKeys, numEntities, numQuotaPlans, elapsed.Milliseconds())
+
+	assert.Less(t, elapsed.Milliseconds(), int64(500), "ConfigExport should complete within 500 ms")
 }

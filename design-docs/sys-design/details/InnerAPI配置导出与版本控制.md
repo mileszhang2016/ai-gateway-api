@@ -221,14 +221,17 @@ type ModAPIKeyRuleConf struct {
 生成流程：
 
 1. 构造 AI 路由对应的 API-Key 规则（`buildAIRouteAPIKeyRules`）；
-2. 遍历所有 `api_keys`，为每个 key 生成 `TokenFile`；
-3. 根据 API-Key 的 `enabled` 字段及 Entity 层级的 `allow_models` 交集结果，确定导出的 `enabled`（布尔值）；`expired`/`exhausted` 状态由 BFE 根据 `expired_time` 和实时 Redis 配额余额自行判断，不再由导出层计算；
-4. 合并 Entity 层级的 `allow_models`（交集）与 `block_models`（并集）；
-5. 收集 API-Key 自身及 Entity 层级向上的配额计划，**跳过 `unlimited=true` 的配额计划**；
-6. 为每个 Entity 标签补充 `TagLevel`（取自对应 `EntityType.Level`）；
-7. 输出 `QuotaPlans`、`Tokens`、`Config`。
+2. **批量预加载**：一次性加载全部 `api_keys`、`entities`、`quota_plans`、`entity_types` 到内存索引（Map），避免 N+1 查询；
+3. 遍历所有 `api_keys`，为每个 key 生成 `TokenFile`；
+4. 根据 API-Key 的 `enabled` 字段及 Entity 层级的 `allow_models` 交集结果，确定导出的 `enabled`（布尔值）；`expired`/`exhausted` 状态由 BFE 根据 `expired_time` 和实时 Redis 配额余额自行判断，不再由导出层计算；
+5. 合并 Entity 层级的 `allow_models`（交集）与 `block_models`（并集），通过内存 Map 沿 `parent_id` 回溯，不再递归查询数据库；
+6. 收集 API-Key 自身及 Entity 层级向上的配额计划，**跳过 `unlimited=true` 的配额计划**，同样通过内存 Map 查询；
+7. 为每个 Entity 标签补充 `TagLevel`（取自内存 Map 中对应 `EntityType.Level`）；
+8. 输出 `QuotaPlans`、`Tokens`、`Config`。
 
 > 详见《API-Key 与 Entity 关联及模型继承.md》。
+>
+> 性能优化记录：参见 `design-docs/modifications/2026-08-24-mod-api-key-export-performance/design-changes.md`。
 
 ### 4.7 mod-body-process（`/configs/mod-body-process`）
 
@@ -367,12 +370,13 @@ Authorization: Token <token>
 
 ---
 
-## 8. 性能优化建议
+## 8. 性能优化
 
-1. **缓存热点配置**：`mod-api-key`、`rate-limit-policy`、`ai-route` 每次导出都全量读取所有 API-Key / Entity，数据量大时建议加缓存。
-2. **异步签名计算**：复杂配置的 MD5 计算可异步化，避免阻塞请求。
-3. **按产品线分片**：当前所有配置按默认产品 `AI_product` 聚合，若未来多产品线并行，可按产品线拆分 Topic。
-4. **压缩传输**：InnerAPI 返回的 JSON 较大时，可启用 Gzip 压缩。
+1. **批量预加载 + 内存回溯**：`mod-api-key` 导出已实现一次性全量加载 `api_keys`、`entities`、`quota_plans`、`entity_types`，并在内存中沿 `parent_id` 回溯 Entity 层级，避免 N+1 查询。
+2. **缓存热点配置**：`rate-limit-policy`、`ai-route` 每次导出仍全量读取所有 API-Key / Entity，数据量大时建议参考 `mod-api-key` 进行批量预加载或加缓存。
+3. **异步签名计算**：复杂配置的 MD5 计算可异步化，避免阻塞请求。
+4. **按产品线分片**：当前所有配置按默认产品 `AI_product` 聚合，若未来多产品线并行，可按产品线拆分 Topic。
+5. **压缩传输**：InnerAPI 返回的 JSON 较大时，可启用 Gzip 压缩。
 
 ---
 
