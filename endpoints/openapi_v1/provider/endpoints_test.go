@@ -22,7 +22,7 @@ import (
 )
 
 func TestEndpoints(t *testing.T) {
-	require.Len(t, Endpoints, 6)
+	require.Len(t, Endpoints, 7)
 	for _, ep := range Endpoints {
 		require.NotNil(t, ep)
 		assert.NotEmpty(t, ep.Path)

@@ -23,11 +23,12 @@ func (f *fakeTxn) AtomExecute(ctx context.Context, do func(context.Context) erro
 }
 
 type fakeProviderStorager struct {
-	createFn    func(ctx context.Context, param *ProviderParam) (int64, error)
-	updateFn    func(ctx context.Context, name string, param *ProviderParam) error
-	deleteFn    func(ctx context.Context, name string) error
-	fetchFn     func(ctx context.Context, filter *ProviderFilter) (*Provider, error)
-	fetchListFn func(ctx context.Context, filter *ProviderFilter) ([]*Provider, int64, error)
+	createFn        func(ctx context.Context, param *ProviderParam) (int64, error)
+	updateFn        func(ctx context.Context, name string, param *ProviderParam) error
+	deleteFn        func(ctx context.Context, name string) error
+	fetchFn         func(ctx context.Context, filter *ProviderFilter) (*Provider, error)
+	fetchListFn     func(ctx context.Context, filter *ProviderFilter) ([]*Provider, int64, error)
+	fetchNamesFn    func(ctx context.Context) ([]string, error)
 }
 
 func (s *fakeProviderStorager) CreateProvider(ctx context.Context, param *ProviderParam) (int64, error) {
@@ -63,6 +64,13 @@ func (s *fakeProviderStorager) FetchProviderList(ctx context.Context, filter *Pr
 		return s.fetchListFn(ctx, filter)
 	}
 	return nil, 0, nil
+}
+
+func (s *fakeProviderStorager) FetchProviderNames(ctx context.Context) ([]string, error) {
+	if s.fetchNamesFn != nil {
+		return s.fetchNamesFn(ctx)
+	}
+	return nil, nil
 }
 
 type fakeDiscoverCaller struct {

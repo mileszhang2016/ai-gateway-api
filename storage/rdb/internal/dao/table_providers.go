@@ -93,6 +93,35 @@ func TProviderListWithPagination(dbCtx lib.DBContexter, where *TProviderParam, p
 	return t, nil
 }
 
+// TProviderNames returns all provider names ordered by name ascending.
+func TProviderNames(dbCtx lib.DBContexter) ([]string, error) {
+	whereMap := map[string]interface{}{
+		"_orderby": "name asc",
+	}
+
+	build := internal.NewSelectBuilder(tProviderTableName, whereMap, []string{"name"})
+	sql, args, err := build.Compile()
+	if err != nil {
+		return nil, xerror.WrapDaoError(err)
+	}
+
+	rows, err := dbCtx.Conn().QueryContext(dbCtx, sql, args...)
+	if err != nil {
+		return nil, xerror.WrapDaoError(err)
+	}
+	defer rows.Close()
+
+	names := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, xerror.WrapDaoError(err)
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
 // TProviderCount returns the total count matched by where.
 func TProviderCount(dbCtx lib.DBContexter, where *TProviderParam) (int64, error) {
 	type countResult struct {

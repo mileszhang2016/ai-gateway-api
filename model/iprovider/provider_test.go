@@ -158,6 +158,34 @@ func TestProviderManager_FetchProvider(t *testing.T) {
 	assert.Equal(t, expected, got)
 }
 
+func TestProviderManager_ListProviderNames(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		store := &fakeProviderStorager{
+			fetchNamesFn: func(ctx context.Context) ([]string, error) {
+				return []string{"deepseek", "openai", "anthropic"}, nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+		names, err := m.ListProviderNames(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"deepseek", "openai", "anthropic"}, names)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		store := &fakeProviderStorager{
+			fetchNamesFn: func(ctx context.Context) ([]string, error) {
+				return []string{}, nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+		names, err := m.ListProviderNames(ctx)
+		require.NoError(t, err)
+		assert.Empty(t, names)
+	})
+}
+
 func TestProviderManager_FetchProviderList(t *testing.T) {
 	ctx := context.Background()
 

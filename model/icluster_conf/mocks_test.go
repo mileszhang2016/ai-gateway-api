@@ -235,6 +235,10 @@ func (f *fakeProviderStorager) FetchProviderList(ctx context.Context, filter *ip
 	return nil, 0, nil
 }
 
+func (f *fakeProviderStorager) FetchProviderNames(ctx context.Context) ([]string, error) {
+	return nil, nil
+}
+
 type fakeSubClusterStorager struct {
 	fetchSubClusterListFn func(ctx context.Context, param *SubClusterFilter) ([]*SubCluster, error)
 	createSubClusterFn    func(ctx context.Context, param *SubClusterParam) error

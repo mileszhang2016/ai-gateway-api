@@ -93,6 +93,15 @@ func (s *RDBProviderStorager) FetchProvider(ctx context.Context, filter *iprovid
 	return fromDAO(one), nil
 }
 
+func (s *RDBProviderStorager) FetchProviderNames(ctx context.Context) ([]string, error) {
+	dbCtx, err := s.dbCtxFactory(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return dao.TProviderNames(dbCtx)
+}
+
 func (s *RDBProviderStorager) FetchProviderList(ctx context.Context, filter *iprovider.ProviderFilter) ([]*iprovider.Provider, int64, error) {
 	dbCtx, err := s.dbCtxFactory(ctx)
 	if err != nil {

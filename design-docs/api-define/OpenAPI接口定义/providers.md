@@ -340,6 +340,46 @@ Data 为 null。
 }
 ```
 
+### 2.7 获取所有 Provider 名称列表
+
+**基本信息**
+
+| 项目 | 值 | 说明 |
+| - | - | - |
+| 含义 | 获取所有 Provider 名称列表 | 用于需要全量 provider 名称的场景，如下拉选择、自动补全 |
+| 端点 | /providers/actions/get-provider-names | - |
+| 版本 | v1 | - |
+| method | GET | - |
+
+**输入参数**
+
+无。
+
+**执行逻辑**
+
+1. 查询所有 provider 的 `name` 字段。
+2. 返回按字典序升序排列的名称列表。
+
+> **说明**：本接口不返回 Provider 其他字段，仅用于获取全量名称；详细数据仍通过 `GET /providers` 分页查询。
+
+**返回数据（Data内容）**
+
+| 参数名 | 类型 | 参数含义 |
+| - | -  | - |
+| names | []string | 所有 Provider 名称列表 |
+
+**成功返回示例**
+
+```json
+{
+    "ErrNum": 200,
+    "ErrMsg": "success",
+    "Data": {
+        "names": ["anthropic", "deepseek", "openai"]
+    }
+}
+```
+
 ## 3. 校验规则
 
 1. `name` 必填，类型为 [ProviderName](./00-common.md#17-provider-名称providername)，全局唯一。

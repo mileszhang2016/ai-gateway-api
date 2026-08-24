@@ -22,6 +22,7 @@ import (
 var Endpoints = []*xreq.Endpoint{
 	CreateEndpoint,
 	ListEndpoint,
+	ListNamesEndpoint,
 	OneEndpoint,
 	UpdateEndpoint,
 	DeleteEndpoint,

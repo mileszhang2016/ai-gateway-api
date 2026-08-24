@@ -108,6 +108,7 @@ type ProviderStorager interface {
 	DeleteProvider(ctx context.Context, name string) error
 	FetchProvider(ctx context.Context, filter *ProviderFilter) (*Provider, error)
 	FetchProviderList(ctx context.Context, filter *ProviderFilter) ([]*Provider, int64, error)
+	FetchProviderNames(ctx context.Context) ([]string, error)
 }
 
 // NewProviderManager creates a ProviderManager.
@@ -249,6 +250,15 @@ func (m *ProviderManager) FetchProviderList(ctx context.Context, filter *Provide
 
 func intPtr(v int) *int {
 	return &v
+}
+
+// ListProviderNames returns all provider names sorted in ascending order.
+func (m *ProviderManager) ListProviderNames(ctx context.Context) ([]string, error) {
+	names, err := m.storager.FetchProviderNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return names, nil
 }
 
 // ValidateProviderParam validates a provider create/update request.

@@ -19,7 +19,8 @@ Provider 与 Cluster 概念分离后：
 | PV-3 | 查询 Provider 详情 | GET | `/open-api/v1/providers/{provider_name}` | - |
 | PV-4 | 更新 Provider | PATCH | `/open-api/v1/providers/{provider_name}` | 全量替换 `keys`、`models` 等数组字段 |
 | PV-5 | 删除 Provider | DELETE | `/open-api/v1/providers/{provider_name}` | 删除前检查 cluster/model-price 引用 |
-| PV-6 | 触发模型发现 | POST | `/open-api/v1/providers/tools/discover-models` | 当前集成测试未覆盖；无状态工具接口，不绑定 Provider |
+| PV-6 | 触发模型发现 | POST | `/open-api/v1/providers/tools/discover-models` | 无状态工具接口，不绑定 Provider |
+| PV-7 | 获取所有 Provider 名称 | GET | `/open-api/v1/providers/actions/get-provider-names` | 返回全量 provider 名称列表 |
 
 ## 3. 测试用例统计
 
@@ -30,7 +31,9 @@ Provider 与 Cluster 概念分离后：
 | 查询 Provider 详情 | 2 |
 | 更新 Provider | 4 |
 | 删除 Provider | 3 |
-| **合计** | **26** |
+| 触发模型发现 | 6 |
+| 获取所有 Provider 名称 | 1 |
+| **合计** | **27** |
 
 ## 4. 认证方式
 
