@@ -44,7 +44,7 @@
 | `model_endpoint` | object | 模型发现端点 | 用于调用第三方 AI 模型提供商的模型列表接口 | 非必填；未设置时默认 `schema=https`、`uri=/v1/models`；具体字段见下方 表：Endpoint |
 | `models` | []string | 该 provider 支持的模型列表 | - | 非必填；元素非空且不可重复；可通过模型发现接口自动填充 |
 | `keys` | []ProviderKey | 该 provider 可用的 API Key 明文 | - | 非必填；默认空数组 `[]`；元素须满足 表：ProviderKey 结构 |
-| `instance_pool` | []Instance | Provider 对应的后端实例池 | 系统自动据此创建实例池和子集群 | 必填；至少 1 个元素；同一 provider 内，对于 `name` 不为空的实例，`name` 不能重复；同一 provider 内 `(name, addr)` 组合不能重复；至少有一个实例 `weight > 0` |
+| `instance_pool` | []Instance | Provider 对应的后端实例池 | 系统自动据此创建实例池和子集群 | 必填；至少 1 个元素；同一 provider 内，对于 `name` 不为空的实例，`name` 不能重复；同一 provider 内 `(name, addr, port)` 组合不能重复；至少有一个实例 `weight > 0` |
 | `model_protocols` | []string | 支持的模型访问协议 | 首期枚举：`openai`、`anthropic` | 必填；至少 1 个元素；元素不可重复；枚举值见下方 |
 | `create_time` | int64 | 创建时间 | - | 系统生成 |
 | `update_time` | int64 | 更新时间 | - | 系统生成 |
@@ -384,7 +384,7 @@ Data 为 null。
 
 1. `name` 必填，类型为 [ProviderName](./00-common.md#17-provider-名称providername)，全局唯一。
 2. `description` 可选；若传入，长度 0-256 字符，不能包含控制字符。
-3. `instance_pool` 必填，至少包含 1 个实例；同一 provider 内，对于 `name` 不为空的实例，`name` 不能重复；同一 provider 内 `(name, addr)` 组合不能重复；至少有一个实例 `weight > 0`。
+3. `instance_pool` 必填，至少包含 1 个实例；同一 provider 内，对于 `name` 不为空的实例，`name` 不能重复；同一 provider 内 `(name, addr, port)` 组合不能重复；至少有一个实例 `weight > 0`。
 4. 每个实例的 `name` 选填，若传入长度须为 1-128 字符，未传入时默认与 `addr` 相同；`addr` 必填且类型为 [Hostname](./00-common.md#1-主机名hostname)；`weight` 取值范围 [0,100]；`port` 必填且类型为 [Port](./00-common.md#3-网络端口port)。
 5. `model_endpoint.schema` 有效值为 `http`、`https`，未设置时默认 `https`；`uri` 非空且须以 `/` 开头。
 6. `models` 元素非空且不可重复。

@@ -238,7 +238,7 @@ func TestProvider_Create(t *testing.T) {
 			wantCode: 422,
 		},
 		{
-			name: "PV-1-011 重复实例 (name+addr)",
+			name: "PV-1-011 重复实例 (name+addr+port)",
 			body: map[string]interface{}{
 				"name": testutil.UniqueProviderName(),
 				"instance_pool": []interface{}{
@@ -252,7 +252,7 @@ func TestProvider_Create(t *testing.T) {
 						"name":   "backend-1",
 						"addr":   "10.0.0.1",
 						"weight": 50,
-						"port":   8081,
+						"port":   8080,
 					},
 				},
 				"model_protocols": []string{"openai"},

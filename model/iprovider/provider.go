@@ -413,9 +413,9 @@ func validateProviderInstancePool(instances []ProviderInstance) error {
 			}
 			nameSet[inst.Name] = struct{}{}
 		}
-		key := fmt.Sprintf("%s|%s", inst.Name, inst.Addr)
+		key := fmt.Sprintf("%s|%s|%d", inst.Name, inst.Addr, inst.Port)
 		if _, ok := comboSet[key]; ok {
-			return xerror.WrapParamErrorWithMsg("instance_pool: duplicate instance name/addr combination: %s", key)
+			return xerror.WrapParamErrorWithMsg("instance_pool: duplicate instance name/addr/port combination: %s", key)
 		}
 		comboSet[key] = struct{}{}
 	}

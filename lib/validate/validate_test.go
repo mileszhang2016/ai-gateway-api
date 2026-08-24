@@ -365,16 +365,22 @@ func TestInstancePool(t *testing.T) {
 		{Name: "backend-1", Addr: "10.0.0.2", Port: 8080, Weight: 50},
 	}))
 
-	// duplicate (name, addr)
+	// duplicate (name, addr, port)
 	assert.Error(t, InstancePool([]icluster_conf.Instance{
 		{Name: "backend-1", Addr: "10.0.0.1", Port: 8080, Weight: 50},
-		{Name: "backend-1", Addr: "10.0.0.1", Port: 8081, Weight: 50},
+		{Name: "backend-1", Addr: "10.0.0.1", Port: 8080, Weight: 50},
 	}))
 
-	// same addr with empty name is not allowed
-	assert.Error(t, InstancePool([]icluster_conf.Instance{
+	// same addr with empty name but different ports is allowed
+	assert.NoError(t, InstancePool([]icluster_conf.Instance{
 		{Addr: "10.0.0.1", Port: 8080, Weight: 50},
 		{Addr: "10.0.0.1", Port: 8081, Weight: 50},
+	}))
+
+	// same addr and port with empty name is not allowed
+	assert.Error(t, InstancePool([]icluster_conf.Instance{
+		{Addr: "10.0.0.1", Port: 8080, Weight: 50},
+		{Addr: "10.0.0.1", Port: 8080, Weight: 50},
 	}))
 }
 

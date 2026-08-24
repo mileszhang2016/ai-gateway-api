@@ -130,7 +130,7 @@ provider/
 | PV-1-008 | 实例 `port` 非法 | 422 |
 | PV-1-009 | 非法 `name` | 422 |
 | PV-1-010 | `weight` 超过 100 | 422 |
-| PV-1-011 | 重复实例 `(name, addr)` 组合 | 422 |
+| PV-1-011 | 重复实例 `(name, addr, port)` 组合 | 422 |
 | PV-1-012 | `models` 元素重复 | 422 |
 | PV-1-013 | `keys` 中 `name` 重复 | 422 |
 
@@ -252,6 +252,6 @@ provider/
 
 1. Provider 名称全局唯一，测试中使用 `testutil.UniqueProviderName()` 生成唯一名称。
 2. `keys` 作为数组，按**全量替换**处理；更新时如需保留旧 Key，需传入完整列表。
-3. `instance_pool` 中 `(name, addr)` 组合不能重复；`name` 为空字符串时系统会默认填充为 `addr`。
+3. `instance_pool` 中 `(name, addr, port)` 组合不能重复；`name` 为空字符串时系统会默认填充为 `addr`。
 4. `model_protocols` 当前枚举值为 `openai`、`anthropic`。
 5. `/providers/tools/discover-models` 集成测试见 `discover/discover_test.go`，覆盖 OpenAI/Anthropic 协议、默认 URI、参数校验等场景。

@@ -753,9 +753,9 @@ func InstancePool(instances []icluster_conf.Instance) error {
 			}
 			nameSet[inst.Name] = struct{}{}
 		}
-		key := fmt.Sprintf("%s|%s", inst.Name, inst.Addr)
+		key := fmt.Sprintf("%s|%s|%d", inst.Name, inst.Addr, inst.Port)
 		if _, ok := comboSet[key]; ok {
-			return xerror.WrapParamErrorWithMsg("duplicate instance (name=%s, addr=%s)", inst.Name, inst.Addr)
+			return xerror.WrapParamErrorWithMsg("duplicate instance (name=%s, addr=%s, port=%d)", inst.Name, inst.Addr, inst.Port)
 		}
 		comboSet[key] = struct{}{}
 	}
