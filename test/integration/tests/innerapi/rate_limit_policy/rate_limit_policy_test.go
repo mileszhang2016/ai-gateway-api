@@ -1,6 +1,8 @@
 package innerapi_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 
@@ -55,4 +57,194 @@ func TestInnerAPI_RateLimitPolicy(t *testing.T) {
 	t.Cleanup(func() {
 		testutil.DeleteAPIKey(apiKeyID)
 	})
+}
+
+// TestInnerAPI_RateLimitPolicy_RedisKeyStable 验证 RPM/TPM 规则导出包含稳定的 redis_key，
+// 且修改规则名后 redis_key 不变（Issue #84）。
+func TestInnerAPI_RateLimitPolicy_RedisKeyStable(t *testing.T) {
+	apiKeyID, err := testutil.CreateAPIKey("rate-limit-redis-key-key", "")
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	// 绑定包含 TPM 与 RPM 的限流策略
+	_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+apiKeyID, map[string]interface{}{
+		"rate_limit_policy": map[string]interface{}{
+			"enabled": true,
+			"rules": map[string]interface{}{
+				"tpm": []interface{}{
+					map[string]interface{}{
+						"name": "tpm-1m", "model": "*", "window_minutes": 1, "max_tokens": 10000, "step_minutes": 1,
+					},
+				},
+				"rpm": []interface{}{
+					map[string]interface{}{
+						"name": "rpm-1m", "model": "*", "window_minutes": 1, "max_requests": 10,
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	apiKeyValue, err := fetchAPIKeyValue(apiKeyID)
+	if err != nil {
+		t.Fatalf("fetch api key value failed: %v", err)
+	}
+
+	// 第一次导出并记录 redis_key
+	before, err := exportRateLimitPolicy(apiKeyValue)
+	if err != nil {
+		t.Fatalf("first export failed: %v", err)
+	}
+
+	// 修改规则名
+	_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+apiKeyID, map[string]interface{}{
+		"rate_limit_policy": map[string]interface{}{
+			"enabled": true,
+			"rules": map[string]interface{}{
+				"tpm": []interface{}{
+					map[string]interface{}{
+						"name": "tpm-1m-renamed", "model": "*", "window_minutes": 1, "max_tokens": 10000, "step_minutes": 1,
+					},
+				},
+				"rpm": []interface{}{
+					map[string]interface{}{
+						"name": "rpm-1m-renamed", "model": "*", "window_minutes": 1, "max_requests": 10,
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("rename rules failed: %v", err)
+	}
+
+	// 第二次导出并对比 redis_key
+	after, err := exportRateLimitPolicy(apiKeyValue)
+	if err != nil {
+		t.Fatalf("second export failed: %v", err)
+	}
+
+	if before.policyKey != after.policyKey {
+		t.Fatalf("policy key changed after rename: %s -> %s", before.policyKey, after.policyKey)
+	}
+	if len(before.tpmRedisKeys) != len(after.tpmRedisKeys) {
+		t.Fatalf("tpm rule count changed: %d -> %d", len(before.tpmRedisKeys), len(after.tpmRedisKeys))
+	}
+	if len(before.rpmRedisKeys) != len(after.rpmRedisKeys) {
+		t.Fatalf("rpm rule count changed: %d -> %d", len(before.rpmRedisKeys), len(after.rpmRedisKeys))
+	}
+	for i := range before.tpmRedisKeys {
+		if before.tpmRedisKeys[i] != after.tpmRedisKeys[i] {
+			t.Errorf("tpm[%d] redis_key changed after rename: %s -> %s", i, before.tpmRedisKeys[i], after.tpmRedisKeys[i])
+		}
+	}
+	for i := range before.rpmRedisKeys {
+		if before.rpmRedisKeys[i] != after.rpmRedisKeys[i] {
+			t.Errorf("rpm[%d] redis_key changed after rename: %s -> %s", i, before.rpmRedisKeys[i], after.rpmRedisKeys[i])
+		}
+	}
+
+	// 验证 redis_key 格式
+	for i, key := range before.tpmRedisKeys {
+		want := fmt.Sprintf("RL_TPM_%s_%d", before.policyKey, i)
+		if key != want {
+			t.Errorf("tpm[%d] redis_key format mismatch: got %s, want %s", i, key, want)
+		}
+	}
+	for i, key := range before.rpmRedisKeys {
+		want := fmt.Sprintf("RL_RPM_%s_%d", before.policyKey, i)
+		if key != want {
+			t.Errorf("rpm[%d] redis_key format mismatch: got %s, want %s", i, key, want)
+		}
+	}
+
+	t.Cleanup(func() {
+		testutil.DeleteAPIKey(apiKeyID)
+	})
+}
+
+type rateLimitExportSnapshot struct {
+	policyKey    string
+	tpmRedisKeys []string
+	rpmRedisKeys []string
+}
+
+func fetchAPIKeyValue(apiKeyID string) (string, error) {
+	resp, err := testutil.GetClient().Get("/open-api/v1/api-keys/" + apiKeyID)
+	if err != nil {
+		return "", err
+	}
+	if resp.ErrNum != 200 {
+		return "", fmt.Errorf("get api key failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	val, err := testutil.GetDataField(resp, "key")
+	if err != nil {
+		return "", err
+	}
+	key, ok := val.(string)
+	if !ok {
+		return "", fmt.Errorf("api key value is not string")
+	}
+	return key, nil
+}
+
+func exportRateLimitPolicy(apiKeyValue string) (*rateLimitExportSnapshot, error) {
+	resp, err := testutil.GetClient().Get("/inner-api/v1/configs/rate-limit-policy")
+	if err != nil {
+		return nil, err
+	}
+	if resp.ErrNum != 200 {
+		return nil, fmt.Errorf("export failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+
+	var data map[string]json.RawMessage
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return nil, fmt.Errorf("unmarshal data: %w", err)
+	}
+
+	var bindings map[string][]string
+	if err := json.Unmarshal(data["ApikeyRateLimitPolicyBindings"], &bindings); err != nil {
+		return nil, fmt.Errorf("unmarshal bindings: %w", err)
+	}
+	policies, ok := bindings[apiKeyValue]
+	if !ok || len(policies) == 0 {
+		return nil, fmt.Errorf("api key %s has no bound policies", apiKeyValue)
+	}
+	policyKey := policies[0]
+
+	var policiesMap map[string]json.RawMessage
+	if err := json.Unmarshal(data["RateLimitPolicies"], &policiesMap); err != nil {
+		return nil, fmt.Errorf("unmarshal policies: %w", err)
+	}
+	policyRaw, ok := policiesMap[policyKey]
+	if !ok {
+		return nil, fmt.Errorf("policy %s not found in RateLimitPolicies", policyKey)
+	}
+
+	var policy struct {
+		Rules struct {
+			TPM []struct {
+				RedisKey string `json:"redis_key"`
+			} `json:"tpm"`
+			RPM []struct {
+				RedisKey string `json:"redis_key"`
+			} `json:"rpm"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal(policyRaw, &policy); err != nil {
+		return nil, fmt.Errorf("unmarshal policy: %w", err)
+	}
+
+	snap := &rateLimitExportSnapshot{policyKey: policyKey}
+	for _, rule := range policy.Rules.TPM {
+		snap.tpmRedisKeys = append(snap.tpmRedisKeys, rule.RedisKey)
+	}
+	for _, rule := range policy.Rules.RPM {
+		snap.rpmRedisKeys = append(snap.rpmRedisKeys, rule.RedisKey)
+	}
+	return snap, nil
 }

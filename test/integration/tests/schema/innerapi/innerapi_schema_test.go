@@ -3,6 +3,7 @@ package innerapi
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
@@ -363,6 +364,9 @@ func testRateLimitPolicySchema(t *testing.T) {
 				"tpm": []interface{}{
 					map[string]interface{}{"name": "tpm-1m", "model": "*", "window_minutes": 1, "max_tokens": 10000, "step_minutes": 1},
 				},
+				"rpm": []interface{}{
+					map[string]interface{}{"name": "rpm-1m", "model": "*", "window_minutes": 1, "max_requests": 10},
+				},
 			},
 		},
 	})
@@ -377,11 +381,75 @@ func testRateLimitPolicySchema(t *testing.T) {
 	testutil.AssertSuccess(t, innerResp)
 	if innerResp.Data != nil && string(innerResp.Data) != "null" {
 		testutil.AssertSchema(t, innerResp, RateLimitPolicySchema)
+		assertRateLimitPolicyFieldDetails(t, innerResp.Data)
 	}
 
 	t.Cleanup(func() {
 		testutil.DeleteAPIKey(apiKeyID)
 	})
+}
+
+// assertRateLimitPolicyFieldDetails 校验 /configs/rate-limit-policy 中每条 TPM/RPM 规则都包含非空的 redis_key。
+func assertRateLimitPolicyFieldDetails(t *testing.T, data []byte) {
+	t.Helper()
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal rate-limit-policy data: %v", err)
+	}
+
+	policies, ok := payload["RateLimitPolicies"].(map[string]interface{})
+	if !ok {
+		t.Fatal("RateLimitPolicies is not an object")
+	}
+	if len(policies) == 0 {
+		t.Fatal("RateLimitPolicies is empty")
+	}
+
+	for policyKey, policy := range policies {
+		policyMap, ok := policy.(map[string]interface{})
+		if !ok {
+			t.Fatalf("RateLimitPolicies.%s is not an object", policyKey)
+		}
+		if name, ok := policyMap["name"].(string); !ok || name == "" {
+			t.Errorf("RateLimitPolicies.%s.name should be non-empty string", policyKey)
+		}
+		if enabled, ok := policyMap["enabled"].(bool); !ok {
+			t.Errorf("RateLimitPolicies.%s.enabled should be bool", policyKey)
+		} else if !enabled {
+			t.Errorf("RateLimitPolicies.%s.enabled should be true", policyKey)
+		}
+
+		rules, ok := policyMap["rules"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("RateLimitPolicies.%s.rules is not an object", policyKey)
+		}
+
+		assertRuleRedisKey(t, policyKey, "tpm", rules)
+		assertRuleRedisKey(t, policyKey, "rpm", rules)
+	}
+}
+
+func assertRuleRedisKey(t *testing.T, policyKey, ruleType string, rules map[string]interface{}) {
+	ruleList, ok := rules[ruleType].([]interface{})
+	if !ok {
+		t.Fatalf("RateLimitPolicies.%s.rules.%s is not an array", policyKey, ruleType)
+	}
+	for i, item := range ruleList {
+		rule, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatalf("RateLimitPolicies.%s.rules.%s[%d] is not an object", policyKey, ruleType, i)
+		}
+		redisKey, ok := rule["redis_key"].(string)
+		if !ok || redisKey == "" {
+			t.Errorf("RateLimitPolicies.%s.rules.%s[%d].redis_key should be non-empty string", policyKey, ruleType, i)
+			continue
+		}
+		wantPrefix := "RL_" + strings.ToUpper(ruleType) + "_" + policyKey + "_"
+		if !strings.HasPrefix(redisKey, wantPrefix) {
+			t.Errorf("RateLimitPolicies.%s.rules.%s[%d].redis_key format mismatch: got %s, want prefix %s",
+				policyKey, ruleType, i, redisKey, wantPrefix)
+		}
+	}
 }
 
 func testAIRouteSchema(t *testing.T) {
