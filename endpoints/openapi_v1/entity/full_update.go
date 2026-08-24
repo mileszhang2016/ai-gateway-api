@@ -72,10 +72,9 @@ func EntityFullUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	// 当 quota_plan 发生变更且非无限制时，重置 quota_balance（Redis 同步由 Manager 在事务外完成）
-	if param.QuotaPlan != nil && (param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited) &&
-		updated != nil && updated.QuotaPlanID != nil {
-		if err := container.QuotaPlanManager.ResetBalance(req.Context(), *updated.QuotaPlanID, param.QuotaPlan.Quota, false); err != nil {
+	// 当 quota_plan 发生变更时，按需调整配额余额（普通属性修改不重置使用量）。
+	if param.QuotaPlan != nil && updated != nil && updated.QuotaPlanID != nil {
+		if err := container.QuotaPlanManager.ApplyQuotaPlanChange(req.Context(), *updated.QuotaPlanID, existing.QuotaPlan, param.QuotaPlan); err != nil {
 			return nil, err
 		}
 	}

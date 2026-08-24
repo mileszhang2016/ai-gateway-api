@@ -332,9 +332,6 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 
 // UpdateAPIKey updates an existing API key
 func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) error {
-	var updatedKey *string
-	var updatedQuotaPlan *shared.QuotaPlanParam
-
 	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		list, err := rppm.storager.FetchAPIKeyList(ctx, filter)
 		if err != nil {
@@ -345,7 +342,6 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		}
 
 		one := list[0]
-		updatedKey = one.Key
 
 		// key is immutable through update endpoints
 		param.Key = nil
@@ -371,7 +367,6 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 					}
 				}
 			}
-			updatedQuotaPlan = param.QuotaPlan
 		}
 
 		if param.RateLimitPolicy != nil && rppm.rateLimitPolicyStorager != nil {
@@ -409,20 +404,7 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		}, param)
 		return err
 	})
-	if err != nil {
-		return err
-	}
-
-	// Sync Redis remaining quota after DB transaction commits (best-effort).
-	if updatedKey != nil && updatedQuotaPlan != nil &&
-		(updatedQuotaPlan.Unlimited == nil || !*updatedQuotaPlan.Unlimited) &&
-		updatedQuotaPlan.Quota != nil && rppm.quotaCache != nil {
-		if cacheErr := rppm.quotaCache.SetRemaining(ctx, *updatedKey, updatedQuotaPlan.Quota, updatedQuotaPlan.Unit); cacheErr != nil {
-			stateful.AccessLogger.Warn("failed to set quota cache for api_key %s: %v", *updatedKey, cacheErr)
-		}
-	}
-
-	return nil
+	return err
 }
 
 // CreateAPIKey creates a new API key

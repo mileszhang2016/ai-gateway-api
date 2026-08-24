@@ -20,6 +20,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/rate_limit_policy"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
@@ -405,6 +406,52 @@ func (s *fakeAPIKeyStorager) FetchAPIKeyTokenList(ctx context.Context, filter *a
 }
 
 var _ api_key.APIKeyStorager = (*fakeAPIKeyStorager)(nil)
+
+// fakeQuotaCache 实现 quotacache.QuotaCache，用于单元测试记录调用。
+type fakeQuotaCache struct {
+	setRemainingCalls []quotaCacheSetRemainingCall
+	resetToQuotaCalls []quotaCacheResetToQuotaCall
+	getRemainingFn    func(ctx context.Context, key string, unit *string) (float64, error)
+	setRemainingFn    func(ctx context.Context, key string, quota *float64, unit *string) error
+	resetToQuotaFn    func(ctx context.Context, key string, quota *float64, unit *string) error
+}
+
+type quotaCacheSetRemainingCall struct {
+	key   string
+	quota *float64
+	unit  *string
+}
+
+type quotaCacheResetToQuotaCall struct {
+	key   string
+	quota *float64
+	unit  *string
+}
+
+func (c *fakeQuotaCache) GetRemaining(ctx context.Context, key string, unit *string) (float64, error) {
+	if c.getRemainingFn != nil {
+		return c.getRemainingFn(ctx, key, unit)
+	}
+	return 0, nil
+}
+
+func (c *fakeQuotaCache) SetRemaining(ctx context.Context, key string, quota *float64, unit *string) error {
+	c.setRemainingCalls = append(c.setRemainingCalls, quotaCacheSetRemainingCall{key: key, quota: quota, unit: unit})
+	if c.setRemainingFn != nil {
+		return c.setRemainingFn(ctx, key, quota, unit)
+	}
+	return nil
+}
+
+func (c *fakeQuotaCache) ResetToQuota(ctx context.Context, key string, quota *float64, unit *string) error {
+	c.resetToQuotaCalls = append(c.resetToQuotaCalls, quotaCacheResetToQuotaCall{key: key, quota: quota, unit: unit})
+	if c.resetToQuotaFn != nil {
+		return c.resetToQuotaFn(ctx, key, quota, unit)
+	}
+	return nil
+}
+
+var _ quotacache.QuotaCache = (*fakeQuotaCache)(nil)
 
 // fakeVersionControlStorager 实现 iversion_control.VersionControlStorager
 type fakeVersionControlStorager struct {

@@ -498,6 +498,41 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 		assert.Contains(t, err.Error(), "Entity Record Not Exist")
 	})
 
+	t.Run("update does not sync redis", func(t *testing.T) {
+		entityID := "ent-1"
+		innerID := int64(100)
+		quotaPlanID := int64(200)
+
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				return []*EntityParam{{
+					InnerID:     &innerID,
+					EntityID:    &entityID,
+					QuotaPlanID: &quotaPlanID,
+				}}, nil
+			},
+			updateFn: func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		quotaPlanStore := &fakeSharedQuotaPlanStorager{
+			updateFn: func(ctx context.Context, id int64, param *shared.QuotaPlanParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		cache := &fakeQuotaCache{}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore,
+			&fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeSharedQuotaBalanceStorager{}, cache)
+
+		_, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{
+			Name:      lib.PString("new name"),
+			QuotaPlan: &shared.QuotaPlanParam{Quota: lib.PFloat64(2000)},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, cache.setRemainingCalls)
+		assert.Empty(t, cache.resetToQuotaCalls)
+	})
+
 	t.Run("parent level check with existing entity type", func(t *testing.T) {
 		entityID := "ent-1"
 		parentID := "parent-1"

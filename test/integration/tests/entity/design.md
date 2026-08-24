@@ -16,6 +16,7 @@ Entity 模块用于管理组织架构实体（部门、团队、项目、个人�
 | E-6 | 删除 Entity | DELETE | `/open-api/v1/entities/{id}` | 有子节点或被挂载时禁止删除 |
 | E-7 | 查询配额计划 | GET | `/open-api/v1/entities/{id}/quota-plan` | 含 balance |
 | E-8 | 重置配额余额 | POST | `/open-api/v1/entities/{id}/quota-plan/reset` | - |
+| E-9 | 更新配额计划（余额差异化调整） | PUT/PATCH | `/open-api/v1/entities/{id}` | 变更 quota_plan 时按 diff 调整余额 |
 
 ## 3. 测试用例统计
 
@@ -29,7 +30,8 @@ Entity 模块用于管理组织架构实体（部门、团队、项目、个人�
 | 删除 Entity | 3 |
 | 查询配额计划 | 2 |
 | 重置配额余额 | 3 |
-| **合计** | **32** |
+| 更新配额计划（余额差异化调整） | 6 |
+| **合计** | **38** |
 
 ## 4. 认证方式
 
@@ -54,8 +56,10 @@ entity/
 │   └── delete_test.go
 ├── quota_plan/
 │   └── quota_plan_test.go
-└── quota_reset/
-    └── quota_reset_test.go
+├── quota_reset/
+│   └── quota_reset_test.go
+└── quota_update/
+    └── quota_update_test.go
 ```
 
 ## 6. 创建 Entity
@@ -1740,13 +1744,290 @@ URI：`id`
 
 ---
 
-## 14. 依赖与数据准备
+## 14. 更新配额计划时的余额调整
+
+### 14.1 接口信息
+
+| 项目 | 值 |
+|------|-----|
+| 模块 | Entity |
+| 接口名称 | 更新配额计划（余额差异化调整） |
+| 方法 | `PUT` / `PATCH` |
+| 路径 | `/open-api/v1/entities/{id}` |
+| 说明 | 当请求体中包含 `quota_plan` 且 `quota`/`unit`/`unlimited` 任一发生变化时，按 diff 规则调整 `quota_balances` 与 Redis；普通属性修改不触发余额变更。 |
+
+### 14.2 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| E-9-001 | 仅修改 quota（total_token）保留 used | 正常参数 | `remaining = 新 quota - used` |
+| E-9-002 | RMB 配额仅修改 quota 保留 used | 正常参数 | 小数精度保持 8 位 |
+| E-9-003 | 修改 unit 重置 used 与 remaining | 正常参数 | `used=0`，`remaining=新 quota` |
+| E-9-004 | unlimited false -> true 重置为 sentinel | 正常参数 | `used=0`，`remaining=100000000` |
+| E-9-005 | unlimited true -> false 按新 quota 初始化 | 正常参数 | `used=0`，`remaining=新 quota` |
+| E-9-006 | 普通属性修改不影响配额余额 | 正常参数 | 修改 `allow_models` 等，余额不变 |
+
+### 14.3 测试场景详细设计
+
+#### 14.3.1 E-9-001：仅修改 quota（total_token）保留 used
+
+##### 设计思路
+
+验证单位不变、仅调额时，历史已用量 `used` 被保留，`remaining` 按新 quota 重新计算。
+
+##### 前提数据准备
+
+已创建 `unit=total_token`、`quota=1000` 的 Entity，并在 `quota_balances` 中写入 `used=200`、`remaining=800`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，仅修改 `quota_plan.quota=500`（同单位）。
+2. 通过 GET `/entities/{id}/quota-plan` 查询余额。
+3. 验证 `balance.used=200`、`balance.remaining=300`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 500,
+        "unit": "total_token"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.quota | 500 | Equals |
+| balance.used | 200 | Equals |
+| balance.remaining | 300 | Equals |
+
+---
+
+#### 14.3.2 E-9-002：RMB 配额仅修改 quota 保留 used
+
+##### 设计思路
+
+验证 `unit=RMB` 时，仅调额同样保留 `used`，小数计算精度保持 8 位。
+
+##### 前提数据准备
+
+已创建 `unit=RMB`、`quota=1000.1234` 的 Entity，并在 `quota_balances` 中写入 `used=123.4567`、`remaining=876.6667`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`quota_plan.quota=800.0000`。
+2. 查询 quota-plan 接口。
+3. 验证 `balance.used=123.4567`、`balance.remaining=676.5433`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 800.0000,
+        "unit": "RMB"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.quota | 800.0000 | InDelta(1e-5) |
+| balance.used | 123.4567 | InDelta(1e-5) |
+| balance.remaining | 676.5433 | InDelta(1e-5) |
+
+---
+
+#### 14.3.3 E-9-003：修改 unit 重置 used 与 remaining
+
+##### 设计思路
+
+验证 `unit` 变化时，由于新旧单位无法直接换算，`used` 清零并按新 quota 重置。
+
+##### 前提数据准备
+
+已创建 `unit=total_token`、`quota=1000` 的 Entity，并在 `quota_balances` 中写入 `used=200`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，将 `unit` 改为 `RMB`，`quota=888.88`。
+2. 查询 quota-plan 接口。
+3. 验证 `balance.used=0`、`balance.remaining=888.88`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 888.88,
+        "unit": "RMB"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unit | "RMB" | Equals |
+| balance.used | 0 | Equals |
+| balance.remaining | 888.88 | InDelta(1e-5) |
+
+---
+
+#### 14.3.4 E-9-004：unlimited 由 false 改为 true 重置为 sentinel
+
+##### 设计思路
+
+验证切换为无限配额时，`used` 清零，`remaining` 置为 sentinel 值 `100000000`。
+
+##### 前提数据准备
+
+已创建有限配额 Entity，并在 `quota_balances` 中写入非零 `used`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`quota_plan.unlimited=true`。
+2. 查询 quota-plan 接口。
+3. 验证 `balance.used=0`、`balance.remaining=100000000`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": true
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unlimited | true | Equals |
+| balance.used | 0 | Equals |
+| balance.remaining | 100000000 | Equals |
+
+---
+
+#### 14.3.5 E-9-005：unlimited 由 true 改为 false 按新 quota 初始化
+
+##### 设计思路
+
+验证从无限配额切回有限配额时，按新 `quota` 初始化余额。
+
+##### 前提数据准备
+
+已创建 `unlimited=true` 的 Entity。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，`quota_plan.unlimited=false`、`quota=500`、`unit=total_token`。
+2. 查询 quota-plan 接口。
+3. 验证 `balance.used=0`、`balance.remaining=500`。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 500,
+        "unit": "total_token"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| quota_plan.unlimited | false | Equals |
+| balance.used | 0 | Equals |
+| balance.remaining | 500 | Equals |
+
+---
+
+#### 14.3.6 E-9-006：普通属性修改不影响配额余额
+
+##### 设计思路
+
+验证仅修改 Entity 普通属性（如 `allow_models`）时，不触发 `ApplyQuotaPlanChange`，余额保持不变。
+
+##### 前提数据准备
+
+已创建有限配额 Entity，并在 `quota_balances` 中写入 `used=200`、`remaining=800`。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，修改 `allow_models=["gpt-4"]`。
+2. 查询 quota-plan 接口。
+3. 验证 `balance.used=200`、`balance.remaining=800`。
+
+##### 请求参数
+
+```json
+{
+    "allow_models": ["gpt-4"]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| allow_models | ["gpt-4"] | Equals |
+| balance.used | 200 | Equals |
+| balance.remaining | 800 | Equals |
+
+---
+
+## 15. 依赖与数据准备
 
 1. 必须预先创建至少两种不同 `level` 的 Entity-Type 以验证层级约束。
 2. 配额/余额用例依赖 Redis Mock。
 3. 删除约束用例需要预先准备子 Entity 或挂载的 API-Key。
 
-## 15. 注意事项
+## 16. 注意事项
 
 1. Entity 详情、创建、更新返回的 `quota_plan` 不含 `balance`，需通过独立 quota-plan 接口验证余额。
 2. `name` 全局唯一，测试用例间注意清理。
