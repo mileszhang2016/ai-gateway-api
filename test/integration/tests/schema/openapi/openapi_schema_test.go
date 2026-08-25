@@ -253,10 +253,24 @@ func testProviderSchema(t *testing.T) {
 		},
 		"model_protocols": []string{"openai"},
 		"models":          []string{"deepseek-chat"},
+		"time_zone":       "Asia/Shanghai",
+		"tiers": []interface{}{
+			map[string]interface{}{
+				"name": "peak",
+				"time_ranges": []interface{}{
+					map[string]interface{}{
+						"weekdays": []int{1, 2, 3, 4, 5},
+						"start":    "09:00",
+						"end":      "12:00",
+					},
+				},
+			},
+		},
 	})
 	require.NoError(t, err)
 	testutil.AssertSuccess(t, createResp)
 	testutil.AssertSchema(t, createResp, ProviderSchema)
+	testutil.AssertDataFieldEquals(t, createResp, "time_zone", "Asia/Shanghai")
 
 	listResp, err := testutil.GetClient().Get("/open-api/v1/providers")
 	require.NoError(t, err)
@@ -492,6 +506,10 @@ models:
     prices:
       input_cost_per_token: 0.000002
       output_cost_per_token: 0.000008
+    tier_prices:
+      peak:
+        input_cost_per_token: 0.000004
+        output_cost_per_token: 0.000016
     metadata:
       source: test
 `)
@@ -515,6 +533,12 @@ models:
 		"prices": map[string]interface{}{
 			"input_cost_per_token":  0.000002,
 			"output_cost_per_token": 0.000008,
+		},
+		"tier_prices": map[string]interface{}{
+			"peak": map[string]interface{}{
+				"input_cost_per_token":  0.000004,
+				"output_cost_per_token": 0.000016,
+			},
 		},
 		"metadata": map[string]interface{}{
 			"source": "test",
@@ -551,6 +575,12 @@ models:
 		"prices": map[string]interface{}{
 			"input_cost_per_token":  0.000003,
 			"output_cost_per_token": 0.000009,
+		},
+		"tier_prices": map[string]interface{}{
+			"peak": map[string]interface{}{
+				"input_cost_per_token":  0.000006,
+				"output_cost_per_token": 0.000018,
+			},
 		},
 		"metadata": map[string]interface{}{
 			"source": "test",

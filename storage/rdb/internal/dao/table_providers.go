@@ -35,6 +35,8 @@ type TProvider struct {
 	Keys           string    `db:"keys"`
 	InstancePool   string    `db:"instance_pool"`
 	ModelProtocols string    `db:"model_protocols"`
+	TimeZone       string    `db:"time_zone"`
+	Tiers          string    `db:"tiers"`
 	CreatedAt      time.Time `db:"created_at"`
 	UpdatedAt      time.Time `db:"updated_at"`
 }
@@ -165,6 +167,8 @@ type TProviderParam struct {
 	Keys           *string    `db:"keys"`
 	InstancePool   *string    `db:"instance_pool"`
 	ModelProtocols *string    `db:"model_protocols"`
+	TimeZone       *string    `db:"time_zone"`
+	Tiers          *string    `db:"tiers"`
 	CreatedAt      *time.Time `db:"created_at"`
 	UpdatedAt      *time.Time `db:"updated_at"`
 

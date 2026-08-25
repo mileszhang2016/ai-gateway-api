@@ -122,6 +122,21 @@ func DeleteProvider(name string) error {
 	return nil
 }
 
+// UpdatePricingTiers 通过 JSON 设置 Provider 的高峰/闲时模板
+func UpdatePricingTiers(providerName string, body map[string]interface{}) (*APIResponse, error) {
+	return GetClient().Put("/open-api/v1/providers/"+providerName+"/pricing-tiers", body)
+}
+
+// UpdatePricingTiersYAML 通过 text/yaml 设置 Provider 的高峰/闲时模板
+func UpdatePricingTiersYAML(providerName string, yamlContent []byte) (*APIResponse, error) {
+	return GetClient().RawBody("PUT", "/open-api/v1/providers/"+providerName+"/pricing-tiers", string(yamlContent), "text/yaml")
+}
+
+// UpdatePricingTiersMultipartYAML 通过 multipart/form-data 上传 YAML 文件设置 Provider 的高峰/闲时模板
+func UpdatePricingTiersMultipartYAML(providerName string, yamlContent []byte) (*APIResponse, error) {
+	return GetClient().PutMultipartFile("/open-api/v1/providers/"+providerName+"/pricing-tiers", "file", "pricing-tiers.yaml", yamlContent, nil)
+}
+
 // CreateCluster 创建 Cluster，返回 name
 func CreateCluster(name string) (string, error) {
 	providerName := UniqueProviderName()

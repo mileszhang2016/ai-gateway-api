@@ -19,8 +19,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/cluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
@@ -771,7 +773,7 @@ func TestAppendAdvancedRuleCluster(t *testing.T) {
 
 func TestNewBfeClusterConf(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterBase()}, nil, nil, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterBase()}, nil, nil, nil, nil)
 		require.NotNil(t, conf)
 		require.NotNil(t, conf.Config)
 		assert.Equal(t, "v1", *conf.Version)
@@ -787,26 +789,26 @@ func TestNewBfeClusterConf(t *testing.T) {
 		conf := NewBfeClusterConf("v1", []*Cluster{
 			newTestClusterBase(),
 			{ID: RouteAdvancedModeClusterID, Name: RouteAdvancedModeClusterName},
-		}, nil, nil, nil)
+		}, nil, nil, nil, nil)
 		require.Len(t, *conf.Config, 1)
 	})
 
 	t.Run("EPP addrs", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic.EPPAddr)
 		assert.Equal(t, []string{"epp.example.com:8080"}, *cConf.GslbBasic.EPPAddr)
 	})
 
 	t.Run("https conf", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterHTTPS()}, nil, nil, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterHTTPS()}, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.HTTPSConf)
 		assert.True(t, *cConf.HTTPSConf.RSInsecureSkipVerify)
 	})
 
 	t.Run("domain pool disable checks", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterDomain()}, nil, nil, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterDomain()}, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		assert.True(t, *cConf.ClusterBasic.DisableHealthCheck)
 		assert.True(t, *cConf.ClusterBasic.DisableHostHeader)
@@ -822,7 +824,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 		providerProtocolTable := map[string][]string{
 			"openai": {"openai"},
 		}
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterLLM()}, nil, providerKeyTable, providerProtocolTable)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterLLM()}, nil, providerKeyTable, providerProtocolTable, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.AIConf)
 		require.Len(t, cConf.AIConf.Keys, 2)
@@ -844,6 +846,60 @@ func TestNewBfeClusterConf(t *testing.T) {
 		assert.Equal(t, []string{"openai"}, cConf.AIConf.ModelProtocols)
 	})
 
+	t.Run("LLM config with tiered pricing", func(t *testing.T) {
+		providerModelTable := map[string][]*imodel_price.ModelPrice{
+			"deepseek": {
+				{
+					Provider:  "deepseek",
+					Model:     "deepseek-v4-pro",
+					BaseModel: "deepseek-v4-pro",
+					Mode:      "chat",
+					Prices: map[string]float64{
+						"input_cost_per_token":        0.0000045,
+						"output_cost_per_token":       0.0000135,
+						"cache_read_input_token_cost": 0.00000015,
+					},
+					TierPrices: map[string]map[string]float64{
+						"peak": {
+							"input_cost_per_token":        0.000009,
+							"output_cost_per_token":       0.000027,
+							"cache_read_input_token_cost": 0.0000003,
+						},
+					},
+				},
+			},
+		}
+		providerPricingTable := map[string]ProviderPricingInfo{
+			"deepseek": {
+				TimeZone: "Asia/Shanghai",
+				Tiers: []cluster_conf.PriceTier{
+					{
+						Name: "peak",
+						TimeRanges: []cluster_conf.TimeRange{
+							{Weekdays: []int{1, 2, 3, 4, 5}, Start: "09:00", End: "12:00"},
+							{Weekdays: []int{1, 2, 3, 4, 5}, Start: "14:00", End: "18:00"},
+						},
+					},
+				},
+			},
+		}
+		c := newTestClusterLLM()
+		c.LLMConfig.Provider = lib.PString("deepseek")
+		conf := NewBfeClusterConf("v1", []*Cluster{c}, providerModelTable, nil, nil, providerPricingTable)
+		cConf := (*conf.Config)["c1"]
+		require.NotNil(t, cConf.AIConf)
+		require.NotNil(t, cConf.AIConf.ModelTable)
+		assert.Equal(t, "RMB", cConf.AIConf.ModelTable.Currency)
+		assert.Equal(t, "Asia/Shanghai", cConf.AIConf.ModelTable.TimeZone)
+		require.Len(t, cConf.AIConf.ModelTable.Tiers, 1)
+		assert.Equal(t, "peak", cConf.AIConf.ModelTable.Tiers[0].Name)
+		require.Len(t, cConf.AIConf.ModelTable.Models, 1)
+		model := cConf.AIConf.ModelTable.Models[0]
+		assert.Equal(t, "deepseek-v4-pro", model.Model)
+		require.NotNil(t, model.TierPrices)
+		assert.Equal(t, 0.000009, model.TierPrices["peak"]["input_cost_per_token"])
+	})
+
 	t.Run("disabled sticky sessions with empty hash_header falls back to CLIENT_IP_ONLY", func(t *testing.T) {
 		c := newTestClusterBase()
 		c.StickySessions = &ClusterStickySessions{
@@ -851,7 +907,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 			HashStrategy:  ClusterHashStrategyClientIDOnlyI,
 			HashHeader:    "",
 		}
-		conf := NewBfeClusterConf("v1", []*Cluster{c}, nil, nil, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{c}, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic)
 		require.NotNil(t, cConf.GslbBasic.HashConf)

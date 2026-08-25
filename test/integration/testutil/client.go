@@ -130,6 +130,15 @@ func (c *Client) DeleteWithQuery(path string, queryParams map[string]string, bod
 
 // PostMultipartFile 发送带有文件上传的 multipart/form-data POST 请求
 func (c *Client) PostMultipartFile(path, fieldName, fileName string, fileContent []byte, extraFields map[string]string) (*APIResponse, error) {
+	return c.doMultipartRequest(http.MethodPost, path, fieldName, fileName, fileContent, extraFields)
+}
+
+// PutMultipartFile 发送带有文件上传的 multipart/form-data PUT 请求
+func (c *Client) PutMultipartFile(path, fieldName, fileName string, fileContent []byte, extraFields map[string]string) (*APIResponse, error) {
+	return c.doMultipartRequest(http.MethodPut, path, fieldName, fileName, fileContent, extraFields)
+}
+
+func (c *Client) doMultipartRequest(method, path, fieldName, fileName string, fileContent []byte, extraFields map[string]string) (*APIResponse, error) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
@@ -151,7 +160,7 @@ func (c *Client) PostMultipartFile(path, fieldName, fileName string, fileContent
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, c.BaseURL+path, &body)
+	req, err := http.NewRequest(method, c.BaseURL+path, &body)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}

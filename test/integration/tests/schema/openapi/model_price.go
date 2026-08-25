@@ -11,6 +11,7 @@ var ModelPriceSchema = &testutil.ObjectSchema{
 		"limits", "prices", "price_currency",
 		"metadata", "create_time", "update_time",
 	},
+	Optional: []string{"tier_prices"},
 	Fields: map[string]testutil.FieldSpec{
 		"id":                   {Type: testutil.TypeInt},
 		"provider":             {Type: testutil.TypeString},
@@ -21,6 +22,7 @@ var ModelPriceSchema = &testutil.ObjectSchema{
 		"supported_parameters": {Type: testutil.TypeArray},
 		"limits":               {Type: testutil.TypeObject},
 		"prices":               {Type: testutil.TypeObject},
+		"tier_prices":          {Type: testutil.TypeObject},
 		"price_currency":       {Type: testutil.TypeString},
 		"metadata":             {Type: testutil.TypeObject},
 		"create_time":          {Type: testutil.TypeInt},

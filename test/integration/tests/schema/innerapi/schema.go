@@ -15,14 +15,53 @@ var InnerAPIBaseSchema = &testutil.ObjectSchema{
 	},
 }
 
+// ClusterConfSchema /configs/tls_conf/server_data_conf 中 ClusterConf 的 schema
+var ClusterConfSchema = &testutil.ObjectSchema{
+	Required: []string{"Version", "Config"},
+	Fields: map[string]testutil.FieldSpec{
+		"Version": {Type: testutil.TypeString},
+		"Config":  {Type: testutil.TypeObject},
+	},
+}
+
+// ModelPriceSchema AIConf.ModelTable.Models 中单个模型价格的 schema
+var ModelPriceSchema = &testutil.ObjectSchema{
+	Required: []string{"Provider", "Model", "BaseModel", "Mode", "Prices"},
+	Optional: []string{"Capabilities", "SupportedParameters", "Limits", "TierPrices", "Metadata"},
+	Fields: map[string]testutil.FieldSpec{
+		"Provider":            {Type: testutil.TypeString},
+		"Model":               {Type: testutil.TypeString},
+		"BaseModel":           {Type: testutil.TypeString},
+		"Mode":                {Type: testutil.TypeString},
+		"Capabilities":        {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
+		"SupportedParameters": {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
+		"Limits":              {Type: testutil.TypeObject},
+		"Prices":              {Type: testutil.TypeObject},
+		"TierPrices":          {Type: testutil.TypeObject},
+		"Metadata":            {Type: testutil.TypeObject},
+	},
+}
+
+// ModelTableSchema AIConf.ModelTable 的 schema
+var ModelTableSchema = &testutil.ObjectSchema{
+	Required: []string{"Currency", "Models"},
+	Optional: []string{"TimeZone", "Tiers"},
+	Fields: map[string]testutil.FieldSpec{
+		"Currency": {Type: testutil.TypeString},
+		"TimeZone": {Type: testutil.TypeString},
+		"Tiers":    {Type: testutil.TypeArray},
+		"Models":   {Type: testutil.TypeArray, Elem: ModelPriceSchema},
+	},
+}
+
 // ServerDataConfSchema /configs/tls_conf/server_data_conf 返回 schema
 var ServerDataConfSchema = &testutil.ObjectSchema{
 	Required: []string{"Version", "HostTable", "RouteTable", "ClusterConf"},
 	Fields: map[string]testutil.FieldSpec{
-		"Version":    {Type: testutil.TypeString},
-		"HostTable":  {Type: testutil.TypeObject},
-		"RouteTable": {Type: testutil.TypeObject},
-		"ClusterConf":{Type: testutil.TypeObject},
+		"Version":     {Type: testutil.TypeString},
+		"HostTable":   {Type: testutil.TypeObject},
+		"RouteTable":  {Type: testutil.TypeObject},
+		"ClusterConf": {Type: testutil.TypeObject, Nested: ClusterConfSchema},
 	},
 }
 

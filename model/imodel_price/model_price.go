@@ -24,19 +24,20 @@ import (
 
 // ModelPrice represents a single model pricing/capability record.
 type ModelPrice struct {
-	ID                  int64                  `json:"id" yaml:"id,omitempty"`
-	Provider            string                 `json:"provider" yaml:"provider"`
-	Model               string                 `json:"model" yaml:"model"`
-	BaseModel           string                 `json:"base_model" yaml:"base_model"`
-	Mode                string                 `json:"mode" yaml:"mode"`
-	Capabilities        []string               `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
-	SupportedParameters []string               `json:"supported_parameters,omitempty" yaml:"supported_parameters,omitempty"`
-	Limits              map[string]interface{} `json:"limits,omitempty" yaml:"limits,omitempty"`
-	Prices              map[string]float64     `json:"prices,omitempty" yaml:"prices,omitempty"`
-	PriceCurrency       string                 `json:"price_currency,omitempty" yaml:"price_currency,omitempty"`
-	Metadata            map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	CreateTime          *int64                 `json:"create_time,omitempty" yaml:"create_time,omitempty"`
-	UpdateTime          *int64                 `json:"update_time,omitempty" yaml:"update_time,omitempty"`
+	ID                  int64                       `json:"id" yaml:"id,omitempty"`
+	Provider            string                      `json:"provider" yaml:"provider"`
+	Model               string                      `json:"model" yaml:"model"`
+	BaseModel           string                      `json:"base_model" yaml:"base_model"`
+	Mode                string                      `json:"mode" yaml:"mode"`
+	Capabilities        []string                    `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+	SupportedParameters []string                    `json:"supported_parameters,omitempty" yaml:"supported_parameters,omitempty"`
+	Limits              map[string]interface{}      `json:"limits,omitempty" yaml:"limits,omitempty"`
+	Prices              map[string]float64          `json:"prices,omitempty" yaml:"prices,omitempty"`
+	TierPrices          map[string]map[string]float64 `json:"tier_prices,omitempty" yaml:"tier_prices,omitempty"`
+	PriceCurrency       string                      `json:"price_currency,omitempty" yaml:"price_currency,omitempty"`
+	Metadata            map[string]interface{}      `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	CreateTime          *int64                      `json:"create_time,omitempty" yaml:"create_time,omitempty"`
+	UpdateTime          *int64                      `json:"update_time,omitempty" yaml:"update_time,omitempty"`
 }
 
 // ModelPriceFilter is used to query model price records.

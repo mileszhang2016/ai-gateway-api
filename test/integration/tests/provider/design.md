@@ -20,7 +20,8 @@ Provider 与 Cluster 概念分离后：
 | PV-4 | 更新 Provider | PATCH | `/open-api/v1/providers/{provider_name}` | 全量替换 `keys`、`models` 等数组字段 |
 | PV-5 | 删除 Provider | DELETE | `/open-api/v1/providers/{provider_name}` | 删除前检查 cluster/model-price 引用 |
 | PV-6 | 触发模型发现 | POST | `/open-api/v1/providers/tools/discover-models` | 无状态工具接口，不绑定 Provider |
-| PV-7 | 获取所有 Provider 名称 | GET | `/open-api/v1/providers/actions/get-provider-names` | 返回全量 provider 名称列表 |
+| PV-7 | 获取所有 Provider 名称 | GET | `/providers/actions/get-provider-names` | 返回全量 provider 名称列表 |
+| PV-8 | 设置高峰/闲时模板 | PUT | `/providers/{provider_name}/pricing-tiers` | 支持 JSON / YAML / multipart 上传 |
 
 ## 3. 测试用例统计
 
@@ -33,7 +34,8 @@ Provider 与 Cluster 概念分离后：
 | 删除 Provider | 3 |
 | 触发模型发现 | 6 |
 | 获取所有 Provider 名称 | 1 |
-| **合计** | **27** |
+| 设置高峰/闲时模板 | 10 |
+| **合计** | **37** |
 
 ## 4. 认证方式
 
@@ -52,8 +54,10 @@ provider/
 │   └── one_test.go
 ├── update/
 │   └── update_test.go
-└── delete/
-    └── delete_test.go
+├── delete/
+│   └── delete_test.go
+└── pricing_tiers/
+    └── pricing_tiers_test.go
 ```
 
 ## 6. 创建 Provider
@@ -83,6 +87,8 @@ provider/
 | `keys` | []object | N | API-Key 列表，元素为 `{name, key}`；同一 Provider 内 `name` 唯一 |
 | `instance_pool` | []object | Y | 后端实例池，至少 1 个元素 |
 | `model_protocols` | []string | Y | 支持的模型访问协议，至少 1 个元素，枚举：`openai`、`anthropic` |
+| `time_zone` | string | N | 计算时段所使用的时区，默认 `Asia/Shanghai` |
+| `tiers` | []object | N | 时段 tier 定义列表，**初期 `name` 只支持 `peak`** |
 
 ##### `instance_pool` 元素结构
 
@@ -100,6 +106,21 @@ provider/
 | `name` | string | Y | Key 名称，同一 Provider 内唯一，长度 1-128 |
 | `key` | string | Y | API-Key 明文，长度 1-512 |
 
+##### `tiers` 元素结构
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `name` | string | Y | Tier 名称，**初期只支持 `peak`** |
+| `time_ranges` | []object | Y | 时段范围列表，命中任意一个即属于该 tier |
+
+##### `time_ranges` 元素结构
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `weekdays` | []int | N | 星期几，0=周日，...，6=周六；为空表示每天 |
+| `start` | string | Y | 开始时间，格式 `HH:MM` |
+| `end` | string | Y | 结束时间，格式 `HH:MM`；`end` 必须大于 `start` |
+
 #### 6.2.2 响应参数
 
 | 参数名 | 类型 | 说明 |
@@ -112,6 +133,8 @@ provider/
 | `keys` | []object | Key 列表（含明文） |
 | `instance_pool` | []object | 实例池 |
 | `model_protocols` | []string | 协议列表 |
+| `time_zone` | string | 时区 |
+| `tiers` | []object | 时段 tier 列表 |
 | `create_time` | int64 | 创建时间 |
 | `update_time` | int64 | 更新时间 |
 
@@ -242,16 +265,59 @@ provider/
 | PV-5-002 | 删除不存在的 Provider | 404 |
 | PV-5-003 | 删除被 Cluster 引用的 Provider | 409 |
 
-## 11. 依赖与数据准备
+## 11. 设置高峰/闲时模板（PV-8）
+
+### 11.1 接口信息
+
+| 项目 | 值 |
+|------|-----|
+| 模块 | Provider |
+| 接口名称 | 设置高峰/闲时模板 |
+| 方法 | PUT |
+| 路径 | `/providers/{provider_name}/pricing-tiers` |
+| 说明 | 单独维护 provider 的 `time_zone` 和 `tiers`；支持 JSON / YAML / multipart 上传 |
+
+### 11.2 请求参数
+
+#### URI 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `provider_name` | string | Y | Provider 名称，必须已存在 |
+
+#### Body 参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `time_zone` | string | N | 时区，默认 `Asia/Shanghai`；须为合法 IANA 时区名 |
+| `tiers` | []object | N | 时段 tier 定义列表，结构与创建 Provider 的 `tiers` 一致 |
+
+### 11.3 测试用例
+
+| 用例编号 | 用例名称 | 预期结果 |
+|----------|----------|----------|
+| PT-1-001 | JSON 设置高峰模板 | 200，返回的 `time_zone`/`tiers` 与输入一致 |
+| PT-1-002 | text/yaml 设置高峰模板 | 200，返回的 `time_zone`/`tiers` 与输入一致 |
+| PT-1-003 | multipart/form-data YAML 设置高峰模板 | 200，返回的 `time_zone`/`tiers` 与输入一致 |
+| PT-1-004 | provider 不存在 | 404 |
+| PT-1-005 | 非法 `time_zone` | 422 |
+| PT-1-006 | 非法 tier name | 422 |
+| PT-1-007 | 同一 tier 时间重叠 | 422 |
+| PT-1-008 | `end <= start` | 422 |
+| PT-1-009 | `weekdays` 越界 | 422 |
+| PT-1-010 | GET provider 返回 tiers | 200，响应中包含 `time_zone`/`tiers` |
+
+## 12. 依赖与数据准备
 
 1. 测试环境数据库需包含产品线初始化数据，以支持 cluster 创建。
 2. 创建 Provider 后如需验证删除冲突，需先创建引用该 Provider 的 Cluster。
 3. 测试环境 `SkipTokenValidate=true`，无需认证头。
 
-## 12. 注意事项
+## 13. 注意事项
 
 1. Provider 名称全局唯一，测试中使用 `testutil.UniqueProviderName()` 生成唯一名称。
 2. `keys` 作为数组，按**全量替换**处理；更新时如需保留旧 Key，需传入完整列表。
 3. `instance_pool` 中 `(name, addr, port)` 组合不能重复；`name` 为空字符串时系统会默认填充为 `addr`。
 4. `model_protocols` 当前枚举值为 `openai`、`anthropic`。
 5. `/providers/tools/discover-models` 集成测试见 `discover/discover_test.go`，覆盖 OpenAI/Anthropic 协议、默认 URI、参数校验等场景。
+6. `PUT /providers/{provider_name}/pricing-tiers` 只更新 `time_zone`/`tiers`，不会覆盖 provider 的其他字段。

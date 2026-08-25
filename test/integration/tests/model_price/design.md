@@ -7,8 +7,9 @@ Model Price 模块负责模型定价数据的管理，支持：
 - 通过 `model-list.yaml` 整表导入（`replace` / `merge` 两种模式）
 - 单条记录的增删改查
 - 按 `id` 或按 `(provider, model, mode)` 组合键查询/更新/删除
+- 分时段定价：在 `tier_prices` 中为特定 tier（如 `peak`）设置差异化价格
 
-本次新增该模块的集成测试，覆盖 OpenAPI `/model-prices` 下的全部接口。
+本次新增该模块的集成测试，覆盖 OpenAPI `/model-prices` 下的全部接口，以及 `tier_prices` 字段在创建、更新、导入场景下的正例与异常校验。
 
 ## 2. 接口列表
 
@@ -39,7 +40,8 @@ Model Price 模块负责模型定价数据的管理，支持：
 | 按 ID 删除单条 | 2 |
 | 按组合键删除单条 | 2 |
 | 查询 Provider 名称列表 | 2 |
-| **合计** | **38** |
+| tier_prices 字段场景 | 6 |
+| **合计** | **44** |
 
 ## 4. 认证方式
 
@@ -62,8 +64,10 @@ model_price/
 │   └── update_test.go
 ├── delete/
 │   └── delete_test.go
-└── get_providers/
-    └── get_providers_test.go
+├── get_providers/
+│   └── get_providers_test.go
+└── tier_prices/
+    └── tier_prices_test.go
 ```
 
 ## 6. 测试数据约定
@@ -87,6 +91,12 @@ model_price/
         "input_cost_per_token": 0.000002,
         "output_cost_per_token": 0.000008
     },
+    "tier_prices": {
+        "peak": {
+            "input_cost_per_token": 0.000004,
+            "output_cost_per_token": 0.000016
+        }
+    },
     "metadata": {
         "source": "https://platform.deepseek.com/pricing",
         "notes": "DeepSeek V3"
@@ -98,13 +108,25 @@ model_price/
 
 `(provider, model, mode)` 三元组必须唯一。
 
-### 6.3 测试用例编号规则
+### 6.3 分时段价格约束
+
+- `tier_prices` 为可选字段；键名（tier name）初期仅支持 `peak`。
+- 每个 tier 对应的价格对象键名须为 `prices` 的合法枚举键。
+- 价格值必须为非负数。
+
+### 6.4 测试用例编号规则
 
 ```
 MP-{接口编号}-{场景编号}
 ```
 
 例如：`MP-2-001` 表示 MP-2（新增单条记录）的第 1 个场景。
+
+分时段定价专项测试使用独立编号：
+
+```
+MTP-1-{场景编号}
+```
 
 ---
 
@@ -319,6 +341,7 @@ models:
 | supported_parameters | []string | N | 支持的请求参数 | 元素为枚举值 |
 | limits | object | N | 限制对象 | 键名为枚举值；值为非负整数 |
 | prices | object | Y | 价格对象 | 至少一个键；值为非负数；键名为枚举值 |
+| tier_prices | object | N | 分时段价格 | 键名为 tier 名称（初期仅 `peak`）；值为价格对象，键名须在 `prices` 枚举内 |
 | metadata | object | N | 元数据 | 键名为枚举值 |
 
 #### 返回数据字段
@@ -935,9 +958,73 @@ models:
 
 ---
 
-## 17. 附录
+## 17. 分时段价格字段测试（MTP-1）
 
-### 16.1 通用断言说明
+### 17.1 测试目标
+
+验证 `tier_prices` 在创建、查询、更新、`model-list.yaml` 导入等场景下能够正确写入、读取和校验。
+
+### 17.2 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| MTP-1-001 | 创建含 tier_prices 的记录 | 正常参数 | 创建时携带 `tier_prices.peak`，查询返回一致 |
+| MTP-1-002 | tier_prices 含非法 tier name | 异常参数 | `tier_prices` 中出现非 `peak` 键名，返回 422 |
+| MTP-1-003 | tier_prices 含非法价格键 | 异常参数 | `tier_prices.peak` 中出现非 `prices` 枚举键，返回 422 |
+| MTP-1-004 | tier_prices 含负数价格 | 合法性条件 | `tier_prices.peak.input_cost_per_token=-0.001`，返回 422 |
+| MTP-1-005 | 更新 tier_prices | 正常参数 | PUT `/model-prices/{id}` 可单独更新 `tier_prices` |
+| MTP-1-006 | model-list.yaml 导入含 tier_prices | 正常参数 | 导入的 YAML 携带 `tier_prices`，列表查询返回一致 |
+
+### 17.3 请求参数示例
+
+#### 创建含 tier_prices 的记录
+
+```json
+{
+    "provider": "deepseek",
+    "model": "deepseek-v3",
+    "base_model": "deepseek-v3",
+    "mode": "chat",
+    "prices": {
+        "input_cost_per_token": 0.0000045,
+        "output_cost_per_token": 0.0000135
+    },
+    "tier_prices": {
+        "peak": {
+            "input_cost_per_token": 0.000009,
+            "output_cost_per_token": 0.000027
+        }
+    }
+}
+```
+
+#### model-list.yaml 导入示例
+
+```yaml
+version: v1.0
+default_currency: RMB
+models:
+  - provider: deepseek-tier-test
+    model: deepseek-v3
+    base_model: deepseek-v3
+    mode: chat
+    prices:
+      input_cost_per_token: 0.000002
+    tier_prices:
+      peak:
+        input_cost_per_token: 0.000004
+```
+
+### 17.4 预期返回结果
+
+- **MTP-1-001 / MTP-1-005 / MTP-1-006**：ErrNum=200，`tier_prices.peak` 与输入一致。
+- **MTP-1-002 / MTP-1-003 / MTP-1-004**：ErrNum=422，ErrMsg 包含对应字段校验错误。
+
+---
+
+## 18. 附录
+
+### 18.1 通用断言说明
 
 - `Equals`：字段值与预期值相等
 - `NotEmpty`：字段值非空
@@ -945,7 +1032,7 @@ models:
 - `Len=n`：数组/字符串长度等于 n
 - `IsArray` / `IsObject`：类型校验
 
-### 16.2 返回码约定
+### 18.2 返回码约定
 
 | ErrNum | 含义 |
 |--------|------|

@@ -30,6 +30,7 @@
 | Claude 协议转发支持 | [details/Claude协议转发支持.md](./details/Claude协议转发支持.md) | 描述 ai-gateway-api 控制面为支持 BFE 转发 Claude Messages API 所需配合的修改，包括 `AIConf.ModelProtocols` 透传、模型发现解析器下沉与废弃配置清理。 |
 | Redis Key 清理机制 | [details/Redis Key 清理机制.md](./details/Redis%20Key%20清理机制.md) | 描述 API-Key / Entity 删除及 rate-limit 规则变更时的 Redis Key 清理逻辑，包括 Quota Key 与 Rate-Limit Key 格式、触发场景、对 BFE 的影响以及控制面立即清理实现方案。 |
 | 模型定价管理 | [api-define/OpenAPI接口定义/model-prices.md](../api-define/OpenAPI接口定义/model-prices.md) | 描述 `/model-prices` 管理接口、`model-list.yaml` 导入格式、`ModelPrice` 数据模型与校验规则，是 InnerAPI `AIConf.ModelTable` 的数据源。 |
+| RMB 配额分时段定价 | [details/RMB配额分时段定价.md](./details/RMB配额分时段定价.md) | 描述 RMB 配额按 provider 时段模板与 model-prices 分时段价格进行计费的设计，包括 `time_zone` / `tiers` / `tier_prices` 数据模型、控制面导出逻辑、BFE 数据面时段匹配与成本计算。 |
 
 ---
 

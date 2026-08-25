@@ -125,6 +125,9 @@ func mergeModelPrice(dst, src *imodel_price.ModelPrice) *imodel_price.ModelPrice
 	if len(src.Prices) > 0 {
 		merged.Prices = src.Prices
 	}
+	if len(src.TierPrices) > 0 {
+		merged.TierPrices = src.TierPrices
+	}
 	if strings.TrimSpace(src.PriceCurrency) != "" {
 		merged.PriceCurrency = src.PriceCurrency
 	}
