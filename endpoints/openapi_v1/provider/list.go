@@ -46,13 +46,23 @@ type listResponse struct {
 // ListAction handles GET /providers.
 func ListAction(req *http.Request) (interface{}, error) {
 	filter := queryFilter(req)
-	page, pageSize := pageFilter(req)
-	filter.Page = &page
-	filter.PageSize = &pageSize
+	page, pageSize, isPagination := pageFilter(req)
+	if isPagination {
+		filter.Page = &page
+		filter.PageSize = &pageSize
+	}
 
 	list, total, err := container.ProviderManager.FetchProviderList(req.Context(), filter)
 	if err != nil {
 		return nil, err
+	}
+
+	if !isPagination {
+		page = 1
+		pageSize = int(total)
+		if pageSize < 1 {
+			pageSize = 0
+		}
 	}
 
 	return &listResponse{
@@ -74,22 +84,28 @@ func queryFilter(req *http.Request) *iprovider.ProviderFilter {
 	return filter
 }
 
-func pageFilter(req *http.Request) (page int, pageSize int) {
+func pageFilter(req *http.Request) (page int, pageSize int, isPagination bool) {
 	q := req.URL.Query()
+	pageStr := q.Get("page")
+	pageSizeStr := q.Get("page_size")
+	if pageStr == "" && pageSizeStr == "" {
+		return 0, 0, false
+	}
+
 	page = 1
 	pageSize = 50
-	if v := q.Get("page"); v != "" {
-		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
 			page = p
 		}
 	}
-	if v := q.Get("page_size"); v != "" {
-		if ps, err := strconv.Atoi(v); err == nil && ps > 0 {
+	if pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
 			if ps > 1000 {
 				ps = 1000
 			}
 			pageSize = ps
 		}
 	}
-	return page, pageSize
+	return page, pageSize, true
 }

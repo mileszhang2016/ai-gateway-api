@@ -234,11 +234,27 @@
 
 | 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
 | - | - | - | - | - | - |
+| page | int | 页码 | N | 未传且 `page_size` 也未传时，返回全部记录 | 大于 0 |
+| page_size | int | 每页条数 | N | 未传且 `page` 也未传时，返回全部记录；最大 1000 | 大于 0 |
 | model_protocol | string | 按协议过滤 | N | - | 须为 `model_protocols` 枚举值 |
 
 **返回数据（Data内容）**
 
-数组，单元素同创建接口。
+```json
+{
+  "list": [...],
+  "pagination": {
+    "page": 1,
+    "page_size": 50,
+    "total": 100
+  }
+}
+```
+
+- 未携带 `page`/`page_size` 时，`list` 返回全部匹配记录，`pagination.page=1`，`pagination.page_size=total`；
+- 携带分页参数时，按对应页码返回。
+
+数组元素同创建接口。
 
 ### 2.3 Provider 详情
 

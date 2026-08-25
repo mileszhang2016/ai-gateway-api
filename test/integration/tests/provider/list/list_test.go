@@ -46,7 +46,7 @@ func TestProvider_List(t *testing.T) {
 		t.Fatalf("setup failed: %v", err)
 	}
 
-	t.Run("PV-2-001 默认分页", func(t *testing.T) {
+	t.Run("PV-2-001 无分页参数返回全部", func(t *testing.T) {
 		resp, err := testutil.GetClient().Get("/open-api/v1/providers")
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
@@ -58,7 +58,7 @@ func TestProvider_List(t *testing.T) {
 			t.Fatalf("unmarshal: %v", err)
 		}
 		assert.GreaterOrEqual(t, list.Pagination.Total, int64(2))
-		assert.NotEmpty(t, list.List)
+		assert.Len(t, list.List, int(list.Pagination.Total))
 	})
 
 	t.Run("PV-2-002 自定义分页", func(t *testing.T) {
