@@ -67,6 +67,21 @@ func TProviderList(dbCtx lib.DBContexter, where *TProviderParam) ([]*TProvider, 
 	return nil, err
 }
 
+// TProviderListAll queries all providers without pagination.
+func TProviderListAll(dbCtx lib.DBContexter, where *TProviderParam) ([]*TProvider, error) {
+	orderBy := "id"
+	where.OrderBy = &orderBy
+	t := []*TProvider{}
+	err := internal.QueryList(dbCtx, tProviderTableName, where, &t)
+	if err == nil {
+		return t, nil
+	}
+	if xerror.Cause(err) == internal.ErrRecordNotFound {
+		return nil, nil
+	}
+	return nil, err
+}
+
 // TProviderListWithPagination queries providers with pagination.
 func TProviderListWithPagination(dbCtx lib.DBContexter, where *TProviderParam, page, pageSize int) ([]*TProvider, error) {
 	whereMap := internal.Struct2Where(where)

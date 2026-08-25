@@ -261,10 +261,7 @@ func (m *ProviderManager) FetchProviderList(ctx context.Context, filter *Provide
 	// filter in memory for correctness and portability. This is acceptable
 	// because the provider table is small.
 	proto := *filter.ModelProtocol
-	storageFilter := &ProviderFilter{
-		Page:     intPtr(1),
-		PageSize: intPtr(1000),
-	}
+	storageFilter := &ProviderFilter{}
 	all, _, err := m.storager.FetchProviderList(ctx, storageFilter)
 	if err != nil {
 		return nil, 0, err
@@ -278,6 +275,11 @@ func (m *ProviderManager) FetchProviderList(ctx context.Context, filter *Provide
 				break
 			}
 		}
+	}
+
+	// No pagination requested: return all matched records.
+	if filter.Page == nil && filter.PageSize == nil {
+		return matched, int64(len(matched)), nil
 	}
 
 	page := 1

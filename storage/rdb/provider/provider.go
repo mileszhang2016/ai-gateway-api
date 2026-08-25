@@ -110,17 +110,29 @@ func (s *RDBProviderStorager) FetchProviderList(ctx context.Context, filter *ipr
 
 	where := filterToDAOParam(filter)
 
+	// No pagination requested: return all matched records.
+	if filter == nil || (filter.Page == nil && filter.PageSize == nil) {
+		list, err := dao.TProviderListAll(dbCtx, where)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		rst := make([]*iprovider.Provider, 0, len(list))
+		for _, one := range list {
+			rst = append(rst, fromDAO(one))
+		}
+		return rst, int64(len(rst)), nil
+	}
+
 	page := 1
 	pageSize := 50
-	if filter != nil {
-		if filter.Page != nil && *filter.Page > 0 {
-			page = *filter.Page
-		}
-		if filter.PageSize != nil && *filter.PageSize > 0 {
-			pageSize = *filter.PageSize
-			if pageSize > 1000 {
-				pageSize = 1000
-			}
+	if filter.Page != nil && *filter.Page > 0 {
+		page = *filter.Page
+	}
+	if filter.PageSize != nil && *filter.PageSize > 0 {
+		pageSize = *filter.PageSize
+		if pageSize > 1000 {
+			pageSize = 1000
 		}
 	}
 

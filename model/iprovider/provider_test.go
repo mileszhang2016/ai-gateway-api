@@ -223,6 +223,25 @@ func TestProviderManager_FetchProviderList(t *testing.T) {
 		assert.Equal(t, "openai-provider", list[0].Name)
 		assert.Equal(t, "multi-provider", list[1].Name)
 	})
+
+	t.Run("no pagination returns all", func(t *testing.T) {
+		all := []*Provider{
+			{Name: "deepseek"},
+			{Name: "openai"},
+			{Name: "anthropic"},
+		}
+		store := &fakeProviderStorager{
+			fetchListFn: func(ctx context.Context, filter *ProviderFilter) ([]*Provider, int64, error) {
+				return all, int64(len(all)), nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+		list, total, err := m.FetchProviderList(ctx, &ProviderFilter{})
+		require.NoError(t, err)
+		assert.Equal(t, int64(3), total)
+		assert.Equal(t, all, list)
+	})
+
 }
 
 func TestProviderManager_DiscoverModels(t *testing.T) {

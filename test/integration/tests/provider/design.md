@@ -15,7 +15,7 @@ Provider 与 Cluster 概念分离后：
 | 编号 | 接口名称 | 方法 | 路径 | 说明 |
 |------|----------|------|------|------|
 | PV-1 | 创建 Provider | POST | `/open-api/v1/providers` | 创建模型提供商 |
-| PV-2 | 查询 Provider 列表 | GET | `/open-api/v1/providers` | 支持分页与 `model_protocol` 过滤 |
+| PV-2 | 查询 Provider 列表 | GET | `/open-api/v1/providers` | 未携带 `page`/`page_size` 时返回全部；携带时按分页返回；支持 `model_protocol` 过滤 |
 | PV-3 | 查询 Provider 详情 | GET | `/open-api/v1/providers/{provider_name}` | - |
 | PV-4 | 更新 Provider | PATCH | `/open-api/v1/providers/{provider_name}` | 全量替换 `keys`、`models` 等数组字段 |
 | PV-5 | 删除 Provider | DELETE | `/open-api/v1/providers/{provider_name}` | 删除前检查 cluster/model-price 引用 |
@@ -175,13 +175,16 @@ provider/
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| `page` | int | N | 页码，默认 1 |
-| `page_size` | int | N | 每页条数，默认 50，最大 1000 |
+| `page` | int | N | 页码；未传时与 `page_size` 同时缺失，返回全部记录 |
+| `page_size` | int | N | 每页条数，最大 1000；未传时与 `page` 同时缺失，返回全部记录 |
 | `model_protocol` | string | N | 按协议过滤，须为 `model_protocols` 枚举值 |
 
 ### 7.3 响应参数
 
-返回分页结构：
+始终返回 `{ list, pagination }` 结构：
+
+- 未携带 `page`/`page_size` 时，`list` 包含全部匹配记录，`pagination.page=1`，`pagination.page_size=total`；
+- 携带分页参数时，`list` 包含当前页记录，`pagination` 为对应分页信息。
 
 ```json
 {
@@ -198,7 +201,7 @@ provider/
 
 | 用例编号 | 用例名称 | 预期结果 |
 |----------|----------|----------|
-| PV-2-001 | 默认分页 | 200，`pagination.total >= 2`，`list` 非空 |
+| PV-2-001 | 无分页参数返回全部 | 200，`pagination.total >= 2`，`list` 长度等于 `pagination.total` |
 | PV-2-002 | 自定义分页 | 200，`list` 长度为 1 |
 | PV-2-003 | 按 `model_protocol` 过滤 | 200，返回的 Provider 都包含 `openai` 协议 |
 
