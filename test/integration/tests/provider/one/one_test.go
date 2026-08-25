@@ -1,10 +1,13 @@
 package provider_test
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var sm *testutil.ServerManager
@@ -33,6 +36,11 @@ func TestProvider_One(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 		testutil.AssertDataFieldEquals(t, resp, "name", providerName)
+
+		var data map[string]interface{}
+		require.NoError(t, json.Unmarshal(resp.Data, &data))
+		assert.Equal(t, "Asia/Shanghai", data["time_zone"])
+		assert.Equal(t, []interface{}{}, data["tiers"])
 	})
 
 	t.Run("PV-3-002 查询不存在的 Provider", func(t *testing.T) {
@@ -41,6 +49,38 @@ func TestProvider_One(t *testing.T) {
 			t.Fatalf("request failed: %v", err)
 		}
 		testutil.AssertErrCode(t, resp, 404)
+	})
+
+	t.Run("PV-3-003 查询已设置 pricing-tiers 的 Provider", func(t *testing.T) {
+		_, err := testutil.UpdatePricingTiers(providerName, map[string]interface{}{
+			"time_zone": "America/New_York",
+			"tiers": []map[string]interface{}{
+				{
+					"name": "peak",
+					"time_ranges": []map[string]interface{}{
+						{"weekdays": []int{1, 2, 3, 4, 5}, "start": "09:00", "end": "12:00"},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		resp, err := testutil.GetClient().Get("/open-api/v1/providers/" + providerName)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		var data map[string]interface{}
+		require.NoError(t, json.Unmarshal(resp.Data, &data))
+		assert.Equal(t, "America/New_York", data["time_zone"])
+
+		tiers, ok := data["tiers"].([]interface{})
+		require.True(t, ok, "tiers should be an array")
+		require.Len(t, tiers, 1)
+		tier0, ok := tiers[0].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "peak", tier0["name"])
 	})
 
 	t.Cleanup(func() {

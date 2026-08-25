@@ -54,9 +54,9 @@ var PricingTierSchema = &testutil.ObjectSchema{
 var ProviderSchema = &testutil.ObjectSchema{
 	Required: []string{
 		"id", "name", "description", "model_endpoint", "models", "keys",
-		"instance_pool", "model_protocols", "create_time", "update_time",
+		"instance_pool", "model_protocols", "time_zone", "tiers",
+		"create_time", "update_time",
 	},
-	Optional: []string{"time_zone", "tiers"},
 	Fields: map[string]testutil.FieldSpec{
 		"id":              {Type: testutil.TypeInt},
 		"name":            {Type: testutil.TypeString},

@@ -275,7 +275,42 @@
 
 **返回数据（Data内容）**
 
-同创建接口。
+同创建接口，包含完整的 Provider 数据模型，其中包括：
+
+- `time_zone`：计算时段所使用的时区（创建时未传则默认 `Asia/Shanghai`）。
+- `tiers`：该 provider 的高峰/闲时 tier 定义列表（若未设置则为空数组 `[]`）。
+
+**成功返回示例**
+
+```json
+{
+    "ErrNum": 200,
+    "ErrMsg": "success",
+    "Data": {
+        "name": "deepseek",
+        "description": "DeepSeek 官方 API",
+        "model_endpoint": { "schema": "https", "uri": "/v1/models" },
+        "models": ["deepseek-v4-pro", "deepseek-v4-flash"],
+        "keys": [...],
+        "instance_pool": [...],
+        "model_protocols": ["openai"],
+        "time_zone": "Asia/Shanghai",
+        "tiers": [
+            {
+                "name": "peak",
+                "time_ranges": [
+                    { "weekdays": [1, 2, 3, 4, 5], "start": "09:00", "end": "12:00" },
+                    { "weekdays": [1, 2, 3, 4, 5], "start": "14:00", "end": "18:00" }
+                ]
+            }
+        ],
+        "create_time": 1716883200,
+        "update_time": 1716883200
+    }
+}
+```
+
+> 说明：若 provider 未通过 `PUT /providers/{provider_name}/pricing-tiers` 设置过高峰/闲时模板，则 `tiers` 返回空数组，`time_zone` 返回默认值 `Asia/Shanghai`。
 
 ### 2.4 更新 Provider
 
