@@ -100,6 +100,23 @@ func TestRouteRuleManager_ExpressionVerify(t *testing.T) {
 		err := m.ExpressionVerify(context.Background(), "not_a_valid_expr(")
 		require.Error(t, err)
 	})
+
+	t.Run("req_body_larger_than valid", func(t *testing.T) {
+		require.NoError(t, m.ExpressionVerify(context.Background(), "req_body_larger_than(8192)"))
+	})
+
+	t.Run("req_body_less_than valid", func(t *testing.T) {
+		require.NoError(t, m.ExpressionVerify(context.Background(), "req_body_less_than(2048)"))
+	})
+
+	t.Run("req_body_larger_than combined", func(t *testing.T) {
+		require.NoError(t, m.ExpressionVerify(context.Background(), "req_host_in(\"api.example.com\") && req_body_larger_than(8192)"))
+	})
+
+	t.Run("req_body_larger_than invalid arg", func(t *testing.T) {
+		err := m.ExpressionVerify(context.Background(), "req_body_larger_than(\"abc\")")
+		require.Error(t, err)
+	})
 }
 
 func TestRouteRuleManager_UpsertProductRule(t *testing.T) {
