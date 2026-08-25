@@ -31,12 +31,32 @@ var ProviderInstanceSchema = &testutil.ObjectSchema{
 	},
 }
 
+// TimeRangeSchema provider tiers.time_ranges element schema
+var TimeRangeSchema = &testutil.ObjectSchema{
+	Required: []string{"start", "end"},
+	Fields: map[string]testutil.FieldSpec{
+		"weekdays": {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeInt}},
+		"start":    {Type: testutil.TypeString},
+		"end":      {Type: testutil.TypeString},
+	},
+}
+
+// PricingTierSchema provider tiers element schema
+var PricingTierSchema = &testutil.ObjectSchema{
+	Required: []string{"name", "time_ranges"},
+	Fields: map[string]testutil.FieldSpec{
+		"name":        {Type: testutil.TypeString},
+		"time_ranges": {Type: testutil.TypeArray, Elem: TimeRangeSchema},
+	},
+}
+
 // ProviderSchema Provider 数据模型 schema
 var ProviderSchema = &testutil.ObjectSchema{
 	Required: []string{
 		"id", "name", "description", "model_endpoint", "models", "keys",
 		"instance_pool", "model_protocols", "create_time", "update_time",
 	},
+	Optional: []string{"time_zone", "tiers"},
 	Fields: map[string]testutil.FieldSpec{
 		"id":              {Type: testutil.TypeInt},
 		"name":            {Type: testutil.TypeString},
@@ -46,6 +66,8 @@ var ProviderSchema = &testutil.ObjectSchema{
 		"keys":            {Type: testutil.TypeArray, Elem: ProviderKeySchema},
 		"instance_pool":   {Type: testutil.TypeArray, Elem: ProviderInstanceSchema},
 		"model_protocols": {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString, Enum: []interface{}{"openai", "anthropic"}}},
+		"time_zone":       {Type: testutil.TypeString},
+		"tiers":           {Type: testutil.TypeArray, Elem: PricingTierSchema},
 		"create_time":     {Type: testutil.TypeInt},
 		"update_time":     {Type: testutil.TypeInt},
 	},

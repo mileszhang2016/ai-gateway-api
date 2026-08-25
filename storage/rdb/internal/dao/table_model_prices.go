@@ -42,6 +42,7 @@ type TModelPrice struct {
 	SupportedParameters string    `db:"supported_parameters"`
 	Limits              string    `db:"limits"`
 	Prices              string    `db:"prices"`
+	TierPrices          string    `db:"tier_prices"`
 	PriceCurrency       string    `db:"price_currency"`
 	Metadata            string    `db:"metadata"`
 	CreatedAt           time.Time `db:"created_at"`
@@ -59,6 +60,7 @@ type TModelPriceParam struct {
 	SupportedParameters *string    `db:"supported_parameters"`
 	Limits              *string    `db:"limits"`
 	Prices              *string    `db:"prices"`
+	TierPrices          *string    `db:"tier_prices"`
 	PriceCurrency       *string    `db:"price_currency"`
 	Metadata            *string    `db:"metadata"`
 	CreatedAt           *time.Time `db:"created_at"`

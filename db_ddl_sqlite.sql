@@ -438,6 +438,7 @@ CREATE TABLE model_prices (
   supported_parameters TEXT,
   limits TEXT,
   prices TEXT NOT NULL,
+  tier_prices TEXT,
   price_currency TEXT DEFAULT 'RMB',
   metadata TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -460,6 +461,8 @@ CREATE TABLE providers (
   keys TEXT,
   instance_pool TEXT NOT NULL,
   model_protocols TEXT NOT NULL,
+  time_zone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+  tiers TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (name)

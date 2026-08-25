@@ -168,6 +168,10 @@ func toDAOParam(param *iprovider.ProviderParam) (*dao.TProviderParam, error) {
 	if err != nil {
 		return nil, err
 	}
+	tiers, err := marshalJSON(param.Tiers)
+	if err != nil {
+		return nil, err
+	}
 
 	return &dao.TProviderParam{
 		Name:           param.Name,
@@ -177,6 +181,8 @@ func toDAOParam(param *iprovider.ProviderParam) (*dao.TProviderParam, error) {
 		Keys:           keys,
 		InstancePool:   instancePool,
 		ModelProtocols: modelProtocols,
+		TimeZone:       param.TimeZone,
+		Tiers:          tiers,
 	}, nil
 }
 
@@ -208,6 +214,8 @@ func fromDAO(one *dao.TProvider) *iprovider.Provider {
 		Keys:           unmarshalKeys(one.Keys),
 		InstancePool:   unmarshalInstancePool(one.InstancePool),
 		ModelProtocols: unmarshalStringSlice(one.ModelProtocols),
+		TimeZone:       one.TimeZone,
+		Tiers:          unmarshalTiers(one.Tiers),
 		CreateTime:     createTime,
 		UpdateTime:     updateTime,
 	}
@@ -268,6 +276,17 @@ func unmarshalInstancePool(s string) []iprovider.ProviderInstance {
 		return nil
 	}
 	var rst []iprovider.ProviderInstance
+	if err := json.Unmarshal([]byte(s), &rst); err != nil {
+		return nil
+	}
+	return rst
+}
+
+func unmarshalTiers(s string) []iprovider.PricingTier {
+	if s == "" || s == "null" {
+		return nil
+	}
+	var rst []iprovider.PricingTier
 	if err := json.Unmarshal([]byte(s), &rst); err != nil {
 		return nil
 	}

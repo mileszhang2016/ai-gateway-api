@@ -101,6 +101,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 
 	providerKeyTable := map[string][]iprovider.ProviderKey{}
 	providerProtocolTable := map[string][]string{}
+	providerPricingTable := map[string]icluster_conf.ProviderPricingInfo{}
 	if rm.providerStorager != nil {
 		providers, _, err := rm.providerStorager.FetchProviderList(ctx, &iprovider.ProviderFilter{})
 		if err != nil {
@@ -110,6 +111,10 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 			if p != nil {
 				providerKeyTable[p.Name] = p.Keys
 				providerProtocolTable[p.Name] = p.ModelProtocols
+				providerPricingTable[p.Name] = icluster_conf.ProviderPricingInfo{
+					TimeZone: p.TimeZone,
+					Tiers:    convertPricingTiers(p.Tiers),
+				}
 			}
 		}
 	}
@@ -151,7 +156,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 		Version:     emptyVersion,
 		RouteTable:  newRouteTableFile(emptyVersion, productMapID2Name, routeRules),
 		HostTable:   newHostTableConf(emptyVersion, productMapID2Name, domains),
-		ClusterConf: icluster_conf.NewBfeClusterConf(emptyVersion, clusters, providerModelTable, providerKeyTable, providerProtocolTable),
+		ClusterConf: icluster_conf.NewBfeClusterConf(emptyVersion, clusters, providerModelTable, providerKeyTable, providerProtocolTable, providerPricingTable),
 	}
 
 	return &iversion_control.ExportData{
@@ -207,4 +212,23 @@ func newRouteTableFile(version string, productMapID2Name map[int64]string,
 		BasicRule:   &basicRule,
 		ProductRule: &advanceRule,
 	}
+}
+
+func convertPricingTiers(tiers []iprovider.PricingTier) []cluster_conf.PriceTier {
+	rst := make([]cluster_conf.PriceTier, 0, len(tiers))
+	for _, t := range tiers {
+		ranges := make([]cluster_conf.TimeRange, 0, len(t.TimeRanges))
+		for _, r := range t.TimeRanges {
+			ranges = append(ranges, cluster_conf.TimeRange{
+				Weekdays: r.Weekdays,
+				Start:    r.Start,
+				End:      r.End,
+			})
+		}
+		rst = append(rst, cluster_conf.PriceTier{
+			Name:       t.Name,
+			TimeRanges: ranges,
+		})
+	}
+	return rst
 }

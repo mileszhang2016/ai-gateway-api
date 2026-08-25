@@ -25,6 +25,7 @@ var Endpoints = []*xreq.Endpoint{
 	ListNamesEndpoint,
 	OneEndpoint,
 	UpdateEndpoint,
+	PricingTiersEndpoint,
 	DeleteEndpoint,
 	DiscoverEndpoint,
 }

@@ -64,6 +64,41 @@ func TestValidateModelPrice(t *testing.T) {
 		{"valid positive limit", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": 128000}; return p }(), false},
 		{"valid positive limit float64", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": float64(128000)}; return p }(), false},
 		{"invalid metadata key", func() *ModelPrice { p := validModelPrice(); p.Metadata = map[string]interface{}{"unknown": 1}; return p }(), true},
+		{"valid tier prices", func() *ModelPrice {
+			p := validModelPrice()
+			p.TierPrices = map[string]map[string]float64{
+				"peak": {"input_cost_per_token": 0.002},
+			}
+			return p
+		}(), false},
+		{"invalid tier name", func() *ModelPrice {
+			p := validModelPrice()
+			p.TierPrices = map[string]map[string]float64{
+				"off_peak": {"input_cost_per_token": 0.002},
+			}
+			return p
+		}(), true},
+		{"invalid tier price key", func() *ModelPrice {
+			p := validModelPrice()
+			p.TierPrices = map[string]map[string]float64{
+				"peak": {"invalid_key": 0.002},
+			}
+			return p
+		}(), true},
+		{"negative tier price", func() *ModelPrice {
+			p := validModelPrice()
+			p.TierPrices = map[string]map[string]float64{
+				"peak": {"input_cost_per_token": -0.002},
+			}
+			return p
+		}(), true},
+		{"empty tier prices", func() *ModelPrice {
+			p := validModelPrice()
+			p.TierPrices = map[string]map[string]float64{
+				"peak": {},
+			}
+			return p
+		}(), true},
 	}
 
 	for _, tc := range cases {

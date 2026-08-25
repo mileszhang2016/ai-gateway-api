@@ -554,3 +554,75 @@ func TestParseModelDiscoveryResponse(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestValidatePricingTiersParam(t *testing.T) {
+	t.Run("valid peak tier", func(t *testing.T) {
+		param := &PricingTiersParam{
+			TimeZone: "Asia/Shanghai",
+			Tiers: []PricingTier{
+				{
+					Name: "peak",
+					TimeRanges: []TimeRange{
+						{Weekdays: []int{1, 2, 3, 4, 5}, Start: "09:00", End: "12:00"},
+						{Weekdays: []int{1, 2, 3, 4, 5}, Start: "14:00", End: "18:00"},
+					},
+				},
+			},
+		}
+		require.NoError(t, ValidatePricingTiersParam(param))
+	})
+
+	t.Run("empty tiers allowed", func(t *testing.T) {
+		param := &PricingTiersParam{
+			TimeZone: "Asia/Shanghai",
+			Tiers:    []PricingTier{},
+		}
+		require.NoError(t, ValidatePricingTiersParam(param))
+	})
+
+	t.Run("default time zone", func(t *testing.T) {
+		param := &PricingTiersParam{
+			TimeZone: "",
+			Tiers:    []PricingTier{},
+		}
+		require.NoError(t, ValidatePricingTiersParam(param))
+	})
+
+	t.Run("invalid time zone", func(t *testing.T) {
+		param := &PricingTiersParam{
+			TimeZone: "Invalid/TimeZone",
+			Tiers:    []PricingTier{},
+		}
+		require.Error(t, ValidatePricingTiersParam(param))
+	})
+
+	t.Run("unsupported tier name", func(t *testing.T) {
+		param := &PricingTiersParam{
+			TimeZone: "Asia/Shanghai",
+			Tiers: []PricingTier{
+				{Name: "off_peak", TimeRanges: []TimeRange{{Start: "00:00", End: "08:00"}}},
+			},
+		}
+		require.Error(t, ValidatePricingTiersParam(param))
+	})
+
+	t.Run("end must be greater than start", func(t *testing.T) {
+		param := &PricingTiersParam{
+			TimeZone: "Asia/Shanghai",
+			Tiers: []PricingTier{
+				{Name: "peak", TimeRanges: []TimeRange{{Start: "12:00", End: "09:00"}}},
+			},
+		}
+		require.Error(t, ValidatePricingTiersParam(param))
+	})
+
+	t.Run("invalid weekday", func(t *testing.T) {
+		param := &PricingTiersParam{
+			TimeZone: "Asia/Shanghai",
+			Tiers: []PricingTier{
+				{Name: "peak", TimeRanges: []TimeRange{{Weekdays: []int{7}, Start: "09:00", End: "12:00"}}},
+			},
+		}
+		require.Error(t, ValidatePricingTiersParam(param))
+	})
+}

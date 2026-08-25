@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,6 +26,7 @@ func TestMain(m *testing.M) {
 
 func TestInnerAPI_Schema(t *testing.T) {
 	t.Run("server_data_conf", testServerDataConfSchema)
+	t.Run("server_data_conf_tiered_pricing", testServerDataConfTieredPricingSchema)
 	t.Run("gslb", testGSLBSchema)
 	t.Run("cluster_table", testClusterTableSchema)
 	t.Run("server_cert_conf", testServerCertConfSchema)
@@ -142,6 +144,133 @@ func assertServerDataConfModelProtocols(t *testing.T, data []byte, clusterName s
 	if modelProtocols[0] != "anthropic" {
 		t.Fatalf("expected ModelProtocols[0]=anthropic for cluster %s, got %v", clusterName, modelProtocols[0])
 	}
+}
+
+func testServerDataConfTieredPricingSchema(t *testing.T) {
+	providerName := testutil.UniqueProviderName()
+	_, err := testutil.CreateProvider(providerName)
+	require.NoError(t, err)
+
+	tierResp, err := testutil.UpdatePricingTiers(providerName, map[string]interface{}{
+		"time_zone": "Asia/Shanghai",
+		"tiers": []interface{}{
+			map[string]interface{}{
+				"name": "peak",
+				"time_ranges": []interface{}{
+					map[string]interface{}{"weekdays": []int{1, 2, 3, 4, 5}, "start": "09:00", "end": "12:00"},
+					map[string]interface{}{"weekdays": []int{1, 2, 3, 4, 5}, "start": "14:00", "end": "18:00"},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 200, tierResp.ErrNum, tierResp.ErrMsg)
+
+	yamlContent := []byte(`version: v1.0
+default_currency: RMB
+models:
+  - provider: ` + providerName + `
+    model: deepseek-chat
+    base_model: deepseek-chat
+    mode: chat
+    prices:
+      input_cost_per_token: 0.000002
+      output_cost_per_token: 0.000008
+      cache_read_input_token_cost: 0.0000005
+    tier_prices:
+      peak:
+        input_cost_per_token: 0.000004
+        output_cost_per_token: 0.000016
+        cache_read_input_token_cost: 0.000001
+`)
+	err = testutil.ImportModelPrices(yamlContent, "replace")
+	require.NoError(t, err)
+
+	clusterName := testutil.UniqueClusterName()
+	_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+		"name": clusterName,
+		"llm_config": map[string]interface{}{
+			"models":   []string{"deepseek-chat"},
+			"provider": providerName,
+		},
+	})
+	require.NoError(t, err)
+
+	resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, resp)
+	if resp.Data != nil && string(resp.Data) != "null" {
+		testutil.AssertSchema(t, resp, ServerDataConfSchema)
+		assertServerDataConfTieredPricing(t, resp.Data, clusterName)
+	}
+
+	t.Cleanup(func() {
+		testutil.DeleteCluster(clusterName)
+		testutil.DeleteModelPriceByQuery(providerName, "deepseek-chat", "chat")
+		testutil.DeleteProvider(providerName)
+	})
+}
+
+// assertServerDataConfTieredPricing 校验导出结果中指定 cluster 的 AIConf.ModelTable 携带分时段定价。
+func assertServerDataConfTieredPricing(t *testing.T, data []byte, clusterName string) {
+	t.Helper()
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal server_data_conf data: %v", err)
+	}
+	clusterConf, ok := payload["ClusterConf"].(map[string]interface{})
+	if !ok {
+		t.Fatal("ClusterConf is not an object")
+	}
+	config, ok := clusterConf["Config"].(map[string]interface{})
+	if !ok {
+		t.Fatal("ClusterConf.Config is not an object")
+	}
+	cluster, ok := config[clusterName].(map[string]interface{})
+	if !ok {
+		t.Fatalf("cluster %s not found in ClusterConf.Config", clusterName)
+	}
+	aiconf, ok := cluster["AIConf"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("AIConf not found for cluster %s", clusterName)
+	}
+	modelTable, ok := aiconf["ModelTable"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("AIConf.ModelTable is not an object for cluster %s", clusterName)
+	}
+
+	modelTableJSON, err := json.Marshal(modelTable)
+	if err != nil {
+		t.Fatalf("marshal model table: %v", err)
+	}
+	testutil.AssertSchema(t, &testutil.APIResponse{Data: modelTableJSON}, ModelTableSchema)
+
+	assert.Equal(t, "RMB", modelTable["Currency"])
+	assert.Equal(t, "Asia/Shanghai", modelTable["TimeZone"])
+
+	tiers, ok := modelTable["Tiers"].([]interface{})
+	require.True(t, ok, "ModelTable.Tiers should be an array")
+	require.Len(t, tiers, 1)
+	tier0, _ := tiers[0].(map[string]interface{})
+	assert.Equal(t, "peak", tier0["Name"])
+
+	models, ok := modelTable["Models"].([]interface{})
+	require.True(t, ok, "ModelTable.Models should be an array")
+	require.Len(t, models, 1)
+	model0, _ := models[0].(map[string]interface{})
+	assert.Equal(t, "deepseek-chat", model0["Model"])
+
+	prices, ok := model0["Prices"].(map[string]interface{})
+	require.True(t, ok, "ModelPrice.Prices should be an object")
+	assert.Equal(t, 0.000002, prices["input_cost_per_token"])
+
+	tierPrices, ok := model0["TierPrices"].(map[string]interface{})
+	require.True(t, ok, "ModelPrice.TierPrices should be an object")
+	peak, ok := tierPrices["peak"].(map[string]interface{})
+	require.True(t, ok, "TierPrices.peak should be an object")
+	assert.Equal(t, 0.000004, peak["input_cost_per_token"])
+	assert.Equal(t, 0.000016, peak["output_cost_per_token"])
+	assert.Equal(t, 0.000001, peak["cache_read_input_token_cost"])
 }
 
 func testGSLBSchema(t *testing.T) {
@@ -444,10 +573,12 @@ func assertRuleRedisKey(t *testing.T, policyKey, ruleType string, rules map[stri
 			t.Errorf("RateLimitPolicies.%s.rules.%s[%d].redis_key should be non-empty string", policyKey, ruleType, i)
 			continue
 		}
-		wantPrefix := "RL_" + strings.ToUpper(ruleType) + "_" + policyKey + "_"
-		if !strings.HasPrefix(redisKey, wantPrefix) {
-			t.Errorf("RateLimitPolicies.%s.rules.%s[%d].redis_key format mismatch: got %s, want prefix %s",
-				policyKey, ruleType, i, redisKey, wantPrefix)
+		// redis_key 可能包含产品线/集群前缀（如 default_bfe_<policy>_RL_...），
+		// 因此校验关键片段而非严格前缀。
+		wantInfix := "RL_" + strings.ToUpper(ruleType) + "_" + policyKey + "_"
+		if !strings.Contains(redisKey, wantInfix) {
+			t.Errorf("RateLimitPolicies.%s.rules.%s[%d].redis_key format mismatch: got %s, want contain %s",
+				policyKey, ruleType, i, redisKey, wantInfix)
 		}
 	}
 }

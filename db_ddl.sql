@@ -420,6 +420,7 @@ CREATE TABLE `model_prices` (
   `supported_parameters` JSON COMMENT '支持的请求参数列表',
   `limits` JSON COMMENT '限制对象',
   `prices` JSON NOT NULL COMMENT '价格对象',
+  `tier_prices` JSON COMMENT '分时段价格对象',
   `price_currency` VARCHAR(10) DEFAULT 'RMB' COMMENT '币种',
   `metadata` JSON COMMENT '元数据',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -440,6 +441,8 @@ CREATE TABLE `providers` (
   `keys` JSON COMMENT 'API key 列表',
   `instance_pool` JSON NOT NULL COMMENT '实例池列表',
   `model_protocols` JSON NOT NULL COMMENT '支持的模型协议列表',
+  `time_zone` VARCHAR(255) NOT NULL DEFAULT 'Asia/Shanghai' COMMENT '计算时段所使用的时区',
+  `tiers` JSON COMMENT '时段 tier 定义列表',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE KEY `uk_name` (`name`)

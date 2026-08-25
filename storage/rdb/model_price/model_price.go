@@ -191,6 +191,10 @@ func toDAOParam(param *imodel_price.ModelPrice) (*dao.TModelPriceParam, error) {
 	if err != nil {
 		return nil, err
 	}
+	tierPrices, err := marshalJSON(param.TierPrices)
+	if err != nil {
+		return nil, err
+	}
 	metadata, err := marshalJSON(param.Metadata)
 	if err != nil {
 		return nil, err
@@ -205,6 +209,7 @@ func toDAOParam(param *imodel_price.ModelPrice) (*dao.TModelPriceParam, error) {
 		SupportedParameters: supportedParameters,
 		Limits:              limits,
 		Prices:              prices,
+		TierPrices:          tierPrices,
 		PriceCurrency:       lib.PString(param.PriceCurrency),
 		Metadata:            metadata,
 	}, nil
@@ -240,6 +245,7 @@ func fromDAO(one *dao.TModelPrice) *imodel_price.ModelPrice {
 		SupportedParameters: unmarshalStringSlice(one.SupportedParameters),
 		Limits:              unmarshalMap(one.Limits),
 		Prices:              unmarshalPriceMap(one.Prices),
+		TierPrices:          unmarshalTierPrices(one.TierPrices),
 		PriceCurrency:       one.PriceCurrency,
 		Metadata:            unmarshalMap(one.Metadata),
 		CreateTime:          &createTime,
@@ -285,6 +291,17 @@ func unmarshalPriceMap(s string) map[string]float64 {
 		return nil
 	}
 	var rst map[string]float64
+	if err := json.Unmarshal([]byte(s), &rst); err != nil {
+		return nil
+	}
+	return rst
+}
+
+func unmarshalTierPrices(s string) map[string]map[string]float64 {
+	if s == "" || s == "null" {
+		return nil
+	}
+	var rst map[string]map[string]float64
 	if err := json.Unmarshal([]byte(s), &rst); err != nil {
 		return nil
 	}

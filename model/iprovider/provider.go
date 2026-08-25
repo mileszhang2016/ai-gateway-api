@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,19 @@ type ProviderInstance struct {
 	Disable bool   `json:"disable"`
 }
 
+// TimeRange defines a time window within a day for a pricing tier.
+type TimeRange struct {
+	Weekdays []int  `json:"weekdays,omitempty" yaml:"weekdays,omitempty"`
+	Start    string `json:"start" yaml:"start"`
+	End      string `json:"end" yaml:"end"`
+}
+
+// PricingTier defines a named pricing tier (e.g., "peak") with time ranges.
+type PricingTier struct {
+	Name       string      `json:"name" yaml:"name"`
+	TimeRanges []TimeRange `json:"time_ranges" yaml:"time_ranges"`
+}
+
 // Provider represents a model provider.
 type Provider struct {
 	ID             int64              `json:"id"`
@@ -75,6 +89,8 @@ type Provider struct {
 	Keys           []ProviderKey      `json:"keys"`
 	InstancePool   []ProviderInstance `json:"instance_pool"`
 	ModelProtocols []string           `json:"model_protocols"`
+	TimeZone       string             `json:"time_zone"`
+	Tiers          []PricingTier      `json:"tiers,omitempty"`
 	CreateTime     int64              `json:"create_time"`
 	UpdateTime     int64              `json:"update_time"`
 }
@@ -89,6 +105,14 @@ type ProviderParam struct {
 	Keys           []ProviderKey      `json:"keys,omitempty"`
 	InstancePool   []ProviderInstance `json:"instance_pool"`
 	ModelProtocols []string           `json:"model_protocols"`
+	TimeZone       *string            `json:"time_zone,omitempty"`
+	Tiers          []PricingTier      `json:"tiers,omitempty"`
+}
+
+// PricingTiersParam is used to update a provider's pricing tiers.
+type PricingTiersParam struct {
+	TimeZone string        `json:"time_zone" yaml:"time_zone"`
+	Tiers    []PricingTier `json:"tiers" yaml:"tiers"`
 }
 
 // ProviderFilter is used to query providers.
@@ -163,6 +187,38 @@ func (m *ProviderManager) UpdateProvider(ctx context.Context, name string, param
 		}
 
 		return m.storager.UpdateProvider(ctx, name, param)
+	})
+}
+
+// UpdatePricingTiers updates the time zone and pricing tiers of a provider.
+// It supports both JSON (parsed into PricingTiersParam) and YAML bodies at the endpoint layer.
+func (m *ProviderManager) UpdatePricingTiers(ctx context.Context, name string, param *PricingTiersParam) error {
+	if err := ValidatePricingTiersParam(param); err != nil {
+		return err
+	}
+
+	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		existing, err := m.storager.FetchProvider(ctx, &ProviderFilter{Name: &name})
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			return xerror.WrapRecordNotExist("provider")
+		}
+
+		// Preserve all existing provider fields; only update time_zone and tiers.
+		updateParam := &ProviderParam{
+			Name:           &existing.Name,
+			Description:    &existing.Description,
+			ModelEndpoint:  existing.ModelEndpoint,
+			Models:         existing.Models,
+			Keys:           existing.Keys,
+			InstancePool:   existing.InstancePool,
+			ModelProtocols: existing.ModelProtocols,
+			TimeZone:       &param.TimeZone,
+			Tiers:          param.Tiers,
+		}
+		return m.storager.UpdateProvider(ctx, name, updateParam)
 	})
 }
 
@@ -351,7 +407,151 @@ func ValidateProviderParam(param *ProviderParam) error {
 		}
 	}
 
+	if err := validatePricingTiers(param.Tiers); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// ValidatePricingTiersParam validates a pricing tiers update request.
+func ValidatePricingTiersParam(param *PricingTiersParam) error {
+	if param == nil {
+		return xerror.WrapParamErrorWithMsg("pricing tiers param is required")
+	}
+	if err := validateTimeZone(param.TimeZone); err != nil {
+		return err
+	}
+	return validatePricingTiers(param.Tiers)
+}
+
+func validatePricingTiers(tiers []PricingTier) error {
+	seenTier := map[string]bool{}
+	for i, tier := range tiers {
+		if strings.TrimSpace(tier.Name) == "" {
+			return xerror.WrapParamErrorWithMsg("tiers[%d].name is required", i)
+		}
+		// 初期只支持 peak tier
+		if tier.Name != "peak" {
+			return xerror.WrapParamErrorWithMsg("tiers[%d].name: unsupported tier name %s, only 'peak' is allowed", i, tier.Name)
+		}
+		if seenTier[tier.Name] {
+			return xerror.WrapParamErrorWithMsg("duplicate tier name: %s", tier.Name)
+		}
+		seenTier[tier.Name] = true
+
+		if len(tier.TimeRanges) == 0 {
+			return xerror.WrapParamErrorWithMsg("tiers[%d].time_ranges is required", i)
+		}
+
+		seenRange := map[string]bool{}
+		for j, tr := range tier.TimeRanges {
+			key := fmt.Sprintf("%v|%s|%s", tr.Weekdays, tr.Start, tr.End)
+			if seenRange[key] {
+				return xerror.WrapParamErrorWithMsg("tiers[%d].time_ranges[%d]: duplicate time range", i, j)
+			}
+			seenRange[key] = true
+
+			if err := validateTimeRange(tr); err != nil {
+				return xerror.WrapParamErrorWithMsg("tiers[%d].time_ranges[%d]: %v", i, j, err)
+			}
+
+			for k := 0; k < j; k++ {
+				if timeRangesOverlap(tr, tier.TimeRanges[k]) {
+					return xerror.WrapParamErrorWithMsg("tiers[%d].time_ranges[%d] overlaps with time_ranges[%d]", i, j, k)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func validateTimeZone(tz string) error {
+	if strings.TrimSpace(tz) == "" {
+		return nil
+	}
+	if _, err := time.LoadLocation(tz); err != nil {
+		return xerror.WrapParamErrorWithMsg("invalid time_zone: %s", tz)
+	}
+	return nil
+}
+
+// timeRangesOverlap reports whether two time ranges overlap.
+// It assumes each range has been validated (end > start, weekdays in [0,6]).
+// Two ranges overlap iff they share at least one weekday and their time intervals overlap.
+func timeRangesOverlap(a, b TimeRange) bool {
+	// Check weekday intersection.
+	sharedWeekday := false
+	if len(a.Weekdays) == 0 || len(b.Weekdays) == 0 {
+		sharedWeekday = true
+	} else {
+		for _, wdA := range a.Weekdays {
+			for _, wdB := range b.Weekdays {
+				if wdA == wdB {
+					sharedWeekday = true
+					break
+				}
+			}
+			if sharedWeekday {
+				break
+			}
+		}
+	}
+	if !sharedWeekday {
+		return false
+	}
+
+	ast, _ := parseHHMM(a.Start)
+	aet, _ := parseHHMM(a.End)
+	bst, _ := parseHHMM(b.Start)
+	bet, _ := parseHHMM(b.End)
+
+	// Intervals are left-closed, right-open.
+	return ast < bet && bst < aet
+}
+
+func validateTimeRange(tr TimeRange) error {
+	seenWeekday := map[int]bool{}
+	for _, wd := range tr.Weekdays {
+		if wd < 0 || wd > 6 {
+			return fmt.Errorf("weekdays must be between 0 and 6")
+		}
+		if seenWeekday[wd] {
+			return fmt.Errorf("duplicate weekday: %d", wd)
+		}
+		seenWeekday[wd] = true
+	}
+
+	start, err := parseHHMM(tr.Start)
+	if err != nil {
+		return fmt.Errorf("invalid start time: %v", err)
+	}
+	end, err := parseHHMM(tr.End)
+	if err != nil {
+		return fmt.Errorf("invalid end time: %v", err)
+	}
+	if end <= start {
+		return fmt.Errorf("end must be greater than start")
+	}
+	return nil
+}
+
+func parseHHMM(s string) (int, error) {
+	if len(s) != 5 || s[2] != ':' {
+		return 0, fmt.Errorf("time must be in HH:MM format")
+	}
+	hour, err := strconv.Atoi(s[0:2])
+	if err != nil {
+		return 0, fmt.Errorf("invalid hour")
+	}
+	min, err := strconv.Atoi(s[3:5])
+	if err != nil {
+		return 0, fmt.Errorf("invalid minute")
+	}
+	if hour < 0 || hour > 23 || min < 0 || min > 59 {
+		return 0, fmt.Errorf("time out of range")
+	}
+	return hour*60 + min, nil
 }
 
 // ProviderName validates a provider name.
@@ -450,6 +650,10 @@ func FillDefaults(param *ProviderParam) {
 	}
 	if param.Keys == nil {
 		param.Keys = []ProviderKey{}
+	}
+	if param.TimeZone == nil {
+		defaultTZ := "Asia/Shanghai"
+		param.TimeZone = &defaultTZ
 	}
 }
 

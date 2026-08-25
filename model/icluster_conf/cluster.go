@@ -909,10 +909,16 @@ func normalizeBFEHashStrategy(sticky *ClusterStickySessions) int32 {
 	return sticky.HashStrategy
 }
 
+type ProviderPricingInfo struct {
+	TimeZone string
+	Tiers    []cluster_conf.PriceTier
+}
+
 func NewBfeClusterConf(version string, clusters []*Cluster,
 	providerModelTable map[string][]*imodel_price.ModelPrice,
 	providerKeyTable map[string][]iprovider.ProviderKey,
-	providerProtocolTable map[string][]string) *cluster_conf.BfeClusterConf {
+	providerProtocolTable map[string][]string,
+	providerPricingTable map[string]ProviderPricingInfo) *cluster_conf.BfeClusterConf {
 	clusterConfMap := cluster_conf.ClusterToConf{}
 
 	int322intp := func(i int32) *int {
@@ -1001,12 +1007,20 @@ func NewBfeClusterConf(version string, clusters []*Cluster,
 								SupportedParameters: e.SupportedParameters,
 								Limits:              e.Limits,
 								Prices:              e.Prices,
+								TierPrices:          e.TierPrices,
 								Metadata:            e.Metadata,
 							})
 						}
 					}
+					pricingInfo := providerPricingTable[provider]
+					timeZone := pricingInfo.TimeZone
+					if timeZone == "" {
+						timeZone = "Asia/Shanghai"
+					}
 					modelTable = &cluster_conf.ModelTable{
 						Currency: "RMB",
+						TimeZone: timeZone,
+						Tiers:    pricingInfo.Tiers,
 						Models:   models,
 					}
 				}
