@@ -90,3 +90,36 @@ func TestExpressionVerifyAction_InvalidJSON(t *testing.T) {
 
 	require.Error(t, err)
 }
+
+func TestExpressionVerifyActionProcess_ReqBodyLargerThan(t *testing.T) {
+	defer setupRouteRuleManager()()
+
+	req := httptest.NewRequest(http.MethodPatch, "/expression/verify", strings.NewReader(`{"expression": "req_body_larger_than(8192)"}`))
+	data, err := ExpressionVerifyAction(req)
+
+	require.NoError(t, err)
+	assert.Nil(t, data)
+}
+
+func TestExpressionVerifyActionProcess_ReqBodyLessThan(t *testing.T) {
+	defer setupRouteRuleManager()()
+
+	req := httptest.NewRequest(http.MethodPatch, "/expression/verify", strings.NewReader(`{"expression": "req_body_less_than(2048)"}`))
+	data, err := ExpressionVerifyAction(req)
+
+	require.NoError(t, err)
+	assert.Nil(t, data)
+}
+
+func TestExpressionVerifyActionProcess_ReqBodySizeInvalidArg(t *testing.T) {
+	defer setupRouteRuleManager()()
+
+	req := httptest.NewRequest(http.MethodPatch, "/expression/verify", strings.NewReader(`{"expression": "req_body_larger_than(\"abc\")"}`))
+	data, err := ExpressionVerifyAction(req)
+
+	require.Error(t, err)
+	result, ok := data.(*VerifyResult)
+	require.True(t, ok)
+	assert.Equal(t, 500, result.Code)
+	assert.NotEmpty(t, result.Message)
+}
