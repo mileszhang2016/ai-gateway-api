@@ -90,7 +90,7 @@ type Provider struct {
 	InstancePool   []ProviderInstance `json:"instance_pool"`
 	ModelProtocols []string           `json:"model_protocols"`
 	TimeZone       string             `json:"time_zone"`
-	Tiers          []PricingTier      `json:"tiers,omitempty"`
+	Tiers          []PricingTier      `json:"tiers"`
 	CreateTime     int64              `json:"create_time"`
 	UpdateTime     int64              `json:"update_time"`
 }

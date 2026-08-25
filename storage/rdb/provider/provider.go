@@ -217,6 +217,16 @@ func fromDAO(one *dao.TProvider) *iprovider.Provider {
 	createTime := one.CreatedAt.Unix()
 	updateTime := one.UpdatedAt.Unix()
 
+	timeZone := one.TimeZone
+	if timeZone == "" {
+		timeZone = "Asia/Shanghai"
+	}
+
+	tiers := unmarshalTiers(one.Tiers)
+	if tiers == nil {
+		tiers = []iprovider.PricingTier{}
+	}
+
 	return &iprovider.Provider{
 		ID:             one.ID,
 		Name:           one.Name,
@@ -226,8 +236,8 @@ func fromDAO(one *dao.TProvider) *iprovider.Provider {
 		Keys:           unmarshalKeys(one.Keys),
 		InstancePool:   unmarshalInstancePool(one.InstancePool),
 		ModelProtocols: unmarshalStringSlice(one.ModelProtocols),
-		TimeZone:       one.TimeZone,
-		Tiers:          unmarshalTiers(one.Tiers),
+		TimeZone:       timeZone,
+		Tiers:          tiers,
 		CreateTime:     createTime,
 		UpdateTime:     updateTime,
 	}
@@ -295,7 +305,7 @@ func unmarshalInstancePool(s string) []iprovider.ProviderInstance {
 }
 
 func unmarshalTiers(s string) []iprovider.PricingTier {
-	if s == "" || s == "null" {
+	if s == "" || s == "null" || s == "{}" {
 		return nil
 	}
 	var rst []iprovider.PricingTier

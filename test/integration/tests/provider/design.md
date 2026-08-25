@@ -220,8 +220,9 @@ provider/
 
 | 用例编号 | 用例名称 | 预期结果 |
 |----------|----------|----------|
-| PV-3-001 | 查询存在的 Provider | 200，返回的 `name` 与请求一致 |
+| PV-3-001 | 查询存在的 Provider | 200，返回的 `name` 与请求一致；`time_zone` 为 `Asia/Shanghai`；`tiers` 为 `[]` |
 | PV-3-002 | 查询不存在的 Provider | 404 |
+| PV-3-003 | 查询已设置 pricing-tiers 的 Provider | 200，返回的 `time_zone` 和 `tiers` 与设置一致 |
 
 ## 9. 更新 Provider
 
