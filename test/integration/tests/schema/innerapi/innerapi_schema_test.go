@@ -99,19 +99,78 @@ func testServerDataConfSchema(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// Create a cluster with key_affinity to verify AIConf.KeyPolicy.SessionAffinity* export.
+	affinityProviderName := testutil.UniqueProviderName()
+	_, err = testutil.CreateProvider(affinityProviderName, map[string]interface{}{
+		"models": []string{"deepseek-chat"},
+	})
+	require.NoError(t, err)
+
+	affinityClusterName := testutil.UniqueClusterName()
+	_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+		"name": affinityClusterName,
+		"llm_config": map[string]interface{}{
+			"models": []string{"deepseek-chat"},
+			"key_affinity": map[string]interface{}{
+				"enabled":        true,
+				"ttl":            600,
+				"redis_prefix":   "bfe:ai:key_affinity",
+				"penalty_enable": true,
+			},
+			"provider": affinityProviderName,
+		},
+	})
+	require.NoError(t, err)
+
 	resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
 	require.NoError(t, err)
 	testutil.AssertSuccess(t, resp)
 	if resp.Data != nil && string(resp.Data) != "null" {
 		testutil.AssertSchema(t, resp, ServerDataConfSchema)
 		assertServerDataConfModelProtocols(t, resp.Data, anthropicClusterName)
+		assertServerDataConfKeyAffinity(t, resp.Data, affinityClusterName)
 	}
 
 	t.Cleanup(func() {
 		testutil.DeleteCluster(clusterName)
 		testutil.DeleteCluster(anthropicClusterName)
+		testutil.DeleteCluster(affinityClusterName)
 		testutil.DeleteProvider(anthropicProviderName)
+		testutil.DeleteProvider(affinityProviderName)
 	})
+}
+
+// assertServerDataConfKeyAffinity 校验导出结果中指定 cluster 的 AIConf.KeyPolicy.SessionAffinity*。
+func assertServerDataConfKeyAffinity(t *testing.T, data []byte, clusterName string) {
+	t.Helper()
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal server_data_conf data: %v", err)
+	}
+	clusterConf, ok := payload["ClusterConf"].(map[string]interface{})
+	if !ok {
+		t.Fatal("ClusterConf is not an object")
+	}
+	config, ok := clusterConf["Config"].(map[string]interface{})
+	if !ok {
+		t.Fatal("ClusterConf.Config is not an object")
+	}
+	cluster, ok := config[clusterName].(map[string]interface{})
+	if !ok {
+		t.Fatalf("cluster %s not found in ClusterConf.Config", clusterName)
+	}
+	aiconf, ok := cluster["AIConf"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("AIConf not found for cluster %s", clusterName)
+	}
+	keyPolicy, ok := aiconf["KeyPolicy"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("AIConf.KeyPolicy is not an object for cluster %s", clusterName)
+	}
+	assert.Equal(t, true, keyPolicy["SessionAffinity"])
+	assert.Equal(t, float64(600), keyPolicy["SessionAffinityTTL"])
+	assert.Equal(t, "bfe:ai:key_affinity", keyPolicy["SessionAffinityRedisPrefix"])
+	assert.Equal(t, true, keyPolicy["SessionAffinityPenaltyEnable"])
 }
 
 // assertServerDataConfModelProtocols 校验导出结果中指定 cluster 的 AIConf.ModelProtocols。

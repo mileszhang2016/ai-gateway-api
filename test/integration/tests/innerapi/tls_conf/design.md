@@ -2,9 +2,9 @@
 
 ## 1. 模块概述
 
-`/inner-api/v1/configs/tls_conf/server_data_conf` 是 InnerAPI 的核心导出接口之一，负责将 AI 网关管理面的集群、路由、证书等配置聚合为 BFE 可识别的 `server_data_conf`。其中 `ClusterConf.Config.<cluster_name>.AIConf` 承载 AI 转发所需的模型映射、API-Key、Key 路由策略、模型定价表、`MatchPrefix` / `StripPrefix` 前缀路由裁剪开关以及模型访问协议 `ModelProtocols`。
+`/inner-api/v1/configs/tls_conf/server_data_conf` 是 InnerAPI 的核心导出接口之一，负责将 AI 网关管理面的集群、路由、证书等配置聚合为 BFE 可识别的 `server_data_conf`。其中 `ClusterConf.Config.<cluster_name>.AIConf` 承载 AI 转发所需的模型映射、API-Key、Key 路由策略、Key 亲和性策略、模型定价表、`MatchPrefix` / `StripPrefix` 前缀路由裁剪开关以及模型访问协议 `ModelProtocols`。
 
-本文档覆盖 `AIConf.MatchPrefix` / `AIConf.StripPrefix` 与 `AIConf.ModelProtocols` 在 InnerAPI 导出结果中的正确性验证。
+本文档覆盖 `AIConf.MatchPrefix` / `AIConf.StripPrefix`、`AIConf.ModelProtocols` 与 `AIConf.KeyPolicy.SessionAffinity*` 在 InnerAPI 导出结果中的正确性验证。
 
 ## 2. 接口列表
 
@@ -17,7 +17,8 @@
 | 场景 | 测试用例数 |
 |------|-----------|
 | AIConf 含 MatchPrefix/StripPrefix/ModelProtocols | 4（编号 IN-TLS-1-004 ~ IN-TLS-1-007，与现有 IN-1-001 ~ IN-1-003 区分） |
-| **合计** | **4** |
+| AIConf.KeyPolicy 含 SessionAffinity* | 2（编号 IN-TLS-1-008 ~ IN-TLS-1-009） |
+| **合计** | **6** |
 
 ## 4. 前置条件
 
@@ -86,6 +87,35 @@ innerapi/tls_conf/
 - **预期**：
   - `ErrNum == 200`；
   - `ClusterConf.Config.<cluster>.AIConf.ModelProtocols == ["anthropic"]`。
+
+#### IN-TLS-1-008 AIConf.KeyPolicy 包含 SessionAffinity*
+
+- **前置**：通过 OpenAPI 创建 Cluster，请求体中 `llm_config.key_affinity` 配置：
+  ```json
+  {
+    "enabled": true,
+    "ttl": 600,
+    "redis_prefix": "bfe:ai:key_affinity",
+    "penalty_enable": true
+  }
+  ```
+- **请求**：`GET /inner-api/v1/configs/tls_conf/server_data_conf`
+- **预期**：
+  - `ErrNum == 200`；
+  - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinity == true`；
+  - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinityTTL == 600`；
+  - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinityRedisPrefix == "bfe:ai:key_affinity"`；
+  - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinityPenaltyEnable == true`。
+
+#### IN-TLS-1-009 未配置 key_affinity 时 AIConf.KeyPolicy 为默认值
+
+- **前置**：创建集群时不传 `key_affinity`。
+- **请求**：`GET /inner-api/v1/configs/tls_conf/server_data_conf`
+- **预期**：
+  - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinity == false`；
+  - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinityTTL == 600`；
+  - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinityRedisPrefix == "bfe:ai:key_affinity"`；
+  - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinityPenaltyEnable == true`。
 
 ## 7. 数据清理
 

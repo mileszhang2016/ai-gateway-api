@@ -331,6 +331,7 @@ func normalizeLLMConfig(llm *icluster_conf.LLMConfig) *icluster_conf.LLMConfig {
 		ModelMappings: llm.ModelMappings,
 		Keys:          llm.Keys,
 		KeyPolicy:     llm.KeyPolicy,
+		KeyAffinity:   llm.KeyAffinity,
 		Provider:      llm.Provider,
 		MatchPrefix:   llm.MatchPrefix,
 		StripPrefix:   llm.StripPrefix,

@@ -185,4 +185,23 @@ func TestNormalizeLLMConfig(t *testing.T) {
 		assert.Equal(t, "openrouter/", *got.MatchPrefix)
 		assert.Equal(t, true, *got.StripPrefix)
 	})
+
+	t.Run("copies key_affinity", func(t *testing.T) {
+		in := &icluster_conf.LLMConfig{
+			Models: []string{"gpt-4"},
+			KeyAffinity: &icluster_conf.KeyAffinity{
+				Enabled:       lib.PBool(true),
+				TTL:           lib.PInt(600),
+				RedisPrefix:   lib.PString("bfe:ai:key_affinity"),
+				PenaltyEnable: lib.PBool(true),
+			},
+		}
+		got := normalizeLLMConfig(in)
+		require.NotNil(t, got)
+		require.NotNil(t, got.KeyAffinity)
+		assert.Equal(t, true, *got.KeyAffinity.Enabled)
+		assert.Equal(t, 600, *got.KeyAffinity.TTL)
+		assert.Equal(t, "bfe:ai:key_affinity", *got.KeyAffinity.RedisPrefix)
+		assert.Equal(t, true, *got.KeyAffinity.PenaltyEnable)
+	})
 }

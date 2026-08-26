@@ -54,6 +54,39 @@ var ModelTableSchema = &testutil.ObjectSchema{
 	},
 }
 
+// AIKeyPolicySchema AIConf.KeyPolicy 的 schema
+var AIKeyPolicySchema = &testutil.ObjectSchema{
+	Required: []string{
+		"Strategy", "MaxRetries", "RetryBackoffInitial", "RetryBackoffMax",
+		"SessionAffinity", "SessionAffinityTTL", "SessionAffinityRedisPrefix", "SessionAffinityPenaltyEnable",
+	},
+	Fields: map[string]testutil.FieldSpec{
+		"Strategy":                     {Type: testutil.TypeString},
+		"MaxRetries":                   {Type: testutil.TypeInt},
+		"RetryBackoffInitial":          {Type: testutil.TypeInt},
+		"RetryBackoffMax":              {Type: testutil.TypeInt},
+		"SessionAffinity":              {Type: testutil.TypeBool},
+		"SessionAffinityTTL":           {Type: testutil.TypeInt},
+		"SessionAffinityRedisPrefix":   {Type: testutil.TypeString},
+		"SessionAffinityPenaltyEnable": {Type: testutil.TypeBool},
+	},
+}
+
+// AIConfSchema ClusterConf.Config.<cluster>.AIConf 的 schema
+var AIConfSchema = &testutil.ObjectSchema{
+	Required: []string{"KeyPolicy"},
+	Optional: []string{"Keys", "ModelMappings", "ModelTable", "MatchPrefix", "StripPrefix", "ModelProtocols"},
+	Fields: map[string]testutil.FieldSpec{
+		"Keys":           {Type: testutil.TypeArray},
+		"KeyPolicy":      {Type: testutil.TypeObject, Nested: AIKeyPolicySchema},
+		"ModelMappings":  {Type: testutil.TypeObject},
+		"ModelTable":     {Type: testutil.TypeObject, Nested: ModelTableSchema},
+		"MatchPrefix":    {Type: testutil.TypeString},
+		"StripPrefix":    {Type: testutil.TypeBool},
+		"ModelProtocols": {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
+	},
+}
+
 // ServerDataConfSchema /configs/tls_conf/server_data_conf 返回 schema
 var ServerDataConfSchema = &testutil.ObjectSchema{
 	Required: []string{"Version", "HostTable", "RouteTable", "ClusterConf"},

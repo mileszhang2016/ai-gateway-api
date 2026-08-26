@@ -47,6 +47,7 @@ func TestClusters_Create(t *testing.T) {
 	providerFull := testutil.UniqueProviderName()
 	providerKeys := testutil.UniqueProviderName()
 	providerPrefix := testutil.UniqueProviderName()
+	providerAffinity := testutil.UniqueProviderName()
 	providerNotExist := testutil.UniqueProviderName()
 
 	if _, err := testutil.CreateProvider(providerFull, map[string]interface{}{
@@ -70,6 +71,11 @@ func TestClusters_Create(t *testing.T) {
 		"models": []string{"openrouter/anthropic/claude-sonnet-4"},
 	}); err != nil {
 		t.Fatalf("setup providerPrefix failed: %v", err)
+	}
+	if _, err := testutil.CreateProvider(providerAffinity, map[string]interface{}{
+		"models": []string{"deepseek-chat"},
+	}); err != nil {
+		t.Fatalf("setup providerAffinity failed: %v", err)
 	}
 
 	tests := []struct {
@@ -416,7 +422,63 @@ func TestClusters_Create(t *testing.T) {
 			wantCode: 422,
 		},
 		{
-			name: "CL-1-026 provider 不存在",
+			name: "CL-1-026 合法 key_affinity 配置",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"llm_config": map[string]interface{}{
+					"models": []string{"deepseek-chat"},
+					"key_affinity": map[string]interface{}{
+						"enabled":        true,
+						"ttl":            600,
+						"redis_prefix":   "bfe:ai:key_affinity",
+						"penalty_enable": true,
+					},
+					"provider": providerAffinity,
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				llm, _ := data["llm_config"].(map[string]interface{})
+				affinity, _ := llm["key_affinity"].(map[string]interface{})
+				assert.Equal(t, true, affinity["enabled"])
+				assert.Equal(t, float64(600), affinity["ttl"])
+				assert.Equal(t, "bfe:ai:key_affinity", affinity["redis_prefix"])
+				assert.Equal(t, true, affinity["penalty_enable"])
+			},
+		},
+		{
+			name: "CL-1-027 key_affinity.ttl ≤ 0",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"llm_config": map[string]interface{}{
+					"models": []string{"m"},
+					"key_affinity": map[string]interface{}{
+						"enabled": true,
+						"ttl":     0,
+					},
+					"provider": providerAffinity,
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-028 key_affinity.redis_prefix 为空",
+			body: map[string]interface{}{
+				"name": testutil.UniqueClusterName(),
+				"llm_config": map[string]interface{}{
+					"models": []string{"m"},
+					"key_affinity": map[string]interface{}{
+						"redis_prefix": "",
+					},
+					"provider": providerAffinity,
+				},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "CL-1-029 provider 不存在",
 			body: map[string]interface{}{
 				"name": testutil.UniqueClusterName(),
 				"llm_config": map[string]interface{}{
@@ -427,7 +489,7 @@ func TestClusters_Create(t *testing.T) {
 			wantCode: 422,
 		},
 		{
-			name: "CL-1-027 model 不在 provider 模型列表中",
+			name: "CL-1-030 model 不在 provider 模型列表中",
 			body: map[string]interface{}{
 				"name": testutil.UniqueClusterName(),
 				"llm_config": map[string]interface{}{
@@ -438,7 +500,7 @@ func TestClusters_Create(t *testing.T) {
 			wantCode: 422,
 		},
 		{
-			name: "CL-1-028 key name 不在 provider 中",
+			name: "CL-1-031 key name 不在 provider 中",
 			body: map[string]interface{}{
 				"name": testutil.UniqueClusterName(),
 				"llm_config": map[string]interface{}{
@@ -483,5 +545,6 @@ func TestClusters_Create(t *testing.T) {
 		testutil.DeleteProvider(providerFull)
 		testutil.DeleteProvider(providerKeys)
 		testutil.DeleteProvider(providerPrefix)
+		testutil.DeleteProvider(providerAffinity)
 	})
 }

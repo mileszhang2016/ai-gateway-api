@@ -696,6 +696,16 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 		}
 	}
 
+	// Validate key_affinity
+	if c.KeyAffinity != nil {
+		if c.KeyAffinity.TTL != nil && *c.KeyAffinity.TTL <= 0 {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_affinity.ttl must be > 0")
+		}
+		if c.KeyAffinity.RedisPrefix != nil && *c.KeyAffinity.RedisPrefix == "" {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_affinity.redis_prefix must not be empty")
+		}
+	}
+
 	// Validate prefix stripping configuration
 	if c.StripPrefix != nil && *c.StripPrefix {
 		if c.MatchPrefix == nil || *c.MatchPrefix == "" {

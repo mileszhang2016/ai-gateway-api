@@ -82,6 +82,12 @@
       "retry_backoff_initial": 500,
       "retry_backoff_max": 5000
     },
+    "key_affinity": {
+      "enabled": true,
+      "ttl": 600,
+      "redis_prefix": "bfe:ai:key_affinity",
+      "penalty_enable": true
+    },
     "provider": "deepseek",
     "match_prefix": "deepseek/",
     "strip_prefix": true
@@ -100,6 +106,7 @@
 | 改造（`llm_config.models`） | `models` | 须为 provider `models` 的子集。 |
 | 强化（`llm_config.provider`） | `provider` | 必填，且必须引用已存在的 provider。 |
 | 保留 | `model_mappings`、`key_policy`、`match_prefix`、`strip_prefix` | 行为不变。 |
+| 新增 | `key_affinity` | 基于 Redis + `ClientKeyId` 的会话级 Key 亲和性配置，包含 `enabled`、`ttl`、`redis_prefix`、`penalty_enable`。 |
 
 ## 5. 接口变化
 
@@ -207,7 +214,7 @@ BFE 接收到的配置结构和字段与重构前完全一致：
 | `AIConf.Models` | `cluster.llm_config.models` |
 | `AIConf.ModelMappings` | `cluster.llm_config.model_mappings` |
 | `AIConf.Keys` | `provider.keys`（key 明文） + `cluster.llm_config.keys`（weight）按 name join |
-| `AIConf.KeyPolicy` | `cluster.llm_config.key_policy` |
+| `AIConf.KeyPolicy` | `cluster.llm_config.key_policy` + `cluster.llm_config.key_affinity`（`SessionAffinity*` 字段来自 `key_affinity`） |
 | `AIConf.Provider` | `cluster.llm_config.provider` |
 | `AIConf.MatchPrefix` / `StripPrefix` | `cluster.llm_config.match_prefix` / `strip_prefix` |
 | `AIConf.ModelProtocols` | `provider.model_protocols`（按 `cluster.llm_config.provider` 引用透传） |

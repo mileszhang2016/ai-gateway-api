@@ -116,20 +116,32 @@ var KeyPolicySchema = &testutil.ObjectSchema{
 	},
 }
 
+// KeyAffinitySchema llm_config.key_affinity schema
+var KeyAffinitySchema = &testutil.ObjectSchema{
+	Required: []string{"enabled", "ttl", "redis_prefix", "penalty_enable"},
+	Fields: map[string]testutil.FieldSpec{
+		"enabled":        {Type: testutil.TypeBool},
+		"ttl":            {Type: testutil.TypeInt},
+		"redis_prefix":   {Type: testutil.TypeString},
+		"penalty_enable": {Type: testutil.TypeBool},
+	},
+}
+
 // LLMConfigSchema LLM 配置 schema
-// model_endpoint、model_mappings、keys、key_policy、match_prefix、strip_prefix
+// model_endpoint、model_mappings、keys、key_policy、key_affinity、match_prefix、strip_prefix
 // 在未配置时为 null，因此设为可选。
 var LLMConfigSchema = &testutil.ObjectSchema{
 	Required: []string{"models", "provider"},
 	Optional: []string{
 		"model_mappings", "keys",
-		"key_policy", "match_prefix", "strip_prefix",
+		"key_policy", "key_affinity", "match_prefix", "strip_prefix",
 	},
 	Fields: map[string]testutil.FieldSpec{
 		"models":         {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
 		"model_mappings": {Type: testutil.TypeArray, Elem: ModelMappingSchema},
 		"keys":           {Type: testutil.TypeArray, Elem: ClusterKeySchema},
 		"key_policy":     {Type: testutil.TypeObject, Nested: KeyPolicySchema},
+		"key_affinity":   {Type: testutil.TypeObject, Nested: KeyAffinitySchema},
 		"provider":       {Type: testutil.TypeString},
 		"match_prefix":   {Type: testutil.TypeString},
 		"strip_prefix":   {Type: testutil.TypeBool},
