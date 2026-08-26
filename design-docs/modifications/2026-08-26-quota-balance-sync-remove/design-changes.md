@@ -325,11 +325,12 @@ for each unit group:
    - 断言 `balance.remaining` 精度正确。
 
 3. **更新 quota_plan 后余额调整**
-   - 仅修改 quota：断言 `remaining` 为新 quota（无使用量时）。
+   - 仅修改 quota（无使用量）：断言 `remaining` 为新 quota。
+   - 仅修改 quota（存在使用量）：断言 `used = old_quota - current_remaining`、`remaining = max(0, new_quota - used)`。
    - 修改 unit：断言 `used=0`、`remaining=新 quota`。
    - unlimited false -> true：断言 `remaining=100000000`。
 
-> 注：当前集成测试使用内存 Mock Redis，测试进程无法直接写入 Redis 构造非零 used。非零 used 的保留 used 路径由单元测试覆盖。
+> 集成测试使用 `miniredis` 作为嵌入式 Redis，测试进程可直接写入 Redis 构造非零 used，从而完整覆盖“保留 used”路径。
 
 ---
 
@@ -361,7 +362,11 @@ SQLite 使用对应 UPDATE 语法。
 
 ---
 
-## 8. 后续可优化（本期不做）
+## 8. 后续可优化
 
-- 考虑引入 `miniredis` 替换集成测试中的内存 Mock Redis，使测试进程可以直接写入 Redis，从而完整覆盖“保留 used”的非零 used 路径。
+- [x] 引入 `miniredis` 替换集成测试中的内存 Mock Redis，测试进程可直接写入 Redis，完整覆盖“保留 used”的非零 used 路径。
+  - `test/integration/testutil/server.go`：启动 `miniredis`，写入 `name_conf.data` 并将 `RedisConf.Bns` 指向 miniredis。
+  - `test/integration/tests/api_key/quota_update/quota_update_test.go`：新增非零 used 场景。
+  - `test/integration/tests/entity/quota_update/quota_update_test.go`：新增非零 used 场景。
+  - `stateful/config_redis.go`：`name_conf.data` 路径优先从 `DefaultConfig.ConfigDir` 读取，保证子进程能正确解析 miniredis 地址。
 - 进一步评估是否将 `QuotaCache` 的批量读取抽象为独立服务，便于后续支持多 Redis 集群、读写分离等场景。

@@ -3,6 +3,7 @@ package testutil
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -10,8 +11,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	golibquota "github.com/bfenetworks/go-lib/quota"
 )
 
 // ServerManager 测试服务器管理器
@@ -24,6 +29,7 @@ type ServerManager struct {
 	ConfDir    string
 	binPath    string
 	tmpConfDir string
+	Redis      *miniredis.Miniredis
 }
 
 // StartServer 使用项目编译的 ai-gateway-api.exe 作为子进程启动测试服务器
@@ -82,13 +88,20 @@ func StartServer() (*ServerManager, error) {
 		return nil, fmt.Errorf("copy binary: %w", err)
 	}
 
-	// 5. 生成随机端口并创建临时配置文件
+	// 5. 启动嵌入式 Redis（miniredis），供测试进程直接写入配额等 Redis 数据
+	redisServer, err := miniredis.Run()
+	if err != nil {
+		return nil, fmt.Errorf("start miniredis: %w", err)
+	}
+	sm.Redis = redisServer
+
+	// 6. 生成随机端口并创建临时配置文件
 	port, err := getRandomPort()
 	if err != nil {
 		return nil, fmt.Errorf("get random port: %w", err)
 	}
 
-	tmpConfDir, err := createTempConfig(confDir, sm.binPath, dbPath, port)
+	tmpConfDir, err := createTempConfig(confDir, sm.binPath, dbPath, port, redisServer.Addr())
 	if err != nil {
 		return nil, fmt.Errorf("create temp config: %w", err)
 	}
@@ -175,6 +188,11 @@ func (sm *ServerManager) Shutdown() {
 	if sm.DBPath != "" {
 		CleanupTestDB(sm.DBPath)
 	}
+
+	// 关闭 miniredis
+	if sm.Redis != nil {
+		sm.Redis.Close()
+	}
 }
 
 // waitForReady 等待服务器就绪
@@ -201,8 +219,8 @@ func getRandomPort() (int, error) {
 	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 
-// createTempConfig 创建临时配置文件（覆盖端口和数据库路径）
-func createTempConfig(srcConfDir, binPath, dbPath string, port int) (string, error) {
+// createTempConfig 创建临时配置文件（覆盖端口、数据库路径和 Redis 配置）
+func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr string) (string, error) {
 	// 创建临时配置目录
 	tmpDir, err := os.MkdirTemp("", "ai-gateway-test-conf-")
 	if err != nil {
@@ -244,10 +262,47 @@ func createTempConfig(srcConfDir, binPath, dbPath string, port int) (string, err
 	// 替换数据库路径（使用正斜杠避免 TOML 转义问题）
 	dbPathForTOML := strings.ReplaceAll(dbPath, "\\", "/")
 	confStr = strings.Replace(confStr, `DBName  = "./data/test_ai_gateway.db"`, fmt.Sprintf(`DBName  = "%s"`, dbPathForTOML), 1)
+	// 替换 Redis 配置为指向 miniredis
+	confStr = strings.Replace(confStr, `Bns = "mock"`, `Bns = "test.redis.miniredis"`, 1)
+	confStr = strings.Replace(confStr, `ClusterMode = "mock"`, `ClusterMode = "proxy"`, 1)
 
 	if err := os.WriteFile(confFile, []byte(confStr), 0644); err != nil {
 		os.RemoveAll(tmpDir)
 		return "", err
+	}
+
+	// 写入 name_conf.data，让 redis_client 能解析到 miniredis 地址
+	host, redisPort, err := net.SplitHostPort(redisAddr)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("split redis addr %s: %w", redisAddr, err)
+	}
+	redisPortInt, err := strconv.Atoi(redisPort)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("parse redis port %s: %w", redisPort, err)
+	}
+	nameConf := map[string]interface{}{
+		"Version": "init version",
+		"Config": map[string]interface{}{
+			"test.redis.miniredis": []map[string]interface{}{
+				{
+					"Host":   host,
+					"Port":   redisPortInt,
+					"Weight": 10,
+				},
+			},
+		},
+	}
+	nameConfData, err := json.Marshal(nameConf)
+	if err != nil {
+		os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("marshal name conf: %w", err)
+	}
+	nameConfPath := filepath.Join(tmpDir, "name_conf.data")
+	if err := os.WriteFile(nameConfPath, nameConfData, 0644); err != nil {
+		os.RemoveAll(tmpDir)
+		return "", fmt.Errorf("write name conf: %w", err)
 	}
 
 	return tmpDir, nil
@@ -294,6 +349,35 @@ func copyDir(src, dst string) error {
 		}
 	}
 	return nil
+}
+
+// SetQuotaRemaining 直接设置 miniredis 中某 owner 的配额剩余量。
+// ownerKey 为 API-Key ID 或 Entity ID；unit 为 total_token/RMB 等配额单位。
+func (sm *ServerManager) SetQuotaRemaining(ownerKey string, remaining float64, unit string) {
+	if sm.Redis == nil {
+		return
+	}
+	redisKey := fmt.Sprintf("QUOTA_%s", ownerKey)
+	value := golibquota.ToRedisValue(remaining, unit)
+	sm.Redis.Set(redisKey, fmt.Sprintf("%d", value))
+}
+
+// GetQuotaRemaining 读取 miniredis 中某 owner 的配额剩余量。
+func (sm *ServerManager) GetQuotaRemaining(ownerKey string, unit string) float64 {
+	if sm.Redis == nil {
+		return 0
+	}
+	redisKey := fmt.Sprintf("QUOTA_%s", ownerKey)
+	v, err := sm.Redis.Get(redisKey)
+	if err != nil {
+		return 0
+	}
+	var value int64
+	_, err = fmt.Sscanf(v, "%d", &value)
+	if err != nil {
+		return 0
+	}
+	return golibquota.FromRedisValue(value, unit)
 }
 
 // findIntegrationRoot 查找 integration 目录
