@@ -16,19 +16,21 @@ package quota
 
 import (
 	"context"
+	"time"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 // QuotaPlanParam 定义配额计划参数
 type QuotaPlanParam struct {
-	ID                    *int64   `json:"id"`
-	Unlimited             *bool    `json:"unlimited"`
-	PassWhenNoEnoughQuota *bool    `json:"pass_when_no_enough_quota"`
-	Quota                 *float64 `json:"quota"`
-	Unit                  *string  `json:"unit"`
-	ResetPeriod           *string  `json:"reset_period"`
-	CreateTime            *int64   `json:"create_time"`
+	ID                    *int64     `json:"id"`
+	Unlimited             *bool      `json:"unlimited"`
+	PassWhenNoEnoughQuota *bool      `json:"pass_when_no_enough_quota"`
+	Quota                 *float64   `json:"quota"`
+	Unit                  *string    `json:"unit"`
+	ResetPeriod           *string    `json:"reset_period"`
+	LastResetAt           *time.Time `json:"last_reset_at"`
+	CreateTime            *int64     `json:"create_time"`
 }
 
 // QuotaPlanFilter 定义配额计划过滤条件
@@ -60,6 +62,7 @@ func (a *quotaPlanStoragerAdapter) CreateQuotaPlan(ctx context.Context, param *s
 		Quota:                 param.Quota,
 		Unit:                  param.Unit,
 		ResetPeriod:           param.ResetPeriod,
+		LastResetAt:           param.LastResetAt,
 	})
 }
 
@@ -70,6 +73,7 @@ func (a *quotaPlanStoragerAdapter) UpdateQuotaPlan(ctx context.Context, id int64
 		Quota:                 param.Quota,
 		Unit:                  param.Unit,
 		ResetPeriod:           param.ResetPeriod,
+		LastResetAt:           param.LastResetAt,
 	})
 }
 
@@ -91,6 +95,7 @@ func (a *quotaPlanStoragerAdapter) FetchQuotaPlan(ctx context.Context, id int64)
 		Quota:                 result.Quota,
 		Unit:                  result.Unit,
 		ResetPeriod:           result.ResetPeriod,
+		LastResetAt:           result.LastResetAt,
 	}, nil
 }
 

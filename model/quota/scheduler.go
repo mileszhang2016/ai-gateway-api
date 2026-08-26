@@ -25,7 +25,6 @@ import (
 
 // BalanceSyncer defines the operations required by QuotaResetScheduler.
 type BalanceSyncer interface {
-	SyncAllBalances(ctx context.Context) error
 	ResetExpiredBalances(ctx context.Context) error
 }
 
@@ -102,14 +101,7 @@ func (s *QuotaResetScheduler) resetQuotas() {
 
 	stateful.AccessLogger.Info("Starting quota scheduler tasks at %v", now)
 
-	// 1. 从 Redis 更新每个 quota_plan 对应的 quota_balance 的配额余量
-	if err := s.balanceSyncMgr.SyncAllBalances(ctx); err != nil {
-		stateful.AccessLogger.Error("Failed to sync all balances: %v", err)
-	} else {
-		stateful.AccessLogger.Info("Successfully synced all balances from Redis")
-	}
-
-	// 2. 查找所有 unlimited=0 的 quota_plan 中是否达到重置的时间条件，达到后执行向 Redis 重置配额余额
+	// 查找所有 unlimited=0 的 quota_plan 中是否达到重置的时间条件，达到后执行向 Redis 重置配额余额
 	if err := s.balanceSyncMgr.ResetExpiredBalances(ctx); err != nil {
 		stateful.AccessLogger.Error("Failed to reset expired balances: %v", err)
 	} else {

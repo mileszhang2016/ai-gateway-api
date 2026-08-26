@@ -3,6 +3,7 @@ package shared
 import (
 	"context"
 	"encoding/json"
+	"time"
 )
 
 type EntitySummary struct {
@@ -29,18 +30,13 @@ type BalanceSummary struct {
 	Remaining *float64 `json:"remaining"`
 }
 
-type QuotaBalanceStorager interface {
-	FetchQuotaBalance(ctx context.Context, quotaPlanID int64) (*BalanceSummary, error)
-	CreateQuotaBalance(ctx context.Context, quotaPlanID int64, remaining *float64) error
-	DeleteQuotaBalance(ctx context.Context, quotaPlanID int64) error
-}
-
 type QuotaPlanParam struct {
 	Unlimited             *bool           `json:"unlimited"`
 	PassWhenNoEnoughQuota *bool           `json:"pass_when_no_enough_quota"`
 	Quota                 *float64        `json:"quota"`
 	Unit                  *string         `json:"unit"`
 	ResetPeriod           *string         `json:"reset_period"`
+	LastResetAt           *time.Time      `json:"last_reset_at,omitempty"`
 	Balance               *BalanceSummary `json:"balance,omitempty"`
 }
 

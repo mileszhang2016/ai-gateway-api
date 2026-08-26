@@ -342,7 +342,7 @@ for _, apiKey := range apiKeys {
 - `/api-keys/{id}/quota-plan`：返回 API-Key 自身配额计划（含 `balance`）；
 - `/entities/{id}/quota-plan`：返回 Entity 自身配额计划（含 `balance`）。
 
-`GET /api-keys` 与 `GET /api-keys/{id}` 的返回中，`quota_plan` 同样包含 `balance`，由 `populateAssociatedData` 从 `quota_balances` 表填充。
+`GET /api-keys` 与 `GET /api-keys/{id}` 的返回中，`quota_plan` 同样包含 `balance`，由 `populateAssociatedData` 通过 `quotaCache` 实时读取 Redis 填充；无限配额返回 sentinel balance（`used=0`, `remaining=100000000`）。
 
 ---
 
@@ -355,24 +355,24 @@ for _, apiKey := range apiKeys {
 1. 校验 Entity-Type 和父 Entity 层级；
 2. 创建 QuotaPlan、RateLimitPolicy、RouteRules（如有）；
 3. 创建 Entity；
-4. 创建 `quota_balances` 记录。
+4. 事务提交后，若配额有限，通过 `quotaCache.SetRemaining` 向 Redis 写入初始剩余量。
 
 ### 10.2 删除 Entity
 
 `EntityManager.DeleteEntity`：
 
 1. 检查是否有子 Entity；
-2. 级联删除 `quota_balance`、`quota_plan`、`rate_limit_policy`、`route_rules`；
-3. 删除 Entity。
+2. 级联删除 `quota_plan`、`rate_limit_policy`、`route_rules`；
+3. 删除 Entity；
+4. 事务提交后，调用 `quotaCache.DeleteKeys` 删除对应 Redis Key。
 
 ### 10.3 删除 API-Key
 
 `APIKeyManager.DeleteAPIKey`：
 
-1. 级联删除 API-Key 自身关联的 `quota_balance`、`quota_plan`、`rate_limit_policy`、`route_rules`；
-2. 删除 API-Key。
-
-> 注意：删除 API-Key 或 Entity **不会主动删除 Redis Key**，由 Redis 自身管理。
+1. 级联删除 API-Key 自身关联的 `quota_plan`、`rate_limit_policy`、`route_rules`；
+2. 删除 API-Key；
+3. 事务提交后，调用 `quotaCache.DeleteKeys` 删除对应 Redis Key。
 
 ---
 

@@ -90,8 +90,16 @@ func TestGetRemainingQuota(t *testing.T) {
 	})
 }
 
+func TestFillUnlimitedQuotaBalance(t *testing.T) {
+	quotaPlan := &shared.QuotaPlanParam{Unlimited: ptrBool(true)}
+	fillUnlimitedQuotaBalance(quotaPlan)
+	require.NotNil(t, quotaPlan.Balance)
+	assert.Equal(t, float64(0), *quotaPlan.Balance.Used)
+	assert.Equal(t, float64(100000000), *quotaPlan.Balance.Remaining)
+}
+
 func newAPIKeyManager(storager *fakeAPIKeyStorager) *APIKeyManager {
-	return NewAPIKeyManager(&fakeTxn{}, storager, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, &fakeQuotaBalanceStorager{}, nil)
+	return NewAPIKeyManager(&fakeTxn{}, storager, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, nil)
 }
 
 func TestAPIKeyManager_FetchAPIKeyList(t *testing.T) {
@@ -175,7 +183,6 @@ func TestAPIKeyManager_DeleteAPIKey(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		deleted := false
 		quotaDeleted := false
-		balanceDeleted := false
 		rateLimitDeleted := false
 		routeDeleted := false
 		store := &fakeAPIKeyStorager{
@@ -211,17 +218,10 @@ func TestAPIKeyManager_DeleteAPIKey(t *testing.T) {
 					return nil
 				},
 			},
-			&fakeEntityStorager{},
-			&fakeQuotaBalanceStorager{
-				deleteQuotaBalanceFn: func(ctx context.Context, quotaPlanID int64) error {
-					balanceDeleted = true
-					return nil
-				},
-			}, nil)
+			&fakeEntityStorager{}, nil)
 		err := m.DeleteAPIKey(ctx, &APIKeyFilter{})
 		require.NoError(t, err)
 		assert.True(t, deleted)
-		assert.True(t, balanceDeleted)
 		assert.True(t, quotaDeleted)
 		assert.True(t, rateLimitDeleted)
 		assert.True(t, routeDeleted)
@@ -256,13 +256,7 @@ func TestAPIKeyManager_DeleteAPIKey(t *testing.T) {
 			},
 		}
 		cache := &fakeQuotaCache{}
-		m := NewAPIKeyManager(&fakeTxn{}, store,
-			&fakeQuotaPlanStorager{deleteQuotaPlanFn: func(ctx context.Context, id int64) error { return nil }},
-			rateLimitStore,
-			&fakeRouteRulesStorager{},
-			&fakeEntityStorager{},
-			&fakeQuotaBalanceStorager{deleteQuotaBalanceFn: func(ctx context.Context, quotaPlanID int64) error { return nil }},
-			cache)
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeQuotaPlanStorager{deleteQuotaPlanFn: func(ctx context.Context, id int64) error { return nil }}, rateLimitStore, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, cache)
 
 		err := m.DeleteAPIKey(ctx, &APIKeyFilter{})
 		require.NoError(t, err)
@@ -333,7 +327,7 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 				return 1, nil
 			},
 		}
-		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, &fakeQuotaBalanceStorager{}, nil)
+		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, nil)
 		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
 			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
@@ -361,14 +355,7 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 				return 20, nil
 			},
 		}
-		balanceStore := &fakeQuotaBalanceStorager{
-			createQuotaBalanceFn: func(ctx context.Context, quotaPlanID int64, remaining *float64) error {
-				assert.Equal(t, int64(20), quotaPlanID)
-				assert.Equal(t, float64(100), *remaining)
-				return nil
-			},
-		}
-		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, balanceStore, nil)
+				m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, nil)
 		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
 			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
@@ -395,7 +382,7 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 			},
 		}
 		cache := &fakeQuotaCache{}
-		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, &fakeQuotaBalanceStorager{}, cache)
+		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, cache)
 		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
 			Description: ptrString("new desc"),
 			QuotaPlan:   &shared.QuotaPlanParam{Quota: ptrFloat64(200)},
@@ -434,8 +421,7 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 			},
 		}
 		cache := &fakeQuotaCache{}
-		m := NewAPIKeyManager(&fakeTxn{}, store,
-			&fakeQuotaPlanStorager{}, rateLimitStore, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, &fakeQuotaBalanceStorager{}, cache)
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeQuotaPlanStorager{}, rateLimitStore, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, cache)
 
 		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
 			RateLimitPolicy: &shared.RateLimitPolicyParam{
@@ -502,7 +488,7 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 				return nil, nil
 			},
 		}
-		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, entityStore, &fakeQuotaBalanceStorager{}, nil)
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, entityStore, nil)
 		err := m.CreateAPIKey(ctx, &APIKeyParam{
 			ID:          ptrString("id1"),
 			ProductName: ptrString("test"),
@@ -539,7 +525,6 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 		quotaCreated := false
 		rateLimitCreated := false
 		routeCreated := false
-		balanceCreated := false
 		store := &fakeAPIKeyStorager{
 			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
 				return nil, nil
@@ -571,13 +556,7 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 				return 30, nil
 			},
 		}
-		balanceStore := &fakeQuotaBalanceStorager{
-			createQuotaBalanceFn: func(ctx context.Context, quotaPlanID int64, remaining *float64) error {
-				balanceCreated = true
-				return nil
-			},
-		}
-		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, rateLimitStore, routeRulesStore, &fakeEntityStorager{}, balanceStore, nil)
+				m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, rateLimitStore, routeRulesStore, &fakeEntityStorager{}, nil)
 		err := m.CreateAPIKey(ctx, &APIKeyParam{
 			ID:              ptrString("id1"),
 			ProductName:     ptrString("test"),
@@ -591,7 +570,6 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 		assert.True(t, quotaCreated)
 		assert.True(t, rateLimitCreated)
 		assert.True(t, routeCreated)
-		assert.True(t, balanceCreated)
 	})
 
 	t.Run("fetch api key list error", func(t *testing.T) {

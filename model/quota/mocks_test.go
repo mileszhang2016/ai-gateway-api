@@ -190,68 +190,6 @@ func (s *fakeRateLimitPolicyStorager) DeleteRateLimitPolicy(ctx context.Context,
 
 var _ rate_limit_policy.RateLimitPolicyStorager = (*fakeRateLimitPolicyStorager)(nil)
 
-// fakeQuotaBalanceStorager 实现 quota.QuotaBalanceStorager
-type fakeQuotaBalanceStorager struct {
-	createFn func(ctx context.Context, param *QuotaBalanceParam) (int64, error)
-	fetchFn  func(ctx context.Context, filter *QuotaBalanceFilter) (*QuotaBalanceParam, error)
-	listFn   func(ctx context.Context, filter *QuotaBalanceFilter) ([]*QuotaBalanceParam, error)
-	updateFn func(ctx context.Context, filter *QuotaBalanceFilter, param *QuotaBalanceParam) (int64, error)
-	deleteFn func(ctx context.Context, filter *QuotaBalanceFilter) error
-
-	created []*QuotaBalanceParam
-	fetched []*QuotaBalanceFilter
-	listed  []*QuotaBalanceFilter
-	updated []updateQuotaBalanceCall
-	deleted []*QuotaBalanceFilter
-}
-
-type updateQuotaBalanceCall struct {
-	filter *QuotaBalanceFilter
-	param  *QuotaBalanceParam
-}
-
-func (s *fakeQuotaBalanceStorager) CreateQuotaBalance(ctx context.Context, param *QuotaBalanceParam) (int64, error) {
-	s.created = append(s.created, param)
-	if s.createFn != nil {
-		return s.createFn(ctx, param)
-	}
-	return 0, nil
-}
-
-func (s *fakeQuotaBalanceStorager) FetchQuotaBalance(ctx context.Context, filter *QuotaBalanceFilter) (*QuotaBalanceParam, error) {
-	s.fetched = append(s.fetched, filter)
-	if s.fetchFn != nil {
-		return s.fetchFn(ctx, filter)
-	}
-	return nil, nil
-}
-
-func (s *fakeQuotaBalanceStorager) FetchQuotaBalanceList(ctx context.Context, filter *QuotaBalanceFilter) ([]*QuotaBalanceParam, error) {
-	s.listed = append(s.listed, filter)
-	if s.listFn != nil {
-		return s.listFn(ctx, filter)
-	}
-	return nil, nil
-}
-
-func (s *fakeQuotaBalanceStorager) UpdateQuotaBalance(ctx context.Context, filter *QuotaBalanceFilter, param *QuotaBalanceParam) (int64, error) {
-	s.updated = append(s.updated, updateQuotaBalanceCall{filter: filter, param: param})
-	if s.updateFn != nil {
-		return s.updateFn(ctx, filter, param)
-	}
-	return 0, nil
-}
-
-func (s *fakeQuotaBalanceStorager) DeleteQuotaBalance(ctx context.Context, filter *QuotaBalanceFilter) error {
-	s.deleted = append(s.deleted, filter)
-	if s.deleteFn != nil {
-		return s.deleteFn(ctx, filter)
-	}
-	return nil
-}
-
-var _ QuotaBalanceStorager = (*fakeQuotaBalanceStorager)(nil)
-
 // fakeRouteRulesStorager 实现 shared.RouteRulesStorager
 type fakeRouteRulesStorager struct {
 	createFn    func(ctx context.Context, ruleType string, owner *string, param *shared.RouteRulesParam) (int64, error)
@@ -413,6 +351,7 @@ type fakeQuotaCache struct {
 	resetToQuotaCalls []quotaCacheResetToQuotaCall
 	deleteKeysCalls   [][]string
 	getRemainingFn    func(ctx context.Context, key string, unit *string) (float64, error)
+	batchGetRemainingFn func(ctx context.Context, keys []string, unit *string) (map[string]float64, error)
 	setRemainingFn    func(ctx context.Context, key string, quota *float64, unit *string) error
 	resetToQuotaFn    func(ctx context.Context, key string, quota *float64, unit *string) error
 	deleteKeysFn      func(ctx context.Context, keys []string) error
@@ -435,6 +374,17 @@ func (c *fakeQuotaCache) GetRemaining(ctx context.Context, key string, unit *str
 		return c.getRemainingFn(ctx, key, unit)
 	}
 	return 0, nil
+}
+
+func (c *fakeQuotaCache) BatchGetRemaining(ctx context.Context, keys []string, unit *string) (map[string]float64, error) {
+	if c.batchGetRemainingFn != nil {
+		return c.batchGetRemainingFn(ctx, keys, unit)
+	}
+	result := make(map[string]float64, len(keys))
+	for _, k := range keys {
+		result[k] = 0
+	}
+	return result, nil
 }
 
 func (c *fakeQuotaCache) SetRemaining(ctx context.Context, key string, quota *float64, unit *string) error {

@@ -23,13 +23,7 @@ import (
 
 // spyBalanceSyncer implements BalanceSyncer and records method calls.
 type spyBalanceSyncer struct {
-	syncAllCalled      bool
 	resetExpiredCalled bool
-}
-
-func (s *spyBalanceSyncer) SyncAllBalances(ctx context.Context) error {
-	s.syncAllCalled = true
-	return nil
 }
 
 func (s *spyBalanceSyncer) ResetExpiredBalances(ctx context.Context) error {
@@ -43,7 +37,6 @@ func TestQuotaResetScheduler_ResetQuotas(t *testing.T) {
 
 	scheduler.resetQuotas()
 
-	assert.True(t, spy.syncAllCalled, "SyncAllBalances should be called")
 	assert.True(t, spy.resetExpiredCalled, "ResetExpiredBalances should be called")
 }
 

@@ -37,7 +37,7 @@ type EntityGetQuotaPlanResponse struct {
 	Quota                 *float64 `json:"quota"`
 	Unit                  *string  `json:"unit"`
 	ResetPeriod           *string  `json:"reset_period"`
-	Balance               *Balance `json:"balance"`
+	Balance               *Balance `json:"balance,omitempty"`
 }
 
 type Balance struct {
@@ -71,33 +71,18 @@ func EntityGetQuotaPlanAction(req *http.Request) (interface{}, error) {
 	}
 
 	var balance *Balance
-	if entity.QuotaPlanID != nil {
-		balanceData, err := container.QuotaPlanManager.FetchQuotaBalance(req.Context(), *entity.QuotaPlanID)
-		if err != nil {
-			return nil, err
+	if entity.QuotaPlan != nil && entity.QuotaPlan.Balance != nil {
+		used := float64(0)
+		if entity.QuotaPlan.Balance.Used != nil {
+			used = *entity.QuotaPlan.Balance.Used
 		}
-		if balanceData != nil {
-			used := float64(0)
-			if balanceData.Used != nil {
-				used = *balanceData.Used
-			}
-			remaining := float64(0)
-			if balanceData.Remaining != nil {
-				remaining = *balanceData.Remaining
-			}
-			balance = &Balance{
-				Used:      used,
-				Remaining: remaining,
-			}
-		} else {
-			remaining := float64(0)
-			if entity.QuotaPlan.Quota != nil {
-				remaining = *entity.QuotaPlan.Quota
-			}
-			balance = &Balance{
-				Used:      0,
-				Remaining: remaining,
-			}
+		remaining := float64(0)
+		if entity.QuotaPlan.Balance.Remaining != nil {
+			remaining = *entity.QuotaPlan.Balance.Remaining
+		}
+		balance = &Balance{
+			Used:      used,
+			Remaining: remaining,
 		}
 	}
 

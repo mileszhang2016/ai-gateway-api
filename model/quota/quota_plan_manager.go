@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
@@ -30,24 +29,22 @@ import (
 
 // QuotaPlanManager 定义配额计划管理器
 type QuotaPlanManager struct {
-	txn             itxn.TxnStorager
-	storager        QuotaPlanStorager
-	balanceStorager QuotaBalanceStorager
-	apiKeyStorager  api_key.APIKeyStorager
-	entityStorager  entity.EntityStorager
-	quotaCache      quotacache.QuotaCache
+	txn            itxn.TxnStorager
+	storager       QuotaPlanStorager
+	apiKeyStorager api_key.APIKeyStorager
+	entityStorager entity.EntityStorager
+	quotaCache     quotacache.QuotaCache
 }
 
 // NewQuotaPlanManager 创建配额计划管理器
-func NewQuotaPlanManager(txn itxn.TxnStorager, storager QuotaPlanStorager, balanceStorager QuotaBalanceStorager,
+func NewQuotaPlanManager(txn itxn.TxnStorager, storager QuotaPlanStorager,
 	apiKeyStorager api_key.APIKeyStorager, entityStorager entity.EntityStorager, quotaCache quotacache.QuotaCache) *QuotaPlanManager {
 	return &QuotaPlanManager{
-		txn:             txn,
-		storager:        storager,
-		balanceStorager: balanceStorager,
-		apiKeyStorager:  apiKeyStorager,
-		entityStorager:  entityStorager,
-		quotaCache:      quotaCache,
+		txn:            txn,
+		storager:       storager,
+		apiKeyStorager: apiKeyStorager,
+		entityStorager: entityStorager,
+		quotaCache:     quotaCache,
 	}
 }
 
@@ -113,45 +110,24 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 		}
 		planUnit = plan.Unit
 
-		// 4. 获取或创建 Balance
-		balance, err := m.balanceStorager.FetchQuotaBalance(ctx, &QuotaBalanceFilter{QuotaPlanID: &planID})
-		if err != nil {
-			return err
-		}
-
-		// 5. 准备更新参数
-		updateParam := &QuotaBalanceParam{
-			Used:      lib.PFloat64(0),
-			Remaining: resetQuota,
-		}
-
-		// 6. 根据参数决定是否更新 last_reset_at
-		now := time.Now()
+		// 4. 根据参数决定是否更新 quota_plans.last_reset_at
 		if updateLastResetAt {
-			updateParam.LastResetAt = &now
-		}
-
-		// 7. 更新余额
-		if balance == nil {
-			// 创建新的余额记录，LastResetAt 初始化为当前时间
-			_, err = m.balanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
-				QuotaPlanID: &planID,
-				Used:        lib.PFloat64(0),
-				Remaining:   resetQuota,
+			now := time.Now()
+			_, err = m.storager.UpdateQuotaPlan(ctx, &QuotaPlanFilter{ID: &planID}, &QuotaPlanParam{
 				LastResetAt: &now,
 			})
-		} else {
-			// 更新现有余额记录
-			_, err = m.balanceStorager.UpdateQuotaBalance(ctx, &QuotaBalanceFilter{ID: balance.ID}, updateParam)
+			if err != nil {
+				return err
+			}
 		}
 
-		return err
+		return nil
 	})
 	if err != nil {
 		return err
 	}
 
-	// 8. 重置该 quota_plan 下所有 API-Key / Entity 的 Redis 剩余量（事务外，最终一致）
+	// 5. 重置该 quota_plan 下所有 API-Key / Entity 的 Redis 剩余量（事务外，最终一致）
 	if m.quotaCache == nil || resetQuota == nil {
 		return nil
 	}
@@ -202,15 +178,15 @@ func (m *QuotaPlanManager) ApplyQuotaPlanChange(ctx context.Context, planID int6
 	return m.adjustQuota(ctx, planID, oldPlan, newPlan)
 }
 
-// adjustQuota 在 quota / unit / unlimited 变化时调整余额并同步 Redis。
+// adjustQuota 在 quota / unit / unlimited 变化时调整 Redis 余额。
 // - quota 变化、单位不变：保留 used，remaining = max(0, newQuota - used)。
-// - unit 变化 或 unlimited 切换：used 清零，remaining 置为新配额（unlimited 时用 sentinel）。
+// - 新建计划、unit 变化 或 unlimited 切换：used 清零，remaining 置为新配额（unlimited 时用 sentinel）。
 func (m *QuotaPlanManager) adjustQuota(ctx context.Context, planID int64, oldPlan, newPlan *shared.QuotaPlanParam) error {
 	var (
-		newUsed      *float64
-		newRemaining *float64
+		newQuota     *float64
+		oldQuota     *float64
 		planUnit     *string
-		resetRedis   bool
+		useReset     bool
 	)
 
 	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
@@ -237,9 +213,12 @@ func (m *QuotaPlanManager) adjustQuota(ctx context.Context, planID int64, oldPla
 			newUnit = *newPlan.Unit
 		}
 
-		newQuota := plan.Quota
+		newQuota = plan.Quota
 		if newPlan.Quota != nil {
 			newQuota = newPlan.Quota
+		}
+		if oldPlan != nil {
+			oldQuota = oldPlan.Quota
 		}
 
 		if plan.Unit != nil {
@@ -248,62 +227,26 @@ func (m *QuotaPlanManager) adjustQuota(ctx context.Context, planID int64, oldPla
 			planUnit = &newUnit
 		}
 
-		balance, err := m.balanceStorager.FetchQuotaBalance(ctx, &QuotaBalanceFilter{QuotaPlanID: &planID})
-		if err != nil {
-			return err
-		}
-
 		switch {
 		case newUnlimited:
-			newUsed = lib.PFloat64(0)
 			sentinel := float64(100000000)
-			newRemaining = &sentinel
-			resetRedis = true
+			newQuota = &sentinel
+			useReset = true
 		case oldPlan == nil || oldUnlimited || oldUnit != newUnit:
 			// 新建配额计划、从无限制切换为有限额、或单位变化：按全新配额重置。
-			newUsed = lib.PFloat64(0)
-			newRemaining = newQuota
-			resetRedis = true
+			useReset = true
 		default:
-			// 配额总额变化，单位不变：保留已使用量。
-			oldUsed := float64(0)
-			if balance != nil && balance.Used != nil {
-				oldUsed = *balance.Used
-			}
-			remaining := float64(0)
-			if newQuota != nil {
-				remaining = *newQuota - oldUsed
-				if remaining < 0 {
-					remaining = 0
-				}
-			}
-			newUsed = &oldUsed
-			newRemaining = &remaining
-			resetRedis = false
+			// 配额总额变化，单位不变：保留已使用量，在事务外根据 Redis 实时剩余量计算。
+			useReset = false
 		}
 
-		updateParam := &QuotaBalanceParam{
-			Used:      newUsed,
-			Remaining: newRemaining,
-		}
-		if balance == nil {
-			now := time.Now()
-			_, err = m.balanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
-				QuotaPlanID: &planID,
-				Used:        newUsed,
-				Remaining:   newRemaining,
-				LastResetAt: &now,
-			})
-		} else {
-			_, err = m.balanceStorager.UpdateQuotaBalance(ctx, &QuotaBalanceFilter{ID: balance.ID}, updateParam)
-		}
-		return err
+		return nil
 	})
 	if err != nil {
 		return err
 	}
 
-	if m.quotaCache == nil || newRemaining == nil {
+	if m.quotaCache == nil || newQuota == nil {
 		return nil
 	}
 
@@ -312,44 +255,99 @@ func (m *QuotaPlanManager) adjustQuota(ctx context.Context, planID int64, oldPla
 		stateful.AccessLogger.Warn("failed to fetch api keys for quota plan %d: %v", planID, err)
 		return nil
 	}
-	for _, ak := range apiKeys {
-		if ak.Key == nil {
-			continue
-		}
-		if resetRedis {
-			if cacheErr := m.quotaCache.ResetToQuota(ctx, *ak.Key, newRemaining, planUnit); cacheErr != nil {
-				stateful.AccessLogger.Warn("failed to reset quota cache for api_key %s: %v", *ak.Key, cacheErr)
-			}
-		} else {
-			if cacheErr := m.quotaCache.SetRemaining(ctx, *ak.Key, newRemaining, planUnit); cacheErr != nil {
-				stateful.AccessLogger.Warn("failed to set quota cache for api_key %s: %v", *ak.Key, cacheErr)
-			}
-		}
+
+	entities, err := m.fetchEntitiesByPlan(ctx, planID)
+	if err != nil {
+		return nil
 	}
 
-	if m.entityStorager != nil {
-		entities, err := m.entityStorager.FetchEntityList(ctx, &entity.EntityFilter{QuotaPlanID: &planID})
-		if err != nil {
-			stateful.AccessLogger.Warn("failed to fetch entities for quota plan %d: %v", planID, err)
-			return nil
+	oldQuotaValue := float64(0)
+	if oldQuota != nil {
+		oldQuotaValue = *oldQuota
+	}
+
+	if useReset {
+		for _, ak := range apiKeys {
+			if ak.Key == nil {
+				continue
+			}
+			if cacheErr := m.quotaCache.ResetToQuota(ctx, *ak.Key, newQuota, planUnit); cacheErr != nil {
+				stateful.AccessLogger.Warn("failed to reset quota cache for api_key %s: %v", *ak.Key, cacheErr)
+			}
 		}
 		for _, ent := range entities {
 			if ent.EntityID == nil {
 				continue
 			}
-			if resetRedis {
-				if cacheErr := m.quotaCache.ResetToQuota(ctx, *ent.EntityID, newRemaining, planUnit); cacheErr != nil {
-					stateful.AccessLogger.Warn("failed to reset quota cache for entity %s: %v", *ent.EntityID, cacheErr)
-				}
-			} else {
-				if cacheErr := m.quotaCache.SetRemaining(ctx, *ent.EntityID, newRemaining, planUnit); cacheErr != nil {
-					stateful.AccessLogger.Warn("failed to set quota cache for entity %s: %v", *ent.EntityID, cacheErr)
-				}
+			if cacheErr := m.quotaCache.ResetToQuota(ctx, *ent.EntityID, newQuota, planUnit); cacheErr != nil {
+				stateful.AccessLogger.Warn("failed to reset quota cache for entity %s: %v", *ent.EntityID, cacheErr)
 			}
+		}
+		return nil
+	}
+
+	// quota 变化且单位不变：批量读取当前剩余量，按新配额保留 used 后下发。
+	allKeys := make([]string, 0, len(apiKeys)+len(entities))
+	keyOwners := make([]struct {
+		key      string
+		isAPIKey bool
+	}, 0, len(apiKeys)+len(entities))
+	for _, ak := range apiKeys {
+		if ak.Key == nil {
+			continue
+		}
+		allKeys = append(allKeys, *ak.Key)
+		keyOwners = append(keyOwners, struct {
+			key      string
+			isAPIKey bool
+		}{key: *ak.Key, isAPIKey: true})
+	}
+	for _, ent := range entities {
+		if ent.EntityID == nil {
+			continue
+		}
+		allKeys = append(allKeys, *ent.EntityID)
+		keyOwners = append(keyOwners, struct {
+			key      string
+			isAPIKey bool
+		}{key: *ent.EntityID, isAPIKey: false})
+	}
+
+	remainMap, err := m.quotaCache.BatchGetRemaining(ctx, allKeys, planUnit)
+	if err != nil {
+		stateful.AccessLogger.Warn("failed to batch get remaining for quota plan %d: %v", planID, err)
+		return nil
+	}
+
+	for _, owner := range keyOwners {
+		currentRemaining := remainMap[owner.key]
+		used := oldQuotaValue - currentRemaining
+		if used < 0 {
+			used = 0
+		}
+		targetRemaining := *newQuota - used
+		if targetRemaining < 0 {
+			targetRemaining = 0
+		}
+		if cacheErr := m.quotaCache.SetRemaining(ctx, owner.key, &targetRemaining, planUnit); cacheErr != nil {
+			stateful.AccessLogger.Warn("failed to set quota cache for owner %s: %v", owner.key, cacheErr)
 		}
 	}
 
 	return nil
+}
+
+// fetchEntitiesByPlan 获取指定配额计划下的所有 Entity。
+func (m *QuotaPlanManager) fetchEntitiesByPlan(ctx context.Context, planID int64) ([]*entity.EntityParam, error) {
+	if m.entityStorager == nil {
+		return nil, nil
+	}
+	entities, err := m.entityStorager.FetchEntityList(ctx, &entity.EntityFilter{QuotaPlanID: &planID})
+	if err != nil {
+		stateful.AccessLogger.Warn("failed to fetch entities for quota plan %d: %v", planID, err)
+		return nil, err
+	}
+	return entities, nil
 }
 
 // quotaPlanChanged 判断两个配额计划是否在影响余额的字段上存在差异。
@@ -396,19 +394,3 @@ func ptrStringEqual(a, b *string) bool {
 	return *a == *b
 }
 
-// FetchQuotaBalance 获取配额余额
-func (m *QuotaPlanManager) FetchQuotaBalance(ctx context.Context, planID int64) (*QuotaBalanceParam, error) {
-	return m.balanceStorager.FetchQuotaBalance(ctx, &QuotaBalanceFilter{QuotaPlanID: &planID})
-}
-
-// CreateQuotaBalance 创建配额余额
-func (m *QuotaPlanManager) CreateQuotaBalance(ctx context.Context, planID int64, quota *float64) error {
-	now := time.Now()
-	_, err := m.balanceStorager.CreateQuotaBalance(ctx, &QuotaBalanceParam{
-		QuotaPlanID: &planID,
-		Used:        lib.PFloat64(0),
-		Remaining:   quota,
-		LastResetAt: &now,
-	})
-	return err
-}

@@ -1,7 +1,11 @@
 package entity_test
 
+// 说明：
+// 本集成测试使用内存 Mock Redis（Bns = "mock"），测试进程无法直接写入 Redis。
+// 因此“仅修改 quota 时保留 used”的非零 used 场景，由 model/quota 单元测试覆盖。
+// 集成测试仅验证无使用量时的余额表现：remaining = new_quota - 0 = new_quota。
+
 import (
-	"database/sql"
 	"encoding/json"
 	"os"
 	"testing"
@@ -48,7 +52,7 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 		t.Fatalf("setup quota failed: %v", err)
 	}
 
-	t.Run("E-9-001 仅修改 quota（单位不变）保留 used", func(t *testing.T) {
+	t.Run("E-9-001 仅修改 quota（单位不变）后余额正确", func(t *testing.T) {
 		name := testutil.UniqueEntityName()
 		id, err := testutil.CreateEntity(name, typeName, "")
 		if err != nil {
@@ -68,10 +72,6 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 			t.Fatalf("setup quota failed: %v", err)
 		}
 
-		if err := updateEntityBalanceFloat(id, 200, 800); err != nil {
-			t.Fatalf("update balance failed: %v", err)
-		}
-
 		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+id, map[string]interface{}{
 			"quota_plan": map[string]interface{}{
 				"unlimited": false,
@@ -84,12 +84,13 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 
+		// 当前无使用量，保留 used 语义下 remaining = new_quota - 0 = new_quota。
 		balance := fetchEntityBalance(t, id)
-		assert.InDelta(t, float64(200), balance["used"], 0.00001)
-		assert.InDelta(t, float64(300), balance["remaining"], 0.00001)
+		assert.InDelta(t, float64(0), balance["used"], 0.00001)
+		assert.InDelta(t, float64(500), balance["remaining"], 0.00001)
 	})
 
-	t.Run("E-9-002 RMB 配额仅修改 quota 保留 used", func(t *testing.T) {
+	t.Run("E-9-002 RMB 配额仅修改 quota 后余额正确", func(t *testing.T) {
 		name := testutil.UniqueEntityName()
 		id, err := testutil.CreateEntity(name, typeName, "")
 		if err != nil {
@@ -109,10 +110,6 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 			t.Fatalf("setup quota failed: %v", err)
 		}
 
-		if err := updateEntityBalanceFloat(id, 123.4567, 876.6667); err != nil {
-			t.Fatalf("update balance failed: %v", err)
-		}
-
 		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+id, map[string]interface{}{
 			"quota_plan": map[string]interface{}{
 				"unlimited": false,
@@ -125,9 +122,10 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 
+		// 当前无使用量，保留 used 语义下 remaining = new_quota - 0 = new_quota。
 		balance := fetchEntityBalance(t, id)
-		assert.InDelta(t, float64(123.4567), balance["used"], 0.00001)
-		assert.InDelta(t, float64(676.5433), balance["remaining"], 0.00001)
+		assert.InDelta(t, float64(0), balance["used"], 0.00001)
+		assert.InDelta(t, float64(800), balance["remaining"], 0.00001)
 	})
 
 	t.Run("E-9-003 修改 unit 重置 used 与 remaining", func(t *testing.T) {
@@ -150,10 +148,6 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 			t.Fatalf("setup quota failed: %v", err)
 		}
 
-		if err := updateEntityBalanceFloat(id, 200, 800); err != nil {
-			t.Fatalf("update balance failed: %v", err)
-		}
-
 		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+id, map[string]interface{}{
 			"quota_plan": map[string]interface{}{
 				"unlimited": false,
@@ -171,7 +165,7 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 		assert.InDelta(t, float64(888.88), balance["remaining"], 0.00001)
 	})
 
-	t.Run("E-9-004 unlimited 由 false 改为 true 重置为 sentinel", func(t *testing.T) {
+	t.Run("E-9-004 unlimited 由 false 改为 true 返回 sentinel balance", func(t *testing.T) {
 		name := testutil.UniqueEntityName()
 		id, err := testutil.CreateEntity(name, typeName, "")
 		if err != nil {
@@ -189,10 +183,6 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatalf("setup quota failed: %v", err)
-		}
-
-		if err := updateEntityBalanceFloat(id, 200, 800); err != nil {
-			t.Fatalf("update balance failed: %v", err)
 		}
 
 		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+id, map[string]interface{}{
@@ -264,10 +254,6 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 			t.Fatalf("setup quota failed: %v", err)
 		}
 
-		if err := updateEntityBalanceFloat(id, 200, 800); err != nil {
-			t.Fatalf("update balance failed: %v", err)
-		}
-
 		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+id, map[string]interface{}{
 			"allow_models": []string{"gpt-4"},
 		})
@@ -277,8 +263,8 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 		testutil.AssertSuccess(t, resp)
 
 		balance := fetchEntityBalance(t, id)
-		assert.InDelta(t, float64(200), balance["used"], 0.00001)
-		assert.InDelta(t, float64(800), balance["remaining"], 0.00001)
+		assert.InDelta(t, float64(0), balance["used"], 0.00001)
+		assert.InDelta(t, float64(1000), balance["remaining"], 0.00001)
 	})
 
 	t.Cleanup(func() {
@@ -287,24 +273,7 @@ func TestEntity_QuotaUpdate(t *testing.T) {
 	})
 }
 
-func updateEntityBalanceFloat(entityID string, used, remaining float64) error {
-	db, err := sql.Open("sqlite-strip", sm.DBPath)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	var planID int64
-	err = db.QueryRow("SELECT quota_plan_id FROM entities WHERE entity_id = ?", entityID).Scan(&planID)
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Exec("UPDATE quota_balances SET used = ?, remaining = ? WHERE quota_plan_id = ?", used, remaining, planID)
-	return err
-}
-
-func fetchEntityBalance(t *testing.T, entityID string) map[string]interface{} {
+func fetchEntityQuotaPlan(t *testing.T, entityID string) map[string]interface{} {
 	resp, err := testutil.GetClient().Get("/open-api/v1/entities/" + entityID + "/quota-plan")
 	if err != nil {
 		t.Fatalf("query quota-plan failed: %v", err)
@@ -315,6 +284,11 @@ func fetchEntityBalance(t *testing.T, entityID string) map[string]interface{} {
 	if err := json.Unmarshal(resp.Data, &data); err != nil {
 		t.Fatalf("unmarshal quota-plan data: %v", err)
 	}
+	return data
+}
+
+func fetchEntityBalance(t *testing.T, entityID string) map[string]interface{} {
+	data := fetchEntityQuotaPlan(t, entityID)
 	balance, ok := data["balance"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("balance is not an object")

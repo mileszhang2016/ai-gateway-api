@@ -403,28 +403,13 @@ CREATE TABLE quota_plans (
   quota REAL DEFAULT 0,
   unit TEXT DEFAULT 'total_token',
   reset_period TEXT DEFAULT 'never',
+  last_reset_at DATETIME DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX quota_plans_unlimited ON quota_plans (unlimited);
 CREATE TRIGGER quota_plans_updated_at AFTER UPDATE ON quota_plans
   FOR EACH ROW BEGIN UPDATE quota_plans SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
-
--- create quota_balances
-DROP TABLE IF EXISTS quota_balances;
-CREATE TABLE quota_balances (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  quota_plan_id INTEGER NOT NULL,
-  used REAL DEFAULT 0,
-  remaining REAL DEFAULT 0,
-  last_reset_at DATETIME DEFAULT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (quota_plan_id)
-);
-CREATE INDEX quota_balances_remaining ON quota_balances (remaining);
-CREATE TRIGGER quota_balances_updated_at AFTER UPDATE ON quota_balances
-  FOR EACH ROW BEGIN UPDATE quota_balances SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
 -- create model_prices
 DROP TABLE IF EXISTS model_prices;

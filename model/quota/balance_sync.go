@@ -14,20 +14,18 @@ import (
 
 // BalanceSyncManager 配额余额同步管理器
 type BalanceSyncManager struct {
-	txn             itxn.TxnStorager
-	apiKeyStorager  api_key.APIKeyStorager
-	balanceStorager QuotaBalanceStorager
-	planStorager    QuotaPlanStorager
-	entityStorager  entity.EntityStorager
-	quotaCache      quotacache.QuotaCache
-	clock           Clock
+	txn            itxn.TxnStorager
+	apiKeyStorager api_key.APIKeyStorager
+	planStorager   QuotaPlanStorager
+	entityStorager entity.EntityStorager
+	quotaCache     quotacache.QuotaCache
+	clock          Clock
 }
 
 // NewBalanceSyncManager 创建配额余额同步管理器
 func NewBalanceSyncManager(
 	txn itxn.TxnStorager,
 	apiKeyStorager api_key.APIKeyStorager,
-	balanceStorager QuotaBalanceStorager,
 	planStorager QuotaPlanStorager,
 	entityStorager entity.EntityStorager,
 	quotaCache quotacache.QuotaCache,
@@ -37,106 +35,13 @@ func NewBalanceSyncManager(
 		clock = NewRealClock()
 	}
 	return &BalanceSyncManager{
-		txn:             txn,
-		apiKeyStorager:  apiKeyStorager,
-		balanceStorager: balanceStorager,
-		planStorager:    planStorager,
-		entityStorager:  entityStorager,
-		quotaCache:      quotaCache,
-		clock:           clock,
+		txn:            txn,
+		apiKeyStorager: apiKeyStorager,
+		planStorager:   planStorager,
+		entityStorager: entityStorager,
+		quotaCache:     quotaCache,
+		clock:          clock,
 	}
-}
-
-// SyncAllBalances 同步所有配额计划的余额
-func (m *BalanceSyncManager) SyncAllBalances(ctx context.Context) error {
-	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		// 1. 获取所有非无限配额计划
-		plans, err := m.planStorager.FetchQuotaPlanList(ctx, &QuotaPlanFilter{
-			Unlimited: lib.PBool(false),
-		})
-		if err != nil {
-			return err
-		}
-
-		// 2. 遍历每个配额计划，同步其余额
-		for _, plan := range plans {
-			if err := m.syncPlanBalance(ctx, plan); err != nil {
-				// 记录错误但继续处理其他计划
-				fmt.Printf("Failed to sync balance for plan %d: %v\n", *plan.ID, err)
-			}
-		}
-
-		return nil
-	})
-}
-
-// syncPlanBalance 同步单个配额计划的余额
-func (m *BalanceSyncManager) syncPlanBalance(ctx context.Context, plan *QuotaPlanParam) error {
-	// 1. 获取关联到此配额计划的所有 API-Key
-	apiKeys, err := m.apiKeyStorager.FetchAPIKeyList(ctx, &api_key.APIKeyFilter{
-		QuotaPlanID: plan.ID,
-	})
-	if err != nil {
-		return err
-	}
-
-	// 2. 获取关联到此配额计划的所有 Entity
-	var entities []*entity.EntityParam
-	if m.entityStorager != nil {
-		entities, err = m.entityStorager.FetchEntityList(ctx, &entity.EntityFilter{
-			QuotaPlanID: plan.ID,
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	// 3. 从 Redis 读取每个 API-Key 的剩余量（按单位转换回 float64）
-	var totalRemaining float64 = 0
-	if m.quotaCache != nil {
-		for _, apiKey := range apiKeys {
-			if apiKey.Key == nil || apiKey.KeyCreateAt == nil {
-				continue
-			}
-
-			remaining, err := m.quotaCache.GetRemaining(ctx, *apiKey.Key, plan.Unit)
-			if err != nil {
-				continue
-			}
-
-			totalRemaining += remaining
-		}
-
-		// 4. 从 Redis 读取每个 Entity 的剩余量
-		for _, entity := range entities {
-			if entity.EntityID == nil {
-				continue
-			}
-
-			remaining, err := m.quotaCache.GetRemaining(ctx, *entity.EntityID, plan.Unit)
-			if err != nil {
-				continue
-			}
-
-			totalRemaining += remaining
-		}
-	}
-
-	// 5. 计算已使用量
-	totalUsed := *plan.Quota - totalRemaining
-	if totalUsed < 0 {
-		totalUsed = 0
-	}
-
-	// 6. 更新数据库中的余额记录
-	_, err = m.balanceStorager.UpdateQuotaBalance(ctx, &QuotaBalanceFilter{
-		QuotaPlanID: plan.ID,
-	}, &QuotaBalanceParam{
-		Used:      lib.PFloat64(totalUsed),
-		Remaining: lib.PFloat64(totalRemaining),
-	})
-
-	return err
 }
 
 // ResetExpiredBalances 检查并重置所有到期的配额计划
@@ -155,38 +60,28 @@ func (m *BalanceSyncManager) ResetExpiredBalances(ctx context.Context) error {
 
 		// 2. 遍历每个配额计划
 		for _, plan := range plans {
-			balance, err := m.balanceStorager.FetchQuotaBalance(ctx, &QuotaBalanceFilter{
-				QuotaPlanID: plan.ID,
-			})
-			if err != nil {
-				fmt.Printf("Failed to fetch balance for plan %d: %v\n", *plan.ID, err)
-				continue
-			}
-
-			if balance == nil {
+			if plan.ID == nil || plan.ResetPeriod == nil {
 				continue
 			}
 
 			// 3. 判断是否需要重置（基于自然周/自然月）
-			shouldReset := m.shouldResetByPeriod(balance.LastResetAt, *plan.ResetPeriod, now)
+			shouldReset := m.shouldResetByPeriod(plan.LastResetAt, *plan.ResetPeriod, now)
 
 			if shouldReset {
-				// 4. 重置该配额计划下所有 API-Key 的 Redis 使用量
+				// 4. 重置该配额计划下所有 API-Key / Entity 的 Redis 使用量
 				if err := m.resetAPIKeysRedisUsage(ctx, *plan.ID); err != nil {
 					fmt.Printf("Failed to reset Redis usage for plan %d: %v\n", *plan.ID, err)
 					continue
 				}
 
-				// 5. 重置数据库余额
-				_, err = m.balanceStorager.UpdateQuotaBalance(ctx, &QuotaBalanceFilter{
-					QuotaPlanID: plan.ID,
-				}, &QuotaBalanceParam{
-					Used:        lib.PFloat64(0),
-					Remaining:   plan.Quota,
+				// 5. 更新 quota_plans.last_reset_at
+				_, err = m.planStorager.UpdateQuotaPlan(ctx, &QuotaPlanFilter{
+					ID: plan.ID,
+				}, &QuotaPlanParam{
 					LastResetAt: lib.PTime(now),
 				})
 				if err != nil {
-					fmt.Printf("Failed to reset balance for plan %d: %v\n", *plan.ID, err)
+					fmt.Printf("Failed to update last_reset_at for plan %d: %v\n", *plan.ID, err)
 				} else {
 					fmt.Printf("Reset balance for plan %d at %v\n", *plan.ID, now)
 				}
