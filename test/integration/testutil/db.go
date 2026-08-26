@@ -86,7 +86,7 @@ func SeedTestData(dbPath string) error {
 	// 插入默认 provider，供 seed cluster 引用
 	_, err = db.Exec(`
 		INSERT OR IGNORE INTO providers (
-			id, name, description, model_endpoint, models, keys,
+			id, name, description, model_endpoint, models, api_keys,
 			instance_pool, model_protocols, created_at, updated_at
 		) VALUES (
 			1, 'deepseek', 'Default AI provider for integration tests',

@@ -77,9 +77,14 @@
 ### 8. 更新集成测试
 
 - 重写 `test/integration/tests/api_key/quota_query/quota_query_test.go`：移除对 `quota_balances` 的直接 SQL 更新，改为验证 Redis 实时读取的初始余额。
-- 重写 `test/integration/tests/api_key/quota_update/quota_update_test.go`：按"变化即重置"的新行为调整断言；无限配额场景验证 `balance` 字段不存在。
+- 重写 `test/integration/tests/api_key/quota_update/quota_update_test.go`：按"变化即重置"的新行为调整断言；无限配额场景验证 `balance` 字段不存在；新增非零 used 场景。
 - 重写 `test/integration/tests/entity/quota_plan/quota_plan_test.go`：移除对 `quota_balances` 的直接 SQL 更新。
-- 重写 `test/integration/tests/entity/quota_update/quota_update_test.go`：同 API-Key 调整逻辑。
+- 重写 `test/integration/tests/entity/quota_update/quota_update_test.go`：同 API-Key 调整逻辑；新增非零 used 场景。
+- 引入 `miniredis` 替换集成测试中的内存 Mock Redis：
+  - `test/integration/testutil/server.go`：每个测试进程启动一个 `miniredis` 实例，生成 `name_conf.data` 并修改 `ai_gateway_api.toml`，让 ai-gateway-api 子进程通过 BNS 连接到该 miniredis。
+  - `test/integration/testutil/db.go`：修复 seed provider 的列名 `keys` -> `api_keys`。
+  - `stateful/config_redis.go`：`name_conf.data` 加载路径优先使用 `DefaultConfig.ConfigDir`，确保子进程从临时配置目录读取。
+  - 新增 `ServerManager.SetQuotaRemaining` / `GetQuotaRemaining` 辅助方法，支持按 API-Key value / Entity ID 直接写入 Redis。
 
 ## 数据迁移
 
@@ -112,7 +117,7 @@ SQLite 使用对应 UPDATE 语法。
 - `go test ./...`（ai-gateway-api 单元测试）：通过。
 - `go test ./tests/api_key/quota_query/... ./tests/api_key/quota_update/... ./tests/entity/quota_plan/... ./tests/entity/quota_update/... ./tests/api_key/quota_reset/... ./tests/entity/quota_reset/...`：通过。
 - `go test ./tests/schema/openapi/...`：通过。
-- 全量集成测试中，`innerapi/rate_limit_policy` 的 `TestInnerAPI_RateLimitPolicy_RedisKeyStable` 失败，经确认与本次 quota 重构无关（未修改 rate-limit 相关代码）。
+- `go test ./tests/...`（全量集成测试）：除预存在的 `innerapi/rate_limit_policy` 的 `TestInnerAPI_RateLimitPolicy_RedisKeyStable` 失败外，其余全部通过；该失败与 quota 重构及 miniredis 改造均无关（未修改 rate-limit 相关代码）。
 
 ## 待实现清单
 
@@ -126,4 +131,5 @@ SQLite 使用对应 UPDATE 语法。
 - [x] 删除 `quota_balances` 表及相关代码
 - [x] 更新单元测试
 - [x] 更新集成测试
+- [x] 引入 miniredis 替换集成测试 Mock Redis
 - [x] 更新 design-docs

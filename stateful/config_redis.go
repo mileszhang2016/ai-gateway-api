@@ -16,6 +16,7 @@ package stateful
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/bfenetworks/bfe/bfe_util/bns"
 	"github.com/bfenetworks/bfe/bfe_util/redis_client"
@@ -68,9 +69,14 @@ func (r *Redis) Init() error {
 		Password:       r.Password,
 	}
 
-	err := bns.LoadLocalNameConf("./conf/name_conf.data")
+	nameConfPath := "./conf/name_conf.data"
+	if DefaultConfig != nil && DefaultConfig.ConfigDir != "" {
+		nameConfPath = filepath.Join(DefaultConfig.ConfigDir, "name_conf.data")
+	}
+
+	err := bns.LoadLocalNameConf(nameConfPath)
 	if err != nil {
-		AccessLogger.Error("load redis conf ./conf/name_conf.data error:%s", err.Error())
+		AccessLogger.Error("load redis conf %s error:%s", nameConfPath, err.Error())
 		return err
 	}
 

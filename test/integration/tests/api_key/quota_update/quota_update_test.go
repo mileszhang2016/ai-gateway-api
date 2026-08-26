@@ -1,9 +1,8 @@
 package api_key_test
 
 // 说明：
-// 本集成测试使用内存 Mock Redis（Bns = "mock"），测试进程无法直接写入 Redis。
-// 因此“仅修改 quota 时保留 used”的非零 used 场景，由 model/quota 单元测试覆盖。
-// 集成测试仅验证无使用量时的余额表现：remaining = new_quota - 0 = new_quota。
+// 本集成测试使用 miniredis 作为嵌入式 Redis，测试进程可直接写入 Redis，
+// 从而完整覆盖“仅修改 quota 时保留 used”的非零 used 路径。
 
 import (
 	"encoding/json"
@@ -256,6 +255,86 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 		assert.InDelta(t, float64(1000), balance["remaining"], 0.00001)
 	})
 
+	t.Run("AK-9-007 仅修改 quota（单位不变）时保留非零 used", func(t *testing.T) {
+		id, err := testutil.CreateAPIKey("quota-update-keep-used", "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(id)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        1000,
+				"unit":         "total_token",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		// 构造已使用量：Redis 中剩余 400，即 used = 600
+		apiKeyValue := getAPIKeyValue(t, id)
+		sm.SetQuotaRemaining(apiKeyValue, 400, "total_token")
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited": false,
+				"quota":     800,
+				"unit":      "total_token",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		balance := fetchAPIKeyBalance(t, id)
+		assert.InDelta(t, float64(600), balance["used"], 0.00001)
+		assert.InDelta(t, float64(200), balance["remaining"], 0.00001)
+	})
+
+	t.Run("AK-9-008 RMB 配额仅修改 quota 时保留非零 used", func(t *testing.T) {
+		id, err := testutil.CreateAPIKey("quota-update-rmb-keep-used", "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(id)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        1000.1234,
+				"unit":         "RMB",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		// 构造已使用量：Redis 中剩余 400.0000，即 used = 600.1234
+		apiKeyValue := getAPIKeyValue(t, id)
+		sm.SetQuotaRemaining(apiKeyValue, 400.0000, "RMB")
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited": false,
+				"quota":     800.0000,
+				"unit":      "RMB",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		balance := fetchAPIKeyBalance(t, id)
+		assert.InDelta(t, float64(600.1234), balance["used"], 0.00001)
+		assert.InDelta(t, float64(199.8766), balance["remaining"], 0.00001)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteAPIKey(apiKeyID)
 	})
@@ -282,4 +361,22 @@ func fetchAPIKeyBalance(t *testing.T, apiKeyID string) map[string]interface{} {
 		t.Fatalf("balance is not an object")
 	}
 	return balance
+}
+
+func getAPIKeyValue(t *testing.T, apiKeyID string) string {
+	resp, err := testutil.GetClient().Get("/open-api/v1/api-keys/" + apiKeyID)
+	if err != nil {
+		t.Fatalf("get api-key failed: %v", err)
+	}
+	testutil.AssertSuccess(t, resp)
+
+	key, err := testutil.GetDataField(resp, "key")
+	if err != nil {
+		t.Fatalf("get api-key value failed: %v", err)
+	}
+	keyStr, ok := key.(string)
+	if !ok {
+		t.Fatalf("api-key value is not a string")
+	}
+	return keyStr
 }
