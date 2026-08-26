@@ -23,17 +23,23 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
+// BalanceSyncer defines the operations required by QuotaResetScheduler.
+type BalanceSyncer interface {
+	SyncAllBalances(ctx context.Context) error
+	ResetExpiredBalances(ctx context.Context) error
+}
+
 // QuotaResetScheduler 配额重置调度器
 type QuotaResetScheduler struct {
 	txn            itxn.TxnStorager
-	balanceSyncMgr *BalanceSyncManager
+	balanceSyncMgr BalanceSyncer
 	stopCh         chan struct{}
 }
 
 // NewQuotaResetScheduler 创建配额重置调度器
 func NewQuotaResetScheduler(
 	txn itxn.TxnStorager,
-	balanceSyncMgr *BalanceSyncManager,
+	balanceSyncMgr BalanceSyncer,
 ) *QuotaResetScheduler {
 	return &QuotaResetScheduler{
 		txn:            txn,

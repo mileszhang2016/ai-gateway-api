@@ -20,6 +20,7 @@ type BalanceSyncManager struct {
 	planStorager    QuotaPlanStorager
 	entityStorager  entity.EntityStorager
 	quotaCache      quotacache.QuotaCache
+	clock           Clock
 }
 
 // NewBalanceSyncManager 创建配额余额同步管理器
@@ -30,7 +31,11 @@ func NewBalanceSyncManager(
 	planStorager QuotaPlanStorager,
 	entityStorager entity.EntityStorager,
 	quotaCache quotacache.QuotaCache,
+	clock Clock,
 ) *BalanceSyncManager {
+	if clock == nil {
+		clock = NewRealClock()
+	}
 	return &BalanceSyncManager{
 		txn:             txn,
 		apiKeyStorager:  apiKeyStorager,
@@ -38,6 +43,7 @@ func NewBalanceSyncManager(
 		planStorager:    planStorager,
 		entityStorager:  entityStorager,
 		quotaCache:      quotaCache,
+		clock:           clock,
 	}
 }
 
@@ -145,7 +151,7 @@ func (m *BalanceSyncManager) ResetExpiredBalances(ctx context.Context) error {
 			return err
 		}
 
-		now := time.Now()
+		now := m.clock.Now()
 
 		// 2. 遍历每个配额计划
 		for _, plan := range plans {

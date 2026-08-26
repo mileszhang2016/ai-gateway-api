@@ -283,7 +283,8 @@ func Init() error {
 		container.QuotaBalanceStorager,
 		container.QuotaPlanStorager,
 		container.EntityStorager,
-		container.QuotaCacheSingleton)
+		container.QuotaCacheSingleton,
+		quota.NewRealClock())
 
 	container.QuotaResetScheduler = quota.NewQuotaResetScheduler(
 		container.TxnStoragerSingleton,
