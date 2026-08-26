@@ -443,7 +443,7 @@ CREATE TABLE providers (
   description TEXT NOT NULL DEFAULT '',
   model_endpoint TEXT,
   models TEXT,
-  keys TEXT,
+  api_keys TEXT,
   instance_pool TEXT NOT NULL,
   model_protocols TEXT NOT NULL,
   time_zone TEXT NOT NULL DEFAULT 'Asia/Shanghai',

@@ -425,7 +425,7 @@ CREATE TABLE `providers` (
   `description` VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '描述',
   `model_endpoint` JSON COMMENT '模型发现端点配置',
   `models` JSON COMMENT '支持的模型列表',
-  `keys` JSON COMMENT 'API key 列表',
+  `api_keys` JSON COMMENT 'API key 列表',
   `instance_pool` JSON NOT NULL COMMENT '实例池列表',
   `model_protocols` JSON NOT NULL COMMENT '支持的模型协议列表',
   `time_zone` VARCHAR(255) NOT NULL DEFAULT 'Asia/Shanghai' COMMENT '计算时段所使用的时区',

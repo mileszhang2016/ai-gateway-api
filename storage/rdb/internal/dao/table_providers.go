@@ -32,7 +32,7 @@ type TProvider struct {
 	Description    string    `db:"description"`
 	ModelEndpoint  string    `db:"model_endpoint"`
 	Models         string    `db:"models"`
-	Keys           string    `db:"keys"`
+	Keys           string    `db:"api_keys"`
 	InstancePool   string    `db:"instance_pool"`
 	ModelProtocols string    `db:"model_protocols"`
 	TimeZone       string    `db:"time_zone"`
@@ -179,7 +179,7 @@ type TProviderParam struct {
 	Description    *string    `db:"description"`
 	ModelEndpoint  *string    `db:"model_endpoint"`
 	Models         *string    `db:"models"`
-	Keys           *string    `db:"keys"`
+	Keys           *string    `db:"api_keys"`
 	InstancePool   *string    `db:"instance_pool"`
 	ModelProtocols *string    `db:"model_protocols"`
 	TimeZone       *string    `db:"time_zone"`
