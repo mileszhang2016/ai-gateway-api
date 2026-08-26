@@ -93,12 +93,8 @@ func ResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	balance, err := container.QuotaPlanManager.FetchQuotaBalance(req.Context(), *apiKey.QuotaPlanID)
-	if err != nil {
-		return nil, err
-	}
-	if balance != nil && balance.Remaining != nil {
-		previousRemaining = *balance.Remaining
+	if apiKey.QuotaPlan != nil && apiKey.QuotaPlan.Balance != nil && apiKey.QuotaPlan.Balance.Remaining != nil {
+		previousRemaining = *apiKey.QuotaPlan.Balance.Remaining
 	}
 
 	// 重置配额余额（不更新 last_reset_at，避免影响定期重置调度；Redis 同步由 Manager 在事务外完成）
@@ -107,30 +103,25 @@ func ResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	// 获取更新后的配额计划信息
-	newPlan, err := container.QuotaPlanManager.FetchQuotaPlan(req.Context(), &quota.QuotaPlanFilter{
-		ID: apiKey.QuotaPlanID,
+	// 获取更新后的 API-Key 与余额（从 Redis 实时读取）
+	newAPIKey, err := container.APIKeyManager.FetchAPIKey(req.Context(), &api_key.APIKeyFilter{
+		ID:          oneReq.ID,
+		ProductName: &productName,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// 获取余额信息
-	newBalance, err := container.QuotaPlanManager.FetchQuotaBalance(req.Context(), *apiKey.QuotaPlanID)
-	if err != nil {
-		return nil, err
-	}
-
 	newRemaining := float64(0)
-	if newBalance != nil && newBalance.Remaining != nil {
-		newRemaining = *newBalance.Remaining
+	if newAPIKey != nil && newAPIKey.QuotaPlan != nil && newAPIKey.QuotaPlan.Balance != nil && newAPIKey.QuotaPlan.Balance.Remaining != nil {
+		newRemaining = *newAPIKey.QuotaPlan.Balance.Remaining
 	}
 
 	newQuota := previousQuota
 	if resetReq.Quota != nil {
 		newQuota = resetReq.Quota
-	} else if newPlan != nil {
-		newQuota = newPlan.Quota
+	} else if newAPIKey != nil && newAPIKey.QuotaPlan != nil {
+		newQuota = newAPIKey.QuotaPlan.Quota
 	}
 
 	return &ResetQuotaResponse{

@@ -204,11 +204,19 @@ type KeyPolicy struct {
 	RetryBackoffMax     *int    `json:"retry_backoff_max"`     // default 5000
 }
 
+type KeyAffinity struct {
+	Enabled       *bool   `json:"enabled"`        // default false
+	TTL           *int    `json:"ttl"`            // idle timeout in seconds, default 600
+	RedisPrefix   *string `json:"redis_prefix"`   // default "bfe:ai:key_affinity"
+	PenaltyEnable *bool   `json:"penalty_enable"` // default true
+}
+
 type LLMConfig struct {
 	Models        []string        `json:"models"`         // model name list
 	ModelMappings []*Mapping      `json:"model_mappings"` // model mapping
 	Keys          []ClusterKeyRef `json:"keys"`           // references to provider keys with weights
 	KeyPolicy     *KeyPolicy      `json:"key_policy"`     // key routing policy
+	KeyAffinity   *KeyAffinity    `json:"key_affinity"`   // session-level key affinity
 	Provider      *string         `json:"provider"`       // provider name; required
 
 	// MatchPrefix defines the provider/model prefix this cluster matches.
@@ -1074,16 +1082,26 @@ func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,
 	}
 
 	aiConf.KeyPolicy = &cluster_conf.AIKeyPolicy{
-		Strategy:            "weighted_random",
-		MaxRetries:          0,
-		RetryBackoffInitial: 500,
-		RetryBackoffMax:     5000,
+		Strategy:                     "weighted_random",
+		MaxRetries:                   0,
+		RetryBackoffInitial:          500,
+		RetryBackoffMax:              5000,
+		SessionAffinity:              false,
+		SessionAffinityTTL:           600,
+		SessionAffinityRedisPrefix:   "bfe:ai:key_affinity",
+		SessionAffinityPenaltyEnable: true,
 	}
 	if llmConfig.KeyPolicy != nil {
 		aiConf.KeyPolicy.Strategy = derefString(llmConfig.KeyPolicy.Strategy, "weighted_random")
 		aiConf.KeyPolicy.MaxRetries = derefInt(llmConfig.KeyPolicy.MaxRetries, 0)
 		aiConf.KeyPolicy.RetryBackoffInitial = derefInt(llmConfig.KeyPolicy.RetryBackoffInitial, 500)
 		aiConf.KeyPolicy.RetryBackoffMax = derefInt(llmConfig.KeyPolicy.RetryBackoffMax, 5000)
+	}
+	if llmConfig.KeyAffinity != nil {
+		aiConf.KeyPolicy.SessionAffinity = derefBool(llmConfig.KeyAffinity.Enabled, false)
+		aiConf.KeyPolicy.SessionAffinityTTL = derefInt(llmConfig.KeyAffinity.TTL, 600)
+		aiConf.KeyPolicy.SessionAffinityRedisPrefix = derefString(llmConfig.KeyAffinity.RedisPrefix, "bfe:ai:key_affinity")
+		aiConf.KeyPolicy.SessionAffinityPenaltyEnable = derefBool(llmConfig.KeyAffinity.PenaltyEnable, true)
 	}
 
 	return aiConf
@@ -1101,6 +1119,13 @@ func derefInt(i *int, defaultValue int) int {
 		return defaultValue
 	}
 	return *i
+}
+
+func derefBool(b *bool, defaultValue bool) bool {
+	if b == nil {
+		return defaultValue
+	}
+	return *b
 }
 
 func convertToBFEModelMapping(modelMappings []*Mapping) *map[string]string {

@@ -94,6 +94,18 @@ func (m *MockRedisClient) GetInt64(key string) (int64, error) {
 	return m.data[key], nil
 }
 
+// GetInt64Batch 批量获取多个 key 对应的 int64 值
+func (m *MockRedisClient) GetInt64Batch(keys []string) ([]int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	results := make([]int64, len(keys))
+	for i, key := range keys {
+		results[i] = m.data[key]
+	}
+	return results, nil
+}
+
 // IncrBy 将 key 对应的值增加 delta
 func (m *MockRedisClient) IncrBy(key string, delta int64) (int64, error) {
 	m.mu.Lock()

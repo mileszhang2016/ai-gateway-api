@@ -2,7 +2,7 @@
 
 ## 1. 模块概述
 
-API-Key 模块负责 API-Key 的管理，包括创建、查询、更新、删除 API-Key；管理 API-Key 的配额计划（QuotaPlan）、限流策略（RateLimitPolicy）、路由规则（RouteRules）及 Entity 挂载关系。v0.3.0 起支持导入外部 `key`，且列表/详情接口的 `quota_plan` 包含实时 `balance`；`PUT/PATCH` 更新时 `key` 字段忽略。配额计划 `unit` 支持 `total_token` 与 `RMB`，金额型配额使用 `DECIMAL(18,8)` 存储，余额同步精度为 1e8。
+API-Key 模块负责 API-Key 的管理，包括创建、查询、更新、删除 API-Key；管理 API-Key 的配额计划（QuotaPlan）、限流策略（RateLimitPolicy）、路由规则（RouteRules）及 Entity 挂载关系。v0.3.0 起支持导入外部 `key`，且列表/详情接口的 `quota_plan` 包含实时 `balance`；`PUT/PATCH` 更新时 `key` 字段忽略。配额计划 `unit` 支持 `total_token` 与 `RMB`，金额型配额使用 `DECIMAL(18,8)` 存储，余额从 Redis 实时读取，精度为 1e8。
 
 ## 2. 接口列表
 
@@ -16,7 +16,7 @@ API-Key 模块负责 API-Key 的管理，包括创建、查询、更新、删除
 | AK-6 | 删除 API-Key | DELETE | `/open-api/v1/api-keys/{id}` | 级联删除专属资源 |
 | AK-7 | 查询配额计划 | GET | `/open-api/v1/api-keys/{id}/quota-plan` | 返回完整 quota_plan 含 balance |
 | AK-8 | 重置配额余额 | POST | `/open-api/v1/api-keys/{id}/quota-plan/reset` | 重置余额，可指定新 quota |
-| AK-9 | 更新配额计划（余额差异化调整） | PUT/PATCH | `/open-api/v1/api-keys/{id}` | 变更 quota_plan 时按 diff 调整余额 |
+| AK-9 | 更新配额计划（余额差异化调整） | PUT/PATCH | `/open-api/v1/api-keys/{id}` | 变更 quota_plan 时调整 Redis 余额：quota 变化保留 used，unit/unlimited 变化重置 |
 
 ## 3. 测试用例统计
 
@@ -1546,7 +1546,7 @@ URI：`non-existent-id`
 |------|------|---------|---------|
 | AK-7-001 | 查询配额计划含 balance | 正常参数 | 返回完整 quota_plan |
 | AK-7-002 | 查询无限配额 API-Key 的 quota-plan | 边界场景 | 验证行为 |
-| AK-7-003 | 配额计划余额反映真实使用情况 | 正常参数 | balance 与 quota_balances 表一致 |
+| AK-7-003 | 配额计划余额从 Redis 实时读取 | 正常参数 | balance 反映 Redis 实时剩余量 |
 
 ### 12.4 测试场景详细设计
 
@@ -1590,16 +1590,16 @@ URI：`id`
 
 ##### 设计思路
 
-验证查询无限配额 API-Key 的 quota-plan 行为（返回 404 或 unlimited=true 无 balance，以接口定义为准）。
+验证查询无限配额 API-Key 的 quota-plan 行为。无限配额返回 `unlimited=true`，并带有 sentinel balance（`used=0`，`remaining=100000000`）。
 
 ##### 前提数据准备
 
-已创建 `unlimited_quota=true` 或 `quota_plan.unlimited=true` 的 API-Key。
+已创建 `quota_plan.unlimited=true` 的 API-Key。
 
 ##### 执行步骤
 
 1. 发送 GET 请求到 `/open-api/v1/api-keys/{id}/quota-plan`。
-2. 验证返回行为。
+2. 验证返回 `unlimited=true`、`balance.used=0`、`balance.remaining=100000000`。
 
 ##### 请求参数
 
@@ -1607,34 +1607,37 @@ URI：`id`
 
 ##### 预期返回结果
 
-**ErrNum**：404 或 200（以接口实现为准）  
-**ErrMsg**：对应错误信息或 success
+**ErrNum**：200  
+**ErrMsg**：success
 
 **Data 字段校验**：
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| unlimited | true（若为 200） | Equals |
-| balance | 不存在（若为 200） | NotExists |
+| unlimited | true | Equals |
+| balance | 非空对象 | IsObject |
+| balance.used | 0 | Equals |
+| balance.remaining | 100000000 | Equals |
 
 ---
 
-#### 12.4.3 AK-7-003：配额计划余额反映真实使用情况（正常参数）
+#### 12.4.3 AK-7-003：配额计划余额从 Redis 实时读取（正常参数）
 
 ##### 设计思路
 
-验证独立 quota-plan 接口返回的 `balance` 与 `quota_balances` 表中的真实余额一致，而非固定返回总量。
+验证独立 quota-plan 接口的 `balance` 从 Redis 实时读取，而非读取已删除的 `quota_balances` 表。
 
 ##### 前提数据准备
 
-已创建非无限配额 API-Key，并直接更新其 `quota_balances` 记录。
+已创建非无限配额 API-Key。
 
 ##### 执行步骤
 
 1. 创建 API-Key 并 PATCH 为非无限配额，`quota=100`。
-2. 在测试数据库中将该 API-Key 对应 `quota_balances` 的 `used` 更新为 10，`remaining` 更新为 90。
-3. 发送 GET 请求到 `/open-api/v1/api-keys/{id}/quota-plan`。
-4. 验证返回 `balance.used=10`、`balance.remaining=90`。
+2. 发送 GET 请求到 `/open-api/v1/api-keys/{id}/quota-plan`。
+3. 验证返回 `balance.used=0`、`balance.remaining=100`（无使用量时剩余量等于 quota）。
+
+> 注：当前集成测试使用内存 Mock Redis，测试进程无法直接写入 Redis 构造非零 used。非零 used 场景由 `model/quota`、`model/api_key` 单元测试覆盖。
 
 ##### 请求参数
 
@@ -1651,8 +1654,8 @@ URI：`id`
 |------|--------|---------|
 | quota | 100 | Equals |
 | balance | 非空对象 | IsObject |
-| balance.used | 10 | Equals |
-| balance.remaining | 90 | Equals |
+| balance.used | 0 | Equals |
+| balance.remaining | 100 | Equals |
 
 ---
 
@@ -1660,7 +1663,7 @@ URI：`id`
 
 ##### 设计思路
 
-验证 `unit=RMB` 时，`quota` 与 `balance.remaining` 支持 8 位小数精度，且余额与数据库 `quota_balances` 真实记录一致。
+验证 `unit=RMB` 时，`quota` 与 `balance.remaining` 支持 8 位小数精度，且余额从 Redis 实时读取。
 
 ##### 前提数据准备
 
@@ -1668,9 +1671,11 @@ URI：`id`
 
 ##### 执行步骤
 
-1. 在测试数据库中将该 API-Key 对应 `quota_balances` 的 `used` 更新为 `1.23456789`，`remaining` 更新为 `998.88888889`。
+1. 创建 API-Key 并 PATCH 为 `unit=RMB`、`quota=1000.12345678`。
 2. 发送 GET 请求到 `/open-api/v1/api-keys/{id}/quota-plan`。
-3. 验证返回 `unit=RMB`、`quota=1000.12345678`、`balance.used=1.23456789`、`balance.remaining=998.88888889`。
+3. 验证返回 `unit=RMB`、`quota=1000.12345678`、`balance.used=0`、`balance.remaining=1000.12345678`。
+
+> 注：当前集成测试使用内存 Mock Redis，测试进程无法直接写入 Redis 构造非零 used。RMB 精度场景由 `model/quota`、`model/api_key` 单元测试覆盖。
 
 ##### 请求参数
 
@@ -1687,8 +1692,8 @@ URI：`id`
 |------|--------|---------|
 | unit | "RMB" | Equals |
 | quota | 1000.12345678 | Equals |
-| balance.used | 1.23456789 | Equals |
-| balance.remaining | 998.88888889 | Equals |
+| balance.used | 0 | Equals |
+| balance.remaining | 1000.12345678 | Equals |
 
 ---
 
@@ -1872,14 +1877,14 @@ URI：`id`
 | 接口名称 | 更新配额计划（余额差异化调整） |
 | 方法 | `PUT` / `PATCH` |
 | 路径 | `/open-api/v1/api-keys/{id}` |
-| 说明 | 当请求体中包含 `quota_plan` 且 `quota`/`unit`/`unlimited` 任一发生变化时，按 diff 规则调整 `quota_balances` 与 Redis；普通属性修改不触发余额变更。 |
+| 说明 | 当请求体中包含 `quota_plan` 且 `quota`/`unit`/`unlimited` 任一发生变化时，调整 Redis 余额：`quota` 变化且单位不变时保留 used，`unit` 变化或 `unlimited` 切换时重置；普通属性修改不触发余额变更。 |
 
 ### 14.2 测试场景总览
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| AK-9-001 | 仅修改 quota（total_token）保留 used | 正常参数 | `remaining = 新 quota - used` |
-| AK-9-002 | RMB 配额仅修改 quota 保留 used | 正常参数 | 小数精度保持 8 位 |
+| AK-9-001 | 仅修改 quota（total_token）保留 used | 正常参数 | 无使用量时 `remaining=新 quota`；非零 used 由单元测试覆盖 |
+| AK-9-002 | RMB 配额仅修改 quota 保留 used | 正常参数 | 无使用量时精度保持 8 位；非零 used 由单元测试覆盖 |
 | AK-9-003 | 修改 unit 重置 used 与 remaining | 正常参数 | `used=0`，`remaining=新 quota` |
 | AK-9-004 | unlimited false -> true 重置为 sentinel | 正常参数 | `used=0`，`remaining=100000000` |
 | AK-9-005 | unlimited true -> false 按新 quota 初始化 | 正常参数 | `used=0`，`remaining=新 quota` |
@@ -1887,21 +1892,23 @@ URI：`id`
 
 ### 14.3 测试场景详细设计
 
+> 说明：本组集成测试使用内存 Mock Redis（`Bns = "mock"`），测试进程无法直接写入 Redis。因此“保留 used”的非零 used 路径由 `model/quota`、`model/api_key` 单元测试覆盖；集成测试仅验证无使用量时的接口行为。
+
 #### 14.3.1 AK-9-001：仅修改 quota（total_token）保留 used
 
 ##### 设计思路
 
-验证单位不变、仅调额时，历史已用量 `used` 被保留，`remaining` 按新 quota 重新计算。
+验证单位不变、仅调额时，历史已用量 `used` 被保留，`remaining = max(0, 新 quota - used)`。
 
 ##### 前提数据准备
 
-已创建 `unit=total_token`、`quota=1000` 的 API-Key，并在 `quota_balances` 中写入 `used=200`、`remaining=800`。
+已创建 `unit=total_token`、`quota=1000` 的 API-Key。
 
 ##### 执行步骤
 
 1. 发送 PATCH 请求，仅修改 `quota_plan.quota=500`（同单位）。
 2. 通过 GET `/api-keys/{id}/quota-plan` 查询余额。
-3. 验证 `balance.used=200`、`balance.remaining=300`。
+3. 验证 `balance.used=0`、`balance.remaining=500`（无使用量时）。
 
 ##### 请求参数
 
@@ -1925,8 +1932,8 @@ URI：`id`
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
 | quota_plan.quota | 500 | Equals |
-| balance.used | 200 | Equals |
-| balance.remaining | 300 | Equals |
+| balance.used | 0 | Equals |
+| balance.remaining | 500 | Equals |
 
 ---
 
@@ -1938,13 +1945,13 @@ URI：`id`
 
 ##### 前提数据准备
 
-已创建 `unit=RMB`、`quota=1000.1234` 的 API-Key，并在 `quota_balances` 中写入 `used=123.4567`、`remaining=876.6667`。
+已创建 `unit=RMB`、`quota=1000.1234` 的 API-Key。
 
 ##### 执行步骤
 
 1. 发送 PATCH 请求，`quota_plan.quota=800.0000`。
 2. 查询 quota-plan 接口。
-3. 验证 `balance.used=123.4567`、`balance.remaining=676.5433`。
+3. 验证 `balance.used=0`、`balance.remaining=800.0000`（无使用量时）。
 
 ##### 请求参数
 
@@ -1968,8 +1975,8 @@ URI：`id`
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
 | quota_plan.quota | 800.0000 | InDelta(1e-5) |
-| balance.used | 123.4567 | InDelta(1e-5) |
-| balance.remaining | 676.5433 | InDelta(1e-5) |
+| balance.used | 0 | InDelta(1e-5) |
+| balance.remaining | 800.0000 | InDelta(1e-5) |
 
 ---
 
@@ -1981,7 +1988,7 @@ URI：`id`
 
 ##### 前提数据准备
 
-已创建 `unit=total_token`、`quota=1000` 的 API-Key，并在 `quota_balances` 中写入 `used=200`。
+已创建 `unit=total_token`、`quota=1000` 的 API-Key。
 
 ##### 执行步骤
 
@@ -2024,7 +2031,7 @@ URI：`id`
 
 ##### 前提数据准备
 
-已创建有限配额 API-Key，并在 `quota_balances` 中写入非零 `used`。
+已创建有限配额 API-Key。
 
 ##### 执行步骤
 
@@ -2108,13 +2115,13 @@ URI：`id`
 
 ##### 前提数据准备
 
-已创建有限配额 API-Key，并在 `quota_balances` 中写入 `used=200`、`remaining=800`。
+已创建有限配额 API-Key。
 
 ##### 执行步骤
 
 1. 发送 PATCH 请求，修改 `enabled=false`、`description="updated-desc"`。
 2. 查询 quota-plan 接口。
-3. 验证 `balance.used=200`、`balance.remaining=800`。
+3. 验证 `balance.used=0`、`balance.remaining=1000`（未变更）。
 
 ##### 请求参数
 
@@ -2135,8 +2142,8 @@ URI：`id`
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
 | enabled | false | Equals |
-| balance.used | 200 | Equals |
-| balance.remaining | 800 | Equals |
+| balance.used | 0 | Equals |
+| balance.remaining | 1000 | Equals |
 
 ---
 

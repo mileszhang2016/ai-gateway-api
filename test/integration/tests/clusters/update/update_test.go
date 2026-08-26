@@ -253,6 +253,82 @@ func TestClusters_Update(t *testing.T) {
 		assert.Equal(t, false, aiconf["StripPrefix"])
 	})
 
+	t.Run("CL-4-011 更新 key_affinity", func(t *testing.T) {
+		clusterUpdateAffinity := testutil.UniqueClusterName()
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterUpdateAffinity,
+			"llm_config": map[string]interface{}{
+				"models": []string{"deepseek-chat"},
+				"key_affinity": map[string]interface{}{
+					"enabled":        false,
+					"ttl":            600,
+					"redis_prefix":   "bfe:ai:key_affinity",
+					"penalty_enable": true,
+				},
+				"provider": providerPrefix,
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		if resp.ErrNum != 200 {
+			t.Fatalf("setup create cluster failed: %d %s", resp.ErrNum, resp.ErrMsg)
+		}
+		defer testutil.DeleteCluster(clusterUpdateAffinity)
+
+		resp, err = testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterUpdateAffinity, map[string]interface{}{
+			"llm_config": map[string]interface{}{
+				"models": []string{"deepseek-chat"},
+				"key_affinity": map[string]interface{}{
+					"enabled":        true,
+					"ttl":            1200,
+					"redis_prefix":   "bfe:ai:key_affinity:v2",
+					"penalty_enable": false,
+				},
+				"provider": providerPrefix,
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		resp, err = testutil.GetClient().Get("/open-api/v1/clusters/" + clusterUpdateAffinity)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal failed: %v", err)
+		}
+		llm, _ := data["llm_config"].(map[string]interface{})
+		affinity, _ := llm["key_affinity"].(map[string]interface{})
+		assert.Equal(t, true, affinity["enabled"])
+		assert.Equal(t, float64(1200), affinity["ttl"])
+		assert.Equal(t, "bfe:ai:key_affinity:v2", affinity["redis_prefix"])
+		assert.Equal(t, false, affinity["penalty_enable"])
+
+		resp, err = testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("inner api request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var innerData map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &innerData); err != nil {
+			t.Fatalf("unmarshal inner data failed: %v", err)
+		}
+		clusterConf, _ := innerData["ClusterConf"].(map[string]interface{})
+		config, _ := clusterConf["Config"].(map[string]interface{})
+		cluster, _ := config[clusterUpdateAffinity].(map[string]interface{})
+		aiconf, _ := cluster["AIConf"].(map[string]interface{})
+		keyPolicy, _ := aiconf["KeyPolicy"].(map[string]interface{})
+		assert.Equal(t, true, keyPolicy["SessionAffinity"])
+		assert.Equal(t, float64(1200), keyPolicy["SessionAffinityTTL"])
+		assert.Equal(t, "bfe:ai:key_affinity:v2", keyPolicy["SessionAffinityRedisPrefix"])
+		assert.Equal(t, false, keyPolicy["SessionAffinityPenaltyEnable"])
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteCluster(clusterName)
 		testutil.DeleteProvider(providerUpdate)

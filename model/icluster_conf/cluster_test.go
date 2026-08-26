@@ -141,6 +141,12 @@ func newTestClusterLLM() *Cluster {
 			RetryBackoffInitial: lib.PInt(500),
 			RetryBackoffMax:     lib.PInt(5000),
 		},
+		KeyAffinity: &KeyAffinity{
+			Enabled:       lib.PBool(true),
+			TTL:           lib.PInt(600),
+			RedisPrefix:   lib.PString("bfe:ai:key_affinity"),
+			PenaltyEnable: lib.PBool(true),
+		},
 		MatchPrefix: lib.PString("openrouter/"),
 		StripPrefix: lib.PBool(true),
 	}
@@ -839,6 +845,10 @@ func TestNewBfeClusterConf(t *testing.T) {
 		assert.Equal(t, 3, cConf.AIConf.KeyPolicy.MaxRetries)
 		assert.Equal(t, 500, cConf.AIConf.KeyPolicy.RetryBackoffInitial)
 		assert.Equal(t, 5000, cConf.AIConf.KeyPolicy.RetryBackoffMax)
+		assert.True(t, cConf.AIConf.KeyPolicy.SessionAffinity)
+		assert.Equal(t, 600, cConf.AIConf.KeyPolicy.SessionAffinityTTL)
+		assert.Equal(t, "bfe:ai:key_affinity", cConf.AIConf.KeyPolicy.SessionAffinityRedisPrefix)
+		assert.True(t, cConf.AIConf.KeyPolicy.SessionAffinityPenaltyEnable)
 		require.NotNil(t, cConf.AIConf.ModelMapping)
 		assert.Equal(t, "new", (*cConf.AIConf.ModelMapping)["old"])
 		assert.Equal(t, "openrouter/", cConf.AIConf.MatchPrefix)

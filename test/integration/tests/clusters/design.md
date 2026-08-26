@@ -13,6 +13,11 @@ v0.0.7 起，`llm_config` 支持多 API-Key：
   - `match_prefix` 非必填，用于声明该 cluster 匹配的前缀（如 `openrouter/`），若传入且非空则必须以 `/` 结尾；
   - `strip_prefix` 非必填，默认 `false`；为 `true` 时 `match_prefix` 必填且非空；
   - 两个字段透传到 InnerAPI 导出的 `AIConf.MatchPrefix` / `StripPrefix`，由 BFE 在转发前执行前缀裁剪。
+- v0.6 起，`llm_config` 新增 `key_affinity`（会话级 Key 亲和性）：
+  - 非必填，用于基于 Redis + `ClientKeyId` 保持同一客户端会话在一段时间内命中同一个后端 API-Key；
+  - 包含 `enabled`（默认 `false`）、`ttl`（空闲超时秒数，默认 `600`）、`redis_prefix`（默认 `"bfe:ai:key_affinity"`）、`penalty_enable`（默认 `true`）；
+  - 若传入 `ttl` 必须 `>0`；若传入 `redis_prefix` 必须非空；
+  - 导出到 InnerAPI 的 `AIConf.KeyPolicy.SessionAffinity*` 字段。
 
 另外：
 - 删除集群时会扫描全部 `route_rules` 表中的全局、Entity、API-Key 路由规则（不经过分页）：若任意规则的 `targets` 或 `fallbacks` 引用了该集群，则删除被拒绝。
@@ -32,12 +37,12 @@ v0.0.7 起，`llm_config` 支持多 API-Key：
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建集群 | 25 |
+| 创建集群 | 28 |
 | 查询集群列表 | 1 |
 | 查询集群详情 | 1 |
-| 更新集群 | 10 |
+| 更新集群 | 11 |
 | 删除集群 | 8 |
-| **合计** | **45** |
+| **合计** | **49** |
 
 ## 4. 认证方式
 
@@ -99,6 +104,16 @@ clusters/
 | llm_config.provider_type | string | Y | AI 模型提供商类型 | 必填 |
 | llm_config.match_prefix | string | N | provider/model 前缀 | 若传入且非空，必须以 `/` 结尾 |
 | llm_config.strip_prefix | bool | N | 是否裁剪 `match_prefix` | 默认 `false`；为 `true` 时 `match_prefix` 必填且非空 |
+| llm_config.key_affinity | object | N | 会话级 Key 亲和性配置 | 见下方“Key 亲和性配置” |
+
+##### Key 亲和性配置（`llm_config.key_affinity`）
+
+| 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
+|--------|------|------|------|------------|
+| enabled | bool | N | 是否开启会话级 Key 亲和性 | 默认 `false` |
+| ttl | int | N | 绑定空闲超时时间，单位秒 | 默认 `600`；若传入必须 `>0` |
+| redis_prefix | string | N | Redis key 前缀 | 默认 `"bfe:ai:key_affinity"`；若传入必须非空 |
+| penalty_enable | bool | N | 是否开启 Key 惩罚 | 默认 `true` |
 
 ##### API-Key 结构（`llm_config.keys` 元素）
 
@@ -160,6 +175,9 @@ clusters/
 | CL-1-023 | 仅 match_prefix、strip_prefix=false | 正常参数 | 验证仅用于路由标识 |
 | CL-1-024 | 未配置 match_prefix / strip_prefix | 正常参数 | 验证默认值/字段不存在 |
 | CL-1-025 | 非法 strip_prefix 类型 | 异常参数 | 验证 ErrNum=422 |
+| CL-1-026 | 合法 key_affinity 配置 | 正常参数 | 验证创建成功且字段回显正确 |
+| CL-1-027 | key_affinity.ttl ≤ 0 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-028 | key_affinity.redis_prefix 为空 | 合法性条件 | 验证 ErrNum=422 |
 
 ### 6.4 测试场景详细设计
 
@@ -1438,6 +1456,156 @@ clusters/
 
 ---
 
+#### 6.4.26 CL-1-026：合法 key_affinity 配置（正常参数）
+
+##### 设计思路
+
+验证 `llm_config.key_affinity` 合法配置可成功创建集群，且响应字段回显正确。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`key_affinity` 配置 `enabled=true`、`ttl=600`、`redis_prefix="bfe:ai:key_affinity"`、`penalty_enable=true`。
+2. 验证返回 200，响应中 `llm_config.key_affinity` 与输入一致。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_key_affinity_valid",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["deepseek-chat"],
+        "key_affinity": {
+            "enabled": true,
+            "ttl": 600,
+            "redis_prefix": "bfe:ai:key_affinity",
+            "penalty_enable": true
+        },
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| llm_config.key_affinity.enabled | true | Equals |
+| llm_config.key_affinity.ttl | 600 | Equals |
+| llm_config.key_affinity.redis_prefix | "bfe:ai:key_affinity" | Equals |
+| llm_config.key_affinity.penalty_enable | true | Equals |
+
+---
+
+#### 6.4.27 CL-1-027：key_affinity.ttl ≤ 0（合法性条件）
+
+##### 设计思路
+
+验证 `key_affinity.ttl` 必须 `>0`，否则返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`key_affinity.ttl=0`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_key_affinity_bad_ttl",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "key_affinity": {
+            "enabled": true,
+            "ttl": 0
+        },
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "ttl" 或 "key_affinity" 的错误信息  
+**Data**：null
+
+---
+
+#### 6.4.28 CL-1-028：key_affinity.redis_prefix 为空（合法性条件）
+
+##### 设计思路
+
+验证 `key_affinity.redis_prefix` 若传入必须非空，否则返回 422。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 POST 请求，`key_affinity.redis_prefix=""`。
+2. 验证返回 422。
+
+##### 请求参数
+
+```json
+{
+    "name": "cluster_key_affinity_empty_prefix",
+    "instance_pool": [
+        {
+            "hostname": "backend-1",
+            "ip": "10.0.0.1",
+            "weight": 100,
+            "ports": {"Default": 8080}
+        }
+    ],
+    "llm_config": {
+        "models": ["m"],
+        "key_affinity": {
+            "redis_prefix": ""
+        },
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：422  
+**ErrMsg**：包含 "redis_prefix" 或 "key_affinity" 的错误信息  
+**Data**：null
+
+---
+
 ## 7. 查询集群列表
 
 ### 7.1 接口信息
@@ -1619,6 +1787,7 @@ URI：`cluster_full`
 | CL-4-008 | 更新 match_prefix / strip_prefix | 正常参数 | 验证 PATCH 后前缀配置更新生效，InnerAPI 导出一致 |
 | CL-4-009 | 删除被路由引用的模型 | 业务规则 | `llm_config.models` 移除仍被路由规则引用的模型，验证 ErrNum=500 |
 | CL-4-010 | 清理路由引用后可删除模型 | 正常参数 | 移除 API-Key 路由规则引用后，可成功删除集群模型 |
+| CL-4-011 | 更新 key_affinity | 正常参数 | 验证 PATCH 后 key_affinity 更新生效，InnerAPI 导出一致 |
 
 ### 9.4 测试场景详细设计
 
@@ -2075,6 +2244,72 @@ URI：`cluster_ref_model`
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
 | llm_config.models | ["other-model"] | Equals |
+
+---
+
+#### 9.4.11 CL-4-011：更新 key_affinity（正常参数）
+
+##### 设计思路
+
+验证通过 PATCH 更新 `llm_config.key_affinity` 后，OpenAPI 查询与 InnerAPI 导出均生效。
+
+##### 前提数据准备
+
+已创建集群 `cluster_update_key_affinity`，初始配置：
+```json
+{
+    "llm_config": {
+        "models": ["deepseek-chat"],
+        "key_affinity": {
+            "enabled": false,
+            "ttl": 600,
+            "redis_prefix": "bfe:ai:key_affinity",
+            "penalty_enable": true
+        },
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，将 `key_affinity.enabled` 改为 `true`，`ttl` 改为 `1200`，`redis_prefix` 改为 `"bfe:ai:key_affinity:v2"`。
+2. 验证返回 200，响应中字段已更新。
+3. 发送 GET 请求查询集群，验证字段一致。
+4. 发送 GET 请求到 `/inner-api/v1/configs/tls_conf/server_data_conf`，验证 `AIConf.KeyPolicy.SessionAffinity == true`、`SessionAffinityTTL == 1200`、`SessionAffinityRedisPrefix == "bfe:ai:key_affinity:v2"`。
+
+##### 请求参数
+
+URI：`cluster_update_key_affinity`
+
+```json
+{
+    "llm_config": {
+        "models": ["deepseek-chat"],
+        "key_affinity": {
+            "enabled": true,
+            "ttl": 1200,
+            "redis_prefix": "bfe:ai:key_affinity:v2",
+            "penalty_enable": false
+        },
+        "provider_type": "deepseek"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| llm_config.key_affinity.enabled | true | Equals |
+| llm_config.key_affinity.ttl | 1200 | Equals |
+| llm_config.key_affinity.redis_prefix | "bfe:ai:key_affinity:v2" | Equals |
+| llm_config.key_affinity.penalty_enable | false | Equals |
 
 ---
 

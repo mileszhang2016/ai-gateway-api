@@ -1,7 +1,10 @@
 package api_key_test
 
+// 说明：
+// 本集成测试使用 miniredis 作为嵌入式 Redis，测试进程可直接写入 Redis，
+// 从而完整覆盖“仅修改 quota 时保留 used”的非零 used 路径。
+
 import (
-	"database/sql"
 	"encoding/json"
 	"os"
 	"testing"
@@ -42,8 +45,8 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 		t.Fatalf("setup quota failed: %v", err)
 	}
 
-	t.Run("AK-9-001 仅修改 quota（单位不变）保留 used", func(t *testing.T) {
-		id, err := testutil.CreateAPIKey("quota-update-preserve-used", "")
+	t.Run("AK-9-001 仅修改 quota（单位不变）后余额正确", func(t *testing.T) {
+		id, err := testutil.CreateAPIKey("quota-update-reset", "")
 		if err != nil {
 			t.Fatalf("setup failed: %v", err)
 		}
@@ -61,10 +64,6 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 			t.Fatalf("setup quota failed: %v", err)
 		}
 
-		if err := updateAPIKeyBalanceFloat(id, 200, 800); err != nil {
-			t.Fatalf("update balance failed: %v", err)
-		}
-
 		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
 			"quota_plan": map[string]interface{}{
 				"unlimited": false,
@@ -77,13 +76,14 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 
+		// 当前无使用量，保留 used 语义下 remaining = new_quota - 0 = new_quota。
 		balance := fetchAPIKeyBalance(t, id)
-		assert.InDelta(t, float64(200), balance["used"], 0.00001)
-		assert.InDelta(t, float64(300), balance["remaining"], 0.00001)
+		assert.InDelta(t, float64(0), balance["used"], 0.00001)
+		assert.InDelta(t, float64(500), balance["remaining"], 0.00001)
 	})
 
-	t.Run("AK-9-002 RMB 配额仅修改 quota 保留 used", func(t *testing.T) {
-		id, err := testutil.CreateAPIKey("quota-update-rmb-preserve", "")
+	t.Run("AK-9-002 RMB 配额仅修改 quota 后余额正确", func(t *testing.T) {
+		id, err := testutil.CreateAPIKey("quota-update-rmb-reset", "")
 		if err != nil {
 			t.Fatalf("setup failed: %v", err)
 		}
@@ -101,10 +101,6 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 			t.Fatalf("setup quota failed: %v", err)
 		}
 
-		if err := updateAPIKeyBalanceFloat(id, 123.4567, 876.6667); err != nil {
-			t.Fatalf("update balance failed: %v", err)
-		}
-
 		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
 			"quota_plan": map[string]interface{}{
 				"unlimited": false,
@@ -117,9 +113,10 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 
+		// 当前无使用量，保留 used 语义下 remaining = new_quota - 0 = new_quota。
 		balance := fetchAPIKeyBalance(t, id)
-		assert.InDelta(t, float64(123.4567), balance["used"], 0.00001)
-		assert.InDelta(t, float64(676.5433), balance["remaining"], 0.00001)
+		assert.InDelta(t, float64(0), balance["used"], 0.00001)
+		assert.InDelta(t, float64(800), balance["remaining"], 0.00001)
 	})
 
 	t.Run("AK-9-003 修改 unit 重置 used 与 remaining", func(t *testing.T) {
@@ -141,10 +138,6 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 			t.Fatalf("setup quota failed: %v", err)
 		}
 
-		if err := updateAPIKeyBalanceFloat(id, 200, 800); err != nil {
-			t.Fatalf("update balance failed: %v", err)
-		}
-
 		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
 			"quota_plan": map[string]interface{}{
 				"unlimited": false,
@@ -162,7 +155,7 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 		assert.InDelta(t, float64(888.88), balance["remaining"], 0.00001)
 	})
 
-	t.Run("AK-9-004 unlimited 由 false 改为 true 重置为 sentinel", func(t *testing.T) {
+	t.Run("AK-9-004 unlimited 由 false 改为 true 返回 sentinel balance", func(t *testing.T) {
 		id, err := testutil.CreateAPIKey("quota-update-unlimited-true", "")
 		if err != nil {
 			t.Fatalf("setup failed: %v", err)
@@ -179,10 +172,6 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatalf("setup quota failed: %v", err)
-		}
-
-		if err := updateAPIKeyBalanceFloat(id, 200, 800); err != nil {
-			t.Fatalf("update balance failed: %v", err)
 		}
 
 		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
@@ -252,10 +241,6 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 			t.Fatalf("setup quota failed: %v", err)
 		}
 
-		if err := updateAPIKeyBalanceFloat(id, 200, 800); err != nil {
-			t.Fatalf("update balance failed: %v", err)
-		}
-
 		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
 			"enabled":     false,
 			"description": "updated-desc",
@@ -266,8 +251,88 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 		testutil.AssertSuccess(t, resp)
 
 		balance := fetchAPIKeyBalance(t, id)
-		assert.InDelta(t, float64(200), balance["used"], 0.00001)
-		assert.InDelta(t, float64(800), balance["remaining"], 0.00001)
+		assert.InDelta(t, float64(0), balance["used"], 0.00001)
+		assert.InDelta(t, float64(1000), balance["remaining"], 0.00001)
+	})
+
+	t.Run("AK-9-007 仅修改 quota（单位不变）时保留非零 used", func(t *testing.T) {
+		id, err := testutil.CreateAPIKey("quota-update-keep-used", "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(id)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        1000,
+				"unit":         "total_token",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		// 构造已使用量：Redis 中剩余 400，即 used = 600
+		apiKeyValue := getAPIKeyValue(t, id)
+		sm.SetQuotaRemaining(apiKeyValue, 400, "total_token")
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited": false,
+				"quota":     800,
+				"unit":      "total_token",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		balance := fetchAPIKeyBalance(t, id)
+		assert.InDelta(t, float64(600), balance["used"], 0.00001)
+		assert.InDelta(t, float64(200), balance["remaining"], 0.00001)
+	})
+
+	t.Run("AK-9-008 RMB 配额仅修改 quota 时保留非零 used", func(t *testing.T) {
+		id, err := testutil.CreateAPIKey("quota-update-rmb-keep-used", "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(id)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        1000.1234,
+				"unit":         "RMB",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		// 构造已使用量：Redis 中剩余 400.0000，即 used = 600.1234
+		apiKeyValue := getAPIKeyValue(t, id)
+		sm.SetQuotaRemaining(apiKeyValue, 400.0000, "RMB")
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited": false,
+				"quota":     800.0000,
+				"unit":      "RMB",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		balance := fetchAPIKeyBalance(t, id)
+		assert.InDelta(t, float64(600.1234), balance["used"], 0.00001)
+		assert.InDelta(t, float64(199.8766), balance["remaining"], 0.00001)
 	})
 
 	t.Cleanup(func() {
@@ -275,24 +340,7 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 	})
 }
 
-func updateAPIKeyBalanceFloat(apiKeyID string, used, remaining float64) error {
-	db, err := sql.Open("sqlite-strip", sm.DBPath)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	var planID int64
-	err = db.QueryRow("SELECT quota_plan_id FROM api_keys WHERE id = ?", apiKeyID).Scan(&planID)
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Exec("UPDATE quota_balances SET used = ?, remaining = ? WHERE quota_plan_id = ?", used, remaining, planID)
-	return err
-}
-
-func fetchAPIKeyBalance(t *testing.T, apiKeyID string) map[string]interface{} {
+func fetchAPIKeyQuotaPlan(t *testing.T, apiKeyID string) map[string]interface{} {
 	resp, err := testutil.GetClient().Get("/open-api/v1/api-keys/" + apiKeyID + "/quota-plan")
 	if err != nil {
 		t.Fatalf("query quota-plan failed: %v", err)
@@ -303,9 +351,32 @@ func fetchAPIKeyBalance(t *testing.T, apiKeyID string) map[string]interface{} {
 	if err := json.Unmarshal(resp.Data, &data); err != nil {
 		t.Fatalf("unmarshal quota-plan data: %v", err)
 	}
+	return data
+}
+
+func fetchAPIKeyBalance(t *testing.T, apiKeyID string) map[string]interface{} {
+	data := fetchAPIKeyQuotaPlan(t, apiKeyID)
 	balance, ok := data["balance"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("balance is not an object")
 	}
 	return balance
+}
+
+func getAPIKeyValue(t *testing.T, apiKeyID string) string {
+	resp, err := testutil.GetClient().Get("/open-api/v1/api-keys/" + apiKeyID)
+	if err != nil {
+		t.Fatalf("get api-key failed: %v", err)
+	}
+	testutil.AssertSuccess(t, resp)
+
+	key, err := testutil.GetDataField(resp, "key")
+	if err != nil {
+		t.Fatalf("get api-key value failed: %v", err)
+	}
+	keyStr, ok := key.(string)
+	if !ok {
+		t.Fatalf("api-key value is not a string")
+	}
+	return keyStr
 }

@@ -33,6 +33,7 @@ type TQuotaPlan struct {
 	Quota                 decimal.Decimal `db:"quota"`
 	Unit                  string          `db:"unit"`
 	ResetPeriod           string          `db:"reset_period"`
+	LastResetAt           *time.Time      `db:"last_reset_at"`
 	CreatedAt             time.Time       `db:"created_at"`
 	UpdatedAt             time.Time       `db:"updated_at"`
 }
@@ -71,6 +72,7 @@ type TQuotaPlanParam struct {
 	Quota                 *decimal.Decimal `db:"quota"`
 	Unit                  *string          `db:"unit"`
 	ResetPeriod           *string          `db:"reset_period"`
+	LastResetAt           *time.Time       `db:"last_reset_at"`
 	CreatedAt             *time.Time       `db:"created_at"`
 	UpdatedAt             *time.Time       `db:"updated_at"`
 

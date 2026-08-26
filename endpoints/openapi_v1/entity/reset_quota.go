@@ -66,18 +66,18 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	entity, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{
+	ent, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{
 		EntityID: resetReq.EntityID,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if entity == nil {
+	if ent == nil {
 		return nil, xerror.WrapRecordNotExist("Entity")
 	}
 
-	if entity.QuotaPlanID == nil {
+	if ent.QuotaPlanID == nil {
 		return nil, xerror.WrapParamErrorWithMsg("Entity has no quota plan")
 	}
 
@@ -85,7 +85,7 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 	var previousRemaining float64
 
 	plan, err := container.QuotaPlanManager.FetchQuotaPlan(req.Context(), &quota.QuotaPlanFilter{
-		ID: entity.QuotaPlanID,
+		ID: ent.QuotaPlanID,
 	})
 	if err != nil {
 		return nil, err
@@ -103,41 +103,33 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
-	balance, err := container.QuotaPlanManager.FetchQuotaBalance(req.Context(), *entity.QuotaPlanID)
-	if err != nil {
-		return nil, err
-	}
-	if balance != nil && balance.Remaining != nil {
-		previousRemaining = *balance.Remaining
+	if ent.QuotaPlan != nil && ent.QuotaPlan.Balance != nil && ent.QuotaPlan.Balance.Remaining != nil {
+		previousRemaining = *ent.QuotaPlan.Balance.Remaining
 	}
 
-	err = container.QuotaPlanManager.ResetBalance(req.Context(), *entity.QuotaPlanID, bodyReq.Quota, false)
+	err = container.QuotaPlanManager.ResetBalance(req.Context(), *ent.QuotaPlanID, bodyReq.Quota, false)
 	if err != nil {
 		return nil, err
 	}
 
-	newPlan, err := container.QuotaPlanManager.FetchQuotaPlan(req.Context(), &quota.QuotaPlanFilter{
-		ID: entity.QuotaPlanID,
+	// 获取更新后的 Entity 与余额（从 Redis 实时读取）
+	newEntity, err := container.EntityManager.FetchEntity(req.Context(), &entity.EntityFilter{
+		EntityID: resetReq.EntityID,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	newBalance, err := container.QuotaPlanManager.FetchQuotaBalance(req.Context(), *entity.QuotaPlanID)
-	if err != nil {
-		return nil, err
-	}
-
 	newRemaining := float64(0)
-	if newBalance != nil && newBalance.Remaining != nil {
-		newRemaining = *newBalance.Remaining
+	if newEntity != nil && newEntity.QuotaPlan != nil && newEntity.QuotaPlan.Balance != nil && newEntity.QuotaPlan.Balance.Remaining != nil {
+		newRemaining = *newEntity.QuotaPlan.Balance.Remaining
 	}
 
 	newQuota := previousQuota
 	if bodyReq.Quota != nil {
 		newQuota = bodyReq.Quota
-	} else if newPlan != nil {
-		newQuota = newPlan.Quota
+	} else if newEntity != nil && newEntity.QuotaPlan != nil {
+		newQuota = newEntity.QuotaPlan.Quota
 	}
 
 	return &ResetQuotaResponse{

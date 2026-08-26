@@ -128,6 +128,10 @@ func TestInnerAPI_TlsConf(t *testing.T) {
 		assert.Equal(t, float64(3), policy["MaxRetries"])
 		assert.Equal(t, float64(100), policy["RetryBackoffInitial"])
 		assert.Equal(t, float64(5000), policy["RetryBackoffMax"])
+		assert.Equal(t, false, policy["SessionAffinity"])
+		assert.Equal(t, float64(600), policy["SessionAffinityTTL"])
+		assert.Equal(t, "bfe:ai:key_affinity", policy["SessionAffinityRedisPrefix"])
+		assert.Equal(t, true, policy["SessionAffinityPenaltyEnable"])
 	})
 
 	t.Run("IN-1-003 导出 ClusterConf 含模型定价表", func(t *testing.T) {
@@ -358,6 +362,83 @@ models:
 			return
 		}
 		assert.Equal(t, []interface{}{"anthropic"}, protocols)
+	})
+
+	t.Run("IN-TLS-1-008 AIConf.KeyPolicy 包含 SessionAffinity*", func(t *testing.T) {
+		providerName := testutil.UniqueProviderName()
+		_, err := testutil.CreateProvider(providerName, map[string]interface{}{
+			"models": []string{"deepseek-chat"},
+		})
+		if err != nil {
+			t.Fatalf("setup provider failed: %v", err)
+		}
+		defer testutil.DeleteProvider(providerName)
+
+		clusterName := testutil.UniqueClusterName()
+		_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
+			"llm_config": map[string]interface{}{
+				"models": []string{"deepseek-chat"},
+				"key_affinity": map[string]interface{}{
+					"enabled":        true,
+					"ttl":            600,
+					"redis_prefix":   "bfe:ai:key_affinity",
+					"penalty_enable": true,
+				},
+				"provider": providerName,
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterName)
+
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		aiconf := extractAIConf(t, resp, clusterName)
+		keyPolicy, ok := aiconf["KeyPolicy"].(map[string]interface{})
+		if !assert.True(t, ok, "AIConf.KeyPolicy should be an object") {
+			return
+		}
+		assert.Equal(t, true, keyPolicy["SessionAffinity"])
+		assert.Equal(t, float64(600), keyPolicy["SessionAffinityTTL"])
+		assert.Equal(t, "bfe:ai:key_affinity", keyPolicy["SessionAffinityRedisPrefix"])
+		assert.Equal(t, true, keyPolicy["SessionAffinityPenaltyEnable"])
+	})
+
+	t.Run("IN-TLS-1-009 未配置 key_affinity 时 AIConf.KeyPolicy 为默认值", func(t *testing.T) {
+		clusterName := testutil.UniqueClusterName()
+		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
+			"llm_config": map[string]interface{}{
+				"models":   []string{"deepseek-chat"},
+				"provider": "deepseek",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterName)
+
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		aiconf := extractAIConf(t, resp, clusterName)
+		keyPolicy, ok := aiconf["KeyPolicy"].(map[string]interface{})
+		if !assert.True(t, ok, "AIConf.KeyPolicy should be an object") {
+			return
+		}
+		assert.Equal(t, false, keyPolicy["SessionAffinity"])
+		assert.Equal(t, float64(600), keyPolicy["SessionAffinityTTL"])
+		assert.Equal(t, "bfe:ai:key_affinity", keyPolicy["SessionAffinityRedisPrefix"])
+		assert.Equal(t, true, keyPolicy["SessionAffinityPenaltyEnable"])
 	})
 
 	t.Cleanup(func() {

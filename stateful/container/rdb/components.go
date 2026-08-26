@@ -208,7 +208,6 @@ func Init() error {
 	container.EntityTypeStorager = entityStorage.NewEntityTypeStorager(stateful.NewBFEDBContext)
 	container.EntityStorager = entityStorage.NewEntityStorager(stateful.NewBFEDBContext)
 	container.QuotaPlanStorager = quotaStorage.NewQuotaPlanStorager(stateful.NewBFEDBContext)
-	container.QuotaBalanceStorager = quotaStorage.NewQuotaBalanceStorager(stateful.NewBFEDBContext)
 	container.RateLimitPolicyStorager = rateLimitPolicyStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
 
 	container.QuotaCacheSingleton = quotacache.NewRedisQuotaCache(
@@ -226,7 +225,6 @@ func Init() error {
 		quota.NewQuotaPlanStoragerAdapter(container.QuotaPlanStorager),
 		rate_limit_policy.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
 		container.RouteRulesStorager,
-		quota.NewQuotaBalanceStoragerAdapter(container.QuotaBalanceStorager),
 		container.QuotaCacheSingleton)
 
 	container.APIKeyRuleManager = imods.NewAPIKeyRuleManager(
@@ -247,7 +245,6 @@ func Init() error {
 	container.QuotaPlanManager = quota.NewQuotaPlanManager(
 		container.TxnStoragerSingleton,
 		container.QuotaPlanStorager,
-		container.QuotaBalanceStorager,
 		container.APIKeyStorager,
 		container.EntityStorager,
 		container.QuotaCacheSingleton)
@@ -272,18 +269,17 @@ func Init() error {
 		quota.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
 		container.RouteRulesStorager,
 		quota.NewEntityStoragerAdapter(container.EntityStorager),
-		quota.NewQuotaBalanceStoragerAdapter(container.QuotaBalanceStorager),
 		container.QuotaCacheSingleton,
 	)
 
-	// Initialize quota balance sync and reset components
+	// Initialize quota reset scheduler
 	container.BalanceSyncManager = quota.NewBalanceSyncManager(
 		container.TxnStoragerSingleton,
 		container.APIKeyStorager,
-		container.QuotaBalanceStorager,
 		container.QuotaPlanStorager,
 		container.EntityStorager,
-		container.QuotaCacheSingleton)
+		container.QuotaCacheSingleton,
+		quota.NewRealClock())
 
 	container.QuotaResetScheduler = quota.NewQuotaResetScheduler(
 		container.TxnStoragerSingleton,

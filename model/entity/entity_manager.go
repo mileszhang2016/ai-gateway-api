@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
@@ -34,7 +33,6 @@ type EntityManager struct {
 	quotaPlanStorager       shared.QuotaPlanStorager
 	rateLimitPolicyStorager shared.RateLimitPolicyStorager
 	routeRulesStorager      shared.RouteRulesStorager
-	quotaBalanceStorager    shared.QuotaBalanceStorager
 	quotaCache              quotacache.QuotaCache
 }
 
@@ -44,7 +42,6 @@ func NewEntityManager(txn itxn.TxnStorager, storager EntityStorager,
 	quotaPlanStorager shared.QuotaPlanStorager,
 	rateLimitPolicyStorager shared.RateLimitPolicyStorager,
 	routeRulesStorager shared.RouteRulesStorager,
-	quotaBalanceStorager shared.QuotaBalanceStorager,
 	quotaCache quotacache.QuotaCache) *EntityManager {
 	return &EntityManager{
 		txn:                     txn,
@@ -53,7 +50,6 @@ func NewEntityManager(txn itxn.TxnStorager, storager EntityStorager,
 		quotaPlanStorager:       quotaPlanStorager,
 		rateLimitPolicyStorager: rateLimitPolicyStorager,
 		routeRulesStorager:      routeRulesStorager,
-		quotaBalanceStorager:    quotaBalanceStorager,
 		quotaCache:              quotaCache,
 	}
 }
@@ -119,17 +115,6 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 			return err
 		}
 
-		if param.QuotaPlanID != nil && m.quotaBalanceStorager != nil {
-			remaining := lib.PFloat64(0)
-			if param.QuotaPlan != nil && param.QuotaPlan.Quota != nil {
-				remaining = param.QuotaPlan.Quota
-			}
-			err = m.quotaBalanceStorager.CreateQuotaBalance(ctx, *param.QuotaPlanID, remaining)
-			if err != nil {
-				return err
-			}
-		}
-
 		return nil
 	})
 	if err != nil {
@@ -167,8 +152,18 @@ func (m *EntityManager) FetchEntity(ctx context.Context, filter *EntityFilter) (
 		}
 		return m.populateAssociatedData(ctx, one)
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	return one, err
+	// 事务外从 Redis 读取实时余额（最终一致，失败不影响主数据返回）。
+	if one != nil {
+		if err := m.populateQuotaBalance(ctx, one); err != nil {
+			stateful.AccessLogger.Warn("failed to populate quota balance for entity: %v", err)
+		}
+	}
+
+	return one, nil
 }
 
 // FetchEntityList 查询 Entity 列表
@@ -187,8 +182,16 @@ func (m *EntityManager) FetchEntityList(ctx context.Context, filter *EntityFilte
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	return list, err
+	// 事务外批量从 Redis 读取实时余额（最终一致，失败不影响主数据返回）。
+	if err := m.populateQuotaBalances(ctx, list); err != nil {
+		stateful.AccessLogger.Warn("failed to populate quota balances for entity list: %v", err)
+	}
+
+	return list, nil
 }
 
 // UpdateEntity 更新 Entity
@@ -241,13 +244,6 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 					return err
 				}
 				param.QuotaPlanID = &quotaPlanID
-
-				if m.quotaBalanceStorager != nil {
-					err = m.quotaBalanceStorager.CreateQuotaBalance(ctx, quotaPlanID, param.QuotaPlan.Quota)
-					if err != nil {
-						return err
-					}
-				}
 			}
 		}
 
@@ -341,12 +337,6 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 			return xerror.WrapConflictErrorWithMsg("cannot delete entity with children")
 		}
 
-		if one.QuotaPlanID != nil && m.quotaBalanceStorager != nil {
-			if err := m.quotaBalanceStorager.DeleteQuotaBalance(ctx, *one.QuotaPlanID); err != nil {
-				return err
-			}
-		}
-
 		if one.QuotaPlanID != nil && m.quotaPlanStorager != nil {
 			if err := m.quotaPlanStorager.DeleteQuotaPlan(ctx, *one.QuotaPlanID); err != nil {
 				return err
@@ -412,20 +402,6 @@ func (m *EntityManager) populateAssociatedData(ctx context.Context, one *EntityP
 			return err
 		}
 		one.QuotaPlan = quotaPlan
-
-		if m.quotaBalanceStorager != nil {
-			balance, err := m.quotaBalanceStorager.FetchQuotaBalance(ctx, *one.QuotaPlanID)
-			if err != nil {
-				return err
-			}
-			if balance != nil {
-				if one.QuotaPlan.Balance == nil {
-					one.QuotaPlan.Balance = &shared.BalanceSummary{}
-				}
-				one.QuotaPlan.Balance.Used = balance.Used
-				one.QuotaPlan.Balance.Remaining = balance.Remaining
-			}
-		}
 	}
 
 	if one.RateLimitPolicyID != nil && m.rateLimitPolicyStorager != nil {
@@ -457,6 +433,108 @@ func (m *EntityManager) populateAssociatedData(ctx context.Context, one *EntityP
 		}
 	}
 
+	return nil
+}
+
+const unlimitedSentinel = float64(100000000)
+
+// fillQuotaBalance 根据 Redis 实时剩余量填充 quotaPlan.Balance。
+func fillQuotaBalance(quotaPlan *shared.QuotaPlanParam, remaining float64) {
+	if quotaPlan == nil || quotaPlan.Quota == nil {
+		return
+	}
+	if remaining < 0 {
+		remaining = 0
+	}
+	used := *quotaPlan.Quota - remaining
+	if used < 0 {
+		used = 0
+	}
+	if quotaPlan.Balance == nil {
+		quotaPlan.Balance = &shared.BalanceSummary{}
+	}
+	quotaPlan.Balance.Used = &used
+	quotaPlan.Balance.Remaining = &remaining
+}
+
+// fillUnlimitedQuotaBalance 为无限配额填充 sentinel 余额（used=0, remaining=100000000）。
+func fillUnlimitedQuotaBalance(quotaPlan *shared.QuotaPlanParam) {
+	if quotaPlan == nil {
+		return
+	}
+	used := float64(0)
+	remaining := unlimitedSentinel
+	if quotaPlan.Balance == nil {
+		quotaPlan.Balance = &shared.BalanceSummary{}
+	}
+	quotaPlan.Balance.Used = &used
+	quotaPlan.Balance.Remaining = &remaining
+}
+
+// populateQuotaBalance 为单个 Entity 从 Redis 实时读取剩余量并填充 Balance。
+func (m *EntityManager) populateQuotaBalance(ctx context.Context, one *EntityParam) error {
+	if m.quotaCache == nil {
+		return nil
+	}
+	if one.QuotaPlan == nil || one.QuotaPlan.Quota == nil || one.EntityID == nil {
+		return nil
+	}
+	if one.QuotaPlan.Unlimited != nil && *one.QuotaPlan.Unlimited {
+		fillUnlimitedQuotaBalance(one.QuotaPlan)
+		return nil
+	}
+
+	remaining, err := m.quotaCache.GetRemaining(ctx, *one.EntityID, one.QuotaPlan.Unit)
+	if err != nil {
+		return fmt.Errorf("get %s from cache is error:%s", *one.EntityID, err.Error())
+	}
+	fillQuotaBalance(one.QuotaPlan, remaining)
+	return nil
+}
+
+// populateQuotaBalances 为 Entity 列表批量从 Redis 读取剩余量并填充 Balance。
+func (m *EntityManager) populateQuotaBalances(ctx context.Context, list []*EntityParam) error {
+	if m.quotaCache == nil {
+		return nil
+	}
+
+	type item struct {
+		one *EntityParam
+		key string
+	}
+	groups := make(map[string][]item)
+	for _, one := range list {
+		if one.QuotaPlan == nil || one.QuotaPlan.Quota == nil || one.EntityID == nil {
+			continue
+		}
+		if one.QuotaPlan.Unlimited != nil && *one.QuotaPlan.Unlimited {
+			fillUnlimitedQuotaBalance(one.QuotaPlan)
+			continue
+		}
+		unit := ""
+		if one.QuotaPlan.Unit != nil {
+			unit = *one.QuotaPlan.Unit
+		}
+		groups[unit] = append(groups[unit], item{one: one, key: *one.EntityID})
+	}
+
+	for unit, items := range groups {
+		keys := make([]string, len(items))
+		for i, it := range items {
+			keys[i] = it.key
+		}
+		var unitPtr *string
+		if unit != "" {
+			unitPtr = &unit
+		}
+		result, err := m.quotaCache.BatchGetRemaining(ctx, keys, unitPtr)
+		if err != nil {
+			return err
+		}
+		for _, it := range items {
+			fillQuotaBalance(it.one.QuotaPlan, result[it.key])
+		}
+	}
 	return nil
 }
 

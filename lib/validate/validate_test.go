@@ -350,6 +350,30 @@ func TestLLMConfig(t *testing.T) {
 	c10.MatchPrefix = lib.PString("openrouter/")
 	c10.StripPrefix = lib.PBool(true)
 	assert.NoError(t, LLMConfig(&c10))
+
+	// valid key_affinity
+	c11 := *c
+	c11.KeyAffinity = &icluster_conf.KeyAffinity{
+		Enabled:       lib.PBool(true),
+		TTL:           lib.PInt(600),
+		RedisPrefix:   lib.PString("bfe:ai:key_affinity"),
+		PenaltyEnable: lib.PBool(true),
+	}
+	assert.NoError(t, LLMConfig(&c11))
+
+	// invalid key_affinity.ttl
+	c12 := *c
+	c12.KeyAffinity = &icluster_conf.KeyAffinity{
+		TTL: lib.PInt(0),
+	}
+	assert.Error(t, LLMConfig(&c12))
+
+	// invalid key_affinity.redis_prefix
+	c13 := *c
+	c13.KeyAffinity = &icluster_conf.KeyAffinity{
+		RedisPrefix: lib.PString(""),
+	}
+	assert.Error(t, LLMConfig(&c13))
 }
 
 func TestInstancePool(t *testing.T) {

@@ -88,7 +88,6 @@ var (
 	EntityTypeStorager      entity.EntityTypeStorager
 	EntityStorager          entity.EntityStorager
 	QuotaPlanStorager       quota.QuotaPlanStorager
-	QuotaBalanceStorager    quota.QuotaBalanceStorager
 	RateLimitPolicyStorager rate_limit_policy.RateLimitPolicyStorager
 	RouteRulesStorager      shared.RouteRulesStorager
 	QuotaCacheSingleton     quotacache.QuotaCache

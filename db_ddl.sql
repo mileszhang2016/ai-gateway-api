@@ -389,24 +389,11 @@ CREATE TABLE `quota_plans` (
   `quota` DECIMAL(18,8) DEFAULT 0 COMMENT '配额总量',
   `unit` VARCHAR(32) DEFAULT 'total_token' COMMENT '配额单位：total_token/RMB',
   `reset_period` VARCHAR(16) DEFAULT 'never' COMMENT '配额重置周期：never/weekly/monthly，重置均基于日历周期（如自然周/自然月）',
+  `last_reset_at` DATETIME DEFAULT NULL COMMENT '上次重置时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_unlimited` (`unlimited`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配额计划表';
-
--- create quota_balances (配额余额表)
-DROP TABLE IF EXISTS `quota_balances`;
-CREATE TABLE `quota_balances` (
-  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
-  `quota_plan_id` BIGINT NOT NULL COMMENT '配额计划ID',
-  `used` DECIMAL(18,8) DEFAULT 0 COMMENT '已使用量',
-  `remaining` DECIMAL(18,8) DEFAULT 0 COMMENT '剩余量',
-  `last_reset_at` DATETIME DEFAULT NULL COMMENT '上次重置时间',
-  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  UNIQUE KEY `uk_quota_plan_id` (`quota_plan_id`),
-  INDEX `idx_remaining` (`remaining`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='配额余额表';
 
 -- create model_prices (模型定价表)
 DROP TABLE IF EXISTS `model_prices`;
@@ -438,7 +425,7 @@ CREATE TABLE `providers` (
   `description` VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '描述',
   `model_endpoint` JSON COMMENT '模型发现端点配置',
   `models` JSON COMMENT '支持的模型列表',
-  `keys` JSON COMMENT 'API key 列表',
+  `api_keys` JSON COMMENT 'API key 列表',
   `instance_pool` JSON NOT NULL COMMENT '实例池列表',
   `model_protocols` JSON NOT NULL COMMENT '支持的模型协议列表',
   `time_zone` VARCHAR(255) NOT NULL DEFAULT 'Asia/Shanghai' COMMENT '计算时段所使用的时区',
