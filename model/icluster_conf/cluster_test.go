@@ -864,12 +864,12 @@ func TestNewBfeClusterConf(t *testing.T) {
 					Model:     "deepseek-v4-pro",
 					BaseModel: "deepseek-v4-pro",
 					Mode:      "chat",
-					Prices: map[string]float64{
+					Prices: imodel_price.PriceMap{
 						"input_cost_per_token":        0.0000045,
 						"output_cost_per_token":       0.0000135,
 						"cache_read_input_token_cost": 0.00000015,
 					},
-					TierPrices: map[string]map[string]float64{
+					TierPrices: imodel_price.TierPriceMap{
 						"peak": {
 							"input_cost_per_token":        0.000009,
 							"output_cost_per_token":       0.000027,

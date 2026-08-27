@@ -15,6 +15,7 @@
 package imodel_price
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -256,3 +257,49 @@ func (e *errReader) Read(p []byte) (int, error) {
 }
 
 var _ io.Reader = (*errReader)(nil)
+
+func TestParseModelListYAMLEightDecimalPlaces(t *testing.T) {
+	yaml := `
+version: v1.0
+default_currency: RMB
+models:
+  - provider: deepseek
+    model: deepseek-v3
+    base_model: deepseek-v3
+    mode: chat
+    prices:
+      input_cost_per_token: 0.0000015
+      output_cost_per_token: 0.0000045
+      cache_read_input_token_cost: 0.00000005
+    tier_prices:
+      peak:
+        input_cost_per_token: 0.000003
+        output_cost_per_token: 0.000009
+        cache_read_input_token_cost: 0.0000001
+`
+	file, err := ParseModelListYAML(strings.NewReader(yaml))
+	require.NoError(t, err)
+	require.Len(t, file.Models, 1)
+
+	m := file.Models[0]
+	assert.Equal(t, 0.0000015, m.Prices["input_cost_per_token"])
+	assert.Equal(t, 0.0000045, m.Prices["output_cost_per_token"])
+	assert.Equal(t, 0.00000005, m.Prices["cache_read_input_token_cost"])
+	assert.Equal(t, 0.000003, m.TierPrices["peak"]["input_cost_per_token"])
+	assert.Equal(t, 0.000009, m.TierPrices["peak"]["output_cost_per_token"])
+	assert.Equal(t, 0.0000001, m.TierPrices["peak"]["cache_read_input_token_cost"])
+
+	// JSON should use decimal notation, not scientific notation.
+	data, err := json.Marshal(m)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "0.00000005")
+	assert.Contains(t, string(data), "0.0000001")
+	assert.NotContains(t, string(data), "5e-")
+	assert.NotContains(t, string(data), "1e-")
+
+	// Round-trip preserves values.
+	var back ModelPrice
+	require.NoError(t, json.Unmarshal(data, &back))
+	assert.Equal(t, 0.00000005, back.Prices["cache_read_input_token_cost"])
+	assert.Equal(t, 0.0000001, back.TierPrices["peak"]["cache_read_input_token_cost"])
+}

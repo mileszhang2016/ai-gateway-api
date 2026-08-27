@@ -1014,8 +1014,8 @@ func NewBfeClusterConf(version string, clusters []*Cluster,
 								Capabilities:        e.Capabilities,
 								SupportedParameters: e.SupportedParameters,
 								Limits:              e.Limits,
-								Prices:              e.Prices,
-								TierPrices:          e.TierPrices,
+								Prices:              cluster_conf.PriceMap(e.Prices),
+								TierPrices:          cluster_conf.TierPriceMap(e.TierPrices),
 								Metadata:            e.Metadata,
 							})
 						}

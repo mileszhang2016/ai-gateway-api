@@ -286,22 +286,22 @@ func unmarshalMap(s string) map[string]interface{} {
 	return rst
 }
 
-func unmarshalPriceMap(s string) map[string]float64 {
+func unmarshalPriceMap(s string) imodel_price.PriceMap {
 	if s == "" || s == "null" {
 		return nil
 	}
-	var rst map[string]float64
+	var rst imodel_price.PriceMap
 	if err := json.Unmarshal([]byte(s), &rst); err != nil {
 		return nil
 	}
 	return rst
 }
 
-func unmarshalTierPrices(s string) map[string]map[string]float64 {
+func unmarshalTierPrices(s string) imodel_price.TierPriceMap {
 	if s == "" || s == "null" {
 		return nil
 	}
-	var rst map[string]map[string]float64
+	var rst imodel_price.TierPriceMap
 	if err := json.Unmarshal([]byte(s), &rst); err != nil {
 		return nil
 	}
