@@ -15,12 +15,92 @@
 package imodel_price
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 )
+
+// PriceMap is a map of price keys to their numeric values.
+// It marshals to JSON using decimal notation instead of scientific notation.
+type PriceMap map[string]float64
+
+// MarshalJSON serializes PriceMap using decimal notation for all values.
+func (p PriceMap) MarshalJSON() ([]byte, error) {
+	if p == nil {
+		return []byte("null"), nil
+	}
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	first := true
+	for k, v := range p {
+		if !first {
+			buf.WriteByte(',')
+		}
+		first = false
+		keyBytes, err := json.Marshal(k)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(keyBytes)
+		buf.WriteByte(':')
+		buf.WriteString(strconv.FormatFloat(v, 'f', -1, 64))
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
+}
+
+// TierPriceMap is a map of tier names to PriceMap values.
+// It marshals to JSON using decimal notation instead of scientific notation.
+type TierPriceMap map[string]map[string]float64
+
+// MarshalJSON serializes TierPriceMap using decimal notation for all nested values.
+func (t TierPriceMap) MarshalJSON() ([]byte, error) {
+	if t == nil {
+		return []byte("null"), nil
+	}
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	first := true
+	for tier, prices := range t {
+		if !first {
+			buf.WriteByte(',')
+		}
+		first = false
+		tierBytes, err := json.Marshal(tier)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(tierBytes)
+		buf.WriteByte(':')
+		if prices == nil {
+			buf.WriteString("null")
+			continue
+		}
+		innerFirst := true
+		buf.WriteByte('{')
+		for k, v := range prices {
+			if !innerFirst {
+				buf.WriteByte(',')
+			}
+			innerFirst = false
+			keyBytes, err := json.Marshal(k)
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(keyBytes)
+			buf.WriteByte(':')
+			buf.WriteString(strconv.FormatFloat(v, 'f', -1, 64))
+		}
+		buf.WriteByte('}')
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
+}
 
 // ModelPrice represents a single model pricing/capability record.
 type ModelPrice struct {
@@ -32,8 +112,8 @@ type ModelPrice struct {
 	Capabilities        []string                    `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
 	SupportedParameters []string                    `json:"supported_parameters,omitempty" yaml:"supported_parameters,omitempty"`
 	Limits              map[string]interface{}      `json:"limits,omitempty" yaml:"limits,omitempty"`
-	Prices              map[string]float64          `json:"prices,omitempty" yaml:"prices,omitempty"`
-	TierPrices          map[string]map[string]float64 `json:"tier_prices,omitempty" yaml:"tier_prices,omitempty"`
+	Prices              PriceMap                    `json:"prices,omitempty" yaml:"prices,omitempty"`
+	TierPrices          TierPriceMap                `json:"tier_prices,omitempty" yaml:"tier_prices,omitempty"`
 	PriceCurrency       string                      `json:"price_currency,omitempty" yaml:"price_currency,omitempty"`
 	Metadata            map[string]interface{}      `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	CreateTime          *int64                      `json:"create_time,omitempty" yaml:"create_time,omitempty"`
