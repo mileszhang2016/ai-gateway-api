@@ -695,12 +695,16 @@ func (cm *ClusterManager) UpdateCluster(ctx context.Context, product *ibasic.Pro
 				return err
 			}
 
-			// Sync instance pool if provider changed.
+			// Sync instance pool whenever the cluster references a provider, so
+			// that the cluster pool reflects the provider's current instance_pool
+			// regardless of whether the provider name changed.
 			oldProvider := ""
 			if oldData.LLMConfig != nil && oldData.LLMConfig.Provider != nil {
 				oldProvider = *oldData.LLMConfig.Provider
 			}
-			if oldProvider != *param.LLMConfig.Provider {
+			providerChanged := oldProvider != *param.LLMConfig.Provider
+			providerUnchangedButReferenced := oldProvider == *param.LLMConfig.Provider && oldProvider != ""
+			if providerChanged || providerUnchangedButReferenced {
 				for _, sc := range oldData.SubClusters {
 					if sc.InstancePool != nil {
 						if err = cm.poolStorager.UpdatePool(ctx, sc.InstancePool, &PoolParam{
@@ -752,6 +756,46 @@ func (cm *ClusterManager) ProviderDeleteChecker(ctx context.Context, providerNam
 			return xerror.WrapConflictErrorWithMsg("provider %s is referenced by cluster %s", providerName, c.Name)
 		}
 	}
+	return nil
+}
+
+// ProviderInstancePoolSyncer returns a hook suitable for passing to
+// iprovider.ProviderManager.UpdateProvider. When the provider's instance_pool
+// changes, it updates the instance pool of every non-EPP sub-cluster that
+// references the provider to match the new provider instances.
+func (cm *ClusterManager) ProviderInstancePoolSyncer(ctx context.Context,
+	oldProvider, newProvider *iprovider.Provider) error {
+
+	if newProvider == nil || len(newProvider.InstancePool) == 0 {
+		return nil
+	}
+
+	clusters, err := cm.storager.FetchClusterList(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	newInstances := providerInstancesToClusterInstances(newProvider.InstancePool)
+	for _, cluster := range clusters {
+		if cluster.LLMConfig == nil || cluster.LLMConfig.Provider == nil {
+			continue
+		}
+		if *cluster.LLMConfig.Provider != newProvider.Name {
+			continue
+		}
+
+		for _, sc := range cluster.SubClusters {
+			if sc.InstancePool == nil || sc.Role == ProductPoolRoleEPP {
+				continue
+			}
+			if err := cm.poolStorager.UpdatePool(ctx, sc.InstancePool, &PoolParam{
+				Instances: newInstances,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 

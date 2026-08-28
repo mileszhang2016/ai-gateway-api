@@ -51,6 +51,126 @@ func TestProviderInstancesToClusterInstances(t *testing.T) {
 	assert.Equal(t, "rs1", got[1].Name)
 }
 
+func TestClusterManager_ProviderInstancePoolSyncer(t *testing.T) {
+	ctx := context.Background()
+	providerName := "deepseek"
+
+	makeCluster := func(name string, provider *string, instances []Instance) *Cluster {
+		return &Cluster{
+			ID:   1,
+			Name: name,
+			LLMConfig: &LLMConfig{
+				Provider: provider,
+			},
+			SubClusters: []*SubCluster{
+				{
+					ID:   1,
+					Name: "sc1",
+					InstancePool: &Pool{
+						ID:        1,
+						Name:      "p." + name,
+						Instances: instances,
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("updates clusters referencing the provider", func(t *testing.T) {
+		updatedPools := map[int64][]Instance{}
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []Instance{
+						{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+					}),
+					makeCluster("c2", lib.PString("other"), []Instance{
+						{Name: "other", Addr: "9.8.7.6", Port: 443, Weight: 100},
+					}),
+				}, nil
+			},
+		}
+		poolStorager := &fakePoolStorager{
+			updatePoolFn: func(ctx context.Context, oldData *Pool, diff *PoolParam) error {
+				updatedPools[oldData.ID] = diff.Instances
+				return nil
+			},
+		}
+
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, poolStorager, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			InstancePool: []iprovider.ProviderInstance{
+				{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+			},
+		}
+		err := cm.ProviderInstancePoolSyncer(ctx, nil, newProvider)
+		require.NoError(t, err)
+
+		require.Len(t, updatedPools, 1)
+		require.Contains(t, updatedPools, int64(1))
+		assert.Equal(t, "new", updatedPools[1][0].Name)
+	})
+
+	t.Run("skips EPP sub-clusters", func(t *testing.T) {
+		updatedPools := map[int64][]Instance{}
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				c := makeCluster("c1", &providerName, []Instance{
+					{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+				})
+				c.SubClusters[0].Role = ProductPoolRoleEPP
+				return []*Cluster{c}, nil
+			},
+		}
+		poolStorager := &fakePoolStorager{
+			updatePoolFn: func(ctx context.Context, oldData *Pool, diff *PoolParam) error {
+				updatedPools[oldData.ID] = diff.Instances
+				return nil
+			},
+		}
+
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, poolStorager, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			InstancePool: []iprovider.ProviderInstance{
+				{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+			},
+		}
+		err := cm.ProviderInstancePoolSyncer(ctx, nil, newProvider)
+		require.NoError(t, err)
+		assert.Empty(t, updatedPools)
+	})
+
+	t.Run("propagates update pool error", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []Instance{
+						{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+					}),
+				}, nil
+			},
+		}
+		poolStorager := &fakePoolStorager{
+			updatePoolFn: func(ctx context.Context, oldData *Pool, diff *PoolParam) error {
+				return errors.New("update failed")
+			},
+		}
+
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, poolStorager, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			InstancePool: []iprovider.ProviderInstance{
+				{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+			},
+		}
+		err := cm.ProviderInstancePoolSyncer(ctx, nil, newProvider)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "update failed")
+	})
+}
+
 func newTestClusterBase() *Cluster {
 	return &Cluster{
 		ID:   1,

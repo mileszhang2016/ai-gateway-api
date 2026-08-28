@@ -56,7 +56,9 @@ func UpdateAction(req *http.Request) (interface{}, error) {
 	// so that callers do not have to duplicate it in the request body.
 	param.Name = &name
 
-	if err := container.ProviderManager.UpdateProvider(req.Context(), name, param); err != nil {
+	if err := container.ProviderManager.UpdateProvider(req.Context(), name, param,
+		container.ClusterManager.ProviderInstancePoolSyncer,
+	); err != nil {
 		return nil, err
 	}
 

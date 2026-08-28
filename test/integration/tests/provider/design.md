@@ -31,11 +31,12 @@ Provider 与 Cluster 概念分离后：
 | 查询 Provider 列表 | 3 |
 | 查询 Provider 详情 | 2 |
 | 更新 Provider | 4 |
+| Provider instance_pool 同步到 Inner API | 1 |
 | 删除 Provider | 3 |
 | 触发模型发现 | 6 |
 | 获取所有 Provider 名称 | 1 |
 | 设置高峰/闲时模板 | 10 |
-| **合计** | **37** |
+| **合计** | **38** |
 
 ## 4. 认证方式
 
@@ -54,6 +55,8 @@ provider/
 │   └── one_test.go
 ├── update/
 │   └── update_test.go
+├── instance_pool_sync/
+│   └── instance_pool_sync_test.go
 ├── delete/
 │   └── delete_test.go
 └── pricing_tiers/
@@ -251,7 +254,33 @@ provider/
 | PV-4-005 | 请求体不包含 `name` | 200，返回的 `name` 与 URI 一致 |
 | PV-4-006 | 请求体包含 `name` | 422 |
 
-## 10. 删除 Provider
+## 10. Provider instance_pool 同步到 Inner API
+
+### 10.1 接口信息
+
+| 项目 | 值 |
+|------|-----|
+| 模块 | Provider / Inner API |
+| 接口名称 | 修改 Provider instance_pool 后验证 cluster_table 导出 |
+| 方法 | PATCH + GET |
+| 路径 | `/open-api/v1/providers/{provider_name}` + `/inner-api/v1/configs/gslb_data/cluster_table` |
+| 说明 | 验证 Open API 修改 provider 实例池后，Inner API 的 cluster_table 配置导出会同步更新 |
+
+### 10.2 测试步骤
+
+1. 创建 Provider，初始 `instance_pool` 为 `[{name: "backend-old", addr: "10.0.0.1", port: 8080, weight: 100}]`。
+2. 创建 Cluster，通过 `llm_config.provider` 引用该 Provider。
+3. 调用 `GET /inner-api/v1/configs/gslb_data/cluster_table`，断言 cluster 的 backends 包含 `backend-old`。
+4. 调用 `PATCH /open-api/v1/providers/{provider_name}`，将 `instance_pool` 修改为 `[{name: "backend-new", addr: "10.0.0.2", port: 8081, weight: 100}]`。
+5. 再次调用 `GET /inner-api/v1/configs/gslb_data/cluster_table`，断言 backends 包含 `backend-new`，且不再包含 `backend-old`。
+
+### 10.3 测试用例
+
+| 用例编号 | 用例名称 | 预期结果 |
+|----------|----------|----------|
+| PV-SYNC-1-001 | 修改 provider instance_pool 后 cluster_table 同步更新 | cluster_table 中 cluster 的 backend 变为新实例 |
+
+## 11. 删除 Provider
 
 ### 10.1 接口信息
 
@@ -271,7 +300,7 @@ provider/
 | PV-5-002 | 删除不存在的 Provider | 404 |
 | PV-5-003 | 删除被 Cluster 引用的 Provider | 409 |
 
-## 11. 设置高峰/闲时模板（PV-8）
+## 12. 设置高峰/闲时模板（PV-8）
 
 ### 11.1 接口信息
 

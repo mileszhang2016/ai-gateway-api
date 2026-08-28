@@ -172,7 +172,14 @@ func (m *ProviderManager) CreateProvider(ctx context.Context, param *ProviderPar
 }
 
 // UpdateProvider updates an existing provider.
-func (m *ProviderManager) UpdateProvider(ctx context.Context, name string, param *ProviderParam) error {
+// Optional syncHooks are invoked within the same transaction when instance_pool
+// is explicitly provided and differs from the existing one, allowing downstream
+// managers (e.g. cluster_conf) to propagate the new pool to clusters that
+// reference this provider.
+func (m *ProviderManager) UpdateProvider(ctx context.Context, name string,
+	param *ProviderParam,
+	syncHooks ...func(ctx context.Context, oldProvider, newProvider *Provider) error) error {
+
 	if err := ValidateProviderParam(param); err != nil {
 		return err
 	}
@@ -186,7 +193,25 @@ func (m *ProviderManager) UpdateProvider(ctx context.Context, name string, param
 			return xerror.WrapRecordNotExist("provider")
 		}
 
-		return m.storager.UpdateProvider(ctx, name, param)
+		if err := m.storager.UpdateProvider(ctx, name, param); err != nil {
+			return err
+		}
+
+		// Propagate instance_pool changes to referencing clusters. Only invoke
+		// hooks when the caller explicitly supplied instance_pool and it differs
+		// from the current one.
+		if param.InstancePool != nil &&
+			len(syncHooks) > 0 &&
+			!providerInstancePoolEqual(existing.InstancePool, param.InstancePool) {
+			newProvider := applyProviderUpdate(existing, param)
+			for _, hook := range syncHooks {
+				if err := hook(ctx, existing, newProvider); err != nil {
+					return err
+				}
+			}
+		}
+
+		return nil
 	})
 }
 
@@ -701,6 +726,66 @@ func BuildAuthHeader(protocol, key string) (string, string) {
 	default:
 		return "Authorization", "Bearer " + key
 	}
+}
+
+// providerInstancePoolEqual reports whether two instance pools are identical.
+// Order matters because the pool is a snapshot; a reordered list is still a
+// different snapshot.
+func providerInstancePoolEqual(a, b []ProviderInstance) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name ||
+			a[i].Addr != b[i].Addr ||
+			a[i].Port != b[i].Port ||
+			a[i].Weight != b[i].Weight ||
+			a[i].Disable != b[i].Disable {
+			return false
+		}
+	}
+	return true
+}
+
+// applyProviderUpdate returns a Provider that reflects the existing provider
+// merged with the update param. It is used to build the provider snapshot passed
+// to sync hooks without an extra DB round-trip.
+func applyProviderUpdate(existing *Provider, param *ProviderParam) *Provider {
+	if existing == nil {
+		return nil
+	}
+
+	newProvider := *existing
+
+	if param.Name != nil {
+		newProvider.Name = *param.Name
+	}
+	if param.Description != nil {
+		newProvider.Description = *param.Description
+	}
+	if param.ModelEndpoint != nil {
+		newProvider.ModelEndpoint = param.ModelEndpoint
+	}
+	if param.Models != nil {
+		newProvider.Models = param.Models
+	}
+	if param.Keys != nil {
+		newProvider.Keys = param.Keys
+	}
+	if param.InstancePool != nil {
+		newProvider.InstancePool = param.InstancePool
+	}
+	if param.ModelProtocols != nil {
+		newProvider.ModelProtocols = param.ModelProtocols
+	}
+	if param.TimeZone != nil {
+		newProvider.TimeZone = *param.TimeZone
+	}
+	if param.Tiers != nil {
+		newProvider.Tiers = param.Tiers
+	}
+
+	return &newProvider
 }
 
 // ProviderNamePtr returns a pointer to a provider name for use in filters.
