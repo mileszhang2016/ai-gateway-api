@@ -144,13 +144,19 @@ func TestProviderManager_UpdateProvider(t *testing.T) {
 	})
 
 	t.Run("sync hook not invoked when instance_pool unchanged", func(t *testing.T) {
+		param := validProviderParam()
+		param.InstancePool = []ProviderInstance{
+			{Name: "same", Addr: "1.2.3.4", Port: 443, Weight: 100},
+		}
+
 		store := &fakeProviderStorager{
 			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
 				return &Provider{
-					Name: "deepseek",
-					InstancePool: []ProviderInstance{
-						{Name: "same", Addr: "1.2.3.4", Port: 443, Weight: 100},
-					},
+					Name:           "deepseek",
+					Models:         param.Models,
+					Keys:           param.Keys,
+					InstancePool:   param.InstancePool,
+					ModelProtocols: param.ModelProtocols,
 				}, nil
 			},
 		}
@@ -162,10 +168,6 @@ func TestProviderManager_UpdateProvider(t *testing.T) {
 			return nil
 		}
 
-		param := validProviderParam()
-		param.InstancePool = []ProviderInstance{
-			{Name: "same", Addr: "1.2.3.4", Port: 443, Weight: 100},
-		}
 		err := m.UpdateProvider(ctx, "deepseek", param, hook)
 		require.NoError(t, err)
 		assert.Equal(t, 0, hookCalled)
@@ -195,6 +197,82 @@ func TestProviderManager_UpdateProvider(t *testing.T) {
 		err := m.UpdateProvider(ctx, "deepseek", param, hook)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "sync failed")
+	})
+
+	t.Run("key ref checker error rolls back", func(t *testing.T) {
+		store := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return &Provider{
+					Name: "deepseek",
+					Keys: []ProviderKey{{Name: "k1", Key: "sk-old"}},
+				}, nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+
+		hook := func(ctx context.Context, oldProvider, newProvider *Provider) error {
+			return errors.New("key referenced")
+		}
+
+		param := validProviderParam()
+		param.Keys = []ProviderKey{{Name: "k2", Key: "sk-new"}}
+		err := m.UpdateProvider(ctx, "deepseek", param, hook)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "key referenced")
+	})
+
+	t.Run("model ref checker error rolls back", func(t *testing.T) {
+		store := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return &Provider{
+					Name:   "deepseek",
+					Models: []string{"m1"},
+				}, nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+
+		hook := func(ctx context.Context, oldProvider, newProvider *Provider) error {
+			return errors.New("model referenced")
+		}
+
+		param := validProviderParam()
+		param.Models = []string{"m2"}
+		err := m.UpdateProvider(ctx, "deepseek", param, hook)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "model referenced")
+	})
+
+	t.Run("hooks not invoked when keys and models unchanged", func(t *testing.T) {
+		param := validProviderParam()
+		param.InstancePool = []ProviderInstance{
+			{Name: "same", Addr: "1.2.3.4", Port: 443, Weight: 100},
+		}
+
+		store := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return &Provider{
+					Name:           "deepseek",
+					Models:         param.Models,
+					Keys:           param.Keys,
+					InstancePool:   param.InstancePool,
+					ModelProtocols: param.ModelProtocols,
+				}, nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+
+		hookCalled := 0
+		hook := func(ctx context.Context, oldProvider, newProvider *Provider) error {
+			hookCalled++
+			return errors.New("should not be called")
+		}
+
+		// Only change the description; none of instance_pool/keys/models changed.
+		param.Description = lib.PString("new description")
+		err := m.UpdateProvider(ctx, "deepseek", param, hook)
+		require.NoError(t, err)
+		assert.Equal(t, 0, hookCalled)
 	})
 }
 

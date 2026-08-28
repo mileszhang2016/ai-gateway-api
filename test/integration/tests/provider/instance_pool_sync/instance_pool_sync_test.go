@@ -135,6 +135,88 @@ func assertBackendExists(t *testing.T, resp *testutil.APIResponse, clusterName, 
 	t.Fatalf("backend %s (%s:%d) not found in cluster %s", name, addr, port, clusterName)
 }
 
+// PV-SYNC-1-002: deleting a provider key that is referenced by a cluster
+// should be rejected with 409 Conflict.
+func TestProvider_DeleteReferencedKeyReturnsConflict(t *testing.T) {
+	providerName := testutil.UniqueProviderName()
+	if _, err := testutil.CreateProvider(providerName, map[string]interface{}{
+		"keys": []interface{}{
+			map[string]interface{}{"name": "k1", "key": "sk-111111111111"},
+			map[string]interface{}{"name": "k2", "key": "sk-222222222222"},
+		},
+	}); err != nil {
+		t.Fatalf("setup provider failed: %v", err)
+	}
+	defer testutil.DeleteProvider(providerName)
+
+	clusterName := testutil.UniqueClusterName()
+	_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+		"name": clusterName,
+		"llm_config": map[string]interface{}{
+			"models":   []string{"deepseek-chat"},
+			"provider": providerName,
+			"keys": []interface{}{
+				map[string]interface{}{"name": "k1", "weight": 100},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("setup cluster failed: %v", err)
+	}
+	defer testutil.DeleteCluster(clusterName)
+
+	resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
+		"instance_pool": []interface{}{
+			map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080},
+		},
+		"keys": []interface{}{
+			map[string]interface{}{"name": "k2", "key": "sk-222222222222"},
+		},
+		"model_protocols": []string{"openai"},
+	})
+	if err != nil {
+		t.Fatalf("update provider failed: %v", err)
+	}
+	testutil.AssertErrCode(t, resp, 409)
+}
+
+// PV-SYNC-1-003: deleting a provider model that is referenced by a cluster
+// should be rejected with 409 Conflict.
+func TestProvider_DeleteReferencedModelReturnsConflict(t *testing.T) {
+	providerName := testutil.UniqueProviderName()
+	if _, err := testutil.CreateProvider(providerName, map[string]interface{}{
+		"models": []string{"m1", "m2"},
+	}); err != nil {
+		t.Fatalf("setup provider failed: %v", err)
+	}
+	defer testutil.DeleteProvider(providerName)
+
+	clusterName := testutil.UniqueClusterName()
+	_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+		"name": clusterName,
+		"llm_config": map[string]interface{}{
+			"models":   []string{"m2"},
+			"provider": providerName,
+		},
+	})
+	if err != nil {
+		t.Fatalf("setup cluster failed: %v", err)
+	}
+	defer testutil.DeleteCluster(clusterName)
+
+	resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
+		"instance_pool": []interface{}{
+			map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080},
+		},
+		"models":          []string{"m1"},
+		"model_protocols": []string{"openai"},
+	})
+	if err != nil {
+		t.Fatalf("update provider failed: %v", err)
+	}
+	testutil.AssertErrCode(t, resp, 409)
+}
+
 func assertBackendNotExists(t *testing.T, resp *testutil.APIResponse, clusterName, name string) {
 	t.Helper()
 	config := clusterTableConfig(t, resp)
