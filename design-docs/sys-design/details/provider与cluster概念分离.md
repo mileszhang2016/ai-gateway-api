@@ -117,11 +117,17 @@
 | POST | `/providers` | 创建 provider |
 | GET | `/providers` | 分页/过滤查询 provider 列表 |
 | GET | `/providers/{provider_name}` | 查询单个 provider |
-| PATCH | `/providers/{provider_name}` | 部分更新 provider |
+| PATCH | `/providers/{provider_name}` | 部分更新 provider；若修改 `keys`/`models` 导致已有 cluster 引用失效，返回 409 |
 | DELETE | `/providers/{provider_name}` | 删除 provider |
 | POST | `/providers/tools/discover-models` | 触发模型发现 |
 
 `PATCH /providers/{provider_name}` 请求体**不能包含 `name`**，名称由 URI 路径参数唯一指定，若请求体携带 `name` 返回 422。
+
+部分更新 provider 时，如果请求体显式修改了 `instance_pool`、`keys` 或 `models`：
+
+- `instance_pool` 变更会同步刷新所有引用该 provider 的 cluster 子集群实例池（EPP 子集群除外）。
+- `keys` 删除/重命名会校验无 cluster 仍引用旧 key name；否则返回 409。
+- `models` 删除会校验无 cluster 仍引用已被移除的 model；否则返回 409。
 
 删除 provider 前，须校验无 `/clusters` 引用；`/model-prices` 中的同名 provider 不再作为阻塞条件。
 
@@ -150,6 +156,7 @@ URL 与 HTTP Method 不变，请求/响应体变化：
 - `model/icluster_conf/ClusterManager` 注入 `iprovider.ProviderStorager`：
   - 创建/更新 cluster 时校验 provider 存在、models 子集、keys name 存在性。
   - 根据 provider `instance_pool` 自动生成/更新 pool/sub_cluster。
+  - 以 hook 形式向 `ProviderManager.UpdateProvider` 注册 `ProviderInstancePoolSyncer`、`ProviderKeyRefChecker`、`ProviderModelRefChecker`：provider 更新时同步实例池，并反向校验 cluster 对 key / model 的引用完整性。
 - `model/icluster_conf/exporter.go` 在生成 `AIConf` 时：
   - 从 provider 读取 `instance_pool` 生成 BFE 实例池/子集群/集群。
   - 按 `name` join provider `keys` 与 cluster `llm_config.keys` 生成带明文的 `AIConf.Keys`。
@@ -262,7 +269,7 @@ BFE 接收到的配置结构和字段与重构前完全一致：
 |------|------|----------|
 | 破坏性 API 变更 | 现有调用方需修改 | 提前发版说明；提供迁移指南；必要时保留只读兼容层。 |
 | Key 明文迁移 | 迁移脚本处理敏感数据 | 日志脱敏；确保 key 加密存储不变。 |
-| 多 cluster 共享 provider | 修改 provider 影响所有引用 cluster | 更新时给出引用列表确认；删除时强制无引用。 |
+| 多 cluster 共享 provider | 修改 provider 影响所有引用 cluster | `instance_pool` 变更自动同步到 cluster；`keys`/`models` 变更反向校验引用完整性，冲突时返回 409；删除时强制无引用。 |
 | 更新接口误传 `name` | 调用方可能习惯在 Body 中重复名称 | 接口层显式拒绝请求体中的 `name`，返回 422；文档明确名称由 URI 决定。 |
 | 删除 cluster 时存在路由规则引用 | 级联删除可能导致路由指向不存在集群 | 删除前检查 AI 路由规则引用，返回引用冲突错误，要求先解除引用。 |
 | 模型发现失败 | discover-models 可能失败 | 辅助能力，支持手动维护 `models`。 |

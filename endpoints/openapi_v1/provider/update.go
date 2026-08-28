@@ -58,6 +58,8 @@ func UpdateAction(req *http.Request) (interface{}, error) {
 
 	if err := container.ProviderManager.UpdateProvider(req.Context(), name, param,
 		container.ClusterManager.ProviderInstancePoolSyncer,
+		container.ClusterManager.ProviderKeyRefChecker,
+		container.ClusterManager.ProviderModelRefChecker,
 	); err != nil {
 		return nil, err
 	}

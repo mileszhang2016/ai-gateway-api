@@ -171,6 +171,184 @@ func TestClusterManager_ProviderInstancePoolSyncer(t *testing.T) {
 	})
 }
 
+func TestClusterManager_ProviderKeyRefChecker(t *testing.T) {
+	ctx := context.Background()
+	providerName := "deepseek"
+
+	makeCluster := func(name string, provider *string, keyNames []string) *Cluster {
+		keys := make([]ClusterKeyRef, 0, len(keyNames))
+		for _, k := range keyNames {
+			keys = append(keys, ClusterKeyRef{Name: lib.PString(k), Weight: lib.PInt(100)})
+		}
+		return &Cluster{
+			ID:   1,
+			Name: name,
+			LLMConfig: &LLMConfig{
+				Provider: provider,
+				Keys:     keys,
+			},
+		}
+	}
+
+	t.Run("blocks removal of referenced key", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"k1"}),
+					makeCluster("c2", lib.PString("other"), []string{"k1"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			Keys: []iprovider.ProviderKey{{Name: "k2", Key: "sk-new"}},
+		}
+		err := cm.ProviderKeyRefChecker(ctx, nil, newProvider)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "key k1 is referenced by cluster c1")
+	})
+
+	t.Run("allows rename when old keys are still covered", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"k1", "k2"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			Keys: []iprovider.ProviderKey{
+				{Name: "k1", Key: "sk-1"},
+				{Name: "k2", Key: "sk-2"},
+				{Name: "k3", Key: "sk-3"},
+			},
+		}
+		err := cm.ProviderKeyRefChecker(ctx, nil, newProvider)
+		require.NoError(t, err)
+	})
+
+	t.Run("skips when keys unchanged", func(t *testing.T) {
+		called := false
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				called = true
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"k1"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		oldProvider := &iprovider.Provider{
+			Name: providerName,
+			Keys: []iprovider.ProviderKey{{Name: "k1", Key: "sk-same"}},
+		}
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			Keys: []iprovider.ProviderKey{{Name: "k1", Key: "sk-same"}},
+		}
+		err := cm.ProviderKeyRefChecker(ctx, oldProvider, newProvider)
+		require.NoError(t, err)
+		assert.False(t, called, "fetch should be skipped when keys are unchanged")
+	})
+
+	t.Run("propagates fetch error", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return nil, errors.New("db down")
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		err := cm.ProviderKeyRefChecker(ctx, nil, &iprovider.Provider{Name: providerName})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "db down")
+	})
+}
+
+func TestClusterManager_ProviderModelRefChecker(t *testing.T) {
+	ctx := context.Background()
+	providerName := "deepseek"
+
+	makeCluster := func(name string, provider *string, models []string) *Cluster {
+		return &Cluster{
+			ID:   1,
+			Name: name,
+			LLMConfig: &LLMConfig{
+				Provider: provider,
+				Models:   models,
+			},
+		}
+	}
+
+	t.Run("blocks removal of referenced model", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"m1"}),
+					makeCluster("c2", lib.PString("other"), []string{"m1"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name:   providerName,
+			Models: []string{"m2"},
+		}
+		err := cm.ProviderModelRefChecker(ctx, nil, newProvider)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "model m1 is referenced by cluster c1")
+	})
+
+	t.Run("allows addition of new models", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"m1"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name:   providerName,
+			Models: []string{"m1", "m2"},
+		}
+		err := cm.ProviderModelRefChecker(ctx, nil, newProvider)
+		require.NoError(t, err)
+	})
+
+	t.Run("skips when models unchanged", func(t *testing.T) {
+		called := false
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				called = true
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"m1"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		oldProvider := &iprovider.Provider{Name: providerName, Models: []string{"m1"}}
+		newProvider := &iprovider.Provider{Name: providerName, Models: []string{"m1"}}
+		err := cm.ProviderModelRefChecker(ctx, oldProvider, newProvider)
+		require.NoError(t, err)
+		assert.False(t, called, "fetch should be skipped when models are unchanged")
+	})
+
+	t.Run("propagates fetch error", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return nil, errors.New("db down")
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		err := cm.ProviderModelRefChecker(ctx, nil, &iprovider.Provider{Name: providerName})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "db down")
+	})
+}
+
 func newTestClusterBase() *Cluster {
 	return &Cluster{
 		ID:   1,

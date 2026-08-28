@@ -759,6 +759,50 @@ func (cm *ClusterManager) ProviderDeleteChecker(ctx context.Context, providerNam
 	return nil
 }
 
+// providerInstancePoolEqual reports whether two provider instance pools are
+// identical. Order matters because the pool is a snapshot.
+func providerInstancePoolEqual(a, b []iprovider.ProviderInstance) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name ||
+			a[i].Addr != b[i].Addr ||
+			a[i].Port != b[i].Port ||
+			a[i].Weight != b[i].Weight ||
+			a[i].Disable != b[i].Disable {
+			return false
+		}
+	}
+	return true
+}
+
+// providerKeysEqual reports whether two provider key lists are identical.
+func providerKeysEqual(a, b []iprovider.ProviderKey) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Key != b[i].Key {
+			return false
+		}
+	}
+	return true
+}
+
+// providerModelsEqual reports whether two provider model lists are identical.
+func providerModelsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // ProviderInstancePoolSyncer returns a hook suitable for passing to
 // iprovider.ProviderManager.UpdateProvider. When the provider's instance_pool
 // changes, it updates the instance pool of every non-EPP sub-cluster that
@@ -767,6 +811,9 @@ func (cm *ClusterManager) ProviderInstancePoolSyncer(ctx context.Context,
 	oldProvider, newProvider *iprovider.Provider) error {
 
 	if newProvider == nil || len(newProvider.InstancePool) == 0 {
+		return nil
+	}
+	if oldProvider != nil && providerInstancePoolEqual(oldProvider.InstancePool, newProvider.InstancePool) {
 		return nil
 	}
 
@@ -792,6 +839,91 @@ func (cm *ClusterManager) ProviderInstancePoolSyncer(ctx context.Context,
 				Instances: newInstances,
 			}); err != nil {
 				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// ProviderKeyRefChecker returns a hook that verifies all clusters referencing
+// the provider still have valid llm_config.keys names after a provider update.
+func (cm *ClusterManager) ProviderKeyRefChecker(ctx context.Context,
+	oldProvider, newProvider *iprovider.Provider) error {
+
+	if newProvider == nil {
+		return nil
+	}
+	if oldProvider != nil && providerKeysEqual(oldProvider.Keys, newProvider.Keys) {
+		return nil
+	}
+
+	newKeyNames := map[string]bool{}
+	for _, k := range newProvider.Keys {
+		newKeyNames[k.Name] = true
+	}
+
+	clusters, err := cm.storager.FetchClusterList(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	for _, cluster := range clusters {
+		if cluster.LLMConfig == nil || cluster.LLMConfig.Provider == nil {
+			continue
+		}
+		if *cluster.LLMConfig.Provider != newProvider.Name {
+			continue
+		}
+		for _, k := range cluster.LLMConfig.Keys {
+			if k.Name == nil || *k.Name == "" {
+				continue
+			}
+			if !newKeyNames[*k.Name] {
+				return xerror.WrapConflictErrorWithMsg(
+					"provider %s key %s is referenced by cluster %s",
+					newProvider.Name, *k.Name, cluster.Name)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ProviderModelRefChecker returns a hook that verifies all clusters referencing
+// the provider still have valid llm_config.models after a provider update.
+func (cm *ClusterManager) ProviderModelRefChecker(ctx context.Context,
+	oldProvider, newProvider *iprovider.Provider) error {
+
+	if newProvider == nil {
+		return nil
+	}
+	if oldProvider != nil && providerModelsEqual(oldProvider.Models, newProvider.Models) {
+		return nil
+	}
+
+	newModelSet := map[string]bool{}
+	for _, m := range newProvider.Models {
+		newModelSet[m] = true
+	}
+
+	clusters, err := cm.storager.FetchClusterList(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	for _, cluster := range clusters {
+		if cluster.LLMConfig == nil || cluster.LLMConfig.Provider == nil {
+			continue
+		}
+		if *cluster.LLMConfig.Provider != newProvider.Name {
+			continue
+		}
+		for _, m := range cluster.LLMConfig.Models {
+			if !newModelSet[m] {
+				return xerror.WrapConflictErrorWithMsg(
+					"provider %s model %s is referenced by cluster %s",
+					newProvider.Name, m, cluster.Name)
 			}
 		}
 	}

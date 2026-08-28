@@ -193,16 +193,43 @@ func (m *ProviderManager) UpdateProvider(ctx context.Context, name string,
 			return xerror.WrapRecordNotExist("provider")
 		}
 
+		// Capture which cluster-relevant fields are explicitly provided before
+		// the storager applies defaults (FillDefaults mutates nil slices into
+		// empty slices, which would be mistaken for an intentional clear).
+		origInstancePool := param.InstancePool
+		origKeys := param.Keys
+		origModels := param.Models
+
 		if err := m.storager.UpdateProvider(ctx, name, param); err != nil {
 			return err
 		}
 
-		// Propagate instance_pool changes to referencing clusters. Only invoke
-		// hooks when the caller explicitly supplied instance_pool and it differs
-		// from the current one.
-		if param.InstancePool != nil &&
-			len(syncHooks) > 0 &&
-			!providerInstancePoolEqual(existing.InstancePool, param.InstancePool) {
+		// Invoke hooks only when an explicitly provided cluster-relevant field
+		// actually changed. Each hook is responsible for checking whether its own
+		// concern needs action.
+		clusterConfigChanged := false
+		if origInstancePool != nil && !providerInstancePoolEqual(existing.InstancePool, origInstancePool) {
+			clusterConfigChanged = true
+		}
+		if origKeys != nil && !providerKeysEqual(existing.Keys, origKeys) {
+			clusterConfigChanged = true
+		}
+		if origModels != nil && !providerModelsEqual(existing.Models, origModels) {
+			clusterConfigChanged = true
+		}
+
+		if len(syncHooks) > 0 && clusterConfigChanged {
+			// Restore nil for unchanged fields so applyProviderUpdate preserves
+			// the existing provider values when building the hook snapshot.
+			if origInstancePool == nil {
+				param.InstancePool = nil
+			}
+			if origKeys == nil {
+				param.Keys = nil
+			}
+			if origModels == nil {
+				param.Models = nil
+			}
 			newProvider := applyProviderUpdate(existing, param)
 			for _, hook := range syncHooks {
 				if err := hook(ctx, existing, newProvider); err != nil {
@@ -741,6 +768,34 @@ func providerInstancePoolEqual(a, b []ProviderInstance) bool {
 			a[i].Port != b[i].Port ||
 			a[i].Weight != b[i].Weight ||
 			a[i].Disable != b[i].Disable {
+			return false
+		}
+	}
+	return true
+}
+
+// providerKeysEqual reports whether two provider key lists are identical.
+// Order matters because keys are replaced as an ordered array.
+func providerKeysEqual(a, b []ProviderKey) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Key != b[i].Key {
+			return false
+		}
+	}
+	return true
+}
+
+// providerModelsEqual reports whether two provider model lists are identical.
+// Order matters because models are replaced as an ordered array.
+func providerModelsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
 			return false
 		}
 	}
