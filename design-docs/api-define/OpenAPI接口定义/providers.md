@@ -331,7 +331,7 @@
 
 **输入参数（Body）**
 
-可修改字段含义同创建接口。若传入 `instance_pool` 字段，系统会自动同步更新被引用该 provider 的所有 cluster 所生成的实例池。
+可修改字段含义同创建接口，但**输入参数不包括 `name`，即不能修改 provider 的 name**（名称由 URI 中的 `provider_name` 指定）。若请求体中仍包含 `name`，返回 422。若传入 `instance_pool` 字段，系统会自动同步更新被引用该 provider 的所有 cluster 所生成的实例池。
 
 > **注意**：`keys` 作为数组，按**全量替换**处理，即调用方需传入完整的最新 Key 列表。Key 的 `name` 变更会影响所有引用该 provider 的 cluster。
 

@@ -427,7 +427,8 @@
 | cluster_name | string | 集群名字 | Y | - | 必填；类型为 [ClusterName](./00-common.md#15-集群名称clustername)；必须引用已存在的集群 |
 
 **输入参数（Body）**
-可修改字段含义同创建接口。不支持直接修改 `instance_pool`；如需调整后端实例，请更新对应 provider 的 `instance_pool`。
+
+可修改字段含义同创建接口，但**输入参数不包括 `name`，即不能修改 cluster 的 name**（名称由 URI 中的 `cluster_name` 指定）。若请求体中仍包含 `name`，返回 422。不支持直接修改 `instance_pool`；如需调整后端实例，请更新对应 provider 的 `instance_pool`。
 
 > **注意：**
 > - `sub_clusters` 与 `scheduler` 为系统内部自动生成，更新时不支持手动修改。
@@ -437,7 +438,6 @@
 
 ```json
 {
-    "name": "my-cluster",
     "description": "更新后的集群描述",
     "basic": {
         "protocol": "http",
@@ -516,7 +516,10 @@
 | cluster_name | string | 集群名字 | Y | - | 必填；类型为 [ClusterName](./00-common.md#15-集群名称clustername)；必须引用已存在的集群 |
 
 **执行逻辑**
-删除集群时，系统自动执行以下级联清理：
+
+删除集群时，系统先检查该集群是否被 **AI 路由规则**（global / entity / api-key 级别）引用；若被引用，删除失败。
+
+通过引用检查后，系统自动执行以下级联清理：
 1. 解绑集群关联的子集群
 2. 删除子集群
 3. 删除子集群关联的实例池

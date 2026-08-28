@@ -329,6 +329,28 @@ func TestClusters_Update(t *testing.T) {
 		assert.Equal(t, false, keyPolicy["SessionAffinityPenaltyEnable"])
 	})
 
+	t.Run("CL-4-012 请求体不包含 name", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
+			"description": "请求体未传 name",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "name", clusterName)
+	})
+
+	t.Run("CL-4-013 请求体包含 name", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
+			"name":        clusterName,
+			"description": "请求体传了 name",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteCluster(clusterName)
 		testutil.DeleteProvider(providerUpdate)

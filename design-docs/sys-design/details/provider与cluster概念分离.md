@@ -121,6 +121,8 @@
 | DELETE | `/providers/{provider_name}` | 删除 provider |
 | POST | `/providers/tools/discover-models` | 触发模型发现 |
 
+`PATCH /providers/{provider_name}` 请求体**不能包含 `name`**，名称由 URI 路径参数唯一指定，若请求体携带 `name` 返回 422。
+
 删除 provider 前，须校验无 `/clusters` 引用；`/model-prices` 中的同名 provider 不再作为阻塞条件。
 
 ### 5.2 `/clusters` 改造
@@ -131,6 +133,8 @@ URL 与 HTTP Method 不变，请求/响应体变化：
 - `llm_config` 不再包含 `model_endpoint`、`provider_type`。
 - `llm_config.provider` 变为必填。
 - `llm_config.keys` 元素结构变为 `{name, weight}`。
+- `PATCH /clusters/{cluster_name}` 请求体**不能包含 `name`**，名称由 URI 路径参数唯一指定，若请求体携带 `name` 返回 422。
+- `DELETE /clusters/{cluster_name}` 在级联清理前，会检查该集群是否被 **AI 路由规则**（global / entity / api-key 级别）引用；若被引用，删除失败并返回引用冲突错误。
 
 ### 5.3 `/model-prices` 改造
 
@@ -259,6 +263,8 @@ BFE 接收到的配置结构和字段与重构前完全一致：
 | 破坏性 API 变更 | 现有调用方需修改 | 提前发版说明；提供迁移指南；必要时保留只读兼容层。 |
 | Key 明文迁移 | 迁移脚本处理敏感数据 | 日志脱敏；确保 key 加密存储不变。 |
 | 多 cluster 共享 provider | 修改 provider 影响所有引用 cluster | 更新时给出引用列表确认；删除时强制无引用。 |
+| 更新接口误传 `name` | 调用方可能习惯在 Body 中重复名称 | 接口层显式拒绝请求体中的 `name`，返回 422；文档明确名称由 URI 决定。 |
+| 删除 cluster 时存在路由规则引用 | 级联删除可能导致路由指向不存在集群 | 删除前检查 AI 路由规则引用，返回引用冲突错误，要求先解除引用。 |
 | 模型发现失败 | discover-models 可能失败 | 辅助能力，支持手动维护 `models`。 |
 | provider 命名冲突 | 多个 cluster 可能指向同一物理 provider | 提供手动合并能力；自动迁移以首次出现为准并告警。 |
 | 历史 price 记录与实际 provider 脱节 | 成本计算时可能找不到对应 provider 的 metadata | 通过 `GET /model-prices/actions/get-providers` 与 `GET /providers` 对比，定期识别并补录缺失 provider。 |

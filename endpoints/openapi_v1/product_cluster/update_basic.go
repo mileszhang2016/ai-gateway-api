@@ -29,7 +29,12 @@
 package product_cluster
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
+
+	"github.com/gorilla/mux"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
@@ -49,12 +54,44 @@ var UpdateBasicEndpoint = &xreq.Endpoint{
 
 // AUTO GEN BY ctrl, MODIFY AS U NEED
 func newUpdateParam4Update(req *http.Request) (*UpsertParam, error) {
+	if err := rejectBodyField(req, "name"); err != nil {
+		return nil, err
+	}
+
 	param := &UpsertParam{}
 	if err := xreq.Bind(req, param); err != nil {
 		return nil, err
 	}
 
+	// The cluster name comes from the URI path; ensure the param reflects it
+	// so that callers do not have to duplicate it in the request body.
+	name := mux.Vars(req)["cluster_name"]
+	param.Name = &name
+
 	return param, nil
+}
+
+// rejectBodyField returns a param error if the request body contains the given key.
+// It reconstructs req.Body so that subsequent binders can still read the payload.
+func rejectBodyField(req *http.Request, key string) error {
+	if req.Body == nil {
+		return nil
+	}
+	bodyBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		return xerror.WrapParamError(err)
+	}
+	req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(bodyBytes, &raw); err != nil {
+		// Let the downstream binder report invalid JSON.
+		return nil
+	}
+	if _, ok := raw[key]; ok {
+		return xerror.WrapParamErrorWithMsg("cluster %s should not be set in request body", key)
+	}
+	return nil
 }
 
 func updateActionProcess(req *http.Request, param *UpsertParam) (*ClusterData, error) {

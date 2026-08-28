@@ -1767,7 +1767,7 @@ URI：`cluster_full`
 
 ##### Body 参数
 
-可修改字段含义同创建接口。若传入 `instance_pool` 字段，系统会自动同步更新对应的实例池。
+可修改字段含义同创建接口，但**输入参数不包括 `name`，即不能修改 cluster 的 name**（名称由 URI 中的 `cluster_name` 指定；若包含 `name` 返回 422）。若传入 `instance_pool` 字段，系统会自动同步更新对应的实例池。
 
 #### 9.2.2 返回数据字段
 
@@ -1788,6 +1788,8 @@ URI：`cluster_full`
 | CL-4-009 | 删除被路由引用的模型 | 业务规则 | `llm_config.models` 移除仍被路由规则引用的模型，验证 ErrNum=500 |
 | CL-4-010 | 清理路由引用后可删除模型 | 正常参数 | 移除 API-Key 路由规则引用后，可成功删除集群模型 |
 | CL-4-011 | 更新 key_affinity | 正常参数 | 验证 PATCH 后 key_affinity 更新生效，InnerAPI 导出一致 |
+| CL-4-012 | 请求体不包含 `name` | 正常参数 | 请求体不传 `name`，验证返回的 `name` 与 URI 一致 |
+| CL-4-013 | 请求体包含 `name` | 异常参数 | 验证 ErrNum=422 |
 
 ### 9.4 测试场景详细设计
 

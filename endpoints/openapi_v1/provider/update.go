@@ -15,6 +15,9 @@
 package provider
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -41,14 +44,44 @@ func UpdateAction(req *http.Request) (interface{}, error) {
 		return nil, xerror.WrapParamErrorWithMsg("provider_name is required")
 	}
 
+	if err := rejectBodyField(req, "name"); err != nil {
+		return nil, err
+	}
+
 	param := &iprovider.ProviderParam{}
 	if err := xreq.BindJSON(req, param); err != nil {
 		return nil, err
 	}
+	// The provider name comes from the URI path; ensure the param reflects it
+	// so that callers do not have to duplicate it in the request body.
+	param.Name = &name
 
 	if err := container.ProviderManager.UpdateProvider(req.Context(), name, param); err != nil {
 		return nil, err
 	}
 
 	return container.ProviderManager.FetchProvider(req.Context(), &iprovider.ProviderFilter{Name: &name})
+}
+
+// rejectBodyField returns a param error if the request body contains the given key.
+// It reconstructs req.Body so that subsequent binders can still read the payload.
+func rejectBodyField(req *http.Request, key string) error {
+	if req.Body == nil {
+		return nil
+	}
+	bodyBytes, err := io.ReadAll(req.Body)
+	if err != nil {
+		return xerror.WrapParamError(err)
+	}
+	req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(bodyBytes, &raw); err != nil {
+		// Let the downstream binder report invalid JSON.
+		return nil
+	}
+	if _, ok := raw[key]; ok {
+		return xerror.WrapParamErrorWithMsg("provider %s should not be set in request body", key)
+	}
+	return nil
 }
