@@ -93,7 +93,7 @@ func SeedTestData(dbPath string) error {
 			'{"schema":"https","uri":"/v1/models"}',
 			'["deepseek-chat"]',
 			'[]',
-			'[{"name":"backend-1","addr":"10.0.0.1","weight":100,"port":8080}]',
+			'[{"addr":"10.0.0.1","weight":100,"port":8080}]',
 			'["openai"]',
 			datetime('now'), datetime('now')
 		);

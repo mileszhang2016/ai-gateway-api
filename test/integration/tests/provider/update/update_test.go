@@ -32,7 +32,7 @@ func TestProvider_Update(t *testing.T) {
 	t.Run("PV-4-001 更新 description", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
 			"description":     "更新后的 Provider 描述",
-			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
 			"model_protocols": []string{"openai"},
 		})
 		if err != nil {
@@ -45,7 +45,7 @@ func TestProvider_Update(t *testing.T) {
 	t.Run("PV-4-002 更新 models", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
 			"models":          []string{"deepseek-chat", "deepseek-coder", "deepseek-reasoner"},
-			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
 			"model_protocols": []string{"openai"},
 		})
 		if err != nil {
@@ -72,7 +72,7 @@ func TestProvider_Update(t *testing.T) {
 					"key":  "sk-cccccccccccc",
 				},
 			},
-			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
 			"model_protocols": []string{"openai"},
 		})
 		if err != nil {
@@ -90,7 +90,7 @@ func TestProvider_Update(t *testing.T) {
 	t.Run("PV-4-004 更新不存在的 Provider", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/non_existent_provider", map[string]interface{}{
 			"description":     "x",
-			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
 			"model_protocols": []string{"openai"},
 		})
 		if err != nil {
@@ -102,7 +102,7 @@ func TestProvider_Update(t *testing.T) {
 	t.Run("PV-4-005 请求体不包含 name", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
 			"description":     "请求体未传 name",
-			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
 			"model_protocols": []string{"openai"},
 		})
 		if err != nil {
@@ -112,7 +112,7 @@ func TestProvider_Update(t *testing.T) {
 		testutil.AssertDataFieldEquals(t, resp, "name", providerName)
 	})
 
-	t.Run("PV-4-005a 更新时省略 instance name 默认使用 addr", func(t *testing.T) {
+	t.Run("PV-4-005a 更新时 instance_pool 不再包含 name 字段", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
 			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.99", "weight": 100, "port": 8080}},
 			"model_protocols": []string{"openai"},
@@ -126,7 +126,8 @@ func TestProvider_Update(t *testing.T) {
 		insts, _ := data["instance_pool"].([]interface{})
 		require.Len(t, insts, 1)
 		inst, _ := insts[0].(map[string]interface{})
-		assert.Equal(t, "10.0.0.99", inst["name"])
+		_, ok := inst["name"]
+		assert.False(t, ok, "instance should not contain name field")
 		assert.Equal(t, "10.0.0.99", inst["addr"])
 	})
 
@@ -134,7 +135,7 @@ func TestProvider_Update(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
 			"name":            providerName,
 			"description":     "请求体传了 name",
-			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
 			"model_protocols": []string{"openai"},
 		})
 		if err != nil {

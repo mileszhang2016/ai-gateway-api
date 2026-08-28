@@ -27,7 +27,7 @@ func minProviderBody(name string) map[string]interface{} {
 		"name": name,
 		"instance_pool": []interface{}{
 			map[string]interface{}{
-				"name":   "backend-1",
+				
 				"addr":   "10.0.0.1",
 				"weight": 100,
 				"port":   8080,
@@ -87,7 +87,7 @@ func TestProvider_Create(t *testing.T) {
 				},
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "api.deepseek.com",
 						"weight": 100,
 						"port":   443,
@@ -121,7 +121,7 @@ func TestProvider_Create(t *testing.T) {
 				},
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "api.anthropic.com",
 						"weight": 100,
 						"port":   443,
@@ -138,7 +138,7 @@ func TestProvider_Create(t *testing.T) {
 			},
 		},
 		{
-			name: "PV-1-002b 省略 instance name 时默认使用 addr",
+			name: "PV-1-002b instance_pool 不再包含 name 字段",
 			body: map[string]interface{}{
 				"name": providerNoInstName,
 				"instance_pool": []interface{}{
@@ -157,7 +157,8 @@ func TestProvider_Create(t *testing.T) {
 				insts, _ := data["instance_pool"].([]interface{})
 				assert.Len(t, insts, 1)
 				inst, _ := insts[0].(map[string]interface{})
-				assert.Equal(t, "10.0.0.99", inst["name"])
+				_, ok := inst["name"]
+				assert.False(t, ok, "instance should not contain name field")
 				assert.Equal(t, "10.0.0.99", inst["addr"])
 			},
 		},
@@ -180,7 +181,7 @@ func TestProvider_Create(t *testing.T) {
 				"name": testutil.UniqueProviderName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "10.0.0.1",
 						"weight": 100,
 						"port":   8080,
@@ -195,7 +196,7 @@ func TestProvider_Create(t *testing.T) {
 				"name": testutil.UniqueProviderName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "10.0.0.1",
 						"weight": 100,
 						"port":   8080,
@@ -220,7 +221,7 @@ func TestProvider_Create(t *testing.T) {
 				"name": testutil.UniqueProviderName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "10.0.0.1",
 						"weight": 100,
 						"port":   0,
@@ -236,7 +237,7 @@ func TestProvider_Create(t *testing.T) {
 				"name": "-bad-name-",
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "10.0.0.1",
 						"weight": 100,
 						"port":   8080,
@@ -252,7 +253,7 @@ func TestProvider_Create(t *testing.T) {
 				"name": testutil.UniqueProviderName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "10.0.0.1",
 						"weight": 101,
 						"port":   8080,
@@ -263,18 +264,18 @@ func TestProvider_Create(t *testing.T) {
 			wantCode: 422,
 		},
 		{
-			name: "PV-1-011 重复实例 (name+addr+port)",
+			name: "PV-1-011 重复实例 (addr+port)",
 			body: map[string]interface{}{
 				"name": testutil.UniqueProviderName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "10.0.0.1",
 						"weight": 50,
 						"port":   8080,
 					},
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "10.0.0.1",
 						"weight": 50,
 						"port":   8080,
@@ -290,7 +291,7 @@ func TestProvider_Create(t *testing.T) {
 				"name": testutil.UniqueProviderName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "10.0.0.1",
 						"weight": 100,
 						"port":   8080,
@@ -307,7 +308,7 @@ func TestProvider_Create(t *testing.T) {
 				"name": testutil.UniqueProviderName(),
 				"instance_pool": []interface{}{
 					map[string]interface{}{
-						"name":   "backend-1",
+						
 						"addr":   "10.0.0.1",
 						"weight": 100,
 						"port":   8080,

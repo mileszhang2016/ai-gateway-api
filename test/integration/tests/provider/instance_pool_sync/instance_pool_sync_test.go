@@ -42,7 +42,7 @@ func TestProvider_InstancePoolSyncToInnerAPI(t *testing.T) {
 	providerName := testutil.UniqueProviderName()
 	if _, err := testutil.CreateProvider(providerName, map[string]interface{}{
 		"instance_pool": []interface{}{
-			map[string]interface{}{"name": "backend-old", "addr": "10.0.0.1", "weight": 100, "port": 8080},
+			map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080},
 		},
 	}); err != nil {
 		t.Fatalf("setup provider failed: %v", err)
@@ -68,13 +68,13 @@ func TestProvider_InstancePoolSyncToInnerAPI(t *testing.T) {
 		t.Fatalf("initial cluster_table export failed: %v", err)
 	}
 	testutil.AssertSuccess(t, resp)
-	assertBackendExists(t, resp, clusterName, "backend-old", "10.0.0.1", 8080)
-	assertBackendNotExists(t, resp, clusterName, "backend-new")
+	assertBackendExists(t, resp, clusterName, "10.0.0.1_8080", "10.0.0.1", 8080)
+	assertBackendNotExists(t, resp, clusterName, "10.0.0.2_8081")
 
 	// Update provider instance_pool to the new backend.
 	resp, err = testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
 		"instance_pool": []interface{}{
-			map[string]interface{}{"name": "backend-new", "addr": "10.0.0.2", "weight": 100, "port": 8081},
+			map[string]interface{}{"addr": "10.0.0.2", "weight": 100, "port": 8081},
 		},
 		"model_protocols": []string{"openai"},
 	})
@@ -89,8 +89,8 @@ func TestProvider_InstancePoolSyncToInnerAPI(t *testing.T) {
 		t.Fatalf("cluster_table export after update failed: %v", err)
 	}
 	testutil.AssertSuccess(t, resp)
-	assertBackendExists(t, resp, clusterName, "backend-new", "10.0.0.2", 8081)
-	assertBackendNotExists(t, resp, clusterName, "backend-old")
+	assertBackendExists(t, resp, clusterName, "10.0.0.2_8081", "10.0.0.2", 8081)
+	assertBackendNotExists(t, resp, clusterName, "10.0.0.1_8080")
 }
 
 func clusterTableConfig(t *testing.T, resp *testutil.APIResponse) map[string]interface{} {
@@ -167,7 +167,7 @@ func TestProvider_DeleteReferencedKeyReturnsConflict(t *testing.T) {
 
 	resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
 		"instance_pool": []interface{}{
-			map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080},
+			map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080},
 		},
 		"keys": []interface{}{
 			map[string]interface{}{"name": "k2", "key": "sk-222222222222"},
@@ -206,7 +206,7 @@ func TestProvider_DeleteReferencedModelReturnsConflict(t *testing.T) {
 
 	resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
 		"instance_pool": []interface{}{
-			map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080},
+			map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080},
 		},
 		"models":          []string{"m1"},
 		"model_protocols": []string{"openai"},

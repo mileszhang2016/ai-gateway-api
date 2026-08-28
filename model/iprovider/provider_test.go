@@ -37,7 +37,7 @@ func validProviderParam() *ProviderParam {
 			{Name: "key-primary", Key: "sk-aaaaaaaaaaaa"},
 		},
 		InstancePool: []ProviderInstance{
-			{Name: "backend-1", Addr: "api.deepseek.com", Port: 443, Weight: 100},
+			{Addr: "api.deepseek.com", Port: 443, Weight: 100},
 		},
 		ModelProtocols: []string{"openai"},
 	}
@@ -114,7 +114,7 @@ func TestProviderManager_UpdateProvider(t *testing.T) {
 				return &Provider{
 					Name: "deepseek",
 					InstancePool: []ProviderInstance{
-						{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+						{Addr: "1.2.3.4", Port: 443, Weight: 100},
 					},
 				}, nil
 			},
@@ -132,21 +132,21 @@ func TestProviderManager_UpdateProvider(t *testing.T) {
 
 		param := validProviderParam()
 		param.InstancePool = []ProviderInstance{
-			{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+			{Addr: "5.6.7.8", Port: 443, Weight: 100},
 		}
 		err := m.UpdateProvider(ctx, "deepseek", param, hook)
 		require.NoError(t, err)
 		assert.Equal(t, 1, hookCalled)
 		require.NotNil(t, hookOld)
 		require.NotNil(t, hookNew)
-		assert.Equal(t, "old", hookOld.InstancePool[0].Name)
-		assert.Equal(t, "new", hookNew.InstancePool[0].Name)
+		assert.Equal(t, "1.2.3.4", hookOld.InstancePool[0].Addr)
+		assert.Equal(t, "5.6.7.8", hookNew.InstancePool[0].Addr)
 	})
 
 	t.Run("sync hook not invoked when instance_pool unchanged", func(t *testing.T) {
 		param := validProviderParam()
 		param.InstancePool = []ProviderInstance{
-			{Name: "same", Addr: "1.2.3.4", Port: 443, Weight: 100},
+			{Addr: "1.2.3.4", Port: 443, Weight: 100},
 		}
 
 		store := &fakeProviderStorager{
@@ -179,7 +179,7 @@ func TestProviderManager_UpdateProvider(t *testing.T) {
 				return &Provider{
 					Name: "deepseek",
 					InstancePool: []ProviderInstance{
-						{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+						{Addr: "1.2.3.4", Port: 443, Weight: 100},
 					},
 				}, nil
 			},
@@ -192,7 +192,7 @@ func TestProviderManager_UpdateProvider(t *testing.T) {
 
 		param := validProviderParam()
 		param.InstancePool = []ProviderInstance{
-			{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+			{Addr: "5.6.7.8", Port: 443, Weight: 100},
 		}
 		err := m.UpdateProvider(ctx, "deepseek", param, hook)
 		require.Error(t, err)
@@ -246,7 +246,7 @@ func TestProviderManager_UpdateProvider(t *testing.T) {
 	t.Run("hooks not invoked when keys and models unchanged", func(t *testing.T) {
 		param := validProviderParam()
 		param.InstancePool = []ProviderInstance{
-			{Name: "same", Addr: "1.2.3.4", Port: 443, Weight: 100},
+			{Addr: "1.2.3.4", Port: 443, Weight: 100},
 		}
 
 		store := &fakeProviderStorager{
@@ -619,18 +619,6 @@ func TestFillDefaults(t *testing.T) {
 	assert.NotNil(t, p.Keys)
 }
 
-func TestFillDefaultsInstanceName(t *testing.T) {
-	p := &ProviderParam{
-		InstancePool: []ProviderInstance{
-			{Addr: "1.2.3.4", Port: 443, Weight: 100},
-			{Name: "rs1", Addr: "5.6.7.8", Port: 443, Weight: 100},
-		},
-	}
-	FillDefaults(p)
-	assert.Equal(t, "1.2.3.4", p.InstancePool[0].Name)
-	assert.Equal(t, "rs1", p.InstancePool[1].Name)
-}
-
 func TestKeyMap(t *testing.T) {
 	keys := []ProviderKey{{Name: "a", Key: "1"}, {Name: "b", Key: "2"}}
 	m := KeyMap(keys)
@@ -827,13 +815,13 @@ func TestValidatePricingTiersParam(t *testing.T) {
 
 func TestProviderInstancePoolEqual(t *testing.T) {
 	a := []ProviderInstance{
-		{Name: "rs1", Addr: "1.2.3.4", Port: 443, Weight: 100, Disable: false},
+		{Addr: "1.2.3.4", Port: 443, Weight: 100, Disable: false},
 	}
 	b := []ProviderInstance{
-		{Name: "rs1", Addr: "1.2.3.4", Port: 443, Weight: 100, Disable: false},
+		{Addr: "1.2.3.4", Port: 443, Weight: 100, Disable: false},
 	}
 	c := []ProviderInstance{
-		{Name: "rs2", Addr: "1.2.3.4", Port: 443, Weight: 100, Disable: false},
+		{Addr: "1.2.3.4", Port: 8443, Weight: 100, Disable: false},
 	}
 
 	assert.True(t, providerInstancePoolEqual(a, b))
@@ -848,7 +836,7 @@ func TestApplyProviderUpdate(t *testing.T) {
 		Description: "old",
 		Models:      []string{"m1"},
 		InstancePool: []ProviderInstance{
-			{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+			{Addr: "1.2.3.4", Port: 443, Weight: 100},
 		},
 	}
 
@@ -856,7 +844,7 @@ func TestApplyProviderUpdate(t *testing.T) {
 		Description: lib.PString("new"),
 		Models:      []string{"m1", "m2"},
 		InstancePool: []ProviderInstance{
-			{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+			{Addr: "5.6.7.8", Port: 443, Weight: 100},
 		},
 	}
 
@@ -865,7 +853,6 @@ func TestApplyProviderUpdate(t *testing.T) {
 	assert.Equal(t, "deepseek", updated.Name)
 	assert.Equal(t, "new", updated.Description)
 	assert.Equal(t, []string{"m1", "m2"}, updated.Models)
-	assert.Equal(t, "new", updated.InstancePool[0].Name)
 	// Unchanged fields are preserved.
 	assert.Equal(t, existing.ModelProtocols, updated.ModelProtocols)
 }

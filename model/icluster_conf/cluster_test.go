@@ -43,12 +43,12 @@ func init() {
 func TestProviderInstancesToClusterInstances(t *testing.T) {
 	instances := []iprovider.ProviderInstance{
 		{Addr: "1.2.3.4", Port: 443, Weight: 100},
-		{Name: "rs1", Addr: "5.6.7.8", Port: 443, Weight: 100},
+		{Addr: "5.6.7.8", Port: 443, Weight: 100},
 	}
 	got := providerInstancesToClusterInstances(instances)
 	require.Len(t, got, 2)
-	assert.Equal(t, "1.2.3.4", got[0].Name)
-	assert.Equal(t, "rs1", got[1].Name)
+	assert.Equal(t, "1.2.3.4_443", got[0].Name)
+	assert.Equal(t, "5.6.7.8_443", got[1].Name)
 }
 
 func TestClusterManager_ProviderInstancePoolSyncer(t *testing.T) {
@@ -101,7 +101,7 @@ func TestClusterManager_ProviderInstancePoolSyncer(t *testing.T) {
 		newProvider := &iprovider.Provider{
 			Name: providerName,
 			InstancePool: []iprovider.ProviderInstance{
-				{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+				{Addr: "5.6.7.8", Port: 443, Weight: 100},
 			},
 		}
 		err := cm.ProviderInstancePoolSyncer(ctx, nil, newProvider)
@@ -109,7 +109,7 @@ func TestClusterManager_ProviderInstancePoolSyncer(t *testing.T) {
 
 		require.Len(t, updatedPools, 1)
 		require.Contains(t, updatedPools, int64(1))
-		assert.Equal(t, "new", updatedPools[1][0].Name)
+		assert.Equal(t, "5.6.7.8_443", updatedPools[1][0].Name)
 	})
 
 	t.Run("skips EPP sub-clusters", func(t *testing.T) {
@@ -134,7 +134,7 @@ func TestClusterManager_ProviderInstancePoolSyncer(t *testing.T) {
 		newProvider := &iprovider.Provider{
 			Name: providerName,
 			InstancePool: []iprovider.ProviderInstance{
-				{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+				{Addr: "5.6.7.8", Port: 443, Weight: 100},
 			},
 		}
 		err := cm.ProviderInstancePoolSyncer(ctx, nil, newProvider)
@@ -162,7 +162,7 @@ func TestClusterManager_ProviderInstancePoolSyncer(t *testing.T) {
 		newProvider := &iprovider.Provider{
 			Name: providerName,
 			InstancePool: []iprovider.ProviderInstance{
-				{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+				{Addr: "5.6.7.8", Port: 443, Weight: 100},
 			},
 		}
 		err := cm.ProviderInstancePoolSyncer(ctx, nil, newProvider)

@@ -559,12 +559,8 @@ func (cm *ClusterManager) validateClusterLLMConfigAgainstProvider(llm *LLMConfig
 func providerInstancesToClusterInstances(instances []iprovider.ProviderInstance) []Instance {
 	rst := make([]Instance, 0, len(instances))
 	for _, inst := range instances {
-		name := inst.Name
-		if name == "" {
-			name = inst.Addr
-		}
 		rst = append(rst, Instance{
-			Name:    name,
+			Name:    fmt.Sprintf("%s_%d", inst.Addr, inst.Port),
 			Addr:    inst.Addr,
 			Port:    inst.Port,
 			Weight:  inst.Weight,
@@ -766,8 +762,7 @@ func providerInstancePoolEqual(a, b []iprovider.ProviderInstance) bool {
 		return false
 	}
 	for i := range a {
-		if a[i].Name != b[i].Name ||
-			a[i].Addr != b[i].Addr ||
+		if a[i].Addr != b[i].Addr ||
 			a[i].Port != b[i].Port ||
 			a[i].Weight != b[i].Weight ||
 			a[i].Disable != b[i].Disable {

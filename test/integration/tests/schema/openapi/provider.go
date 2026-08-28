@@ -22,9 +22,8 @@ var ProviderKeySchema = &testutil.ObjectSchema{
 
 // ProviderInstanceSchema provider instance_pool element schema
 var ProviderInstanceSchema = &testutil.ObjectSchema{
-	Required: []string{"name", "addr", "weight", "port"},
+	Required: []string{"addr", "weight", "port"},
 	Fields: map[string]testutil.FieldSpec{
-		"name":   {Type: testutil.TypeString},
 		"addr":   {Type: testutil.TypeString},
 		"weight": {Type: testutil.TypeInt},
 		"port":   {Type: testutil.TypeInt},

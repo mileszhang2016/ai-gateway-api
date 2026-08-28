@@ -16,6 +16,7 @@ package icluster_conf
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/cluster_table_conf"
@@ -62,10 +63,7 @@ func (rm *ClusterManager) clusterTableConfGenerator(ctx context.Context) (*ivers
 				if ip := net.ParseIP(addr); ip != nil && ip.To4() == nil {
 					addr = "[" + addr + "]"
 				}
-				name := instance.Name
-				if name == "" {
-					name = addr
-				}
+				name := fmt.Sprintf("%s_%d", addr, instance.Port)
 				subClusterBackend = append(subClusterBackend, &cluster_table_conf.BackendConf{
 					Name:   lib.PString(name),
 					Addr:   lib.PString(addr),

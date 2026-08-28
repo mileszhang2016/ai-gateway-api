@@ -23,14 +23,14 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// TestProvider_InstanceNameDefaultToAddr 验证 Provider instance_pool 未传 name 时，
-// 默认值应与 addr 相同，且导出的 cluster_table 中不会出现空名称。
-func TestProvider_InstanceNameDefaultToAddr(t *testing.T) {
+// TestProvider_InstanceNameUsesAddrPort 验证 Provider instance_pool 移除 name 字段后，
+// 导出的 cluster_table 中 backend Name 使用 addr_port 格式生成。
+func TestProvider_InstanceNameUsesAddrPort(t *testing.T) {
 	providerName := testutil.UniqueProviderName()
 	clusterName := testutil.UniqueClusterName()
 	addr := "10.0.0.100"
 
-	// 1. 创建 Provider，instance_pool 省略 name
+	// 1. 创建 Provider，instance_pool 不包含 name
 	createResp, err := testutil.GetClient().Post("/open-api/v1/providers", map[string]interface{}{
 		"name": providerName,
 		"instance_pool": []interface{}{
@@ -53,7 +53,8 @@ func TestProvider_InstanceNameDefaultToAddr(t *testing.T) {
 	require.Len(t, insts, 1)
 	inst, ok := insts[0].(map[string]interface{})
 	require.True(t, ok, "instance should be an object")
-	assert.Equal(t, addr, inst["name"], "instance name should default to addr")
+	_, hasName := inst["name"]
+	assert.False(t, hasName, "instance should not contain name field")
 	assert.Equal(t, addr, inst["addr"])
 
 	// 2. 创建引用该 Provider 的 Cluster，触发 pool/sub-cluster 自动生成
@@ -67,7 +68,7 @@ func TestProvider_InstanceNameDefaultToAddr(t *testing.T) {
 	require.NoError(t, err)
 	testutil.AssertSuccess(t, clusterResp)
 
-	// 3. 导出 cluster_table，校验 backend name 不为空且等于 addr
+	// 3. 导出 cluster_table，校验 backend Name 使用 addr_port 格式
 	exportResp, err := testutil.GetClient().Get("/inner-api/v1/configs/gslb_data/cluster_table")
 	require.NoError(t, err)
 	testutil.AssertSuccess(t, exportResp)
@@ -83,7 +84,7 @@ func TestProvider_InstanceNameDefaultToAddr(t *testing.T) {
 	require.Len(t, backends, 1)
 	backend, ok := backends[0].(map[string]interface{})
 	require.True(t, ok, "backend should be an object")
-	assert.Equal(t, addr, backend["Name"], "exported backend name should default to addr")
+	assert.Equal(t, "10.0.0.100_8080", backend["Name"], "exported backend name should be addr_port")
 	assert.Equal(t, addr, backend["Addr"])
 
 	t.Cleanup(func() {

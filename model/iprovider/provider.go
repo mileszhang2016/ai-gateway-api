@@ -28,10 +28,9 @@ import (
 )
 
 const (
-	MaxProviderNameLength         = 64
-	MaxProviderKeyLength          = 512
-	MaxProviderDescriptionLength  = 256
-	MaxProviderInstanceNameLength = 128
+	MaxProviderNameLength        = 64
+	MaxProviderKeyLength         = 512
+	MaxProviderDescriptionLength = 256
 )
 
 var (
@@ -59,7 +58,6 @@ type ProviderKey struct {
 // It mirrors icluster_conf.Instance so the provider package can stay free of
 // cluster-conf dependencies and avoid an import cycle.
 type ProviderInstance struct {
-	Name    string `json:"name"`
 	Addr    string `json:"addr"`
 	Port    int    `json:"port"`
 	Weight  int64  `json:"weight"`
@@ -640,15 +638,9 @@ func validateProviderInstancePool(instances []ProviderInstance) error {
 	if len(instances) == 0 {
 		return xerror.WrapParamErrorWithMsg("instance_pool is required")
 	}
-	nameSet := map[string]struct{}{}
 	comboSet := map[string]struct{}{}
 	hasPositiveWeight := false
 	for i, inst := range instances {
-		if inst.Name != "" {
-			if len(inst.Name) > MaxProviderInstanceNameLength {
-				return xerror.WrapParamErrorWithMsg("instance_pool[%d]: instance name length must be <= %d", i, MaxProviderInstanceNameLength)
-			}
-		}
 		if strings.TrimSpace(inst.Addr) == "" {
 			return xerror.WrapParamErrorWithMsg("instance_pool[%d]: instance addr is required", i)
 		}
@@ -661,15 +653,9 @@ func validateProviderInstancePool(instances []ProviderInstance) error {
 		if inst.Weight > 0 {
 			hasPositiveWeight = true
 		}
-		if inst.Name != "" {
-			if _, ok := nameSet[inst.Name]; ok {
-				return xerror.WrapParamErrorWithMsg("instance_pool: duplicate instance name: %s", inst.Name)
-			}
-			nameSet[inst.Name] = struct{}{}
-		}
-		key := fmt.Sprintf("%s|%s|%d", inst.Name, inst.Addr, inst.Port)
+		key := fmt.Sprintf("%s|%d", inst.Addr, inst.Port)
 		if _, ok := comboSet[key]; ok {
-			return xerror.WrapParamErrorWithMsg("instance_pool: duplicate instance name/addr/port combination: %s", key)
+			return xerror.WrapParamErrorWithMsg("instance_pool: duplicate instance addr/port combination: %s", key)
 		}
 		comboSet[key] = struct{}{}
 	}
@@ -704,11 +690,6 @@ func FillDefaults(param *ProviderParam) {
 	}
 	if param.Keys == nil {
 		param.Keys = []ProviderKey{}
-	}
-	for i := range param.InstancePool {
-		if param.InstancePool[i].Name == "" {
-			param.InstancePool[i].Name = param.InstancePool[i].Addr
-		}
 	}
 	if param.TimeZone == nil {
 		defaultTZ := "Asia/Shanghai"
@@ -763,8 +744,7 @@ func providerInstancePoolEqual(a, b []ProviderInstance) bool {
 		return false
 	}
 	for i := range a {
-		if a[i].Name != b[i].Name ||
-			a[i].Addr != b[i].Addr ||
+		if a[i].Addr != b[i].Addr ||
 			a[i].Port != b[i].Port ||
 			a[i].Weight != b[i].Weight ||
 			a[i].Disable != b[i].Disable {
