@@ -107,6 +107,95 @@ func TestProviderManager_UpdateProvider(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "provider Record Not Exist")
 	})
+
+	t.Run("sync hook invoked when instance_pool changes", func(t *testing.T) {
+		store := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return &Provider{
+					Name: "deepseek",
+					InstancePool: []ProviderInstance{
+						{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+					},
+				}, nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+
+		hookCalled := 0
+		var hookOld, hookNew *Provider
+		hook := func(ctx context.Context, oldProvider, newProvider *Provider) error {
+			hookCalled++
+			hookOld = oldProvider
+			hookNew = newProvider
+			return nil
+		}
+
+		param := validProviderParam()
+		param.InstancePool = []ProviderInstance{
+			{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+		}
+		err := m.UpdateProvider(ctx, "deepseek", param, hook)
+		require.NoError(t, err)
+		assert.Equal(t, 1, hookCalled)
+		require.NotNil(t, hookOld)
+		require.NotNil(t, hookNew)
+		assert.Equal(t, "old", hookOld.InstancePool[0].Name)
+		assert.Equal(t, "new", hookNew.InstancePool[0].Name)
+	})
+
+	t.Run("sync hook not invoked when instance_pool unchanged", func(t *testing.T) {
+		store := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return &Provider{
+					Name: "deepseek",
+					InstancePool: []ProviderInstance{
+						{Name: "same", Addr: "1.2.3.4", Port: 443, Weight: 100},
+					},
+				}, nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+
+		hookCalled := 0
+		hook := func(ctx context.Context, oldProvider, newProvider *Provider) error {
+			hookCalled++
+			return nil
+		}
+
+		param := validProviderParam()
+		param.InstancePool = []ProviderInstance{
+			{Name: "same", Addr: "1.2.3.4", Port: 443, Weight: 100},
+		}
+		err := m.UpdateProvider(ctx, "deepseek", param, hook)
+		require.NoError(t, err)
+		assert.Equal(t, 0, hookCalled)
+	})
+
+	t.Run("sync hook error rolls back", func(t *testing.T) {
+		store := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return &Provider{
+					Name: "deepseek",
+					InstancePool: []ProviderInstance{
+						{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+					},
+				}, nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+
+		hook := func(ctx context.Context, oldProvider, newProvider *Provider) error {
+			return errors.New("sync failed")
+		}
+
+		param := validProviderParam()
+		param.InstancePool = []ProviderInstance{
+			{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+		}
+		err := m.UpdateProvider(ctx, "deepseek", param, hook)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "sync failed")
+	})
 }
 
 func TestProviderManager_DeleteProvider(t *testing.T) {
@@ -656,4 +745,49 @@ func TestValidatePricingTiersParam(t *testing.T) {
 		}
 		require.Error(t, ValidatePricingTiersParam(param))
 	})
+}
+
+func TestProviderInstancePoolEqual(t *testing.T) {
+	a := []ProviderInstance{
+		{Name: "rs1", Addr: "1.2.3.4", Port: 443, Weight: 100, Disable: false},
+	}
+	b := []ProviderInstance{
+		{Name: "rs1", Addr: "1.2.3.4", Port: 443, Weight: 100, Disable: false},
+	}
+	c := []ProviderInstance{
+		{Name: "rs2", Addr: "1.2.3.4", Port: 443, Weight: 100, Disable: false},
+	}
+
+	assert.True(t, providerInstancePoolEqual(a, b))
+	assert.False(t, providerInstancePoolEqual(a, c))
+	assert.False(t, providerInstancePoolEqual(a, nil))
+	assert.True(t, providerInstancePoolEqual(nil, nil))
+}
+
+func TestApplyProviderUpdate(t *testing.T) {
+	existing := &Provider{
+		Name:        "deepseek",
+		Description: "old",
+		Models:      []string{"m1"},
+		InstancePool: []ProviderInstance{
+			{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+		},
+	}
+
+	param := &ProviderParam{
+		Description: lib.PString("new"),
+		Models:      []string{"m1", "m2"},
+		InstancePool: []ProviderInstance{
+			{Name: "new", Addr: "5.6.7.8", Port: 443, Weight: 100},
+		},
+	}
+
+	updated := applyProviderUpdate(existing, param)
+	require.NotNil(t, updated)
+	assert.Equal(t, "deepseek", updated.Name)
+	assert.Equal(t, "new", updated.Description)
+	assert.Equal(t, []string{"m1", "m2"}, updated.Models)
+	assert.Equal(t, "new", updated.InstancePool[0].Name)
+	// Unchanged fields are preserved.
+	assert.Equal(t, existing.ModelProtocols, updated.ModelProtocols)
 }
