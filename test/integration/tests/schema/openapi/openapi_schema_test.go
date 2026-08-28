@@ -249,7 +249,7 @@ func testProviderSchema(t *testing.T) {
 		"name":        providerName,
 		"description": "schema test",
 		"instance_pool": []interface{}{
-			map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080},
+			map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080},
 		},
 		"model_protocols": []string{"openai"},
 		"models":          []string{"deepseek-chat"},
@@ -284,7 +284,7 @@ func testProviderSchema(t *testing.T) {
 
 	patchResp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
 		"description":     "schema test updated",
-		"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
+		"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
 		"model_protocols": []string{"openai"},
 	})
 	require.NoError(t, err)
@@ -299,7 +299,7 @@ func testProviderSchema(t *testing.T) {
 		"model_protocols": []string{"anthropic"},
 		"models":          []string{"claude-3-5-sonnet-20241022"},
 		"instance_pool": []interface{}{
-			map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080},
+			map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080},
 		},
 	})
 	require.NoError(t, err)

@@ -169,9 +169,10 @@ func TestClusterTableConf_clusterWithIPv6(t *testing.T) {
 	backends := (*conf.Config)["c1"]["sc1"]
 	require.Len(t, backends, 1)
 	assert.Equal(t, "[2001:db8::1]", *backends[0].Addr)
+	assert.Equal(t, "[2001:db8::1]_80", *backends[0].Name)
 }
 
-func TestClusterTableConf_clusterWithEmptyInstanceName(t *testing.T) {
+func TestClusterTableConf_backendNameUsesAddrPort(t *testing.T) {
 	ctx := context.Background()
 	vcm := iversion_control.NewVersionControllerManager(&fakeTxn{}, &fakeVersionControlStorager{
 		upsertFn: func(ctx context.Context, css *iversion_control.ExportData) (string, error) {
@@ -179,7 +180,6 @@ func TestClusterTableConf_clusterWithEmptyInstanceName(t *testing.T) {
 		},
 	})
 	c := newTestClusterBase()
-	c.SubClusters[0].InstancePool.Instances[0].Name = ""
 	clusterStore := &fakeClusterStorager{
 		fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
 			return []*Cluster{c}, nil
@@ -192,5 +192,5 @@ func TestClusterTableConf_clusterWithEmptyInstanceName(t *testing.T) {
 	require.NotNil(t, conf.Config)
 	backends := (*conf.Config)["c1"]["sc1"]
 	require.Len(t, backends, 1)
-	assert.Equal(t, "127.0.0.1", *backends[0].Name)
+	assert.Equal(t, "127.0.0.1_80", *backends[0].Name)
 }

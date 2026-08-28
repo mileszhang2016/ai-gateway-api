@@ -14,7 +14,7 @@ func TestInnerAPI_TlsConf_TieredPricing(t *testing.T) {
 			"name": providerName,
 			"instance_pool": []interface{}{
 				map[string]interface{}{
-					"name":   "backend-1",
+					
 					"addr":   "10.0.0.1",
 					"weight": 100,
 					"port":   8080,
@@ -148,7 +148,7 @@ models:
 			"name": providerName,
 			"instance_pool": []interface{}{
 				map[string]interface{}{
-					"name":   "backend-1",
+					
 					"addr":   "10.0.0.1",
 					"weight": 100,
 					"port":   8080,

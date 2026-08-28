@@ -76,7 +76,6 @@ func CreateProvider(name string, opts ...map[string]interface{}) (string, error)
 		"name": name,
 		"instance_pool": []interface{}{
 			map[string]interface{}{
-				"name":   "backend-1",
 				"addr":   "10.0.0.1",
 				"weight": 100,
 				"port":   8080,

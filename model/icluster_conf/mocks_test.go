@@ -221,7 +221,7 @@ func (f *fakeProviderStorager) FetchProvider(ctx context.Context, filter *iprovi
 			Name:           *filter.Name,
 			Models:         []string{"m1", "m2"},
 			Keys:           []iprovider.ProviderKey{{Name: "k1", Key: "sk-xxx"}},
-			InstancePool:   []iprovider.ProviderInstance{{Name: "rs1", Addr: "127.0.0.1", Port: 80, Weight: 10}},
+			InstancePool:   []iprovider.ProviderInstance{{Addr: "127.0.0.1", Port: 80, Weight: 10}},
 			ModelProtocols: []string{"openai"},
 		}, nil
 	}
