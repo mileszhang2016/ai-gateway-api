@@ -452,6 +452,18 @@ func TestFillDefaults(t *testing.T) {
 	assert.NotNil(t, p.Keys)
 }
 
+func TestFillDefaultsInstanceName(t *testing.T) {
+	p := &ProviderParam{
+		InstancePool: []ProviderInstance{
+			{Addr: "1.2.3.4", Port: 443, Weight: 100},
+			{Name: "rs1", Addr: "5.6.7.8", Port: 443, Weight: 100},
+		},
+	}
+	FillDefaults(p)
+	assert.Equal(t, "1.2.3.4", p.InstancePool[0].Name)
+	assert.Equal(t, "rs1", p.InstancePool[1].Name)
+}
+
 func TestKeyMap(t *testing.T) {
 	keys := []ProviderKey{{Name: "a", Key: "1"}, {Name: "b", Key: "2"}}
 	m := KeyMap(keys)

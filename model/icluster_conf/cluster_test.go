@@ -40,6 +40,17 @@ func init() {
 	}
 }
 
+func TestProviderInstancesToClusterInstances(t *testing.T) {
+	instances := []iprovider.ProviderInstance{
+		{Addr: "1.2.3.4", Port: 443, Weight: 100},
+		{Name: "rs1", Addr: "5.6.7.8", Port: 443, Weight: 100},
+	}
+	got := providerInstancesToClusterInstances(instances)
+	require.Len(t, got, 2)
+	assert.Equal(t, "1.2.3.4", got[0].Name)
+	assert.Equal(t, "rs1", got[1].Name)
+}
+
 func newTestClusterBase() *Cluster {
 	return &Cluster{
 		ID:   1,
