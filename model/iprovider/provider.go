@@ -653,6 +653,11 @@ func FillDefaults(param *ProviderParam) {
 	if param.Keys == nil {
 		param.Keys = []ProviderKey{}
 	}
+	for i := range param.InstancePool {
+		if param.InstancePool[i].Name == "" {
+			param.InstancePool[i].Name = param.InstancePool[i].Addr
+		}
+	}
 	if param.TimeZone == nil {
 		defaultTZ := "Asia/Shanghai"
 		param.TimeZone = &defaultTZ

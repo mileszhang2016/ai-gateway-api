@@ -170,3 +170,27 @@ func TestClusterTableConf_clusterWithIPv6(t *testing.T) {
 	require.Len(t, backends, 1)
 	assert.Equal(t, "[2001:db8::1]", *backends[0].Addr)
 }
+
+func TestClusterTableConf_clusterWithEmptyInstanceName(t *testing.T) {
+	ctx := context.Background()
+	vcm := iversion_control.NewVersionControllerManager(&fakeTxn{}, &fakeVersionControlStorager{
+		upsertFn: func(ctx context.Context, css *iversion_control.ExportData) (string, error) {
+			return "20240102000000", nil
+		},
+	})
+	c := newTestClusterBase()
+	c.SubClusters[0].InstancePool.Instances[0].Name = ""
+	clusterStore := &fakeClusterStorager{
+		fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+			return []*Cluster{c}, nil
+		},
+	}
+	m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
+	conf, err := m.ExportClusterTable(ctx, "old")
+	require.NoError(t, err)
+	require.NotNil(t, conf)
+	require.NotNil(t, conf.Config)
+	backends := (*conf.Config)["c1"]["sc1"]
+	require.Len(t, backends, 1)
+	assert.Equal(t, "127.0.0.1", *backends[0].Name)
+}

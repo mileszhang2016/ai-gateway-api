@@ -7,6 +7,7 @@ import (
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var sm *testutil.ServerManager
@@ -30,7 +31,6 @@ func TestProvider_Update(t *testing.T) {
 
 	t.Run("PV-4-001 更新 description", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
-			"name":            providerName,
 			"description":     "更新后的 Provider 描述",
 			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
 			"model_protocols": []string{"openai"},
@@ -44,7 +44,6 @@ func TestProvider_Update(t *testing.T) {
 
 	t.Run("PV-4-002 更新 models", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
-			"name":            providerName,
 			"models":          []string{"deepseek-chat", "deepseek-coder", "deepseek-reasoner"},
 			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
 			"model_protocols": []string{"openai"},
@@ -63,7 +62,6 @@ func TestProvider_Update(t *testing.T) {
 
 	t.Run("PV-4-003 更新 keys（全量替换）", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
-			"name":  providerName,
 			"keys": []interface{}{
 				map[string]interface{}{
 					"name": "key-primary",
@@ -91,7 +89,6 @@ func TestProvider_Update(t *testing.T) {
 
 	t.Run("PV-4-004 更新不存在的 Provider", func(t *testing.T) {
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/non_existent_provider", map[string]interface{}{
-			"name":            "non_existent_provider",
 			"description":     "x",
 			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
 			"model_protocols": []string{"openai"},
@@ -100,6 +97,50 @@ func TestProvider_Update(t *testing.T) {
 			t.Fatalf("request failed: %v", err)
 		}
 		testutil.AssertErrCode(t, resp, 404)
+	})
+
+	t.Run("PV-4-005 请求体不包含 name", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
+			"description":     "请求体未传 name",
+			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"model_protocols": []string{"openai"},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "name", providerName)
+	})
+
+	t.Run("PV-4-005a 更新时省略 instance name 默认使用 addr", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.99", "weight": 100, "port": 8080}},
+			"model_protocols": []string{"openai"},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		require.NoError(t, json.Unmarshal(resp.Data, &data))
+		insts, _ := data["instance_pool"].([]interface{})
+		require.Len(t, insts, 1)
+		inst, _ := insts[0].(map[string]interface{})
+		assert.Equal(t, "10.0.0.99", inst["name"])
+		assert.Equal(t, "10.0.0.99", inst["addr"])
+	})
+
+	t.Run("PV-4-006 请求体包含 name", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
+			"name":            providerName,
+			"description":     "请求体传了 name",
+			"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"model_protocols": []string{"openai"},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
 	})
 
 	t.Cleanup(func() {

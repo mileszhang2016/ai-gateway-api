@@ -41,6 +41,7 @@ func TestProvider_Create(t *testing.T) {
 	providerMin := testutil.UniqueProviderName()
 	providerFull := testutil.UniqueProviderName()
 	providerAnthropic := testutil.UniqueProviderName()
+	providerNoInstName := testutil.UniqueProviderName()
 	providerDup := testutil.UniqueProviderName()
 
 	tests := []struct {
@@ -134,6 +135,30 @@ func TestProvider_Create(t *testing.T) {
 				json.Unmarshal(resp.Data, &data)
 				protocols, _ := data["model_protocols"].([]interface{})
 				assert.Equal(t, []interface{}{"anthropic"}, protocols)
+			},
+		},
+		{
+			name: "PV-1-002b 省略 instance name 时默认使用 addr",
+			body: map[string]interface{}{
+				"name": providerNoInstName,
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"addr":   "10.0.0.99",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"model_protocols": []string{"openai"},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				insts, _ := data["instance_pool"].([]interface{})
+				assert.Len(t, insts, 1)
+				inst, _ := insts[0].(map[string]interface{})
+				assert.Equal(t, "10.0.0.99", inst["name"])
+				assert.Equal(t, "10.0.0.99", inst["addr"])
 			},
 		},
 		{
@@ -322,6 +347,7 @@ func TestProvider_Create(t *testing.T) {
 		testutil.DeleteProvider(providerMin)
 		testutil.DeleteProvider(providerFull)
 		testutil.DeleteProvider(providerAnthropic)
+		testutil.DeleteProvider(providerNoInstName)
 		testutil.DeleteProvider(providerDup)
 	})
 }

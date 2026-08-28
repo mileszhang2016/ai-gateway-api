@@ -283,7 +283,6 @@ func testProviderSchema(t *testing.T) {
 	testutil.AssertSchema(t, oneResp, ProviderSchema)
 
 	patchResp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
-		"name":            providerName,
 		"description":     "schema test updated",
 		"instance_pool":   []interface{}{map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080}},
 		"model_protocols": []string{"openai"},

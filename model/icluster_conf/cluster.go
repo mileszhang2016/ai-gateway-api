@@ -559,8 +559,12 @@ func (cm *ClusterManager) validateClusterLLMConfigAgainstProvider(llm *LLMConfig
 func providerInstancesToClusterInstances(instances []iprovider.ProviderInstance) []Instance {
 	rst := make([]Instance, 0, len(instances))
 	for _, inst := range instances {
+		name := inst.Name
+		if name == "" {
+			name = inst.Addr
+		}
 		rst = append(rst, Instance{
-			Name:    inst.Name,
+			Name:    name,
 			Addr:    inst.Addr,
 			Port:    inst.Port,
 			Weight:  inst.Weight,

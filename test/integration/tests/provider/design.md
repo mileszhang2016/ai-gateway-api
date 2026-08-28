@@ -238,7 +238,7 @@ provider/
 
 ### 9.2 请求参数
 
-可修改字段与创建接口一致。当前实现要求请求体中必须携带 `name`、`instance_pool`、`model_protocols`。
+可修改字段与创建接口一致。`provider_name` 由 URI 路径指定，请求体中无需再传 `name`（若包含 `name` 返回 422）；更新时仍需携带 `instance_pool` 和 `model_protocols`。
 
 ### 9.3 测试用例
 
@@ -248,6 +248,8 @@ provider/
 | PV-4-002 | 更新 `models` | 200，`models` 长度变为 3 |
 | PV-4-003 | 更新 `keys`（全量替换） | 200，`keys` 被替换为新的完整列表 |
 | PV-4-004 | 更新不存在的 Provider | 404 |
+| PV-4-005 | 请求体不包含 `name` | 200，返回的 `name` 与 URI 一致 |
+| PV-4-006 | 请求体包含 `name` | 422 |
 
 ## 10. 删除 Provider
 

@@ -62,8 +62,12 @@ func (rm *ClusterManager) clusterTableConfGenerator(ctx context.Context) (*ivers
 				if ip := net.ParseIP(addr); ip != nil && ip.To4() == nil {
 					addr = "[" + addr + "]"
 				}
+				name := instance.Name
+				if name == "" {
+					name = addr
+				}
 				subClusterBackend = append(subClusterBackend, &cluster_table_conf.BackendConf{
-					Name:   lib.PString(instance.Name),
+					Name:   lib.PString(name),
 					Addr:   lib.PString(addr),
 					Port:   lib.PInt(instance.Port),
 					Weight: lib.PInt(int(instance.Weight)),
