@@ -153,11 +153,27 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
                         "Strategy": "weighted_random",
                         "MaxRetries": 3,
                         "RetryBackoffInitial": 500,
-                        "RetryBackoffMax": 5000
+                        "RetryBackoffMax": 5000,
+                        "SessionAffinity": true,
+                        "SessionAffinityTTL": 600,
+                        "SessionAffinityRedisPrefix": "bfe:ai:key_affinity",
+                        "SessionAffinityPenaltyEnable": true
                     },
                     "MatchPrefix": "deepseek/",
                     "StripPrefix": true,
+                    "ModelProtocols": ["openai"],
                     "ModelTable": {
+                        "Currency": "RMB",
+                        "TimeZone": "Asia/Shanghai",
+                        "Tiers": [
+                            {
+                                "Name": "peak",
+                                "TimeRanges": [
+                                    { "Weekdays": [1, 2, 3, 4, 5], "Start": "09:00", "End": "12:00" },
+                                    { "Weekdays": [1, 2, 3, 4, 5], "Start": "14:00", "End": "18:00" }
+                                ]
+                            }
+                        ],
                         "Models": [
                             {
                                 "Provider": "deepseek",
@@ -173,7 +189,15 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
                                 },
                                 "Prices": {
                                     "input_cost_per_token": 0.000002,
-                                    "output_cost_per_token": 0.000008
+                                    "output_cost_per_token": 0.000008,
+                                    "cache_read_input_token_cost": 0.0000005
+                                },
+                                "TierPrices": {
+                                    "peak": {
+                                        "input_cost_per_token": 0.000004,
+                                        "output_cost_per_token": 0.000016,
+                                        "cache_read_input_token_cost": 0.000001
+                                    }
                                 }
                             }
                         ]
@@ -199,9 +223,22 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
 | KeyPolicy.MaxRetries | int | 请求内总额外重试次数 |
 | KeyPolicy.RetryBackoffInitial | int | 初始退避时间，单位毫秒 |
 | KeyPolicy.RetryBackoffMax | int | 最大退避时间，单位毫秒 |
+| KeyPolicy.SessionAffinity | bool | 是否开启会话级 Key 亲和性；对应 OpenAPI `llm_config.key_affinity.enabled`，默认 `true` |
+| KeyPolicy.SessionAffinityTTL | int | 绑定空闲超时时间，单位秒；对应 OpenAPI `llm_config.key_affinity.ttl`，默认 `600`；命中后 BFE 会刷新 TTL |
+| KeyPolicy.SessionAffinityRedisPrefix | string | Redis 绑定键前缀；对应 OpenAPI `llm_config.key_affinity.redis_prefix`，默认 `"bfe:ai:key_affinity"` |
+| KeyPolicy.SessionAffinityPenaltyEnable | bool | 是否开启 Key 惩罚；对应 OpenAPI `llm_config.key_affinity.penalty_enable`，默认 `true` |
 | MatchPrefix | string | 需要匹配的 provider/model 前缀；对应 OpenAPI `llm_config.match_prefix` |
 | StripPrefix | bool | 是否裁剪 `MatchPrefix` 前缀；对应 OpenAPI `llm_config.strip_prefix` |
-| ModelTable | object | 该 cluster 的成本定价表；无 `Currency` 字段 |
+| ModelProtocols | []string | 该集群所属 provider 支持的模型访问协议；来源为 OpenAPI `/providers` 的 `model_protocols`。枚举值如 `openai`、`anthropic`；为空数组时 BFE 兜底为仅支持 `openai` |
+| ModelTable | object | 该 cluster 的成本定价表 |
+| ModelTable.Currency | string | 价格货币；固定为 `"RMB"` |
+| ModelTable.TimeZone | string | 计算时段所使用的时区；默认 `"Asia/Shanghai"` |
+| ModelTable.Tiers | array | 时段 tier 定义列表；为空时按固定价格处理 |
+| ModelTable.Tiers[].Name | string | Tier 名称；**初期只支持 `"peak"`** |
+| ModelTable.Tiers[].TimeRanges | array | 时段范围列表；命中任意一个即属于该 tier |
+| ModelTable.Tiers[].TimeRanges[].Weekdays | []int | 星期几；0=周日，1=周一，...，6=周六；为空表示每天 |
+| ModelTable.Tiers[].TimeRanges[].Start | string | 开始时间，格式 `HH:MM` |
+| ModelTable.Tiers[].TimeRanges[].End | string | 结束时间，格式 `HH:MM`；采用左闭右开语义 |
 | ModelTable.Models | array | 模型定价条目列表 |
 | ModelTable.Models[].Provider | string | Provider 名 |
 | ModelTable.Models[].Model | string | 模型名，用于匹配请求中的 target_model |
@@ -210,9 +247,10 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
 | ModelTable.Models[].Capabilities | []string | 能力列表；枚举值同 OpenAPI `model_prices.capabilities` |
 | ModelTable.Models[].SupportedParameters | []string | 支持的请求参数列表；枚举值同 OpenAPI `model_prices.supported_parameters` |
 | ModelTable.Models[].Limits | object | 限制对象；键名枚举值同 OpenAPI `model_prices.limits` |
-| ModelTable.Models[].Prices | object | 价格对象；键名枚举值同 OpenAPI `model_prices.prices`；当前价格货币固定为 RMB |
+| ModelTable.Models[].Prices | object | 默认价格对象；键名枚举值同 OpenAPI `model_prices.prices`；未命中 tier 时作为 fallback |
+| ModelTable.Models[].TierPrices | object | 分时段价格对象；key 为 tier name，value 为价格对象；键名枚举值同 OpenAPI `model_prices.prices` |
 
-> **说明**：`ModelTable` 由 InnerAPI 根据 `Provider` 查询 `model_prices` 自动填充，不在 OpenAPI `/clusters` 端点中展示。`ModelTable` 不包含 `Currency` 字段，v0.4 仅支持 RMB。
+> **说明**：`ModelTable` 由 InnerAPI 根据 `cluster.llm_config.provider` 查询 `/providers` 的 `time_zone` / `tiers` 与 `/model-prices` 的 `prices` / `tier_prices` 拼接后自动填充，不在 OpenAPI `/clusters` 端点中展示。`Currency` 固定为 `RMB`。
 
 ## 4. 配置未变化返回示例
 

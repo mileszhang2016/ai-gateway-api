@@ -15,14 +15,86 @@ var InnerAPIBaseSchema = &testutil.ObjectSchema{
 	},
 }
 
+// ClusterConfSchema /configs/tls_conf/server_data_conf 中 ClusterConf 的 schema
+var ClusterConfSchema = &testutil.ObjectSchema{
+	Required: []string{"Version", "Config"},
+	Fields: map[string]testutil.FieldSpec{
+		"Version": {Type: testutil.TypeString},
+		"Config":  {Type: testutil.TypeObject},
+	},
+}
+
+// ModelPriceSchema AIConf.ModelTable.Models 中单个模型价格的 schema
+var ModelPriceSchema = &testutil.ObjectSchema{
+	Required: []string{"Provider", "Model", "BaseModel", "Mode", "Prices"},
+	Optional: []string{"Capabilities", "SupportedParameters", "Limits", "TierPrices", "Metadata"},
+	Fields: map[string]testutil.FieldSpec{
+		"Provider":            {Type: testutil.TypeString},
+		"Model":               {Type: testutil.TypeString},
+		"BaseModel":           {Type: testutil.TypeString},
+		"Mode":                {Type: testutil.TypeString},
+		"Capabilities":        {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
+		"SupportedParameters": {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
+		"Limits":              {Type: testutil.TypeObject},
+		"Prices":              {Type: testutil.TypeObject},
+		"TierPrices":          {Type: testutil.TypeObject},
+		"Metadata":            {Type: testutil.TypeObject},
+	},
+}
+
+// ModelTableSchema AIConf.ModelTable 的 schema
+var ModelTableSchema = &testutil.ObjectSchema{
+	Required: []string{"Currency", "Models"},
+	Optional: []string{"TimeZone", "Tiers"},
+	Fields: map[string]testutil.FieldSpec{
+		"Currency": {Type: testutil.TypeString},
+		"TimeZone": {Type: testutil.TypeString},
+		"Tiers":    {Type: testutil.TypeArray},
+		"Models":   {Type: testutil.TypeArray, Elem: ModelPriceSchema},
+	},
+}
+
+// AIKeyPolicySchema AIConf.KeyPolicy 的 schema
+var AIKeyPolicySchema = &testutil.ObjectSchema{
+	Required: []string{
+		"Strategy", "MaxRetries", "RetryBackoffInitial", "RetryBackoffMax",
+		"SessionAffinity", "SessionAffinityTTL", "SessionAffinityRedisPrefix", "SessionAffinityPenaltyEnable",
+	},
+	Fields: map[string]testutil.FieldSpec{
+		"Strategy":                     {Type: testutil.TypeString},
+		"MaxRetries":                   {Type: testutil.TypeInt},
+		"RetryBackoffInitial":          {Type: testutil.TypeInt},
+		"RetryBackoffMax":              {Type: testutil.TypeInt},
+		"SessionAffinity":              {Type: testutil.TypeBool},
+		"SessionAffinityTTL":           {Type: testutil.TypeInt},
+		"SessionAffinityRedisPrefix":   {Type: testutil.TypeString},
+		"SessionAffinityPenaltyEnable": {Type: testutil.TypeBool},
+	},
+}
+
+// AIConfSchema ClusterConf.Config.<cluster>.AIConf 的 schema
+var AIConfSchema = &testutil.ObjectSchema{
+	Required: []string{"KeyPolicy"},
+	Optional: []string{"Keys", "ModelMappings", "ModelTable", "MatchPrefix", "StripPrefix", "ModelProtocols"},
+	Fields: map[string]testutil.FieldSpec{
+		"Keys":           {Type: testutil.TypeArray},
+		"KeyPolicy":      {Type: testutil.TypeObject, Nested: AIKeyPolicySchema},
+		"ModelMappings":  {Type: testutil.TypeObject},
+		"ModelTable":     {Type: testutil.TypeObject, Nested: ModelTableSchema},
+		"MatchPrefix":    {Type: testutil.TypeString},
+		"StripPrefix":    {Type: testutil.TypeBool},
+		"ModelProtocols": {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
+	},
+}
+
 // ServerDataConfSchema /configs/tls_conf/server_data_conf 返回 schema
 var ServerDataConfSchema = &testutil.ObjectSchema{
 	Required: []string{"Version", "HostTable", "RouteTable", "ClusterConf"},
 	Fields: map[string]testutil.FieldSpec{
-		"Version":    {Type: testutil.TypeString},
-		"HostTable":  {Type: testutil.TypeObject},
-		"RouteTable": {Type: testutil.TypeObject},
-		"ClusterConf":{Type: testutil.TypeObject},
+		"Version":     {Type: testutil.TypeString},
+		"HostTable":   {Type: testutil.TypeObject},
+		"RouteTable":  {Type: testutil.TypeObject},
+		"ClusterConf": {Type: testutil.TypeObject, Nested: ClusterConfSchema},
 	},
 }
 

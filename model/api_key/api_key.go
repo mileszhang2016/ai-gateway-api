@@ -115,7 +115,6 @@ type APIKeyManager struct {
 	rateLimitPolicyStorager RateLimitPolicyStorager
 	routeRulesStorager      shared.RouteRulesStorager
 	entityStorager          shared.EntityStorager
-	quotaBalanceStorager    shared.QuotaBalanceStorager
 	quotaCache              quotacache.QuotaCache
 }
 
@@ -139,7 +138,7 @@ type RateLimitPolicyStorager interface {
 func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager,
 	quotaPlanStorager QuotaPlanStorager, rateLimitPolicyStorager RateLimitPolicyStorager,
 	routeRulesStorager shared.RouteRulesStorager, entityStorager shared.EntityStorager,
-	quotaBalanceStorager shared.QuotaBalanceStorager, quotaCache quotacache.QuotaCache) *APIKeyManager {
+	quotaCache quotacache.QuotaCache) *APIKeyManager {
 	return &APIKeyManager{
 		txn:                     txn,
 		storager:                storager,
@@ -147,7 +146,6 @@ func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager,
 		rateLimitPolicyStorager: rateLimitPolicyStorager,
 		routeRulesStorager:      routeRulesStorager,
 		entityStorager:          entityStorager,
-		quotaBalanceStorager:    quotaBalanceStorager,
 		quotaCache:              quotaCache,
 	}
 }
@@ -199,6 +197,14 @@ func (rppm *APIKeyManager) FetchAPIKeyList(ctx context.Context,
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 事务外批量从 Redis 读取实时余额（最终一致，失败不影响主数据返回）。
+	if err := rppm.populateQuotaBalances(ctx, list); err != nil {
+		stateful.AccessLogger.Warn("failed to populate quota balances for api key list: %v", err)
+	}
 
 	return
 }
@@ -217,6 +223,16 @@ func (rppm *APIKeyManager) FetchAPIKey(ctx context.Context,
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 事务外从 Redis 读取实时余额（最终一致，失败不影响主数据返回）。
+	if one != nil {
+		if err := rppm.populateQuotaBalance(ctx, one); err != nil {
+			stateful.AccessLogger.Warn("failed to populate quota balance for api key: %v", err)
+		}
+	}
 
 	return
 }
@@ -244,16 +260,7 @@ func (rppm *APIKeyManager) populateAssociatedData(ctx context.Context, one *APIK
 		if err != nil {
 			return err
 		}
-
 		if quotaPlan != nil {
-			if rppm.quotaBalanceStorager != nil {
-				balance, err := rppm.quotaBalanceStorager.FetchQuotaBalance(ctx, *one.QuotaPlanID)
-				if err != nil {
-					return err
-				}
-				quotaPlan.Balance = balance
-			}
-
 			one.QuotaPlan = quotaPlan
 		}
 	}
@@ -289,9 +296,116 @@ func (rppm *APIKeyManager) populateAssociatedData(ctx context.Context, one *APIK
 	return nil
 }
 
+const unlimitedSentinel = float64(100000000)
+
+// fillQuotaBalance 根据 Redis 实时剩余量填充 quotaPlan.Balance。
+func fillQuotaBalance(quotaPlan *shared.QuotaPlanParam, remaining float64) {
+	if quotaPlan == nil || quotaPlan.Quota == nil {
+		return
+	}
+	if remaining < 0 {
+		remaining = 0
+	}
+	used := *quotaPlan.Quota - remaining
+	if used < 0 {
+		used = 0
+	}
+	if quotaPlan.Balance == nil {
+		quotaPlan.Balance = &shared.BalanceSummary{}
+	}
+	quotaPlan.Balance.Used = &used
+	quotaPlan.Balance.Remaining = &remaining
+}
+
+// fillUnlimitedQuotaBalance 为无限配额填充 sentinel 余额（used=0, remaining=100000000）。
+func fillUnlimitedQuotaBalance(quotaPlan *shared.QuotaPlanParam) {
+	if quotaPlan == nil {
+		return
+	}
+	used := float64(0)
+	remaining := unlimitedSentinel
+	if quotaPlan.Balance == nil {
+		quotaPlan.Balance = &shared.BalanceSummary{}
+	}
+	quotaPlan.Balance.Used = &used
+	quotaPlan.Balance.Remaining = &remaining
+}
+
+// populateQuotaBalance 为单个 API-Key 从 Redis 实时读取剩余量并填充 Balance。
+func (rppm *APIKeyManager) populateQuotaBalance(ctx context.Context, one *APIKeyParam) error {
+	if rppm.quotaCache == nil {
+		return nil
+	}
+	if one.QuotaPlan == nil || one.QuotaPlan.Quota == nil || one.Key == nil {
+		return nil
+	}
+	if one.QuotaPlan.Unlimited != nil && *one.QuotaPlan.Unlimited {
+		fillUnlimitedQuotaBalance(one.QuotaPlan)
+		return nil
+	}
+
+	remaining, err := rppm.quotaCache.GetRemaining(ctx, *one.Key, one.QuotaPlan.Unit)
+	if err != nil {
+		return fmt.Errorf("get %s-%d from cache is error:%s", *one.Key, one.KeyCreateAt.Unix(), err.Error())
+	}
+	fillQuotaBalance(one.QuotaPlan, remaining)
+	return nil
+}
+
+// populateQuotaBalances 为 API-Key 列表批量从 Redis 读取剩余量并填充 Balance。
+func (rppm *APIKeyManager) populateQuotaBalances(ctx context.Context, list []*APIKeyParam) error {
+	if rppm.quotaCache == nil {
+		return nil
+	}
+
+	type item struct {
+		one *APIKeyParam
+		key string
+	}
+	groups := make(map[string][]item)
+	for _, one := range list {
+		if one.QuotaPlan == nil || one.QuotaPlan.Quota == nil || one.Key == nil {
+			continue
+		}
+		if one.QuotaPlan.Unlimited != nil && *one.QuotaPlan.Unlimited {
+			fillUnlimitedQuotaBalance(one.QuotaPlan)
+			continue
+		}
+		unit := ""
+		if one.QuotaPlan.Unit != nil {
+			unit = *one.QuotaPlan.Unit
+		}
+		groups[unit] = append(groups[unit], item{one: one, key: *one.Key})
+	}
+
+	for unit, items := range groups {
+		keys := make([]string, len(items))
+		for i, it := range items {
+			keys[i] = it.key
+		}
+		var unitPtr *string
+		if unit != "" {
+			unitPtr = &unit
+		}
+		result, err := rppm.quotaCache.BatchGetRemaining(ctx, keys, unitPtr)
+		if err != nil {
+			return err
+		}
+		for _, it := range items {
+			fillQuotaBalance(it.one.QuotaPlan, result[it.key])
+		}
+	}
+	return nil
+}
+
 // DeleteAPIKey deletes an API key based on filter criteria
 func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilter) error {
-	return rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
+	var (
+		quotaKey        string
+		rateLimitKeys   []string
+	)
+
+	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		list, err := rppm.storager.FetchAPIKeyList(ctx, filter)
 		if err != nil {
 			return err
@@ -302,9 +416,17 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 
 		one := list[0]
 
-		if one.QuotaPlanID != nil && rppm.quotaBalanceStorager != nil {
-			if err := rppm.quotaBalanceStorager.DeleteQuotaBalance(ctx, *one.QuotaPlanID); err != nil {
+		if one.Key != nil {
+			quotaKey = *one.Key
+		}
+
+		if one.RateLimitPolicyID != nil && rppm.rateLimitPolicyStorager != nil {
+			policy, err := rppm.rateLimitPolicyStorager.FetchRateLimitPolicy(ctx, *one.RateLimitPolicyID)
+			if err != nil {
 				return err
+			}
+			if policy != nil && policy.Rules != nil {
+				rateLimitKeys = shared.BuildRateLimitRedisKeys(*one.RateLimitPolicyID, policy.Rules)
 			}
 		}
 
@@ -328,12 +450,40 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 
 		return rppm.storager.DeleteAPIKey(ctx, filter)
 	})
+	if err != nil {
+		return err
+	}
+
+	// 事务提交成功后清理 Redis Key
+	rppm.cleanupRedisKeys(ctx, quotaKey, rateLimitKeys)
+	return nil
+}
+
+// cleanupRedisKeys 清理 Quota Key 与 Rate-Limit Key，错误仅记录日志不返回。
+func (rppm *APIKeyManager) cleanupRedisKeys(ctx context.Context, quotaKey string, rateLimitKeys []string) {
+	if rppm.quotaCache == nil {
+		return
+	}
+
+	var keysToDelete []string
+	if quotaKey != "" {
+		keysToDelete = append(keysToDelete, stateful.AIUsedQuotaKey(quotaKey))
+	}
+	if len(rateLimitKeys) > 0 {
+		keysToDelete = append(keysToDelete, rateLimitKeys...)
+	}
+	if len(keysToDelete) == 0 {
+		return
+	}
+
+	if err := rppm.quotaCache.DeleteKeys(ctx, keysToDelete); err != nil {
+		stateful.AccessLogger.Warn("failed to cleanup redis keys for api key: %v", err)
+	}
 }
 
 // UpdateAPIKey updates an existing API key
 func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) error {
-	var updatedKey *string
-	var updatedQuotaPlan *shared.QuotaPlanParam
+	var rateLimitKeysToDelete []string
 
 	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		list, err := rppm.storager.FetchAPIKeyList(ctx, filter)
@@ -345,7 +495,6 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		}
 
 		one := list[0]
-		updatedKey = one.Key
 
 		// key is immutable through update endpoints
 		param.Key = nil
@@ -363,22 +512,21 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 				}
 				param.QuotaPlanID = &quotaPlanID
 
-				if param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited {
-					if rppm.quotaBalanceStorager != nil && param.QuotaPlan.Quota != nil {
-						if err := rppm.quotaBalanceStorager.CreateQuotaBalance(ctx, quotaPlanID, param.QuotaPlan.Quota); err != nil {
-							return err
-						}
-					}
 				}
-			}
-			updatedQuotaPlan = param.QuotaPlan
 		}
 
 		if param.RateLimitPolicy != nil && rppm.rateLimitPolicyStorager != nil {
 			if one.RateLimitPolicyID != nil {
+				oldPolicy, err := rppm.rateLimitPolicyStorager.FetchRateLimitPolicy(ctx, *one.RateLimitPolicyID)
+				if err != nil {
+					return err
+				}
 				_, err = rppm.rateLimitPolicyStorager.UpdateRateLimitPolicy(ctx, *one.RateLimitPolicyID, param.RateLimitPolicy)
 				if err != nil {
 					return err
+				}
+				if oldPolicy != nil && oldPolicy.Rules != nil {
+					rateLimitKeysToDelete = shared.DiffRateLimitRedisKeys(*one.RateLimitPolicyID, oldPolicy.Rules, param.RateLimitPolicy.Rules)
 				}
 			} else {
 				rateLimitPolicyID, err := rppm.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
@@ -413,15 +561,9 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		return err
 	}
 
-	// Sync Redis remaining quota after DB transaction commits (best-effort).
-	if updatedKey != nil && updatedQuotaPlan != nil &&
-		(updatedQuotaPlan.Unlimited == nil || !*updatedQuotaPlan.Unlimited) &&
-		updatedQuotaPlan.Quota != nil && rppm.quotaCache != nil {
-		if cacheErr := rppm.quotaCache.SetRemaining(ctx, *updatedKey, updatedQuotaPlan.Quota, updatedQuotaPlan.Unit); cacheErr != nil {
-			stateful.AccessLogger.Warn("failed to set quota cache for api_key %s: %v", *updatedKey, cacheErr)
-		}
+	if len(rateLimitKeysToDelete) > 0 {
+		rppm.cleanupRedisKeys(ctx, "", rateLimitKeysToDelete)
 	}
-
 	return nil
 }
 
@@ -495,14 +637,6 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 			}
 			param.QuotaPlanID = &quotaPlanID
 
-			// Create QuotaBalance if quota_plan is not unlimited
-			if param.QuotaPlan.Unlimited == nil || !*param.QuotaPlan.Unlimited {
-				if rppm.quotaBalanceStorager != nil && param.QuotaPlan.Quota != nil {
-					if err := rppm.quotaBalanceStorager.CreateQuotaBalance(ctx, quotaPlanID, param.QuotaPlan.Quota); err != nil {
-						return err
-					}
-				}
-			}
 		}
 
 		// Create RateLimitPolicy if provided

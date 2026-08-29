@@ -38,6 +38,8 @@ var (
 	nameToken = regexp.MustCompile(`^[a-zA-Z0-9_.-]+$`)
 	// entityTypeToken matches the character set used by EntityTypeName.
 	entityTypeToken = regexp.MustCompile(`^[a-z0-9_-]+$`)
+	// rateLimitNameToken matches the character set used by rate-limit rule names.
+	rateLimitNameToken = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 )
 
 const (
@@ -45,6 +47,7 @@ const (
 	MaxTokenNameLength      = 64
 	MaxClusterNameLength    = 64
 	MaxEntityTypeNameLength = 32
+	MaxEntityNameLength     = 64
 	MaxDescriptionLength    = 256
 	MaxAPIDescriptionLength = 512
 	MaxLLMKeyLength         = 512
@@ -255,15 +258,18 @@ func ClusterName(s string) error {
 }
 
 // EntityName validates an entity name.
+// Rules are aligned with EntityTypeName, except the length limit (64 vs 32).
 func EntityName(s string) error {
-	if len(s) == 0 || len(s) > 64 {
-		return xerror.WrapParamErrorWithMsg("entity name length must be between 1 and 64")
+	if err := validateName(s, 1, MaxEntityNameLength, "name"); err != nil {
+		return err
 	}
-	if err := NoControlChars(s); err != nil {
-		return xerror.WrapParamErrorWithMsg("entity name: %v", err)
+	if err := validateNamePattern(s, entityTypeToken, "name"); err != nil {
+		return err
 	}
-	if err := NoLeadingTrailingSpace(s); err != nil {
-		return xerror.WrapParamErrorWithMsg("entity name: %v", err)
+	first := s[0]
+	last := s[len(s)-1]
+	if first == '-' || first == '_' || last == '-' || last == '_' {
+		return xerror.WrapParamErrorWithMsg("name cannot start or end with '-' or '_'")
 	}
 	return nil
 }
@@ -440,6 +446,9 @@ func RateLimitPolicy(p *shared.RateLimitPolicyParam) error {
 		if len(tpm.Name) > MaxRateLimitNameLength {
 			return xerror.WrapParamErrorWithMsg("tpm name length must be <= %d", MaxRateLimitNameLength)
 		}
+		if !rateLimitNameToken.MatchString(tpm.Name) {
+			return xerror.WrapParamErrorWithMsg("tpm name can only contain letters, digits, '_' and '-'")
+		}
 		if _, ok := nameSet[tpm.Name]; ok {
 			return xerror.WrapParamErrorWithMsg("duplicate rate limit name: %s", tpm.Name)
 		}
@@ -473,6 +482,9 @@ func RateLimitPolicy(p *shared.RateLimitPolicyParam) error {
 		}
 		if len(rpm.Name) > MaxRateLimitNameLength {
 			return xerror.WrapParamErrorWithMsg("rpm name length must be <= %d", MaxRateLimitNameLength)
+		}
+		if !rateLimitNameToken.MatchString(rpm.Name) {
+			return xerror.WrapParamErrorWithMsg("rpm name can only contain letters, digits, '_' and '-'")
 		}
 		if _, ok := nameSet[rpm.Name]; ok {
 			return xerror.WrapParamErrorWithMsg("duplicate rate limit name: %s", rpm.Name)
@@ -604,6 +616,9 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 	if c == nil {
 		return xerror.WrapParamErrorWithMsg("llm_config is required")
 	}
+	if c.Provider == nil || *c.Provider == "" {
+		return xerror.WrapParamErrorWithMsg("llm_config.provider is required")
+	}
 	if len(c.Models) == 0 {
 		return xerror.WrapParamErrorWithMsg("llm_config.models is required")
 	}
@@ -616,14 +631,6 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 			return xerror.WrapParamErrorWithMsg("duplicate model in llm_config.models: %s", model)
 		}
 		modelSet[model] = struct{}{}
-	}
-
-	if c.ModelEndpoint != nil {
-		switch c.ModelEndpoint.Schema {
-		case "", "http", "https":
-		default:
-			return xerror.WrapParamErrorWithMsg("llm_config.model_endpoint.schema must be http or https")
-		}
 	}
 
 	sourceSet := map[string]struct{}{}
@@ -640,7 +647,7 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 		sourceSet[*mapping.SourceModel] = struct{}{}
 	}
 
-	// Validate keys
+	// Validate key references
 	if len(c.Keys) > 0 {
 		nameSet := map[string]struct{}{}
 		totalWeight := 0
@@ -655,13 +662,6 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 				return xerror.WrapParamErrorWithMsg("duplicate name in llm_config.keys: %s", *key.Name)
 			}
 			nameSet[*key.Name] = struct{}{}
-
-			if key.Key == nil || *key.Key == "" {
-				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].key is required", i)
-			}
-			if len(*key.Key) > MaxLLMKeyLength {
-				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].key length must be <= %d", i, MaxLLMKeyLength)
-			}
 
 			if key.Weight == nil {
 				return xerror.WrapParamErrorWithMsg("llm_config.keys[%d].weight is required", i)
@@ -696,12 +696,13 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 		}
 	}
 
-	// Validate API_KEY placeholder
-	if c.ModelEndpoint != nil && len(c.ModelEndpoint.Headers) > 0 && len(c.Keys) == 0 {
-		for _, value := range c.ModelEndpoint.Headers {
-			if strings.Contains(value, "${API_KEY}") {
-				return xerror.WrapParamErrorWithMsg("llm_config.model_endpoint.headers contains ${API_KEY} but keys is empty")
-			}
+	// Validate key_affinity
+	if c.KeyAffinity != nil {
+		if c.KeyAffinity.TTL != nil && *c.KeyAffinity.TTL <= 0 {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_affinity.ttl must be > 0")
+		}
+		if c.KeyAffinity.RedisPrefix != nil && *c.KeyAffinity.RedisPrefix == "" {
+			return xerror.WrapParamErrorWithMsg("llm_config.key_affinity.redis_prefix must not be empty")
 		}
 	}
 
@@ -762,9 +763,9 @@ func InstancePool(instances []icluster_conf.Instance) error {
 			}
 			nameSet[inst.Name] = struct{}{}
 		}
-		key := fmt.Sprintf("%s|%s", inst.Name, inst.Addr)
+		key := fmt.Sprintf("%s|%s|%d", inst.Name, inst.Addr, inst.Port)
 		if _, ok := comboSet[key]; ok {
-			return xerror.WrapParamErrorWithMsg("duplicate instance (name=%s, addr=%s)", inst.Name, inst.Addr)
+			return xerror.WrapParamErrorWithMsg("duplicate instance (name=%s, addr=%s, port=%d)", inst.Name, inst.Addr, inst.Port)
 		}
 		comboSet[key] = struct{}{}
 	}

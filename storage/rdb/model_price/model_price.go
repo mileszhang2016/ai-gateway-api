@@ -144,6 +144,32 @@ func (s *RDBModelPriceStorager) FetchModelPriceList(ctx context.Context, filter 
 	return rst, total, nil
 }
 
+func (s *RDBModelPriceStorager) ListProviders(ctx context.Context) ([]string, error) {
+	dbCtx, err := s.dbCtxFactory(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := dbCtx.Conn().QueryContext(dbCtx, fmt.Sprintf("SELECT DISTINCT provider FROM %s ORDER BY provider", dao.TModelPriceTableName()))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var providers []string
+	for rows.Next() {
+		var provider string
+		if err := rows.Scan(&provider); err != nil {
+			return nil, err
+		}
+		providers = append(providers, provider)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return providers, nil
+}
+
 func toDAOParam(param *imodel_price.ModelPrice) (*dao.TModelPriceParam, error) {
 	if param == nil {
 		return nil, nil
@@ -165,6 +191,10 @@ func toDAOParam(param *imodel_price.ModelPrice) (*dao.TModelPriceParam, error) {
 	if err != nil {
 		return nil, err
 	}
+	tierPrices, err := marshalJSON(param.TierPrices)
+	if err != nil {
+		return nil, err
+	}
 	metadata, err := marshalJSON(param.Metadata)
 	if err != nil {
 		return nil, err
@@ -179,6 +209,7 @@ func toDAOParam(param *imodel_price.ModelPrice) (*dao.TModelPriceParam, error) {
 		SupportedParameters: supportedParameters,
 		Limits:              limits,
 		Prices:              prices,
+		TierPrices:          tierPrices,
 		PriceCurrency:       lib.PString(param.PriceCurrency),
 		Metadata:            metadata,
 	}, nil
@@ -214,6 +245,7 @@ func fromDAO(one *dao.TModelPrice) *imodel_price.ModelPrice {
 		SupportedParameters: unmarshalStringSlice(one.SupportedParameters),
 		Limits:              unmarshalMap(one.Limits),
 		Prices:              unmarshalPriceMap(one.Prices),
+		TierPrices:          unmarshalTierPrices(one.TierPrices),
 		PriceCurrency:       one.PriceCurrency,
 		Metadata:            unmarshalMap(one.Metadata),
 		CreateTime:          &createTime,
@@ -254,11 +286,22 @@ func unmarshalMap(s string) map[string]interface{} {
 	return rst
 }
 
-func unmarshalPriceMap(s string) map[string]float64 {
+func unmarshalPriceMap(s string) imodel_price.PriceMap {
 	if s == "" || s == "null" {
 		return nil
 	}
-	var rst map[string]float64
+	var rst imodel_price.PriceMap
+	if err := json.Unmarshal([]byte(s), &rst); err != nil {
+		return nil
+	}
+	return rst
+}
+
+func unmarshalTierPrices(s string) imodel_price.TierPriceMap {
+	if s == "" || s == "null" {
+		return nil
+	}
+	var rst imodel_price.TierPriceMap
 	if err := json.Unmarshal([]byte(s), &rst); err != nil {
 		return nil
 	}

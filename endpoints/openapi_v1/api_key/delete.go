@@ -17,11 +17,9 @@ package api_key
 import (
 	"net/http"
 
-	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
-	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -41,25 +39,6 @@ func DeleteAction(req *http.Request) (interface{}, error) {
 	}
 
 	productName := defaultProductName
-
-	// Fetch API key to get quotaPlanID for deleting associated quota balances
-	apiKey, err := container.APIKeyManager.FetchAPIKey(req.Context(), &api_key.APIKeyFilter{
-		ID:          oneReq.ID,
-		ProductName: &productName,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if apiKey == nil {
-		return nil, xerror.WrapRecordNotExist("API-Key")
-	}
-
-	// Delete quota balances associated with the quota plan
-	if apiKey.QuotaPlanID != nil {
-		if err := container.QuotaBalanceStorager.DeleteQuotaBalance(req.Context(), &quota.QuotaBalanceFilter{QuotaPlanID: apiKey.QuotaPlanID}); err != nil {
-			return nil, err
-		}
-	}
 
 	err = container.APIKeyManager.DeleteAPIKey(req.Context(), &api_key.APIKeyFilter{
 		ID:          oneReq.ID,

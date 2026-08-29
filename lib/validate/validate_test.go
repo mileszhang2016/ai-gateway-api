@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHostname(t *testing.T) {
@@ -92,6 +92,24 @@ func TestEntityTypeName(t *testing.T) {
 	assert.NoError(t, EntityTypeName("dep_1"))
 	assert.Error(t, EntityTypeName("Dep"))
 	assert.Error(t, EntityTypeName("-dep"))
+}
+
+func TestEntityName(t *testing.T) {
+	assert.NoError(t, EntityName("dep"))
+	assert.NoError(t, EntityName("dep_01"))
+	assert.NoError(t, EntityName("ai-gateway"))
+	assert.NoError(t, EntityName(strings.Repeat("a", 64)))
+
+	assert.Error(t, EntityName(""))
+	assert.Error(t, EntityName(strings.Repeat("a", 65)))
+	assert.Error(t, EntityName("Dep"))
+	assert.Error(t, EntityName("dep 1"))
+	assert.Error(t, EntityName("部门"))
+	assert.Error(t, EntityName("dep@1"))
+	assert.Error(t, EntityName("-dep"))
+	assert.Error(t, EntityName("_dep"))
+	assert.Error(t, EntityName("dep-"))
+	assert.Error(t, EntityName("dep_"))
 }
 
 func TestAPIKeyDescription(t *testing.T) {
@@ -232,6 +250,9 @@ func TestConditionExpression(t *testing.T) {
 		{"default_t", "default_t()", false},
 		{"req_path_in quoted", "req_path_in(\"/v1\", false)", false},
 		{"combined expression", "req_method_in(\"POST\") && req_path_in(\"/v1\", false)", false},
+		{"req_body_larger_than", "req_body_larger_than(8192)", false},
+		{"req_body_less_than", "req_body_less_than(2048)", false},
+		{"req_body_combined", "req_host_in(\"api.example.com\") && req_body_larger_than(8192)", false},
 		{"missing quotes", "req_path_in(/v1, false)", true},
 		{"unknown function", "unknown_func()", true},
 		{"unmatched parenthesis", "default_t(", true},
@@ -252,13 +273,14 @@ func TestConditionExpression(t *testing.T) {
 
 func TestLLMConfig(t *testing.T) {
 	c := &icluster_conf.LLMConfig{
-		Models: []string{"m1"},
+		Provider: lib.PString("openai"),
+		Models:   []string{"m1"},
 		ModelMappings: []*icluster_conf.Mapping{
 			{SourceModel: lib.PString("old"), TargetModel: lib.PString("new")},
 		},
-		Keys: []icluster_conf.APIKey{
-			{Name: lib.PString("key-primary"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(70)},
-			{Name: lib.PString("key-secondary"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(30)},
+		Keys: []icluster_conf.ClusterKeyRef{
+			{Name: lib.PString("key-primary"), Weight: lib.PInt(70)},
+			{Name: lib.PString("key-secondary"), Weight: lib.PInt(30)},
 		},
 		KeyPolicy: &icluster_conf.KeyPolicy{
 			Strategy:            lib.PString("weighted_random"),
@@ -276,30 +298,23 @@ func TestLLMConfig(t *testing.T) {
 
 	// total weight not 100
 	c3 := *c
-	c3.Keys = []icluster_conf.APIKey{
-		{Name: lib.PString("k1"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(50)},
-		{Name: lib.PString("k2"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(30)},
+	c3.Keys = []icluster_conf.ClusterKeyRef{
+		{Name: lib.PString("k1"), Weight: lib.PInt(50)},
+		{Name: lib.PString("k2"), Weight: lib.PInt(30)},
 	}
 	assert.Error(t, LLMConfig(&c3))
 
 	// duplicate key name
 	c4 := *c
-	c4.Keys = []icluster_conf.APIKey{
-		{Name: lib.PString("k1"), Key: lib.PString("sk-aaa"), Weight: lib.PInt(50)},
-		{Name: lib.PString("k1"), Key: lib.PString("sk-bbb"), Weight: lib.PInt(50)},
+	c4.Keys = []icluster_conf.ClusterKeyRef{
+		{Name: lib.PString("k1"), Weight: lib.PInt(50)},
+		{Name: lib.PString("k1"), Weight: lib.PInt(50)},
 	}
 	assert.Error(t, LLMConfig(&c4))
 
-	// API_KEY placeholder without keys
+	// missing provider
 	c5 := &icluster_conf.LLMConfig{
 		Models: []string{"m1"},
-		ModelEndpoint: &icluster_conf.Endpoint{
-			Schema: "https",
-			URI:    "/v1/models",
-			Headers: map[string]string{
-				"Authorization": "Bearer ${API_KEY}",
-			},
-		},
 	}
 	assert.Error(t, LLMConfig(c5))
 
@@ -335,6 +350,30 @@ func TestLLMConfig(t *testing.T) {
 	c10.MatchPrefix = lib.PString("openrouter/")
 	c10.StripPrefix = lib.PBool(true)
 	assert.NoError(t, LLMConfig(&c10))
+
+	// valid key_affinity
+	c11 := *c
+	c11.KeyAffinity = &icluster_conf.KeyAffinity{
+		Enabled:       lib.PBool(true),
+		TTL:           lib.PInt(600),
+		RedisPrefix:   lib.PString("bfe:ai:key_affinity"),
+		PenaltyEnable: lib.PBool(true),
+	}
+	assert.NoError(t, LLMConfig(&c11))
+
+	// invalid key_affinity.ttl
+	c12 := *c
+	c12.KeyAffinity = &icluster_conf.KeyAffinity{
+		TTL: lib.PInt(0),
+	}
+	assert.Error(t, LLMConfig(&c12))
+
+	// invalid key_affinity.redis_prefix
+	c13 := *c
+	c13.KeyAffinity = &icluster_conf.KeyAffinity{
+		RedisPrefix: lib.PString(""),
+	}
+	assert.Error(t, LLMConfig(&c13))
 }
 
 func TestInstancePool(t *testing.T) {
@@ -353,16 +392,22 @@ func TestInstancePool(t *testing.T) {
 		{Name: "backend-1", Addr: "10.0.0.2", Port: 8080, Weight: 50},
 	}))
 
-	// duplicate (name, addr)
+	// duplicate (name, addr, port)
 	assert.Error(t, InstancePool([]icluster_conf.Instance{
 		{Name: "backend-1", Addr: "10.0.0.1", Port: 8080, Weight: 50},
-		{Name: "backend-1", Addr: "10.0.0.1", Port: 8081, Weight: 50},
+		{Name: "backend-1", Addr: "10.0.0.1", Port: 8080, Weight: 50},
 	}))
 
-	// same addr with empty name is not allowed
-	assert.Error(t, InstancePool([]icluster_conf.Instance{
+	// same addr with empty name but different ports is allowed
+	assert.NoError(t, InstancePool([]icluster_conf.Instance{
 		{Addr: "10.0.0.1", Port: 8080, Weight: 50},
 		{Addr: "10.0.0.1", Port: 8081, Weight: 50},
+	}))
+
+	// same addr and port with empty name is not allowed
+	assert.Error(t, InstancePool([]icluster_conf.Instance{
+		{Addr: "10.0.0.1", Port: 8080, Weight: 50},
+		{Addr: "10.0.0.1", Port: 8080, Weight: 50},
 	}))
 }
 

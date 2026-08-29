@@ -40,6 +40,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
@@ -184,6 +185,12 @@ type ClusterStickySessions struct {
 	HashHeader    string
 }
 
+type ClusterKeyRef struct {
+	Name   *string `json:"name"`   // required; references provider key name; unique within keys
+	Weight *int    `json:"weight"` // required; range [0,100]
+}
+
+// APIKey is the legacy key structure kept for backward compatibility in storage only.
 type APIKey struct {
 	Name   *string `json:"name"`   // required; length 1-128; unique within keys
 	Key    *string `json:"key"`    // required; non-empty; length 1-512
@@ -197,14 +204,20 @@ type KeyPolicy struct {
 	RetryBackoffMax     *int    `json:"retry_backoff_max"`     // default 5000
 }
 
+type KeyAffinity struct {
+	Enabled       *bool   `json:"enabled"`        // default true
+	TTL           *int    `json:"ttl"`            // idle timeout in seconds, default 600
+	RedisPrefix   *string `json:"redis_prefix"`   // default "bfe:ai:key_affinity"
+	PenaltyEnable *bool   `json:"penalty_enable"` // default true
+}
+
 type LLMConfig struct {
-	ModelEndpoint *Endpoint  `json:"model_endpoint"` // model list endpoints
-	Models        []string   `json:"models"`         // model name list
-	ModelMappings []*Mapping `json:"model_mappings"` // model mapping
-	Keys          []APIKey   `json:"keys"`           // multi API-Key list; empty means no API-Key
-	KeyPolicy     *KeyPolicy `json:"key_policy"`     // key routing policy
-	ProviderType  *string    `json:"provider_type"`
-	Provider      *string    `json:"provider"` // provider name in model_prices
+	Models        []string        `json:"models"`         // model name list
+	ModelMappings []*Mapping      `json:"model_mappings"` // model mapping
+	Keys          []ClusterKeyRef `json:"keys"`           // references to provider keys with weights
+	KeyPolicy     *KeyPolicy      `json:"key_policy"`     // key routing policy
+	KeyAffinity   *KeyAffinity    `json:"key_affinity"`   // session-level key affinity
+	Provider      *string         `json:"provider"`       // provider name; required
 
 	// MatchPrefix defines the provider/model prefix this cluster matches.
 	// Must end with '/' to avoid matching model names themselves.
@@ -312,6 +325,7 @@ func ClusterList2MapByID(list []*Cluster) map[int64]*Cluster {
 func NewClusterManager(txn itxn.TxnStorager, storager ClusterStorager,
 	subClusterStorager SubClusterStorager, bfeClusterStorager ibasic.BFEClusterStorager,
 	poolStorager PoolStorager,
+	providerStorager iprovider.ProviderStorager,
 	versionControlManager *iversion_control.VersionControlManager,
 	deleteCheckers map[string]func(context.Context, *ibasic.Product, *Cluster) error,
 	updateCheckers map[string]func(context.Context, *ibasic.Product, *Cluster, *ClusterParam) error) *ClusterManager {
@@ -322,6 +336,7 @@ func NewClusterManager(txn itxn.TxnStorager, storager ClusterStorager,
 		subClusterStorager:    subClusterStorager,
 		bfeClusterStorager:    bfeClusterStorager,
 		poolStorager:          poolStorager,
+		providerStorager:      providerStorager,
 		versionControlManager: versionControlManager,
 
 		deleteCheckers: deleteCheckers,
@@ -346,6 +361,7 @@ type ClusterManager struct {
 	subClusterStorager SubClusterStorager
 	bfeClusterStorager ibasic.BFEClusterStorager
 	poolStorager       PoolStorager
+	providerStorager   iprovider.ProviderStorager
 
 	versionControlManager *iversion_control.VersionControlManager
 
@@ -389,12 +405,22 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 			return xerror.WrapRecordExisted("cluster")
 		}
 
-		// Auto-create instance-pool and sub-cluster if InstancePool is provided
-		if len(param.InstancePool) > 0 {
+		// Resolve provider and auto-create instance-pool/sub-cluster from provider data.
+		if param.LLMConfig != nil && param.LLMConfig.Provider != nil && *param.LLMConfig.Provider != "" {
+			provider, err := cm.providerStorager.FetchProvider(ctx, &iprovider.ProviderFilter{Name: param.LLMConfig.Provider})
+			if err != nil {
+				return err
+			}
+			if provider == nil {
+				return xerror.WrapParamErrorWithMsg("provider %s not exist", *param.LLMConfig.Provider)
+			}
+			if err := cm.validateClusterLLMConfigAgainstProvider(param.LLMConfig, provider); err != nil {
+				return err
+			}
+
 			poolName := product.Name + "." + *param.Name
 			clusterName := *param.Name
 
-			// Create instance-pool
 			var pN string
 			pN, err = poolNameJudger(product.Name, poolName)
 			if err != nil {
@@ -412,7 +438,7 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 
 			pool, err := cm.poolStorager.CreatePool(ctx, product, &PoolParam{
 				Name:      &poolName,
-				Instances: param.InstancePool,
+				Instances: providerInstancesToClusterInstances(provider.InstancePool),
 				Role:      lib.PString(ProductPoolRoleCommon),
 				Tag:       &PoolTagProduct,
 			})
@@ -420,7 +446,6 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 				return err
 			}
 
-			// Create sub-cluster
 			err = cm.subClusterStorager.CreateSubCluster(ctx, &SubClusterParam{
 				Name:         &clusterName,
 				PoolName:     &poolName,
@@ -435,7 +460,6 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 				return err
 			}
 
-			// Auto-generate scheduler using DefaultAIClusterName config
 			if param.Scheduler == nil {
 				defaultClusterName := stateful.DefaultConfig.RunTime.DefaultAIClusterName
 				param.Scheduler = map[string]map[string]int{
@@ -446,7 +470,6 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 				}
 			}
 
-			// Set SubClusters for binding
 			if len(param.SubClusters) == 0 {
 				param.SubClusters = []string{clusterName}
 			}
@@ -499,6 +522,53 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 }
 
 const BlackHole = "GSLB_BLACKHOLE"
+
+func (cm *ClusterManager) validateClusterLLMConfigAgainstProvider(llm *LLMConfig, provider *iprovider.Provider) error {
+	if llm == nil || provider == nil {
+		return nil
+	}
+
+	providerModels := map[string]bool{}
+	for _, m := range provider.Models {
+		providerModels[m] = true
+	}
+	for _, m := range llm.Models {
+		if !providerModels[m] {
+			return xerror.WrapParamErrorWithMsg("model %s not in provider %s models", m, provider.Name)
+		}
+	}
+
+	providerKeys := map[string]bool{}
+	for _, k := range provider.Keys {
+		providerKeys[k.Name] = true
+	}
+	if len(llm.Keys) > 0 {
+		for _, k := range llm.Keys {
+			if k.Name == nil || *k.Name == "" {
+				return xerror.WrapParamErrorWithMsg("llm_config.keys.name is required")
+			}
+			if !providerKeys[*k.Name] {
+				return xerror.WrapParamErrorWithMsg("key %s not found in provider %s", *k.Name, provider.Name)
+			}
+		}
+	}
+
+	return nil
+}
+
+func providerInstancesToClusterInstances(instances []iprovider.ProviderInstance) []Instance {
+	rst := make([]Instance, 0, len(instances))
+	for _, inst := range instances {
+		rst = append(rst, Instance{
+			Name:    fmt.Sprintf("%s_%d", inst.Addr, inst.Port),
+			Addr:    inst.Addr,
+			Port:    inst.Port,
+			Weight:  inst.Weight,
+			Disable: inst.Disable,
+		})
+	}
+	return rst
+}
 
 func (cm *ClusterManager) constructDefaultScheduler(ctx context.Context, subClusters []*SubCluster) (map[string]map[string]int, error) {
 	bfeClusters, err := cm.bfeClusterStorager.FetchBFEClusters(ctx, nil)
@@ -608,17 +678,38 @@ func (cm *ClusterManager) UpdateCluster(ctx context.Context, product *ibasic.Pro
 	param *ClusterParam) (err error) {
 
 	err = cm.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		// Auto-sync instance_pool to instance-pool if provided
-		if len(param.InstancePool) > 0 {
-			// Find the pool from the cluster's sub-clusters
-			for _, sc := range oldData.SubClusters {
-				if sc.InstancePool != nil {
-					if err = cm.poolStorager.UpdatePool(ctx, sc.InstancePool, &PoolParam{
-						Instances: param.InstancePool,
-					}); err != nil {
-						return err
+		// Validate and sync provider changes.
+		if param.LLMConfig != nil && param.LLMConfig.Provider != nil && *param.LLMConfig.Provider != "" {
+			provider, err := cm.providerStorager.FetchProvider(ctx, &iprovider.ProviderFilter{Name: param.LLMConfig.Provider})
+			if err != nil {
+				return err
+			}
+			if provider == nil {
+				return xerror.WrapParamErrorWithMsg("provider %s not exist", *param.LLMConfig.Provider)
+			}
+			if err := cm.validateClusterLLMConfigAgainstProvider(param.LLMConfig, provider); err != nil {
+				return err
+			}
+
+			// Sync instance pool whenever the cluster references a provider, so
+			// that the cluster pool reflects the provider's current instance_pool
+			// regardless of whether the provider name changed.
+			oldProvider := ""
+			if oldData.LLMConfig != nil && oldData.LLMConfig.Provider != nil {
+				oldProvider = *oldData.LLMConfig.Provider
+			}
+			providerChanged := oldProvider != *param.LLMConfig.Provider
+			providerUnchangedButReferenced := oldProvider == *param.LLMConfig.Provider && oldProvider != ""
+			if providerChanged || providerUnchangedButReferenced {
+				for _, sc := range oldData.SubClusters {
+					if sc.InstancePool != nil {
+						if err = cm.poolStorager.UpdatePool(ctx, sc.InstancePool, &PoolParam{
+							Instances: providerInstancesToClusterInstances(provider.InstancePool),
+						}); err != nil {
+							return err
+						}
+						break
 					}
-					break
 				}
 			}
 		}
@@ -648,6 +739,191 @@ func (cm *ClusterManager) UpdateCluster(ctx context.Context, product *ibasic.Pro
 	})
 
 	return
+}
+
+// ProviderDeleteChecker returns an error if any cluster references the provider.
+func (cm *ClusterManager) ProviderDeleteChecker(ctx context.Context, providerName string) error {
+	clusters, err := cm.storager.FetchClusterList(ctx, nil)
+	if err != nil {
+		return err
+	}
+	for _, c := range clusters {
+		if c.LLMConfig != nil && c.LLMConfig.Provider != nil && *c.LLMConfig.Provider == providerName {
+			return xerror.WrapConflictErrorWithMsg("provider %s is referenced by cluster %s", providerName, c.Name)
+		}
+	}
+	return nil
+}
+
+// providerInstancePoolEqual reports whether two provider instance pools are
+// identical. Order matters because the pool is a snapshot.
+func providerInstancePoolEqual(a, b []iprovider.ProviderInstance) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Addr != b[i].Addr ||
+			a[i].Port != b[i].Port ||
+			a[i].Weight != b[i].Weight ||
+			a[i].Disable != b[i].Disable {
+			return false
+		}
+	}
+	return true
+}
+
+// providerKeysEqual reports whether two provider key lists are identical.
+func providerKeysEqual(a, b []iprovider.ProviderKey) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Key != b[i].Key {
+			return false
+		}
+	}
+	return true
+}
+
+// providerModelsEqual reports whether two provider model lists are identical.
+func providerModelsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// ProviderInstancePoolSyncer returns a hook suitable for passing to
+// iprovider.ProviderManager.UpdateProvider. When the provider's instance_pool
+// changes, it updates the instance pool of every non-EPP sub-cluster that
+// references the provider to match the new provider instances.
+func (cm *ClusterManager) ProviderInstancePoolSyncer(ctx context.Context,
+	oldProvider, newProvider *iprovider.Provider) error {
+
+	if newProvider == nil || len(newProvider.InstancePool) == 0 {
+		return nil
+	}
+	if oldProvider != nil && providerInstancePoolEqual(oldProvider.InstancePool, newProvider.InstancePool) {
+		return nil
+	}
+
+	clusters, err := cm.storager.FetchClusterList(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	newInstances := providerInstancesToClusterInstances(newProvider.InstancePool)
+	for _, cluster := range clusters {
+		if cluster.LLMConfig == nil || cluster.LLMConfig.Provider == nil {
+			continue
+		}
+		if *cluster.LLMConfig.Provider != newProvider.Name {
+			continue
+		}
+
+		for _, sc := range cluster.SubClusters {
+			if sc.InstancePool == nil || sc.Role == ProductPoolRoleEPP {
+				continue
+			}
+			if err := cm.poolStorager.UpdatePool(ctx, sc.InstancePool, &PoolParam{
+				Instances: newInstances,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// ProviderKeyRefChecker returns a hook that verifies all clusters referencing
+// the provider still have valid llm_config.keys names after a provider update.
+func (cm *ClusterManager) ProviderKeyRefChecker(ctx context.Context,
+	oldProvider, newProvider *iprovider.Provider) error {
+
+	if newProvider == nil {
+		return nil
+	}
+	if oldProvider != nil && providerKeysEqual(oldProvider.Keys, newProvider.Keys) {
+		return nil
+	}
+
+	newKeyNames := map[string]bool{}
+	for _, k := range newProvider.Keys {
+		newKeyNames[k.Name] = true
+	}
+
+	clusters, err := cm.storager.FetchClusterList(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	for _, cluster := range clusters {
+		if cluster.LLMConfig == nil || cluster.LLMConfig.Provider == nil {
+			continue
+		}
+		if *cluster.LLMConfig.Provider != newProvider.Name {
+			continue
+		}
+		for _, k := range cluster.LLMConfig.Keys {
+			if k.Name == nil || *k.Name == "" {
+				continue
+			}
+			if !newKeyNames[*k.Name] {
+				return xerror.WrapConflictErrorWithMsg(
+					"provider %s key %s is referenced by cluster %s",
+					newProvider.Name, *k.Name, cluster.Name)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ProviderModelRefChecker returns a hook that verifies all clusters referencing
+// the provider still have valid llm_config.models after a provider update.
+func (cm *ClusterManager) ProviderModelRefChecker(ctx context.Context,
+	oldProvider, newProvider *iprovider.Provider) error {
+
+	if newProvider == nil {
+		return nil
+	}
+	if oldProvider != nil && providerModelsEqual(oldProvider.Models, newProvider.Models) {
+		return nil
+	}
+
+	newModelSet := map[string]bool{}
+	for _, m := range newProvider.Models {
+		newModelSet[m] = true
+	}
+
+	clusters, err := cm.storager.FetchClusterList(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	for _, cluster := range clusters {
+		if cluster.LLMConfig == nil || cluster.LLMConfig.Provider == nil {
+			continue
+		}
+		if *cluster.LLMConfig.Provider != newProvider.Name {
+			continue
+		}
+		for _, m := range cluster.LLMConfig.Models {
+			if !newModelSet[m] {
+				return xerror.WrapConflictErrorWithMsg(
+					"provider %s model %s is referenced by cluster %s",
+					newProvider.Name, m, cluster.Name)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (cm *ClusterManager) checkLbMatrix(cluster *Cluster, unbindSubClusters, appendSubClusters []string) (map[string]map[string]int, error) {
@@ -816,7 +1092,16 @@ func normalizeBFEHashStrategy(sticky *ClusterStickySessions) int32 {
 	return sticky.HashStrategy
 }
 
-func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable map[string][]*imodel_price.ModelPrice) *cluster_conf.BfeClusterConf {
+type ProviderPricingInfo struct {
+	TimeZone string
+	Tiers    []cluster_conf.PriceTier
+}
+
+func NewBfeClusterConf(version string, clusters []*Cluster,
+	providerModelTable map[string][]*imodel_price.ModelPrice,
+	providerKeyTable map[string][]iprovider.ProviderKey,
+	providerProtocolTable map[string][]string,
+	providerPricingTable map[string]ProviderPricingInfo) *cluster_conf.BfeClusterConf {
 	clusterConfMap := cluster_conf.ClusterToConf{}
 
 	int322intp := func(i int32) *int {
@@ -904,18 +1189,28 @@ func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable m
 								Capabilities:        e.Capabilities,
 								SupportedParameters: e.SupportedParameters,
 								Limits:              e.Limits,
-								Prices:              e.Prices,
+								Prices:              cluster_conf.PriceMap(e.Prices),
+								TierPrices:          cluster_conf.TierPriceMap(e.TierPrices),
 								Metadata:            e.Metadata,
 							})
 						}
 					}
+					pricingInfo := providerPricingTable[provider]
+					timeZone := pricingInfo.TimeZone
+					if timeZone == "" {
+						timeZone = "Asia/Shanghai"
+					}
 					modelTable = &cluster_conf.ModelTable{
 						Currency: "RMB",
+						TimeZone: timeZone,
+						Tiers:    pricingInfo.Tiers,
 						Models:   models,
 					}
 				}
 			}
-			clusterConf.AIConf = newAIConf(cluster.LLMConfig, modelTable)
+			providerKeys := providerKeyTable[provider]
+			providerProtocols := providerProtocolTable[provider]
+			clusterConf.AIConf = newAIConf(cluster.LLMConfig, modelTable, providerKeys, providerProtocols)
 		}
 
 		clusterConfMap[cluster.Name] = clusterConf
@@ -926,11 +1221,13 @@ func NewBfeClusterConf(version string, clusters []*Cluster, providerModelTable m
 	}
 }
 
-func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable) *cluster_conf.AIConf {
+func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,
+	providerKeys []iprovider.ProviderKey, providerModelProtocols []string) *cluster_conf.AIConf {
 	aiConf := &cluster_conf.AIConf{
-		Type:         0,
-		ModelMapping: convertToBFEModelMapping(llmConfig.ModelMappings),
-		Keys:         []cluster_conf.AIKey{},
+		Type:           0,
+		ModelMapping:   convertToBFEModelMapping(llmConfig.ModelMappings),
+		Keys:           []cluster_conf.AIKey{},
+		ModelProtocols: providerModelProtocols,
 	}
 
 	if llmConfig.Provider != nil {
@@ -946,25 +1243,40 @@ func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable) *clust
 		aiConf.StripPrefix = *llmConfig.StripPrefix
 	}
 
+	keyMap := map[string]string{}
+	for _, k := range providerKeys {
+		keyMap[k.Name] = k.Key
+	}
 	for _, k := range llmConfig.Keys {
+		name := derefString(k.Name, "")
 		aiConf.Keys = append(aiConf.Keys, cluster_conf.AIKey{
-			Name:   derefString(k.Name, ""),
-			Key:    derefString(k.Key, ""),
+			Name:   name,
+			Key:    keyMap[name],
 			Weight: derefInt(k.Weight, 0),
 		})
 	}
 
 	aiConf.KeyPolicy = &cluster_conf.AIKeyPolicy{
-		Strategy:            "weighted_random",
-		MaxRetries:          0,
-		RetryBackoffInitial: 500,
-		RetryBackoffMax:     5000,
+		Strategy:                     "weighted_random",
+		MaxRetries:                   0,
+		RetryBackoffInitial:          500,
+		RetryBackoffMax:              5000,
+		SessionAffinity:              true,
+		SessionAffinityTTL:           600,
+		SessionAffinityRedisPrefix:   "bfe:ai:key_affinity",
+		SessionAffinityPenaltyEnable: true,
 	}
 	if llmConfig.KeyPolicy != nil {
 		aiConf.KeyPolicy.Strategy = derefString(llmConfig.KeyPolicy.Strategy, "weighted_random")
 		aiConf.KeyPolicy.MaxRetries = derefInt(llmConfig.KeyPolicy.MaxRetries, 0)
 		aiConf.KeyPolicy.RetryBackoffInitial = derefInt(llmConfig.KeyPolicy.RetryBackoffInitial, 500)
 		aiConf.KeyPolicy.RetryBackoffMax = derefInt(llmConfig.KeyPolicy.RetryBackoffMax, 5000)
+	}
+	if llmConfig.KeyAffinity != nil {
+		aiConf.KeyPolicy.SessionAffinity = derefBool(llmConfig.KeyAffinity.Enabled, true)
+		aiConf.KeyPolicy.SessionAffinityTTL = derefInt(llmConfig.KeyAffinity.TTL, 600)
+		aiConf.KeyPolicy.SessionAffinityRedisPrefix = derefString(llmConfig.KeyAffinity.RedisPrefix, "bfe:ai:key_affinity")
+		aiConf.KeyPolicy.SessionAffinityPenaltyEnable = derefBool(llmConfig.KeyAffinity.PenaltyEnable, true)
 	}
 
 	return aiConf
@@ -982,6 +1294,13 @@ func derefInt(i *int, defaultValue int) int {
 		return defaultValue
 	}
 	return *i
+}
+
+func derefBool(b *bool, defaultValue bool) bool {
+	if b == nil {
+		return defaultValue
+	}
+	return *b
 }
 
 func convertToBFEModelMapping(modelMappings []*Mapping) *map[string]string {

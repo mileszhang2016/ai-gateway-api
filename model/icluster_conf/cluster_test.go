@@ -19,8 +19,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/cluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 	"github.com/stretchr/testify/assert"
@@ -35,6 +38,315 @@ func init() {
 			},
 		}
 	}
+}
+
+func TestProviderInstancesToClusterInstances(t *testing.T) {
+	instances := []iprovider.ProviderInstance{
+		{Addr: "1.2.3.4", Port: 443, Weight: 100},
+		{Addr: "5.6.7.8", Port: 443, Weight: 100},
+	}
+	got := providerInstancesToClusterInstances(instances)
+	require.Len(t, got, 2)
+	assert.Equal(t, "1.2.3.4_443", got[0].Name)
+	assert.Equal(t, "5.6.7.8_443", got[1].Name)
+}
+
+func TestClusterManager_ProviderInstancePoolSyncer(t *testing.T) {
+	ctx := context.Background()
+	providerName := "deepseek"
+
+	makeCluster := func(name string, provider *string, instances []Instance) *Cluster {
+		return &Cluster{
+			ID:   1,
+			Name: name,
+			LLMConfig: &LLMConfig{
+				Provider: provider,
+			},
+			SubClusters: []*SubCluster{
+				{
+					ID:   1,
+					Name: "sc1",
+					InstancePool: &Pool{
+						ID:        1,
+						Name:      "p." + name,
+						Instances: instances,
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("updates clusters referencing the provider", func(t *testing.T) {
+		updatedPools := map[int64][]Instance{}
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []Instance{
+						{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+					}),
+					makeCluster("c2", lib.PString("other"), []Instance{
+						{Name: "other", Addr: "9.8.7.6", Port: 443, Weight: 100},
+					}),
+				}, nil
+			},
+		}
+		poolStorager := &fakePoolStorager{
+			updatePoolFn: func(ctx context.Context, oldData *Pool, diff *PoolParam) error {
+				updatedPools[oldData.ID] = diff.Instances
+				return nil
+			},
+		}
+
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, poolStorager, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			InstancePool: []iprovider.ProviderInstance{
+				{Addr: "5.6.7.8", Port: 443, Weight: 100},
+			},
+		}
+		err := cm.ProviderInstancePoolSyncer(ctx, nil, newProvider)
+		require.NoError(t, err)
+
+		require.Len(t, updatedPools, 1)
+		require.Contains(t, updatedPools, int64(1))
+		assert.Equal(t, "5.6.7.8_443", updatedPools[1][0].Name)
+	})
+
+	t.Run("skips EPP sub-clusters", func(t *testing.T) {
+		updatedPools := map[int64][]Instance{}
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				c := makeCluster("c1", &providerName, []Instance{
+					{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+				})
+				c.SubClusters[0].Role = ProductPoolRoleEPP
+				return []*Cluster{c}, nil
+			},
+		}
+		poolStorager := &fakePoolStorager{
+			updatePoolFn: func(ctx context.Context, oldData *Pool, diff *PoolParam) error {
+				updatedPools[oldData.ID] = diff.Instances
+				return nil
+			},
+		}
+
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, poolStorager, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			InstancePool: []iprovider.ProviderInstance{
+				{Addr: "5.6.7.8", Port: 443, Weight: 100},
+			},
+		}
+		err := cm.ProviderInstancePoolSyncer(ctx, nil, newProvider)
+		require.NoError(t, err)
+		assert.Empty(t, updatedPools)
+	})
+
+	t.Run("propagates update pool error", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []Instance{
+						{Name: "old", Addr: "1.2.3.4", Port: 443, Weight: 100},
+					}),
+				}, nil
+			},
+		}
+		poolStorager := &fakePoolStorager{
+			updatePoolFn: func(ctx context.Context, oldData *Pool, diff *PoolParam) error {
+				return errors.New("update failed")
+			},
+		}
+
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, poolStorager, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			InstancePool: []iprovider.ProviderInstance{
+				{Addr: "5.6.7.8", Port: 443, Weight: 100},
+			},
+		}
+		err := cm.ProviderInstancePoolSyncer(ctx, nil, newProvider)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "update failed")
+	})
+}
+
+func TestClusterManager_ProviderKeyRefChecker(t *testing.T) {
+	ctx := context.Background()
+	providerName := "deepseek"
+
+	makeCluster := func(name string, provider *string, keyNames []string) *Cluster {
+		keys := make([]ClusterKeyRef, 0, len(keyNames))
+		for _, k := range keyNames {
+			keys = append(keys, ClusterKeyRef{Name: lib.PString(k), Weight: lib.PInt(100)})
+		}
+		return &Cluster{
+			ID:   1,
+			Name: name,
+			LLMConfig: &LLMConfig{
+				Provider: provider,
+				Keys:     keys,
+			},
+		}
+	}
+
+	t.Run("blocks removal of referenced key", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"k1"}),
+					makeCluster("c2", lib.PString("other"), []string{"k1"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			Keys: []iprovider.ProviderKey{{Name: "k2", Key: "sk-new"}},
+		}
+		err := cm.ProviderKeyRefChecker(ctx, nil, newProvider)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "key k1 is referenced by cluster c1")
+	})
+
+	t.Run("allows rename when old keys are still covered", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"k1", "k2"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			Keys: []iprovider.ProviderKey{
+				{Name: "k1", Key: "sk-1"},
+				{Name: "k2", Key: "sk-2"},
+				{Name: "k3", Key: "sk-3"},
+			},
+		}
+		err := cm.ProviderKeyRefChecker(ctx, nil, newProvider)
+		require.NoError(t, err)
+	})
+
+	t.Run("skips when keys unchanged", func(t *testing.T) {
+		called := false
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				called = true
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"k1"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		oldProvider := &iprovider.Provider{
+			Name: providerName,
+			Keys: []iprovider.ProviderKey{{Name: "k1", Key: "sk-same"}},
+		}
+		newProvider := &iprovider.Provider{
+			Name: providerName,
+			Keys: []iprovider.ProviderKey{{Name: "k1", Key: "sk-same"}},
+		}
+		err := cm.ProviderKeyRefChecker(ctx, oldProvider, newProvider)
+		require.NoError(t, err)
+		assert.False(t, called, "fetch should be skipped when keys are unchanged")
+	})
+
+	t.Run("propagates fetch error", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return nil, errors.New("db down")
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		err := cm.ProviderKeyRefChecker(ctx, nil, &iprovider.Provider{Name: providerName})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "db down")
+	})
+}
+
+func TestClusterManager_ProviderModelRefChecker(t *testing.T) {
+	ctx := context.Background()
+	providerName := "deepseek"
+
+	makeCluster := func(name string, provider *string, models []string) *Cluster {
+		return &Cluster{
+			ID:   1,
+			Name: name,
+			LLMConfig: &LLMConfig{
+				Provider: provider,
+				Models:   models,
+			},
+		}
+	}
+
+	t.Run("blocks removal of referenced model", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"m1"}),
+					makeCluster("c2", lib.PString("other"), []string{"m1"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name:   providerName,
+			Models: []string{"m2"},
+		}
+		err := cm.ProviderModelRefChecker(ctx, nil, newProvider)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "model m1 is referenced by cluster c1")
+	})
+
+	t.Run("allows addition of new models", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"m1"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		newProvider := &iprovider.Provider{
+			Name:   providerName,
+			Models: []string{"m1", "m2"},
+		}
+		err := cm.ProviderModelRefChecker(ctx, nil, newProvider)
+		require.NoError(t, err)
+	})
+
+	t.Run("skips when models unchanged", func(t *testing.T) {
+		called := false
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				called = true
+				return []*Cluster{
+					makeCluster("c1", &providerName, []string{"m1"}),
+				}, nil
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		oldProvider := &iprovider.Provider{Name: providerName, Models: []string{"m1"}}
+		newProvider := &iprovider.Provider{Name: providerName, Models: []string{"m1"}}
+		err := cm.ProviderModelRefChecker(ctx, oldProvider, newProvider)
+		require.NoError(t, err)
+		assert.False(t, called, "fetch should be skipped when models are unchanged")
+	})
+
+	t.Run("propagates fetch error", func(t *testing.T) {
+		clusterStorager := &fakeClusterStorager{
+			fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+				return nil, errors.New("db down")
+			},
+		}
+		cm := NewClusterManager(&fakeTxn{}, clusterStorager, nil, nil, &fakePoolStorager{}, nil, nil, nil, nil)
+		err := cm.ProviderModelRefChecker(ctx, nil, &iprovider.Provider{Name: providerName})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "db down")
+	})
 }
 
 func newTestClusterBase() *Cluster {
@@ -123,20 +435,14 @@ func newTestClusterHTTPS() *Cluster {
 func newTestClusterLLM() *Cluster {
 	c := newTestClusterBase()
 	c.LLMConfig = &LLMConfig{
-		ModelEndpoint: &Endpoint{
-			Schema: "https",
-			URI:    "/models",
-			Headers: map[string]string{
-				"Authorization": "Bearer token",
-			},
-		},
-		Models: []string{"m1", "m2"},
+		Provider: lib.PString("openai"),
+		Models:   []string{"m1", "m2"},
 		ModelMappings: []*Mapping{
 			{SourceModel: lib.PString("old"), TargetModel: lib.PString("new")},
 		},
-		Keys: []APIKey{
-			{Name: lib.PString("key-primary"), Key: lib.PString("sk-aaaaaaaaaaaa"), Weight: lib.PInt(70)},
-			{Name: lib.PString("key-secondary"), Key: lib.PString("sk-bbbbbbbbbbbb"), Weight: lib.PInt(30)},
+		Keys: []ClusterKeyRef{
+			{Name: lib.PString("key-primary"), Weight: lib.PInt(70)},
+			{Name: lib.PString("key-secondary"), Weight: lib.PInt(30)},
 		},
 		KeyPolicy: &KeyPolicy{
 			Strategy:            lib.PString("weighted_random"),
@@ -144,9 +450,14 @@ func newTestClusterLLM() *Cluster {
 			RetryBackoffInitial: lib.PInt(500),
 			RetryBackoffMax:     lib.PInt(5000),
 		},
-		ProviderType: lib.PString("openai"),
-		MatchPrefix:  lib.PString("openrouter/"),
-		StripPrefix:  lib.PBool(true),
+		KeyAffinity: &KeyAffinity{
+			Enabled:       lib.PBool(true),
+			TTL:           lib.PInt(600),
+			RedisPrefix:   lib.PString("bfe:ai:key_affinity"),
+			PenaltyEnable: lib.PBool(true),
+		},
+		MatchPrefix: lib.PString("openrouter/"),
+		StripPrefix: lib.PBool(true),
 	}
 	return c
 }
@@ -183,7 +494,7 @@ func TestClusterList2MapByID(t *testing.T) {
 }
 
 func TestNewClusterManager(t *testing.T) {
-	m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+	m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 	require.NotNil(t, m)
 }
 
@@ -196,7 +507,7 @@ func TestClusterManager_FetchClusterList(t *testing.T) {
 			return expected, nil
 		},
 	}
-	m := NewClusterManager(&fakeTxn{}, store, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+	m := NewClusterManager(&fakeTxn{}, store, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 
 	got, err := m.FetchClusterList(ctx, &ClusterFilter{Name: lib.PString("c1")})
 	require.NoError(t, err)
@@ -212,7 +523,7 @@ func TestClusterManager_FetchCluster(t *testing.T) {
 				return []*Cluster{{ID: 1, Name: "c1"}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, store, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, store, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		got, err := m.FetchCluster(ctx, &ClusterFilter{Name: lib.PString("c1")})
 		require.NoError(t, err)
 		require.NotNil(t, got)
@@ -225,7 +536,7 @@ func TestClusterManager_FetchCluster(t *testing.T) {
 				return nil, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, store, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, store, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		got, err := m.FetchCluster(ctx, &ClusterFilter{Name: lib.PString("c1")})
 		require.NoError(t, err)
 		assert.Nil(t, got)
@@ -237,7 +548,7 @@ func TestClusterManager_FetchCluster(t *testing.T) {
 				return nil, errors.New("db down")
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, store, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, store, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		_, err := m.FetchCluster(ctx, &ClusterFilter{})
 		require.Error(t, err)
 	})
@@ -277,7 +588,7 @@ func TestClusterManager_CreateCluster(t *testing.T) {
 				return []*ibasic.BFECluster{{Name: "bfe1"}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.CreateCluster(ctx, product, &ClusterParam{
 			Name:        lib.PString("c1"),
 			SubClusters: []string{"sc1"},
@@ -292,7 +603,7 @@ func TestClusterManager_CreateCluster(t *testing.T) {
 				return []*Cluster{{Name: "c1"}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.CreateCluster(ctx, product, &ClusterParam{Name: lib.PString("c1")})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cluster Record Existed")
@@ -331,7 +642,7 @@ func TestClusterManager_CreateCluster(t *testing.T) {
 				return []*ibasic.BFECluster{{Name: stateful.DefaultConfig.RunTime.DefaultAIClusterName}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, bfeClusterStore, poolStore, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, bfeClusterStore, poolStore, nil, nil, nil, nil)
 		err := m.CreateCluster(ctx, product, &ClusterParam{
 			Name: lib.PString("c1"),
 			InstancePool: []Instance{
@@ -356,7 +667,7 @@ func TestClusterManager_CreateCluster(t *testing.T) {
 				}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.CreateCluster(ctx, product, &ClusterParam{
 			Name:        lib.PString("c1"),
 			SubClusters: []string{"sc1", "sc2"},
@@ -376,7 +687,7 @@ func TestClusterManager_CreateCluster(t *testing.T) {
 				return []*SubCluster{{ID: 1, Name: "sc1", Ready: true}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.CreateCluster(ctx, product, &ClusterParam{
 			Name:        lib.PString("c1"),
 			SubClusters: []string{"sc1", "sc2"},
@@ -401,7 +712,7 @@ func TestClusterManager_CreateCluster(t *testing.T) {
 				return []*ibasic.BFECluster{{Name: "bfe1"}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.CreateCluster(ctx, product, &ClusterParam{
 			Name:        lib.PString("c1"),
 			SubClusters: []string{"sc1"},
@@ -421,7 +732,7 @@ func TestClusterManager_constructDefaultScheduler(t *testing.T) {
 			return []*ibasic.BFECluster{{Name: "bfe1"}, {Name: "bfe2"}}, nil
 		},
 	}
-	m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil)
+	m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil, nil)
 	got, err := m.constructDefaultScheduler(ctx, []*SubCluster{{Name: "sc1"}, {Name: "sc2"}})
 	require.NoError(t, err)
 	assert.Equal(t, map[string]map[string]int{
@@ -434,7 +745,7 @@ func TestClusterManager_checkManualLB(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("nil scheduler", func(t *testing.T) {
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.checkManualLB(ctx, nil, &ClusterParam{Name: lib.PString("c1")})
 		require.NoError(t, err)
 	})
@@ -445,7 +756,7 @@ func TestClusterManager_checkManualLB(t *testing.T) {
 				return []*ibasic.BFECluster{{Name: "bfe1"}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.checkManualLB(ctx, nil, &ClusterParam{
 			Name:        lib.PString("c1"),
 			SubClusters: []string{"sc1"},
@@ -462,7 +773,7 @@ func TestClusterManager_checkManualLB(t *testing.T) {
 				return []*ibasic.BFECluster{{Name: "bfe1"}, {Name: "bfe2"}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.checkManualLB(ctx, nil, &ClusterParam{
 			Name:        lib.PString("c1"),
 			SubClusters: []string{"sc1"},
@@ -480,7 +791,7 @@ func TestClusterManager_checkManualLB(t *testing.T) {
 				return []*ibasic.BFECluster{{Name: "bfe1"}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.checkManualLB(ctx, nil, &ClusterParam{
 			Name:        lib.PString("c1"),
 			SubClusters: []string{"sc1"},
@@ -498,7 +809,7 @@ func TestClusterManager_checkManualLB(t *testing.T) {
 				return []*ibasic.BFECluster{{Name: "bfe1"}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.checkManualLB(ctx, nil, &ClusterParam{
 			Name:        lib.PString("c1"),
 			SubClusters: []string{"sc1"},
@@ -516,7 +827,7 @@ func TestClusterManager_checkManualLB(t *testing.T) {
 				return []*ibasic.BFECluster{{Name: "bfe1"}}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, bfeClusterStore, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.checkManualLB(ctx, &Cluster{
 			SubClusters: []*SubCluster{{Name: "sc1"}},
 		}, &ClusterParam{
@@ -533,21 +844,21 @@ func TestClusterManager_checkBindingSubClusters(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("empty", func(t *testing.T) {
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.checkBindingSubClusters(ctx, nil, []string{}, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Cluster Want At Least On SubCluster")
 	})
 
 	t.Run("mounted to other cluster", func(t *testing.T) {
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.checkBindingSubClusters(ctx, &Cluster{ID: 1}, []string{"sc1"}, []*SubCluster{{ID: 1, Name: "sc1", ClusterID: 2, Ready: true}})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "be Mounted With Cluster 2")
 	})
 
 	t.Run("not ready", func(t *testing.T) {
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.checkBindingSubClusters(ctx, nil, []string{"sc1"}, []*SubCluster{{ID: 1, Name: "sc1", Ready: false}})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Not Ready")
@@ -556,7 +867,7 @@ func TestClusterManager_checkBindingSubClusters(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		stateful.IgnoreBNSStatusCheck = true
 		defer func() { stateful.IgnoreBNSStatusCheck = false }()
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.checkBindingSubClusters(ctx, &Cluster{ID: 1}, []string{"sc1"}, []*SubCluster{{ID: 1, Name: "sc1", ClusterID: 1, Ready: false}})
 		require.NoError(t, err)
 	})
@@ -574,13 +885,13 @@ func TestClusterManager_UpdateCluster(t *testing.T) {
 				return nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.UpdateCluster(ctx, product, newTestClusterBase(), &ClusterParam{Name: lib.PString("c1")})
 		require.NoError(t, err)
 		assert.True(t, updated)
 	})
 
-	t.Run("update instance pool", func(t *testing.T) {
+	t.Run("provider change syncs instance pool", func(t *testing.T) {
 		poolUpdated := false
 		clusterStore := &fakeClusterStorager{
 			clusterUpdateFn: func(ctx context.Context, product *ibasic.Product, old *Cluster, param *ClusterParam) error {
@@ -594,11 +905,13 @@ func TestClusterManager_UpdateCluster(t *testing.T) {
 				return nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, poolStore, nil, nil, nil)
+		providerStore := &fakeProviderStorager{}
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, poolStore, providerStore, nil, nil, nil)
 		err := m.UpdateCluster(ctx, product, newTestClusterBase(), &ClusterParam{
 			Name: lib.PString("c1"),
-			InstancePool: []Instance{
-				{Name: "rs2", Addr: "127.0.0.2", Port: 80, Weight: 10},
+			LLMConfig: &LLMConfig{
+				Provider: lib.PString("openai"),
+				Models:   []string{"m1"},
 			},
 		})
 		require.NoError(t, err)
@@ -608,7 +921,7 @@ func TestClusterManager_UpdateCluster(t *testing.T) {
 	t.Run("EPP count invalid", func(t *testing.T) {
 		c := newTestClusterEPP()
 		c.SubClusters = append(c.SubClusters, &SubCluster{ID: 2, Name: "sc2", Role: ProductPoolRoleEPP})
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.UpdateCluster(ctx, product, c, &ClusterParam{Name: lib.PString("c1")})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "subcluster is EPP")
@@ -616,7 +929,7 @@ func TestClusterManager_UpdateCluster(t *testing.T) {
 
 	t.Run("update checker blocks model removal", func(t *testing.T) {
 		checkerCalled := false
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, map[string]func(context.Context, *ibasic.Product, *Cluster, *ClusterParam) error{
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, map[string]func(context.Context, *ibasic.Product, *Cluster, *ClusterParam) error{
 			"route_rules": func(ctx context.Context, p *ibasic.Product, c *Cluster, param *ClusterParam) error {
 				checkerCalled = true
 				return errors.New("model in use")
@@ -639,13 +952,13 @@ func TestClusterManager_RebindSubCluster(t *testing.T) {
 	product := &ibasic.Product{ID: 2, Name: "test"}
 
 	t.Run("no change", func(t *testing.T) {
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.RebindSubCluster(ctx, product, newTestClusterBase(), []string{"sc1"})
 		require.NoError(t, err)
 	})
 
 	t.Run("unbind with non zero rate", func(t *testing.T) {
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.RebindSubCluster(ctx, product, newTestClusterBase(), []string{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Rate is 100")
@@ -674,7 +987,7 @@ func TestClusterManager_RebindSubCluster(t *testing.T) {
 		}
 		c := newTestClusterBase()
 		c.Scheduler["bfe1"]["sc2"] = 0
-		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		err := m.RebindSubCluster(ctx, product, c, []string{"sc1", "sc2"})
 		require.NoError(t, err)
 		assert.True(t, bindCalled)
@@ -712,7 +1025,7 @@ func TestClusterManager_DeleteCluster(t *testing.T) {
 				return nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, &fakeBFEClusterStorager{}, poolStore, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, subClusterStore, &fakeBFEClusterStorager{}, poolStore, nil, nil, nil, nil)
 		err := m.DeleteCluster(ctx, product, newTestClusterBase())
 		require.NoError(t, err)
 		assert.True(t, bindCalled)
@@ -722,7 +1035,7 @@ func TestClusterManager_DeleteCluster(t *testing.T) {
 	})
 
 	t.Run("delete checker error", func(t *testing.T) {
-		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, map[string]func(context.Context, *ibasic.Product, *Cluster) error{
+		m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, map[string]func(context.Context, *ibasic.Product, *Cluster) error{
 			"route": func(ctx context.Context, p *ibasic.Product, c *Cluster) error {
 				return errors.New("route in use")
 			},
@@ -744,7 +1057,7 @@ func TestClusterManager_IsBFEClusterUsed(t *testing.T) {
 				}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		used, err := m.IsBFEClusterUsed(ctx, "bfe1")
 		require.NoError(t, err)
 		assert.True(t, used)
@@ -758,7 +1071,7 @@ func TestClusterManager_IsBFEClusterUsed(t *testing.T) {
 				}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		used, err := m.IsBFEClusterUsed(ctx, "bfe1")
 		require.NoError(t, err)
 		assert.False(t, used)
@@ -775,7 +1088,7 @@ func TestAppendAdvancedRuleCluster(t *testing.T) {
 
 func TestNewBfeClusterConf(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterBase()}, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterBase()}, nil, nil, nil, nil)
 		require.NotNil(t, conf)
 		require.NotNil(t, conf.Config)
 		assert.Equal(t, "v1", *conf.Version)
@@ -791,33 +1104,42 @@ func TestNewBfeClusterConf(t *testing.T) {
 		conf := NewBfeClusterConf("v1", []*Cluster{
 			newTestClusterBase(),
 			{ID: RouteAdvancedModeClusterID, Name: RouteAdvancedModeClusterName},
-		}, nil)
+		}, nil, nil, nil, nil)
 		require.Len(t, *conf.Config, 1)
 	})
 
 	t.Run("EPP addrs", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterEPP()}, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic.EPPAddr)
 		assert.Equal(t, []string{"epp.example.com:8080"}, *cConf.GslbBasic.EPPAddr)
 	})
 
 	t.Run("https conf", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterHTTPS()}, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterHTTPS()}, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.HTTPSConf)
 		assert.True(t, *cConf.HTTPSConf.RSInsecureSkipVerify)
 	})
 
 	t.Run("domain pool disable checks", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterDomain()}, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterDomain()}, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		assert.True(t, *cConf.ClusterBasic.DisableHealthCheck)
 		assert.True(t, *cConf.ClusterBasic.DisableHostHeader)
 	})
 
 	t.Run("LLM config", func(t *testing.T) {
-		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterLLM()}, nil)
+		providerKeyTable := map[string][]iprovider.ProviderKey{
+			"openai": {
+				{Name: "key-primary", Key: "sk-aaaaaaaaaaaa"},
+				{Name: "key-secondary", Key: "sk-bbbbbbbbbbbb"},
+			},
+		}
+		providerProtocolTable := map[string][]string{
+			"openai": {"openai"},
+		}
+		conf := NewBfeClusterConf("v1", []*Cluster{newTestClusterLLM()}, nil, providerKeyTable, providerProtocolTable, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.AIConf)
 		require.Len(t, cConf.AIConf.Keys, 2)
@@ -832,10 +1154,69 @@ func TestNewBfeClusterConf(t *testing.T) {
 		assert.Equal(t, 3, cConf.AIConf.KeyPolicy.MaxRetries)
 		assert.Equal(t, 500, cConf.AIConf.KeyPolicy.RetryBackoffInitial)
 		assert.Equal(t, 5000, cConf.AIConf.KeyPolicy.RetryBackoffMax)
+		assert.True(t, cConf.AIConf.KeyPolicy.SessionAffinity)
+		assert.Equal(t, 600, cConf.AIConf.KeyPolicy.SessionAffinityTTL)
+		assert.Equal(t, "bfe:ai:key_affinity", cConf.AIConf.KeyPolicy.SessionAffinityRedisPrefix)
+		assert.True(t, cConf.AIConf.KeyPolicy.SessionAffinityPenaltyEnable)
 		require.NotNil(t, cConf.AIConf.ModelMapping)
 		assert.Equal(t, "new", (*cConf.AIConf.ModelMapping)["old"])
 		assert.Equal(t, "openrouter/", cConf.AIConf.MatchPrefix)
 		assert.True(t, cConf.AIConf.StripPrefix)
+		assert.Equal(t, []string{"openai"}, cConf.AIConf.ModelProtocols)
+	})
+
+	t.Run("LLM config with tiered pricing", func(t *testing.T) {
+		providerModelTable := map[string][]*imodel_price.ModelPrice{
+			"deepseek": {
+				{
+					Provider:  "deepseek",
+					Model:     "deepseek-v4-pro",
+					BaseModel: "deepseek-v4-pro",
+					Mode:      "chat",
+					Prices: imodel_price.PriceMap{
+						"input_cost_per_token":        0.0000045,
+						"output_cost_per_token":       0.0000135,
+						"cache_read_input_token_cost": 0.00000015,
+					},
+					TierPrices: imodel_price.TierPriceMap{
+						"peak": {
+							"input_cost_per_token":        0.000009,
+							"output_cost_per_token":       0.000027,
+							"cache_read_input_token_cost": 0.0000003,
+						},
+					},
+				},
+			},
+		}
+		providerPricingTable := map[string]ProviderPricingInfo{
+			"deepseek": {
+				TimeZone: "Asia/Shanghai",
+				Tiers: []cluster_conf.PriceTier{
+					{
+						Name: "peak",
+						TimeRanges: []cluster_conf.TimeRange{
+							{Weekdays: []int{1, 2, 3, 4, 5}, Start: "09:00", End: "12:00"},
+							{Weekdays: []int{1, 2, 3, 4, 5}, Start: "14:00", End: "18:00"},
+						},
+					},
+				},
+			},
+		}
+		c := newTestClusterLLM()
+		c.LLMConfig.Provider = lib.PString("deepseek")
+		conf := NewBfeClusterConf("v1", []*Cluster{c}, providerModelTable, nil, nil, providerPricingTable)
+		cConf := (*conf.Config)["c1"]
+		require.NotNil(t, cConf.AIConf)
+		require.NotNil(t, cConf.AIConf.ModelTable)
+		assert.Equal(t, "RMB", cConf.AIConf.ModelTable.Currency)
+		assert.Equal(t, "Asia/Shanghai", cConf.AIConf.ModelTable.TimeZone)
+		require.Len(t, cConf.AIConf.ModelTable.Tiers, 1)
+		assert.Equal(t, "peak", cConf.AIConf.ModelTable.Tiers[0].Name)
+		require.Len(t, cConf.AIConf.ModelTable.Models, 1)
+		model := cConf.AIConf.ModelTable.Models[0]
+		assert.Equal(t, "deepseek-v4-pro", model.Model)
+		require.NotNil(t, model.TierPrices)
+		assert.Equal(t, 0.000009, model.TierPrices["peak"]["input_cost_per_token"])
 	})
 
 	t.Run("disabled sticky sessions with empty hash_header falls back to CLIENT_IP_ONLY", func(t *testing.T) {
@@ -845,7 +1226,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 			HashStrategy:  ClusterHashStrategyClientIDOnlyI,
 			HashHeader:    "",
 		}
-		conf := NewBfeClusterConf("v1", []*Cluster{c}, nil)
+		conf := NewBfeClusterConf("v1", []*Cluster{c}, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic)
 		require.NotNil(t, cConf.GslbBasic.HashConf)
@@ -996,5 +1377,5 @@ func newClusterManagerForExport(t *testing.T, version string) *ClusterManager {
 			return []*Cluster{newTestClusterBase()}, nil
 		},
 	}
-	return NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
+	return NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
 }

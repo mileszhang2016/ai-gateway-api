@@ -3,6 +3,7 @@ package entity_test
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
@@ -177,6 +178,36 @@ func TestEntity_Create(t *testing.T) {
 					"reset_period": "monthly",
 				},
 			},
+			wantCode: 422,
+		},
+		{
+			name:     "E-1-013 创建 Entity name 含大写字母",
+			body:     map[string]interface{}{"name": "BadName", "type": typeName},
+			wantCode: 422,
+		},
+		{
+			name:     "E-1-014 创建 Entity name 含空格",
+			body:     map[string]interface{}{"name": "bad name", "type": typeName},
+			wantCode: 422,
+		},
+		{
+			name:     "E-1-015 创建 Entity name 以 - 开头",
+			body:     map[string]interface{}{"name": "-badname", "type": typeName},
+			wantCode: 422,
+		},
+		{
+			name:     "E-1-016 创建 Entity name 以 _ 结尾",
+			body:     map[string]interface{}{"name": "badname_", "type": typeName},
+			wantCode: 422,
+		},
+		{
+			name:     "E-1-017 创建 Entity name 长度为 64",
+			body:     map[string]interface{}{"name": strings.Repeat("a", 64), "type": typeName},
+			wantCode: 200,
+		},
+		{
+			name:     "E-1-018 创建 Entity name 长度为 65",
+			body:     map[string]interface{}{"name": strings.Repeat("a", 65), "type": typeName},
 			wantCode: 422,
 		},
 	}

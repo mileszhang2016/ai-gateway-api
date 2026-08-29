@@ -141,6 +141,30 @@ func TestEntity_PartialUpdate(t *testing.T) {
 		assert.InDelta(t, float64(0), balance["used"], 0.00001)
 	})
 
+	t.Run("E-5-004 部分更新 name 为含空格字符串", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name": "bad name",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 422 {
+			t.Errorf("expected ErrNum=422, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+	})
+
+	t.Run("E-5-005 部分更新 name 为以 _ 开头", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name": "_badname",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 422 {
+			t.Errorf("expected ErrNum=422, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteEntity(entityID)
 		testutil.DeleteEntityType(typeName)

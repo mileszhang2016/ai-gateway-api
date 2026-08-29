@@ -9,6 +9,46 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.0.8] - 2026-08-29
+
+### Added
+- Separate provider and cluster concepts; add provider management menu and endpoints.
+- Support Anthropic Claude protocol forwarding in control plane.
+- Support RMB tiered pricing (peak/off-peak tiers) for model prices.
+- Support cluster-level session Key affinity (`llm_config.key_affinity`) configuration.
+- Add `GET /providers/actions/get-provider-names` endpoint.
+- Recognize `req_body_larger_than` and `req_body_less_than` in route expression verification.
+- Add regression test support for quota reset periods with injectable Clock and BalanceSyncer.
+- Replace mock Redis with miniredis in integration quota tests.
+
+### Changed
+- Remove `quota_balances` table; read quota balance directly from Redis.
+- Simplify mod-api-key exported fields and extend ApikeyTag with TagLevel.
+- Make discover-models a stateless tool endpoint.
+- Batch preload entity/quota/entity-type data for mod-api-key export performance.
+- Default provider instance name to address when omitted.
+- Default `key_affinity.enabled` to true.
+- Relax provider reference in model prices and add get-providers endpoint.
+
+### Fixed
+- Fix provider-cluster reference integrity for keys/models on update (#106).
+- Sync provider `instance_pool` changes to referencing clusters (#106).
+- Remove `instance_pool` name field and use `addr_port` for BFE backend name.
+- Reject `name` in provider PATCH body and document deletion reference check.
+- Preserve 8-decimal precision in model-prices JSON serialization (#102).
+- Atomic API-Key sequence allocation to avoid MySQL lock wait timeout (#99).
+- Atomic `api-key-{seq}` id allocation for concurrent creation (#80).
+- Rename `providers.keys` to `api_keys` to avoid MySQL reserved word conflict.
+- Instance_pool uniqueness now uses (name, addr, port).
+- Return all providers when page/page_size are omitted in GET /providers.
+- Ensure GET /providers/{name} returns time_zone and tiers.
+- Remove gemini from initial model_protocols enum.
+- Align entity name validation with entity-type (#81).
+- Stable Redis key for RPM/TPM rate-limit rules (#84).
+- Redis key cleanup on API-Key/Entity delete or rate-limit rule removal.
+- Move quota_plan change balance adjustment down to QuotaPlanManager.
+
+
 ## [0.0.7] - 2026-08-20
 
 ### Added

@@ -99,14 +99,16 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
                         "models": ["*"],
                         "window_minutes": 1,
                         "max_tokens": 10000,
-                        "step_minutes": 1
+                        "step_minutes": 1,
+                        "redis_key": "RL_TPM_rlp-0001_0"
                     },
                     {
                         "name": "win10min",
                         "models": ["gpt-4"],
                         "window_minutes": 10,
                         "max_tokens": 50000,
-                        "step_minutes": 1
+                        "step_minutes": 1,
+                        "redis_key": "RL_TPM_rlp-0001_1"
                     }
                 ],
                 "rpm": [
@@ -115,7 +117,8 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
                         "models": ["gpt-4"],
                         "window_minutes": 1,
                         "max_requests": 100,
-                        "burst": 1
+                        "burst": 1,
+                        "redis_key": "RL_RPM_rlp-0001_0"
                     }
                 ],
                 "max_concurrency": 50
@@ -150,6 +153,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
 | window_minutes | int | 统计时间窗口（分钟） | 取值范围 1-360 |
 | max_tokens | int | 最大 Token 数 | >0: 有限制；0: 封禁；<0: 不限制 |
 | step_minutes | int | 滑动步长（分钟） | 取值范围 1-360，必须 <= window_minutes |
+| redis_key | string | Redis 计数器 key | 由控制面按 `(policy_id, 规则下标)` 稳定生成，例如 `RL_TPM_rlp-0001_0`；BFE 直接使用该值构建 Redis key，不依赖规则名或 model |
 
 **RPMConfig 结构**
 
@@ -160,6 +164,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
 | window_minutes | int | 统计时间窗口（分钟） | 取值范围 1-360，默认 1 |
 | max_requests | int | 最大请求数 | >=1: 有限制；0: 封禁；<0: 不限制 |
 | burst | int | 突发请求数 | 最小值 1，默认 1 |
+| redis_key | string | Redis 计数器 key | 由控制面按 `(policy_id, 规则下标)` 稳定生成，例如 `RL_RPM_rlp-0001_0`；BFE 直接使用该值构建 Redis key，不依赖规则名或 model |
 
 ### 3.4 ApikeyRateLimitPolicyBindings 结构（绑定关系）
 
@@ -206,14 +211,16 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
                             "models": ["*"],
                             "window_minutes": 1,
                             "max_tokens": 1000000,
-                            "step_minutes": 1
+                            "step_minutes": 1,
+                            "redis_key": "RL_TPM_rlp-0001_0"
                         },
                         {
                             "name": "gpt4-tpm",
                             "models": ["gpt-4"],
                             "window_minutes": 1,
                             "max_tokens": 500000,
-                            "step_minutes": 1
+                            "step_minutes": 1,
+                            "redis_key": "RL_TPM_rlp-0001_1"
                         }
                     ],
                     "rpm": [
@@ -222,7 +229,8 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
                             "models": ["*"],
                             "window_minutes": 1,
                             "max_requests": 60,
-                            "burst": 1
+                            "burst": 1,
+                            "redis_key": "RL_RPM_rlp-0001_0"
                         }
                     ],
                     "max_concurrency": 50
@@ -238,7 +246,8 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
                             "models": ["gpt-4"],
                             "window_minutes": 1,
                             "max_tokens": 5000,
-                            "step_minutes": 1
+                            "step_minutes": 1,
+                            "redis_key": "RL_TPM_rlp-0002_0"
                         }
                     ],
                     "max_concurrency": 10

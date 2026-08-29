@@ -49,21 +49,12 @@ type PassiveHealthCheckParam struct {
 	Uri        *string `json:"uri"`
 }
 
-// Instance Request Param
-type Instance struct {
-	Name   string `json:"name"`
-	Addr   string `json:"addr" validate:"required"`
-	Port   int    `json:"port" validate:"required"`
-	Weight int64  `json:"weight" validate:"min=0,max=100"`
-}
-
 // UpsertParam Request Param
 type UpsertParam struct {
-	Name           *string                  `json:"name" uri:"cluster_name"`
-	Description    *string                  `json:"description"`
-	Basic          *BasicParam              `json:"basic"`
-	StickySessions *StickySessionsParam     `json:"sticky_sessions"`
-	InstancePool   []*Instance              `json:"instance_pool"`
+	Name               *string                  `json:"name" uri:"cluster_name"`
+	Description        *string                  `json:"description"`
+	Basic              *BasicParam              `json:"basic"`
+	StickySessions     *StickySessionsParam     `json:"sticky_sessions"`
 	PassiveHealthCheck *PassiveHealthCheckParam `json:"passive_health_check"`
 	LLMConfig          *icluster_conf.LLMConfig `json:"llm_config"`
 }
@@ -116,17 +107,6 @@ func (p *UpsertParam) Validate() error {
 	}
 	if err := validate.ClusterName(*p.Name); err != nil {
 		return err
-	}
-	if len(p.InstancePool) > 0 {
-		// Default instance name to addr when not provided.
-		for _, inst := range p.InstancePool {
-			if inst.Name == "" {
-				inst.Name = inst.Addr
-			}
-		}
-		if err := validate.InstancePool(Instancesc2i(p.InstancePool)); err != nil {
-			return err
-		}
 	}
 	if err := validateStickySessions(p.StickySessions); err != nil {
 		return err
@@ -181,37 +161,11 @@ func newCreateParam4Create(req *http.Request) (*UpsertParam, error) {
 		return nil, err
 	}
 
-	if len(param.InstancePool) == 0 {
-		return nil, xerror.WrapParamErrorWithMsg("instance_pool is required")
-	}
-
 	if param.LLMConfig == nil {
 		return nil, xerror.WrapParamErrorWithMsg("llm_config is required")
 	}
 
 	return param, nil
-}
-
-func checkInstancePool(instances []*Instance) error {
-	if len(instances) == 0 {
-		return xerror.WrapParamErrorWithMsg("instance_pool is required")
-	}
-
-	hasPositiveWeight := false
-	for i, instance := range instances {
-		if instance.Weight > 0 {
-			hasPositiveWeight = true
-		}
-		if instance.Port == 0 {
-			return xerror.WrapParamErrorWithMsg("instance_pool[%d].port is required", i)
-		}
-	}
-
-	if !hasPositiveWeight {
-		return xerror.WrapParamErrorWithMsg("instance_pool must have at least one instance with weight > 0")
-	}
-
-	return nil
 }
 
 func clusterParamControlModel(param *UpsertParam) *icluster_conf.ClusterParam {
@@ -260,7 +214,7 @@ func clusterParamControlModel(param *UpsertParam) *icluster_conf.ClusterParam {
 		HashHeader:    sticky.HashHeader,
 	}
 
-	phc := normalizePassiveHealthCheck(param.PassiveHealthCheck, param.InstancePool)
+	phc := normalizePassiveHealthCheck(param.PassiveHealthCheck)
 	rst.PassiveHealthCheck = PassiveHealthCheckParamC2M(phc)
 
 	return rst
@@ -344,7 +298,7 @@ func normalizeStickySessions(ss *StickySessionsParam) *StickySessionsParam {
 	return ss
 }
 
-func normalizePassiveHealthCheck(phc *PassiveHealthCheckParam, instances []*Instance) *PassiveHealthCheckParam {
+func normalizePassiveHealthCheck(phc *PassiveHealthCheckParam) *PassiveHealthCheckParam {
 	if phc == nil {
 		phc = &PassiveHealthCheckParam{}
 	}
@@ -361,12 +315,8 @@ func normalizePassiveHealthCheck(phc *PassiveHealthCheckParam, instances []*Inst
 		phc.Uri = lib.PString("/")
 	}
 	if phc.Host == nil {
-		if len(instances) > 0 {
-			phc.Host = &instances[0].Addr
-		} else {
-			empty := ""
-			phc.Host = &empty
-		}
+		empty := ""
+		phc.Host = &empty
 	}
 	return phc
 }
@@ -381,33 +331,37 @@ func normalizeLLMConfig(llm *icluster_conf.LLMConfig) *icluster_conf.LLMConfig {
 		ModelMappings: llm.ModelMappings,
 		Keys:          llm.Keys,
 		KeyPolicy:     llm.KeyPolicy,
-		ProviderType:  llm.ProviderType,
+		KeyAffinity:   normalizeKeyAffinity(llm.KeyAffinity),
 		Provider:      llm.Provider,
 		MatchPrefix:   llm.MatchPrefix,
 		StripPrefix:   llm.StripPrefix,
 	}
 	if rst.Keys == nil {
-		rst.Keys = []icluster_conf.APIKey{}
+		rst.Keys = []icluster_conf.ClusterKeyRef{}
 	}
 
-	if llm.ModelEndpoint != nil {
-		rst.ModelEndpoint = &icluster_conf.Endpoint{
-			Schema:  llm.ModelEndpoint.Schema,
-			URI:     llm.ModelEndpoint.URI,
-			Headers: llm.ModelEndpoint.Headers,
-		}
-	} else {
-		rst.ModelEndpoint = &icluster_conf.Endpoint{
-			Schema: "https",
-			URI:    "/v1/models",
-		}
-	}
+	return rst
+}
 
-	if rst.ModelEndpoint.Schema == "" {
-		rst.ModelEndpoint.Schema = "https"
+func normalizeKeyAffinity(affinity *icluster_conf.KeyAffinity) *icluster_conf.KeyAffinity {
+	rst := &icluster_conf.KeyAffinity{}
+	if affinity != nil {
+		rst.Enabled = affinity.Enabled
+		rst.TTL = affinity.TTL
+		rst.RedisPrefix = affinity.RedisPrefix
+		rst.PenaltyEnable = affinity.PenaltyEnable
 	}
-	if rst.ModelEndpoint.URI == "" {
-		rst.ModelEndpoint.URI = "/v1/models"
+	if rst.Enabled == nil {
+		rst.Enabled = lib.PBool(true)
+	}
+	if rst.TTL == nil {
+		rst.TTL = lib.PInt(600)
+	}
+	if rst.RedisPrefix == nil {
+		rst.RedisPrefix = lib.PString("bfe:ai:key_affinity")
+	}
+	if rst.PenaltyEnable == nil {
+		rst.PenaltyEnable = lib.PBool(true)
 	}
 
 	return rst
@@ -440,25 +394,6 @@ func PassiveHealthCheckParamC2M(passiveHealthCheck *PassiveHealthCheckParam) *ic
 	}
 }
 
-func Instancesc2i(is []*Instance) []icluster_conf.Instance {
-	rst := []icluster_conf.Instance{}
-	for _, instance := range is {
-		name := instance.Name
-		if name == "" {
-			name = instance.Addr
-		}
-
-		rst = append(rst, icluster_conf.Instance{
-			Name:   name,
-			Addr:   instance.Addr,
-			Port:   instance.Port,
-			Weight: instance.Weight,
-		})
-	}
-
-	return rst
-}
-
 func CreateActionProcess(req *http.Request, _param *UpsertParam) (*ClusterData, error) {
 	product, err := getDefaultProduct(req.Context())
 	if err != nil {
@@ -466,10 +401,6 @@ func CreateActionProcess(req *http.Request, _param *UpsertParam) (*ClusterData, 
 	}
 
 	param := clusterParamControlModel(_param)
-	if len(_param.InstancePool) == 0 {
-		return nil, xerror.WrapParamErrorWithMsg("instance_pool is required")
-	}
-	param.InstancePool = Instancesc2i(_param.InstancePool)
 
 	err = container.ClusterManager.CreateCluster(req.Context(), product, param)
 	if err != nil {

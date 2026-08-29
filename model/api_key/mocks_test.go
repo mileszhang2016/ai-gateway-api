@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
@@ -235,33 +236,72 @@ func (f *fakeEntityStorager) FetchEntity(ctx context.Context, filter *shared.Ent
 
 var _ shared.EntityStorager = (*fakeEntityStorager)(nil)
 
-type fakeQuotaBalanceStorager struct {
-	fetchQuotaBalanceFn  func(ctx context.Context, quotaPlanID int64) (*shared.BalanceSummary, error)
-	createQuotaBalanceFn func(ctx context.Context, quotaPlanID int64, remaining *float64) error
-	deleteQuotaBalanceFn func(ctx context.Context, quotaPlanID int64) error
+// fakeQuotaCache 实现 quotacache.QuotaCache，用于单元测试记录调用。
+type fakeQuotaCache struct {
+	setRemainingCalls   []quotaCacheSetRemainingCall
+	resetToQuotaCalls   []quotaCacheResetToQuotaCall
+	deleteKeysCalls     [][]string
+	getRemainingFn      func(ctx context.Context, key string, unit *string) (float64, error)
+	batchGetRemainingFn func(ctx context.Context, keys []string, unit *string) (map[string]float64, error)
+	setRemainingFn      func(ctx context.Context, key string, quota *float64, unit *string) error
+	resetToQuotaFn      func(ctx context.Context, key string, quota *float64, unit *string) error
+	deleteKeysFn        func(ctx context.Context, keys []string) error
 }
 
-func (f *fakeQuotaBalanceStorager) FetchQuotaBalance(ctx context.Context, quotaPlanID int64) (*shared.BalanceSummary, error) {
-	if f.fetchQuotaBalanceFn != nil {
-		return f.fetchQuotaBalanceFn(ctx, quotaPlanID)
+type quotaCacheSetRemainingCall struct {
+	key   string
+	quota *float64
+	unit  *string
+}
+
+type quotaCacheResetToQuotaCall struct {
+	key   string
+	quota *float64
+	unit  *string
+}
+
+func (c *fakeQuotaCache) GetRemaining(ctx context.Context, key string, unit *string) (float64, error) {
+	if c.getRemainingFn != nil {
+		return c.getRemainingFn(ctx, key, unit)
 	}
-	return nil, nil
+	return 0, nil
 }
 
-func (f *fakeQuotaBalanceStorager) CreateQuotaBalance(ctx context.Context, quotaPlanID int64, remaining *float64) error {
-	if f.createQuotaBalanceFn != nil {
-		return f.createQuotaBalanceFn(ctx, quotaPlanID, remaining)
+func (c *fakeQuotaCache) BatchGetRemaining(ctx context.Context, keys []string, unit *string) (map[string]float64, error) {
+	if c.batchGetRemainingFn != nil {
+		return c.batchGetRemainingFn(ctx, keys, unit)
+	}
+	result := make(map[string]float64, len(keys))
+	for _, k := range keys {
+		result[k] = 0
+	}
+	return result, nil
+}
+
+func (c *fakeQuotaCache) SetRemaining(ctx context.Context, key string, quota *float64, unit *string) error {
+	c.setRemainingCalls = append(c.setRemainingCalls, quotaCacheSetRemainingCall{key: key, quota: quota, unit: unit})
+	if c.setRemainingFn != nil {
+		return c.setRemainingFn(ctx, key, quota, unit)
 	}
 	return nil
 }
 
-func (f *fakeQuotaBalanceStorager) DeleteQuotaBalance(ctx context.Context, quotaPlanID int64) error {
-	if f.deleteQuotaBalanceFn != nil {
-		return f.deleteQuotaBalanceFn(ctx, quotaPlanID)
+func (c *fakeQuotaCache) ResetToQuota(ctx context.Context, key string, quota *float64, unit *string) error {
+	c.resetToQuotaCalls = append(c.resetToQuotaCalls, quotaCacheResetToQuotaCall{key: key, quota: quota, unit: unit})
+	if c.resetToQuotaFn != nil {
+		return c.resetToQuotaFn(ctx, key, quota, unit)
 	}
 	return nil
 }
 
-var _ shared.QuotaBalanceStorager = (*fakeQuotaBalanceStorager)(nil)
+func (c *fakeQuotaCache) DeleteKeys(ctx context.Context, keys []string) error {
+	c.deleteKeysCalls = append(c.deleteKeysCalls, keys)
+	if c.deleteKeysFn != nil {
+		return c.deleteKeysFn(ctx, keys)
+	}
+	return nil
+}
+
+var _ quotacache.QuotaCache = (*fakeQuotaCache)(nil)
 
 var fixedTestTime = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)

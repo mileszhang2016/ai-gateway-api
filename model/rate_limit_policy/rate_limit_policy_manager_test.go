@@ -212,6 +212,44 @@ func TestRateLimitPolicyManager_RateLimitPolicyGenerator(t *testing.T) {
 		assert.Equal(t, []string{"*"}, policy.Rules.TPM[0].Models)
 	})
 
+	t.Run("redis keys are generated from policy id and rule index", func(t *testing.T) {
+		apiKey := "ak-1"
+		policyID := int64(101)
+		apiKeyStore := &fakeAPIKeyStorager{
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+				return []*api_key.APIKeyParam{{Key: &apiKey, RateLimitPolicyID: &policyID}}, nil
+			},
+		}
+		policyStore := &fakeRateLimitPolicyStorager{
+			listFn: func(ctx context.Context, filter *RateLimitPolicyFilter) ([]*RateLimitPolicyParam, error) {
+				return []*RateLimitPolicyParam{{
+					ID:      &policyID,
+					Enabled: lib.PBool(true),
+					TpmConfigs: []TPMConfig{
+						{Name: "tpm-1", Model: "gpt-4", WindowMinutes: 1, MaxTokens: 100},
+						{Name: "tpm-2", Model: "gpt-3.5", WindowMinutes: 1, MaxTokens: 200},
+					},
+					RpmConfigs: []RPMConfig{
+						{Name: "rpm-1", Model: "*", WindowMinutes: 1, MaxRequests: 10},
+					},
+				}}, nil
+			},
+		}
+		m := buildManager(policyStore, apiKeyStore, &fakeEntityStorager{})
+
+		data, err := m.RateLimitPolicyGenerator(ctx)
+		require.NoError(t, err)
+		conf := data.DataWithoutVersion.(*ExportRateLimitPolicyConfig)
+
+		policy := conf.RateLimitPolicies["rlp-101"]
+		require.NotNil(t, policy.Rules)
+		require.Len(t, policy.Rules.TPM, 2)
+		assert.Equal(t, "default_bfe_rlp-101_RL_TPM_rlp-101_tpm-1", policy.Rules.TPM[0].RedisKey)
+		assert.Equal(t, "default_bfe_rlp-101_RL_TPM_rlp-101_tpm-2", policy.Rules.TPM[1].RedisKey)
+		require.Len(t, policy.Rules.RPM, 1)
+		assert.Equal(t, "default_bfe_rlp-101_RL_RPM_rlp-101_rpm-1", policy.Rules.RPM[0].RedisKey)
+	})
+
 	t.Run("disabled policy is skipped", func(t *testing.T) {
 		apiKey := "ak-1"
 		policyID := int64(101)

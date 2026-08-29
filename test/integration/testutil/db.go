@@ -83,9 +83,28 @@ func SeedTestData(dbPath string) error {
 		return fmt.Errorf("find AI_product: %w", err)
 	}
 
+	// 插入默认 provider，供 seed cluster 引用
+	_, err = db.Exec(`
+		INSERT OR IGNORE INTO providers (
+			id, name, description, model_endpoint, models, api_keys,
+			instance_pool, model_protocols, created_at, updated_at
+		) VALUES (
+			1, 'deepseek', 'Default AI provider for integration tests',
+			'{"schema":"https","uri":"/v1/models"}',
+			'["deepseek-chat"]',
+			'[]',
+			'[{"addr":"10.0.0.1","weight":100,"port":8080}]',
+			'["openai"]',
+			datetime('now'), datetime('now')
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("seed provider: %w", err)
+	}
+
 	// 插入默认 cluster（AI_route 规则引用）
 	// clusters 表在 DDL 中未初始化，但 AI_route 设置规则时会校验该表
-	llmConfig := `{"model_endpoint":{"schema":"https","uri":"/v1/models","headers":null},"models":["deepseek-chat"],"model_mappings":null,"keys":[],"key_policy":null,"provider_type":"deepseek","provider":null,"match_prefix":null,"strip_prefix":null}`
+	llmConfig := `{"model_endpoint":{"schema":"https","uri":"/v1/models","headers":null},"models":["deepseek-chat"],"model_mappings":null,"keys":[],"key_policy":null,"provider":"deepseek","match_prefix":null,"strip_prefix":null}`
 	_, err = db.Exec(`
 		INSERT OR IGNORE INTO clusters (
 			id, name, description, product_id, protocol,

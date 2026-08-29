@@ -14,8 +14,8 @@ Expression Verify 模块用于校验 BFE 路由表达式是否合法。该接口
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 校验路由表达式 | 8 |
-| **合计** | **8** |
+| 校验路由表达式 | 11 |
+| **合计** | **11** |
 
 ## 4. 认证方式
 
@@ -74,6 +74,9 @@ expression_verify/
 | EV-1-006 | 表达式括号不匹配 | 异常参数 | 语法错误 |
 | EV-1-007 | 表达式包含未知函数 | 异常参数 | 非法函数名 |
 | EV-1-008 | 表达式缺少引号 | 异常参数 | 字符串参数未加引号 |
+| EV-1-009 | 校验 req_body_larger_than 表达式 | 正常参数 | 合法表达式返回 Data=null |
+| EV-1-010 | 校验 req_body_less_than 表达式 | 正常参数 | 合法表达式返回 Data=null |
+| EV-1-011 | req_body_larger_than 参数非法 | 异常参数 | INT 参数传 STRING |
 
 ### 6.4 测试场景详细设计
 
@@ -346,6 +349,115 @@ expression_verify/
 ```json
 {
     "expression": "req_path_prefix(/v1)"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：500  
+**ErrMsg**：错误信息非空
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| code | 500 | Equals |
+| message | 非空字符串 | NotEmpty |
+
+---
+
+#### 6.4.9 EV-1-009：校验 req_body_larger_than 表达式（正常参数）
+
+##### 设计思路
+
+验证基于请求体大小的 `req_body_larger_than` 表达式合法。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，传入 `req_body_larger_than(8192)`。
+2. 验证返回 `Data` 为 `null`。
+
+##### 请求参数
+
+```json
+{
+    "expression": "req_body_larger_than(8192)"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| Data | null | IsNull |
+
+---
+
+#### 6.4.10 EV-1-010：校验 req_body_less_than 表达式（正常参数）
+
+##### 设计思路
+
+验证基于请求体大小的 `req_body_less_than` 表达式合法。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，传入 `req_body_less_than(2048)`。
+2. 验证返回 `Data` 为 `null`。
+
+##### 请求参数
+
+```json
+{
+    "expression": "req_body_less_than(2048)"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| Data | null | IsNull |
+
+---
+
+#### 6.4.11 EV-1-011：req_body_larger_than 参数非法（异常参数）
+
+##### 设计思路
+
+验证 `req_body_larger_than` 参数类型错误时返回校验失败。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. 发送 PATCH 请求，传入 `req_body_larger_than("abc")`。
+2. 验证返回错误码和 VerifyResult 结构。
+
+##### 请求参数
+
+```json
+{
+    "expression": "req_body_larger_than(\"abc\")"
 }
 ```
 

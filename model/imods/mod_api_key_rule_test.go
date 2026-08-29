@@ -31,7 +31,8 @@ func TestNewAPIKeyRuleManager(t *testing.T) {
 		&fakeAPIKeyStorager{},
 		&fakeAIRouteRuleStorager{},
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{}, nil)
+		&fakeEntityStorager{},
+		&fakeEntityTypeStorager{}, nil)
 	assert.NotNil(t, m)
 	assert.NotNil(t, m.txn)
 	assert.NotNil(t, m.versionControlManager)
@@ -80,15 +81,11 @@ func TestConvertQuotaPlanToExport(t *testing.T) {
 	unlimited := false
 	passNoQuota := true
 	quotaVal := float64(1000)
-	period := "monthly"
-	createTime := int64(1234567890)
 
 	qp := convertQuotaPlanToExport(&quota.QuotaPlanParam{
 		Unlimited:             &unlimited,
 		PassWhenNoEnoughQuota: &passNoQuota,
 		Quota:                 &quotaVal,
-		ResetPeriod:           &period,
-		CreateTime:            &createTime,
 	}, "id-1", "redis-1")
 
 	assert.Equal(t, "id-1", qp.Id)
@@ -96,25 +93,7 @@ func TestConvertQuotaPlanToExport(t *testing.T) {
 	assert.False(t, qp.Unlimited)
 	assert.True(t, qp.PassNoQuota)
 	assert.Equal(t, int64(1000), qp.Quota)
-	assert.Equal(t, 1, qp.ResetMode)
-	assert.Equal(t, int64(1234567890), qp.CreateTime)
 	assert.Equal(t, int64(-1), qp.ExpiredTime)
-}
-
-func TestConvertQuotaPlanToExport_Weekly(t *testing.T) {
-	period := "weekly"
-	qp := convertQuotaPlanToExport(&quota.QuotaPlanParam{
-		ResetPeriod: &period,
-	}, "id-1", "redis-1")
-	assert.Equal(t, 1, qp.ResetMode)
-}
-
-func TestConvertQuotaPlanToExport_OtherPeriod(t *testing.T) {
-	period := "daily"
-	qp := convertQuotaPlanToExport(&quota.QuotaPlanParam{
-		ResetPeriod: &period,
-	}, "id-1", "redis-1")
-	assert.Equal(t, 0, qp.ResetMode)
 }
 
 func TestConvertQuotaPlanToExport_Unlimited(t *testing.T) {
@@ -166,7 +145,8 @@ func TestBuildAIRouteAPIKeyRules(t *testing.T) {
 		&fakeAPIKeyStorager{},
 		aiRouteStore,
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{}, nil)
+		&fakeEntityStorager{},
+		&fakeEntityTypeStorager{}, nil)
 
 	product2config, err := m.buildAIRouteAPIKeyRules(ctx)
 	assert.NoError(t, err)
@@ -193,7 +173,8 @@ func TestBuildAIRouteAPIKeyRules_Error(t *testing.T) {
 		&fakeAPIKeyStorager{},
 		aiRouteStore,
 		&fakeQuotaPlanStorager{},
-		&fakeEntityStorager{}, nil)
+		&fakeEntityStorager{},
+		&fakeEntityTypeStorager{}, nil)
 
 	product2config, err := m.buildAIRouteAPIKeyRules(ctx)
 	assert.Error(t, err)

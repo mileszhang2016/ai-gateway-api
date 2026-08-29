@@ -193,6 +193,24 @@ func ValidateModelPrice(m *ModelPrice) error {
 		}
 	}
 
+	for tierName, tierPrices := range m.TierPrices {
+		// 初期只支持 peak tier
+		if tierName != "peak" {
+			return xerror.WrapParamErrorWithMsg("invalid tier name: %s, only 'peak' is allowed", tierName)
+		}
+		if len(tierPrices) == 0 {
+			return xerror.WrapParamErrorWithMsg("tier_prices.%s must contain at least one price", tierName)
+		}
+		for k, v := range tierPrices {
+			if !ValidPriceKeys[k] {
+				return xerror.WrapParamErrorWithMsg("invalid tier price key in tier %s: %s", tierName, k)
+			}
+			if v < 0 {
+				return xerror.WrapParamErrorWithMsg("tier price %s in tier %s must be >= 0", k, tierName)
+			}
+		}
+	}
+
 	if m.PriceCurrency != "" && m.PriceCurrency != "RMB" {
 		return xerror.WrapParamErrorWithMsg("price_currency must be RMB")
 	}

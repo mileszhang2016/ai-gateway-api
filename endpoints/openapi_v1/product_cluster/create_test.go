@@ -17,10 +17,10 @@ package product_cluster
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNormalizeStickySessions(t *testing.T) {
@@ -123,12 +123,10 @@ func TestValidateStickySessions(t *testing.T) {
 func TestUpsertParamValidate_StickySessions(t *testing.T) {
 	base := func() *UpsertParam {
 		return &UpsertParam{
-			Name:        lib.PString("test-cluster"),
-			InstancePool: []*Instance{
-				{Name: "rs1", Addr: "127.0.0.1", Port: 80, Weight: 10},
-			},
+			Name: lib.PString("test-cluster"),
 			LLMConfig: &icluster_conf.LLMConfig{
-				Models: []string{"gpt-4"},
+				Provider: lib.PString("openai"),
+				Models:   []string{"gpt-4"},
 			},
 		}
 	}
@@ -186,5 +184,51 @@ func TestNormalizeLLMConfig(t *testing.T) {
 		require.NotNil(t, got)
 		assert.Equal(t, "openrouter/", *got.MatchPrefix)
 		assert.Equal(t, true, *got.StripPrefix)
+	})
+
+	t.Run("copies key_affinity", func(t *testing.T) {
+		in := &icluster_conf.LLMConfig{
+			Models: []string{"gpt-4"},
+			KeyAffinity: &icluster_conf.KeyAffinity{
+				Enabled:       lib.PBool(true),
+				TTL:           lib.PInt(600),
+				RedisPrefix:   lib.PString("bfe:ai:key_affinity"),
+				PenaltyEnable: lib.PBool(true),
+			},
+		}
+		got := normalizeLLMConfig(in)
+		require.NotNil(t, got)
+		require.NotNil(t, got.KeyAffinity)
+		assert.Equal(t, true, *got.KeyAffinity.Enabled)
+		assert.Equal(t, 600, *got.KeyAffinity.TTL)
+		assert.Equal(t, "bfe:ai:key_affinity", *got.KeyAffinity.RedisPrefix)
+		assert.Equal(t, true, *got.KeyAffinity.PenaltyEnable)
+	})
+
+	t.Run("key_affinity fills defaults when empty object", func(t *testing.T) {
+		in := &icluster_conf.LLMConfig{
+			Models:      []string{"gpt-4"},
+			KeyAffinity: &icluster_conf.KeyAffinity{},
+		}
+		got := normalizeLLMConfig(in)
+		require.NotNil(t, got)
+		require.NotNil(t, got.KeyAffinity)
+		assert.Equal(t, true, *got.KeyAffinity.Enabled)
+		assert.Equal(t, 600, *got.KeyAffinity.TTL)
+		assert.Equal(t, "bfe:ai:key_affinity", *got.KeyAffinity.RedisPrefix)
+		assert.Equal(t, true, *got.KeyAffinity.PenaltyEnable)
+	})
+
+	t.Run("key_affinity fills defaults when nil", func(t *testing.T) {
+		in := &icluster_conf.LLMConfig{
+			Models: []string{"gpt-4"},
+		}
+		got := normalizeLLMConfig(in)
+		require.NotNil(t, got)
+		require.NotNil(t, got.KeyAffinity)
+		assert.Equal(t, true, *got.KeyAffinity.Enabled)
+		assert.Equal(t, 600, *got.KeyAffinity.TTL)
+		assert.Equal(t, "bfe:ai:key_affinity", *got.KeyAffinity.RedisPrefix)
+		assert.Equal(t, true, *got.KeyAffinity.PenaltyEnable)
 	})
 }

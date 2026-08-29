@@ -54,7 +54,7 @@ func TestClusterManager_ExportClusterTable(t *testing.T) {
 				return []*Cluster{newTestClusterBase()}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
 		_, err := m.ExportClusterTable(ctx, "")
 		require.Error(t, err)
 	})
@@ -65,7 +65,7 @@ func TestClusterManager_ExportClusterTable(t *testing.T) {
 				return nil, errors.New("db down")
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, nil, nil)
 		_, err := m.clusterTableConfGenerator(ctx)
 		require.Error(t, err)
 	})
@@ -109,7 +109,7 @@ func TestClusterManager_ExportGSLB(t *testing.T) {
 				return []*Cluster{c}, nil
 			},
 		}
-		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
+		m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
 		_, err := m.ExportGSLB(ctx, "", "bfe1")
 		require.Error(t, err)
 	})
@@ -144,7 +144,7 @@ func newClusterManagerForExportGSLB(t *testing.T, version string) *ClusterManage
 			return []*Cluster{c}, nil
 		},
 	}
-	return NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
+	return NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
 }
 
 func TestClusterTableConf_clusterWithIPv6(t *testing.T) {
@@ -161,7 +161,7 @@ func TestClusterTableConf_clusterWithIPv6(t *testing.T) {
 			return []*Cluster{c}, nil
 		},
 	}
-	m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, vcm, nil, nil)
+	m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
 	conf, err := m.ExportClusterTable(ctx, "old")
 	require.NoError(t, err)
 	require.NotNil(t, conf)
@@ -169,4 +169,28 @@ func TestClusterTableConf_clusterWithIPv6(t *testing.T) {
 	backends := (*conf.Config)["c1"]["sc1"]
 	require.Len(t, backends, 1)
 	assert.Equal(t, "[2001:db8::1]", *backends[0].Addr)
+	assert.Equal(t, "[2001:db8::1]_80", *backends[0].Name)
+}
+
+func TestClusterTableConf_backendNameUsesAddrPort(t *testing.T) {
+	ctx := context.Background()
+	vcm := iversion_control.NewVersionControllerManager(&fakeTxn{}, &fakeVersionControlStorager{
+		upsertFn: func(ctx context.Context, css *iversion_control.ExportData) (string, error) {
+			return "20240102000000", nil
+		},
+	})
+	c := newTestClusterBase()
+	clusterStore := &fakeClusterStorager{
+		fetchClusterListFn: func(ctx context.Context, param *ClusterFilter) ([]*Cluster, error) {
+			return []*Cluster{c}, nil
+		},
+	}
+	m := NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
+	conf, err := m.ExportClusterTable(ctx, "old")
+	require.NoError(t, err)
+	require.NotNil(t, conf)
+	require.NotNil(t, conf.Config)
+	backends := (*conf.Config)["c1"]["sc1"]
+	require.Len(t, backends, 1)
+	assert.Equal(t, "127.0.0.1_80", *backends[0].Name)
 }

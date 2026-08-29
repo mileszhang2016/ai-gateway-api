@@ -212,6 +212,8 @@ func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(
 
 无限配额计划虽然不参与导出，但仍会影响 Entity 层级的标签收集。
 
+在收集标签时，会根据 `entity.Type` 查询 `EntityType`，取其 `Level` 填充到 `ApikeyTag.TagLevel`；若对应 EntityType 不存在或 Level 无效，则导出失败并返回错误。
+
 ### 6.3 导出格式
 
 每个配额计划导出为 BFE 的 `QuotaPlan`：
@@ -222,10 +224,9 @@ type QuotaPlan struct {
     Unlimited bool
     PassNoQuota bool
     RedisKey string
-    CreateTime int64
     ExpiredTime int64 // -1 表示永不过期
     Quota int64
-    ResetMode int // 0 非周期，1 周期
+    Unit string
 }
 ```
 
@@ -242,10 +243,11 @@ type QuotaPlan struct {
 type ApikeyTag struct {
     TagName string // 如 entity.type
     TagValue string // 如 entity.name
+    TagLevel int    // 对应 EntityType.Level，取值为 1~5 的整数
 }
 ```
 
-每个 Entity 会生成一个 `TagName = Entity.Type`、`TagValue = Entity.Name` 的标签。
+每个 Entity 会生成一个 `TagName = Entity.Type`、`TagValue = Entity.Name` 的标签，并依据该 Entity Type 对应的 `EntityType.Level` 填充 `TagLevel`。
 
 ---
 
@@ -340,7 +342,7 @@ for _, apiKey := range apiKeys {
 - `/api-keys/{id}/quota-plan`：返回 API-Key 自身配额计划（含 `balance`）；
 - `/entities/{id}/quota-plan`：返回 Entity 自身配额计划（含 `balance`）。
 
-`GET /api-keys` 与 `GET /api-keys/{id}` 的返回中，`quota_plan` 同样包含 `balance`，由 `populateAssociatedData` 从 `quota_balances` 表填充。
+`GET /api-keys` 与 `GET /api-keys/{id}` 的返回中，`quota_plan` 同样包含 `balance`，由 `populateAssociatedData` 通过 `quotaCache` 实时读取 Redis 填充；无限配额返回 sentinel balance（`used=0`, `remaining=100000000`）。
 
 ---
 
@@ -353,24 +355,24 @@ for _, apiKey := range apiKeys {
 1. 校验 Entity-Type 和父 Entity 层级；
 2. 创建 QuotaPlan、RateLimitPolicy、RouteRules（如有）；
 3. 创建 Entity；
-4. 创建 `quota_balances` 记录。
+4. 事务提交后，若配额有限，通过 `quotaCache.SetRemaining` 向 Redis 写入初始剩余量。
 
 ### 10.2 删除 Entity
 
 `EntityManager.DeleteEntity`：
 
 1. 检查是否有子 Entity；
-2. 级联删除 `quota_balance`、`quota_plan`、`rate_limit_policy`、`route_rules`；
-3. 删除 Entity。
+2. 级联删除 `quota_plan`、`rate_limit_policy`、`route_rules`；
+3. 删除 Entity；
+4. 事务提交后，调用 `quotaCache.DeleteKeys` 删除对应 Redis Key。
 
 ### 10.3 删除 API-Key
 
 `APIKeyManager.DeleteAPIKey`：
 
-1. 级联删除 API-Key 自身关联的 `quota_balance`、`quota_plan`、`rate_limit_policy`、`route_rules`；
-2. 删除 API-Key。
-
-> 注意：删除 API-Key 或 Entity **不会主动删除 Redis Key**，由 Redis 自身管理。
+1. 级联删除 API-Key 自身关联的 `quota_plan`、`rate_limit_policy`、`route_rules`；
+2. 删除 API-Key；
+3. 事务提交后，调用 `quotaCache.DeleteKeys` 删除对应 Redis Key。
 
 ---
 
@@ -381,7 +383,7 @@ for _, apiKey := range apiKeys {
 | API-Key 未挂载 Entity | 仅使用自身配置，不继承任何 Entity 策略 |
 | Entity 未设置 allow_models | 不参与交集计算，视为不限制 |
 | Entity allow_models 含 `*` | 跳过该层级的交集计算 |
-| API-Key 与 Entity allow_models 交集为空 | 导出时禁用该 Token（`Enabled=2`） |
+| API-Key 与 Entity allow_models 交集为空 | 导出时禁用该 Token（`Enabled=false`） |
 | Entity 层级成环 | 创建/更新时通过层级校验阻止 |
 | 父 Entity 被删除 | 需先删除所有子 Entity |
 | 多个配额计划 | API-Key 同时受多个 Redis Key 控制，BFE 侧需支持多配额校验 |

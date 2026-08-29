@@ -49,6 +49,32 @@ func (c *redisQuotaCache) GetRemaining(ctx context.Context, key string, unit *st
 	return golibquota.PtrFromRedisValue(remain, unit), nil
 }
 
+func (c *redisQuotaCache) BatchGetRemaining(ctx context.Context, keys []string, unit *string) (map[string]float64, error) {
+	if c.client == nil {
+		result := make(map[string]float64, len(keys))
+		for _, k := range keys {
+			result[k] = 0
+		}
+		return result, nil
+	}
+
+	redisKeys := make([]string, len(keys))
+	for i, k := range keys {
+		redisKeys[i] = stateful.AIUsedQuotaKey(k)
+	}
+
+	values, err := c.client.GetInt64Batch(redisKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]float64, len(keys))
+	for i, k := range keys {
+		result[k] = golibquota.PtrFromRedisValue(values[i], unit)
+	}
+	return result, nil
+}
+
 func (c *redisQuotaCache) SetRemaining(ctx context.Context, key string, quota *float64, unit *string) error {
 	if c.client == nil || quota == nil {
 		return nil
@@ -72,4 +98,17 @@ func (c *redisQuotaCache) SetRemaining(ctx context.Context, key string, quota *f
 
 func (c *redisQuotaCache) ResetToQuota(ctx context.Context, key string, quota *float64, unit *string) error {
 	return c.SetRemaining(ctx, key, quota, unit)
+}
+
+func (c *redisQuotaCache) DeleteKeys(ctx context.Context, keys []string) error {
+	if c.client == nil {
+		return nil
+	}
+
+	for _, key := range keys {
+		if err := c.client.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
 }

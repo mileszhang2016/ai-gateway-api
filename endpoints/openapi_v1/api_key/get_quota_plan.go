@@ -41,7 +41,7 @@ type GetQuotaPlanResponse struct {
 	Quota                 *float64 `json:"quota"`
 	Unit                  *string  `json:"unit"`
 	ResetPeriod           *string  `json:"reset_period"`
-	Balance               *Balance `json:"balance"`
+	Balance               *Balance `json:"balance,omitempty"`
 }
 
 type Balance struct {
@@ -76,33 +76,18 @@ func GetQuotaPlanProcess(ctx context.Context, id string, product *ibasic.Product
 	}
 
 	var balance *Balance
-	if apiKey.QuotaPlanID != nil {
-		balanceData, err := container.QuotaPlanManager.FetchQuotaBalance(ctx, *apiKey.QuotaPlanID)
-		if err != nil {
-			return nil, err
+	if apiKey.QuotaPlan != nil && apiKey.QuotaPlan.Balance != nil {
+		used := float64(0)
+		if apiKey.QuotaPlan.Balance.Used != nil {
+			used = *apiKey.QuotaPlan.Balance.Used
 		}
-		if balanceData != nil {
-			used := float64(0)
-			if balanceData.Used != nil {
-				used = *balanceData.Used
-			}
-			remaining := float64(0)
-			if balanceData.Remaining != nil {
-				remaining = *balanceData.Remaining
-			}
-			balance = &Balance{
-				Used:      used,
-				Remaining: remaining,
-			}
-		} else {
-			remaining := float64(0)
-			if apiKey.QuotaPlan.Quota != nil {
-				remaining = *apiKey.QuotaPlan.Quota
-			}
-			balance = &Balance{
-				Used:      0,
-				Remaining: remaining,
-			}
+		remaining := float64(0)
+		if apiKey.QuotaPlan.Balance.Remaining != nil {
+			remaining = *apiKey.QuotaPlan.Balance.Remaining
+		}
+		balance = &Balance{
+			Used:      used,
+			Remaining: remaining,
 		}
 	}
 

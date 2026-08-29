@@ -39,6 +39,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprotocol"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
@@ -48,17 +49,18 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
+	apiKeyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/auth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/basic"
-	apiKeyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
 	entityStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/model_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/protocol"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/provider"
 	quotaStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/quota"
 	rateLimitPolicyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/rate_limit_policy"
-	routeRulesStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_rules"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
+	routeRulesStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_rules"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/txn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/version_control"
 
@@ -85,7 +87,15 @@ func Init() error {
 		stateful.NewBFEDBContext,
 		container.SubClusterStoragerSingleton)
 
+	container.ProviderStoragerSingleton = provider.NewRDBProviderStorager(stateful.NewBFEDBContext)
+	container.ProviderManager = iprovider.NewProviderManager(
+		container.TxnStoragerSingleton,
+		container.ProviderStoragerSingleton)
+
 	container.APIKeyStorager = apiKeyStorage.NewAPIKeyStorager(
+		stateful.NewBFEDBContext,
+	)
+	container.APIKeyIDGenerator = apiKeyStorage.NewRDBAPIKeyIDGenerator(
 		stateful.NewBFEDBContext,
 	)
 
@@ -142,6 +152,7 @@ func Init() error {
 		container.VersionControlManager,
 		container.DomainStoragerSingleton)
 	container.RouteRuleManager.SetModelPriceStorager(container.ModelPriceStorager)
+	container.RouteRuleManager.SetProviderStorager(container.ProviderStoragerSingleton)
 
 	// Initialize route rules components before cluster manager because the
 	// cluster delete checker depends on RouteRulesManager.
@@ -156,6 +167,7 @@ func Init() error {
 		container.SubClusterStoragerSingleton,
 		container.BFEClusterStoragerSingleton,
 		container.PoolStoragerSingleton,
+		container.ProviderStoragerSingleton,
 		container.VersionControlManager,
 		map[string]func(context.Context, *ibasic.Product, *icluster_conf.Cluster) error{
 			"rules":       container.RouteRuleManager.ClusterDeleteChecker,
@@ -196,7 +208,6 @@ func Init() error {
 	container.EntityTypeStorager = entityStorage.NewEntityTypeStorager(stateful.NewBFEDBContext)
 	container.EntityStorager = entityStorage.NewEntityStorager(stateful.NewBFEDBContext)
 	container.QuotaPlanStorager = quotaStorage.NewQuotaPlanStorager(stateful.NewBFEDBContext)
-	container.QuotaBalanceStorager = quotaStorage.NewQuotaBalanceStorager(stateful.NewBFEDBContext)
 	container.RateLimitPolicyStorager = rateLimitPolicyStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
 
 	container.QuotaCacheSingleton = quotacache.NewRedisQuotaCache(
@@ -214,7 +225,6 @@ func Init() error {
 		quota.NewQuotaPlanStoragerAdapter(container.QuotaPlanStorager),
 		rate_limit_policy.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
 		container.RouteRulesStorager,
-		quota.NewQuotaBalanceStoragerAdapter(container.QuotaBalanceStorager),
 		container.QuotaCacheSingleton)
 
 	container.APIKeyRuleManager = imods.NewAPIKeyRuleManager(
@@ -224,6 +234,7 @@ func Init() error {
 		container.AIRouteRuleStorager,
 		container.QuotaPlanStorager,
 		container.EntityStorager,
+		container.EntityTypeStorager,
 		container.QuotaCacheSingleton,
 	)
 
@@ -234,7 +245,6 @@ func Init() error {
 	container.QuotaPlanManager = quota.NewQuotaPlanManager(
 		container.TxnStoragerSingleton,
 		container.QuotaPlanStorager,
-		container.QuotaBalanceStorager,
 		container.APIKeyStorager,
 		container.EntityStorager,
 		container.QuotaCacheSingleton)
@@ -259,18 +269,17 @@ func Init() error {
 		quota.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
 		container.RouteRulesStorager,
 		quota.NewEntityStoragerAdapter(container.EntityStorager),
-		quota.NewQuotaBalanceStoragerAdapter(container.QuotaBalanceStorager),
 		container.QuotaCacheSingleton,
 	)
 
-	// Initialize quota balance sync and reset components
+	// Initialize quota reset scheduler
 	container.BalanceSyncManager = quota.NewBalanceSyncManager(
 		container.TxnStoragerSingleton,
 		container.APIKeyStorager,
-		container.QuotaBalanceStorager,
 		container.QuotaPlanStorager,
 		container.EntityStorager,
-		container.QuotaCacheSingleton)
+		container.QuotaCacheSingleton,
+		quota.NewRealClock())
 
 	container.QuotaResetScheduler = quota.NewQuotaResetScheduler(
 		container.TxnStoragerSingleton,

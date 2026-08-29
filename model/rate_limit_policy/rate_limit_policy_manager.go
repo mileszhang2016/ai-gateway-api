@@ -22,6 +22,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 const ConfigTopicProductRateLimitPolicy = "mod_ai_rate_limit"
@@ -176,6 +177,7 @@ func (m *RateLimitPolicyManager) RateLimitPolicyGenerator(ctx context.Context) (
 						WindowMinutes: tpm.WindowMinutes,
 						MaxTokens:     tpm.MaxTokens,
 						StepMinutes:   tpm.StepMinutes,
+						RedisKey:      shared.BuildBFERateLimitRedisKey(policyID, "RL_TPM", tpm.Name),
 					})
 				}
 
@@ -190,6 +192,7 @@ func (m *RateLimitPolicyManager) RateLimitPolicyGenerator(ctx context.Context) (
 						WindowMinutes: rpm.WindowMinutes,
 						MaxRequests:   rpm.MaxRequests,
 						Burst:         1,
+						RedisKey:      shared.BuildBFERateLimitRedisKey(policyID, "RL_RPM", rpm.Name),
 					})
 				}
 

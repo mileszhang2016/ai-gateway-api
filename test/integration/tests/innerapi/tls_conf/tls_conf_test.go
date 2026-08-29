@@ -43,28 +43,30 @@ func TestInnerAPI_TlsConf(t *testing.T) {
 	})
 
 	t.Run("IN-1-002 导出 ClusterConf 含多 Key AIConf", func(t *testing.T) {
-		clusterName := testutil.UniqueClusterName()
-		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
-			"name": clusterName,
-			"instance_pool": []interface{}{
-				map[string]interface{}{
-					"name":   "backend-1",
-					"addr":   "10.0.0.1",
-					"weight": 100,
-					"port":   8080,
-				},
+		providerName := testutil.UniqueProviderName()
+		_, err := testutil.CreateProvider(providerName, map[string]interface{}{
+			"keys": []interface{}{
+				map[string]interface{}{"name": "primary", "key": "sk-aaaaaaaaaaaa"},
+				map[string]interface{}{"name": "secondary", "key": "sk-bbbbbbbbbbbb"},
 			},
+		})
+		if err != nil {
+			t.Fatalf("setup provider failed: %v", err)
+		}
+		defer testutil.DeleteProvider(providerName)
+
+		clusterName := testutil.UniqueClusterName()
+		_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
 			"llm_config": map[string]interface{}{
 				"models": []string{"deepseek-chat"},
 				"keys": []interface{}{
 					map[string]interface{}{
 						"name":   "primary",
-						"key":    "sk-aaaaaaaaaaaa",
 						"weight": 70,
 					},
 					map[string]interface{}{
 						"name":   "secondary",
-						"key":    "sk-bbbbbbbbbbbb",
 						"weight": 30,
 					},
 				},
@@ -74,7 +76,7 @@ func TestInnerAPI_TlsConf(t *testing.T) {
 					"retry_backoff_initial": 100,
 					"retry_backoff_max":     5000,
 				},
-				"provider_type": "deepseek",
+				"provider": providerName,
 			},
 		})
 		if err != nil {
@@ -126,9 +128,22 @@ func TestInnerAPI_TlsConf(t *testing.T) {
 		assert.Equal(t, float64(3), policy["MaxRetries"])
 		assert.Equal(t, float64(100), policy["RetryBackoffInitial"])
 		assert.Equal(t, float64(5000), policy["RetryBackoffMax"])
+		assert.Equal(t, true, policy["SessionAffinity"])
+		assert.Equal(t, float64(600), policy["SessionAffinityTTL"])
+		assert.Equal(t, "bfe:ai:key_affinity", policy["SessionAffinityRedisPrefix"])
+		assert.Equal(t, true, policy["SessionAffinityPenaltyEnable"])
 	})
 
 	t.Run("IN-1-003 导出 ClusterConf 含模型定价表", func(t *testing.T) {
+		providerName := "openai"
+		_, err := testutil.CreateProvider(providerName, map[string]interface{}{
+			"models": []string{"gpt-4o", "gpt-4o-mini"},
+		})
+		if err != nil {
+			t.Fatalf("setup provider failed: %v", err)
+		}
+		defer testutil.DeleteProvider(providerName)
+
 		yamlContent := []byte(`version: v1.0
 default_currency: RMB
 models:
@@ -150,20 +165,11 @@ models:
 		}
 
 		clusterName := testutil.UniqueClusterName()
-		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+		_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
 			"name": clusterName,
-			"instance_pool": []interface{}{
-				map[string]interface{}{
-					"name":   "backend-1",
-					"addr":   "10.0.0.1",
-					"weight": 100,
-					"port":   8080,
-				},
-			},
 			"llm_config": map[string]interface{}{
-				"models":        []string{"gpt-4o"},
-				"provider_type": "openai",
-				"provider":      "openai",
+				"models":   []string{"gpt-4o"},
+				"provider": providerName,
 			},
 		})
 		if err != nil {
@@ -221,22 +227,23 @@ models:
 	})
 
 	t.Run("IN-TLS-1-004 AIConf 包含 MatchPrefix / StripPrefix", func(t *testing.T) {
+		providerName := testutil.UniqueProviderName()
+		_, err := testutil.CreateProvider(providerName, map[string]interface{}{
+			"models": []string{"openrouter/anthropic/claude-sonnet-4"},
+		})
+		if err != nil {
+			t.Fatalf("setup provider failed: %v", err)
+		}
+		defer testutil.DeleteProvider(providerName)
+
 		clusterName := testutil.UniqueClusterName()
-		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+		_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
 			"name": clusterName,
-			"instance_pool": []interface{}{
-				map[string]interface{}{
-					"name":   "backend-1",
-					"addr":   "10.0.0.1",
-					"weight": 100,
-					"port":   8080,
-				},
-			},
 			"llm_config": map[string]interface{}{
-				"models":        []string{"openrouter/anthropic/claude-sonnet-4"},
-				"match_prefix":  "openrouter/",
-				"strip_prefix":  true,
-				"provider_type": "openrouter",
+				"models":       []string{"openrouter/anthropic/claude-sonnet-4"},
+				"match_prefix": "openrouter/",
+				"strip_prefix": true,
+				"provider":     providerName,
 			},
 		})
 		if err != nil {
@@ -259,17 +266,9 @@ models:
 		clusterName := testutil.UniqueClusterName()
 		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
 			"name": clusterName,
-			"instance_pool": []interface{}{
-				map[string]interface{}{
-					"name":   "backend-1",
-					"addr":   "10.0.0.1",
-					"weight": 100,
-					"port":   8080,
-				},
-			},
 			"llm_config": map[string]interface{}{
-				"models":        []string{"deepseek-chat"},
-				"provider_type": "deepseek",
+				"models":   []string{"deepseek-chat"},
+				"provider": "deepseek",
 			},
 		})
 		if err != nil {
@@ -292,22 +291,23 @@ models:
 	})
 
 	t.Run("IN-TLS-1-006 仅 match_prefix、strip_prefix=false 时的导出", func(t *testing.T) {
+		providerName := testutil.UniqueProviderName()
+		_, err := testutil.CreateProvider(providerName, map[string]interface{}{
+			"models": []string{"openrouter/anthropic/claude-sonnet-4"},
+		})
+		if err != nil {
+			t.Fatalf("setup provider failed: %v", err)
+		}
+		defer testutil.DeleteProvider(providerName)
+
 		clusterName := testutil.UniqueClusterName()
-		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+		_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
 			"name": clusterName,
-			"instance_pool": []interface{}{
-				map[string]interface{}{
-					"name":   "backend-1",
-					"addr":   "10.0.0.1",
-					"weight": 100,
-					"port":   8080,
-				},
-			},
 			"llm_config": map[string]interface{}{
-				"models":        []string{"openrouter/anthropic/claude-sonnet-4"},
-				"match_prefix":  "openrouter/",
-				"strip_prefix":  false,
-				"provider_type": "openrouter",
+				"models":       []string{"openrouter/anthropic/claude-sonnet-4"},
+				"match_prefix": "openrouter/",
+				"strip_prefix": false,
+				"provider":     providerName,
 			},
 		})
 		if err != nil {
@@ -324,6 +324,121 @@ models:
 		aiconf := extractAIConf(t, resp, clusterName)
 		assert.Equal(t, "openrouter/", aiconf["MatchPrefix"])
 		assert.Equal(t, false, aiconf["StripPrefix"])
+	})
+
+	t.Run("IN-TLS-1-007 AIConf 包含 ModelProtocols（anthropic）", func(t *testing.T) {
+		providerName := testutil.UniqueProviderName()
+		_, err := testutil.CreateProvider(providerName, map[string]interface{}{
+			"models":          []string{"claude-3-opus-20240229"},
+			"model_protocols": []string{"anthropic"},
+		})
+		if err != nil {
+			t.Fatalf("setup provider failed: %v", err)
+		}
+		defer testutil.DeleteProvider(providerName)
+
+		clusterName := testutil.UniqueClusterName()
+		_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
+			"llm_config": map[string]interface{}{
+				"models":   []string{"claude-3-opus-20240229"},
+				"provider": providerName,
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterName)
+
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		aiconf := extractAIConf(t, resp, clusterName)
+		protocols, ok := aiconf["ModelProtocols"].([]interface{})
+		if !assert.True(t, ok, "AIConf.ModelProtocols should be an array") {
+			return
+		}
+		assert.Equal(t, []interface{}{"anthropic"}, protocols)
+	})
+
+	t.Run("IN-TLS-1-008 AIConf.KeyPolicy 包含 SessionAffinity*", func(t *testing.T) {
+		providerName := testutil.UniqueProviderName()
+		_, err := testutil.CreateProvider(providerName, map[string]interface{}{
+			"models": []string{"deepseek-chat"},
+		})
+		if err != nil {
+			t.Fatalf("setup provider failed: %v", err)
+		}
+		defer testutil.DeleteProvider(providerName)
+
+		clusterName := testutil.UniqueClusterName()
+		_, err = testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
+			"llm_config": map[string]interface{}{
+				"models": []string{"deepseek-chat"},
+				"key_affinity": map[string]interface{}{
+					"enabled":        true,
+					"ttl":            600,
+					"redis_prefix":   "bfe:ai:key_affinity",
+					"penalty_enable": true,
+				},
+				"provider": providerName,
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterName)
+
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		aiconf := extractAIConf(t, resp, clusterName)
+		keyPolicy, ok := aiconf["KeyPolicy"].(map[string]interface{})
+		if !assert.True(t, ok, "AIConf.KeyPolicy should be an object") {
+			return
+		}
+		assert.Equal(t, true, keyPolicy["SessionAffinity"])
+		assert.Equal(t, float64(600), keyPolicy["SessionAffinityTTL"])
+		assert.Equal(t, "bfe:ai:key_affinity", keyPolicy["SessionAffinityRedisPrefix"])
+		assert.Equal(t, true, keyPolicy["SessionAffinityPenaltyEnable"])
+	})
+
+	t.Run("IN-TLS-1-009 未配置 key_affinity 时 AIConf.KeyPolicy 为默认值", func(t *testing.T) {
+		clusterName := testutil.UniqueClusterName()
+		_, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterName,
+			"llm_config": map[string]interface{}{
+				"models":   []string{"deepseek-chat"},
+				"provider": "deepseek",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteCluster(clusterName)
+
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		aiconf := extractAIConf(t, resp, clusterName)
+		keyPolicy, ok := aiconf["KeyPolicy"].(map[string]interface{})
+		if !assert.True(t, ok, "AIConf.KeyPolicy should be an object") {
+			return
+		}
+		assert.Equal(t, true, keyPolicy["SessionAffinity"])
+		assert.Equal(t, float64(600), keyPolicy["SessionAffinityTTL"])
+		assert.Equal(t, "bfe:ai:key_affinity", keyPolicy["SessionAffinityRedisPrefix"])
+		assert.Equal(t, true, keyPolicy["SessionAffinityPenaltyEnable"])
 	})
 
 	t.Cleanup(func() {

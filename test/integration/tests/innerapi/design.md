@@ -4,7 +4,11 @@
 
 InnerAPI 模块为 BFE/Conf Agent 提供只读配置导出接口，支持基于 `version` 的增量同步。所有接口均为 GET 请求，返回值包含 `WorkMode` 字段。v0.3.0 对应 OpenAPI 的模块精简不影响 InnerAPI 导出结构（底层表结构未变）。v0.3.0 起，路由规则导出（`/configs/tls_conf/server_data_conf`）中的 `ClusterConf` 会包含模型定价表（`AIConf.ModelTable`），用于 BFE 按 provider 匹配可用模型。
 
+v0.5.0 起，模型定价表支持分时段定价：OpenAPI 在 `/providers` 上维护 `time_zone`/`tiers` 时段模板，在 `/model-prices` 上维护 `tier_prices`；InnerAPI 导出时把 provider 的时段模板与 model-prices 的分时价格拼接到 `AIConf.ModelTable` 中，BFE 按请求时刻匹配 tier 并取对应价格。
+
 v0.0.7 起，Cluster 表导出（`/configs/gslb_data/cluster_table`）中的 `AIConf` 字段不再使用单 `Key`，而是输出 `Keys`（`[]{Name, Key, Weight}`）和 `KeyPolicy`（`{Strategy, MaxRetries, RetryBackoffInitial, RetryBackoffMax}`），以支持多 API-Key 路由。InnerAPI 应验证该导出结构与 OpenAPI 写入的多 Key 配置一致。
+
+v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、`SessionAffinityRedisPrefix`、`SessionAffinityPenaltyEnable` 字段，对应 OpenAPI `llm_config.key_affinity`，用于会话级 Key 亲和性。InnerAPI 应验证这些字段与 OpenAPI 写入的 `key_affinity` 配置一致（含默认值）。
 
 ## 2. 接口列表
 
@@ -24,7 +28,7 @@ v0.0.7 起，Cluster 表导出（`/configs/gslb_data/cluster_table`）中的 `AI
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 导出 TLS/Server 配置 | 3 |
+| 导出 TLS/Server 配置 | 6 |
 | 导出 GSLB 配置 | 2 |
 | 导出集群表配置 | 2 |
 | 导出证书配置 | 1 |
@@ -33,7 +37,7 @@ v0.0.7 起，Cluster 表导出（`/configs/gslb_data/cluster_table`）中的 `AI
 | 导出请求体处理配置 | 1 |
 | 导出限流策略配置 | 1 |
 | 导出 AI 路由配置 | 2 |
-| **合计** | **15** |
+| **合计** | **18** |
 
 ## 4. 认证方式
 
@@ -45,7 +49,8 @@ InnerAPI 鉴权为 `McUserProbe`，测试环境需配置为可跳过或使用 Su
 innerapi/
 ├── design.md
 ├── tls_conf/
-│   └── tls_conf_test.go
+│   ├── tls_conf_test.go
+│   └── tiered_pricing_test.go
 ├── gslb/
 │   └── gslb_test.go
 ├── cluster_table/
@@ -104,6 +109,9 @@ innerapi/
 | IN-1-001 | 首次导出 TLS/Server 配置 | 正常参数 | 返回完整配置与 version |
 | IN-1-002 | 导出 ClusterConf 含多 Key AIConf | 返回数据 | 验证 ClusterConf.AIConf.Keys/KeyPolicy 与 OpenAPI 写入一致 |
 | IN-1-003 | 导出 ClusterConf 含模型定价表 | 返回数据 | 验证 ClusterConf.AIConf.ModelTable 与导入的 model prices 一致 |
+| IN-1-004 | 导出 ClusterConf 含 ModelProtocols（对应 IN-TLS-1-007） | 返回数据 | 验证 ClusterConf.AIConf.ModelProtocols 与 OpenAPI 写入一致 |
+| IN-TIER-1-001 | 导出 ClusterConf 含分时段定价 | 返回数据 | 验证 ModelTable 携带 TimeZone/Tiers 与 ModelPrice 的 TierPrices |
+| IN-TIER-1-002 | 未配置时段规则时导出固定价格 | 返回数据 | 验证 ModelTable.Tiers 为空，仍按默认 Prices 导出 |
 
 ### 6.4 测试场景详细设计
 
@@ -237,6 +245,118 @@ innerapi/
 | Data.ClusterConf.Config.cluster_inner_model_price.AIConf.ModelTable.Models | 长度为 2 | Len=2 |
 | Data.ClusterConf.Config.cluster_inner_model_price.AIConf.ModelTable.Models[*].Provider | 全部为 "openai" | Equals |
 | Data.ClusterConf.Config.cluster_inner_model_price.AIConf.ModelTable.Models[*].Model | 包含 "gpt-4o" 和 "gpt-4o-mini" | Contains |
+
+---
+
+#### 6.4.4 IN-1-004：导出 ClusterConf 含 ModelProtocols（返回数据，对应 IN-TLS-1-007）
+
+##### 设计思路
+
+验证通过 OpenAPI 创建的 Provider（含 `model_protocols=["anthropic"]`）经 InnerAPI `/configs/tls_conf/server_data_conf` 导出后，`ClusterConf.Config.{cluster_name}.AIConf` 中正确输出 `ModelProtocols`。
+
+##### 前提数据准备
+
+1. 通过 POST `/open-api/v1/providers` 创建 Provider，设置 `model_protocols=["anthropic"]`。
+2. 通过 POST `/open-api/v1/clusters` 创建集群 `cluster_inner_model_protocols`，其 `llm_config.provider` 指向上述 Provider。
+
+##### 执行步骤
+
+1. 发送 GET 请求到 `/inner-api/v1/configs/tls_conf/server_data_conf`。
+2. 在返回的 `Data.ClusterConf.Config` 中找到目标集群。
+3. 校验该集群的 `AIConf.ModelProtocols` 与 Provider 写入一致。
+
+##### 请求参数
+
+无
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| Data.ClusterConf.Config.cluster_inner_model_protocols.AIConf.ModelProtocols | 长度为 1 | Len=1 |
+| Data.ClusterConf.Config.cluster_inner_model_protocols.AIConf.ModelProtocols[0] | "anthropic" | Equals |
+
+---
+
+### 6.5 IN-TIER-1-001：导出 ClusterConf 含分时段定价（返回数据）
+
+##### 设计思路
+
+验证 OpenAPI 设置 provider `time_zone`/`tiers`、导入 model-prices `tier_prices` 并创建 cluster 后，InnerAPI 导出的 `ClusterConf.AIConf.ModelTable` 能正确携带 `Currency`、`TimeZone`、`Tiers` 以及 `Models[*].TierPrices`。
+
+##### 前提数据准备
+
+1. 创建 Provider `tier_provider`，并通过 `PUT /providers/{provider_name}/pricing-tiers` 设置：
+   - `time_zone`: `Asia/Shanghai`
+   - `tiers`: `[{name:"peak", time_ranges:[{weekdays:[1,2,3,4,5], start:"09:00", end:"12:00"}, {weekdays:[1,2,3,4,5], start:"14:00", end:"18:00"}]}]`
+2. 通过 `POST /open-api/v1/model-prices/import` 导入含 `tier_prices.peak` 的 model-list.yaml。
+3. 创建 Cluster，其 `llm_config.provider=tier_provider`、`llm_config.models=["deepseek-chat"]`。
+
+##### 执行步骤
+
+1. GET `/inner-api/v1/configs/tls_conf/server_data_conf`。
+2. 在 `Data.ClusterConf.Config` 中找到目标 cluster。
+3. 校验 `AIConf.ModelTable`：
+   - `Currency` = `"RMB"`
+   - `TimeZone` = `"Asia/Shanghai"`
+   - `Tiers` 长度为 1，`Tiers[0].Name` = `"peak"`
+   - `Models` 长度为 1，`Models[0].Model` = `"deepseek-chat"`
+   - `Models[0].Prices.input_cost_per_token` = `0.000002`
+   - `Models[0].TierPrices.peak.input_cost_per_token` = `0.000004`
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| Data.ClusterConf.Config.{cluster}.AIConf.ModelTable.Currency | "RMB" | Equals |
+| Data.ClusterConf.Config.{cluster}.AIConf.ModelTable.TimeZone | "Asia/Shanghai" | Equals |
+| Data.ClusterConf.Config.{cluster}.AIConf.ModelTable.Tiers | 长度为 1 | Len=1 |
+| Data.ClusterConf.Config.{cluster}.AIConf.ModelTable.Tiers[0].Name | "peak" | Equals |
+| Data.ClusterConf.Config.{cluster}.AIConf.ModelTable.Models[0].TierPrices.peak.input_cost_per_token | 0.000004 | Equals |
+
+---
+
+### 6.6 IN-TIER-1-002：未配置时段规则时导出固定价格（返回数据）
+
+##### 设计思路
+
+验证 Provider 未设置 `time_zone`/`tiers`、model-prices 未设置 `tier_prices` 时，导出的 `ModelTable` 仍只包含默认 `Prices`，`Tiers` 与 `TierPrices` 为空，保证向后兼容。
+
+##### 前提数据准备
+
+1. 创建 Provider，不设置 `time_zone`/`tiers`。
+2. 导入只含 `prices` 的 model-list.yaml。
+3. 创建引用该 Provider 的 Cluster。
+
+##### 执行步骤
+
+1. GET `/inner-api/v1/configs/tls_conf/server_data_conf`。
+2. 找到目标 cluster 的 `AIConf.ModelTable`。
+3. 校验 `Currency` = `"RMB"`，`Tiers` 为空，`Models[0].Prices` 存在，`Models[0].TierPrices` 为空。
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| Data.ClusterConf.Config.{cluster}.AIConf.ModelTable.Currency | "RMB" | Equals |
+| Data.ClusterConf.Config.{cluster}.AIConf.ModelTable.Tiers | 空数组 | Len=0 / Empty |
+| Data.ClusterConf.Config.{cluster}.AIConf.ModelTable.Models[0].Prices.input_cost_per_token | 与导入一致 | Equals |
+| Data.ClusterConf.Config.{cluster}.AIConf.ModelTable.Models[0].TierPrices | 空对象 | Empty |
 
 ---
 
@@ -983,7 +1103,7 @@ version=XXX
 
 ## 15. 依赖与数据准备
 
-1. 需要预先通过 OpenAPI 创建 API-Key、Entity、Cluster、证书、Global Route 等数据，才能验证导出内容非空；验证模型定价表时需先导入 model prices 并创建对应 provider 的 Cluster。
+1. 需要预先通过 OpenAPI 创建 API-Key、Entity、Cluster、证书、Global Route 等数据，才能验证导出内容非空；验证模型定价表时需先导入 model prices 并创建对应 provider 的 Cluster；验证分时段定价时需先设置 provider 的 `time_zone`/`tiers` 并导入含 `tier_prices` 的 model prices。
 2. `/configs/gslb_data/gslb` 依赖正确的 `bfe_cluster` 参数，通常为 `BFE-AI_product.szyf`。
 3. InnerAPI 鉴权为 `McUserProbe`，测试环境需配置为可跳过或使用 Support Token。
 

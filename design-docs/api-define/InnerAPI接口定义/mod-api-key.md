@@ -91,9 +91,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
             "AI_product-abcdef123456": {
                 "key": "AI_product-abcdef123456",
                 "key_id": "ak-test-key-001",
-                "enabled": 1,
-                "status": 1,
-                "update_time": 1716883200,
+                "enabled": true,
                 "expired_time": -1,
                 "unlimited_quota": false,
                 "allow_models": "gpt-4,gpt-3.5-turbo",
@@ -101,7 +99,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
                 "subnet": "192.168.0.0/16,10.0.0.0/8",
                 "quota_plans": ["ak-test-key-001", "dept-engineering"],
                 "Tags": [
-                    {"TagName": "department", "TagValue": "dept-engineering"}
+                    {"TagName": "department", "TagValue": "dept-engineering", "TagLevel": 3}
                 ]
             }
         }
@@ -115,16 +113,14 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
 |------|------|------|----------|
 | key | string | API-Key 值 | 系统生成的 Key 字符串 |
 | key_id | string | API-Key 标识 ID | 用于唯一标识该 API-Key，对应 API-Key 的唯一标识 |
-| enabled | int | 是否启用 | `1`: 启用, `2`: 禁用 |
-| status | int | Key 状态 | `1`: 启用, `2`: 禁用, `3`: 已过期, `4`: 配额耗尽 |
-| update_time | int64 | 创建时间 | Unix 时间戳（秒） |
+| enabled | bool | 是否启用 | `true`: 启用，`false`: 禁用 |
 | expired_time | int64 | 过期时间 | `-1`: 永不过期；其他为 Unix 时间戳（秒） |
 | unlimited_quota | bool | 是否无限配额 | `true`: 不检查配额；`false`: 检查配额 |
 | allow_models | string | 允许访问的模型 | 逗号分隔，空或 `""` 表示不限制 |
 | block_models | string | 禁止访问的模型 | 逗号分隔，空或 `""` 表示无不允许模型 |
 | subnet | string | 允许的客户端子网 | 逗号分隔的 CIDR 列表，空或 `""` 表示不限制 |
 | quota_plans | []string | 关联的配额计划 ID 列表 | 引用顶层 `QuotaPlans` 中的定义，包含 API-Key 自身和 Entity 层级的所有配额计划 |
-| Tags | []ApikeyTag | Entity 层级标签列表 | 包含 `TagName` 和 `TagValue` 字段 |
+| Tags | []ApikeyTag | Entity 层级标签列表 | 包含 `TagName`、`TagValue` 和 `TagLevel` 字段 |
 
 **ApikeyTag 结构（Entity 层级标签，按字段名导出）**
 
@@ -132,6 +128,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
 |------|------|------|------|
 | TagName | string | Entity 类型 | `department`, `team`, `project` |
 | TagValue | string | Entity 名称 | `dept-engineering`, `team-core` |
+| TagLevel | int | 标签级别，取值为 1~5 的整数 | `3` |
 
 ### 3.4 QuotaPlans 结构（配额计划定义）
 
@@ -146,10 +143,8 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
                 "Unlimited": false,
                 "PassNoQuota": false,
                 "RedisKey": "QUOTA_ak-test-key-001",
-                "CreateTime": 1716883200,
                 "ExpiredTime": -1,
                 "Quota": 100000000,
-                "ResetMode": 1,
                 "Unit": "RMB"
             }
         ]
@@ -165,26 +160,11 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
 | Unlimited | bool | 是否无限配额 | `true`/`false` |
 | PassNoQuota | bool | 配额不足时是否放行 | `true`: 放行；`false`: 拒绝 |
 | RedisKey | string | Redis 中存储配额余额的 Key | 格式 `QUOTA_{id}` |
-| CreateTime | int64 | 创建时间 | Unix 时间戳（秒） |
 | ExpiredTime | int64 | 过期时间 | `-1`: 永不过期 |
 | Quota | int64 | 配额总量 | 初始配额值；`Unit=RMB` 时为定点整数，精度 `1e-8` 元 |
-| ResetMode | int | 重置模式 | `0`: 非周期性；`1`: 周期性（weekly/monthly） |
 | Unit | string | 配额单位，`RMB` 同时隐含货币类型 | `total_token` / `RMB` |
 
-## 4. 状态码说明
-
-| 状态码 | 含义 | 说明 |
-|--------|------|------|
-| 1 | 启用 | API-Key 正常可用 |
-| 2 | 禁用 | API-Key 已被禁用 |
-| 3 | 已过期 | API-Key 已过期 |
-| 4 | 配额耗尽 | API-Key 配额已用完 |
-
-同时，`enabled` 字段独立表示是否启用：
-- `1` = 启用
-- `2` = 禁用
-
-## 5. 成功返回示例
+## 4. 成功返回示例
 
 ```json
 {
@@ -215,20 +195,16 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
                     "Unlimited": false,
                     "PassNoQuota": false,
                     "RedisKey": "QUOTA_ak-test-key-001",
-                    "CreateTime": 1716883200,
                     "ExpiredTime": -1,
-                    "Quota": 100000000,
-                    "ResetMode": 1
+                    "Quota": 100000000
                 },
                 {
                     "Id": "dept-engineering",
                     "Unlimited": false,
                     "PassNoQuota": false,
                     "RedisKey": "QUOTA_dept-engineering",
-                    "CreateTime": 1716000000,
                     "ExpiredTime": -1,
-                    "Quota": 500000000,
-                    "ResetMode": 0
+                    "Quota": 500000000
                 }
             ]
         },
@@ -237,9 +213,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
                 "AI_product-abcdef123456": {
                     "key": "AI_product-abcdef123456",
                     "key_id": "ak-test-key-001",
-                    "enabled": 1,
-                    "status": 1,
-                    "update_time": 1716883200,
+                    "enabled": true,
                     "expired_time": -1,
                     "unlimited_quota": false,
                     "allow_models": "gpt-4,gpt-3.5-turbo",
@@ -247,15 +221,13 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
                     "subnet": "192.168.0.0/16,10.0.0.0/8",
                     "quota_plans": ["ak-test-key-001", "dept-engineering"],
                     "Tags": [
-                        {"TagName": "department", "TagValue": "dept-engineering"}
+                        {"TagName": "department", "TagValue": "dept-engineering", "TagLevel": 3}
                     ]
                 },
                 "AI_product-ghijkl789012": {
                     "key": "AI_product-ghijkl789012",
                     "key_id": "ak-prod-key-002",
-                    "enabled": 1,
-                    "status": 1,
-                    "update_time": 1716883200,
+                    "enabled": true,
                     "expired_time": -1,
                     "unlimited_quota": true,
                     "allow_models": "",
@@ -271,7 +243,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/mod-api-key?version=000
 }
 ```
 
-## 6. 配置未变化返回示例
+## 5. 配置未变化返回示例
 
 ```json
 {

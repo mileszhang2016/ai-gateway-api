@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	golibquota "github.com/bfenetworks/go-lib/quota"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
@@ -27,19 +26,15 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
-	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 )
 
 // ConfigTopicProductAPIKeyRule is the configuration topic for API key rules
 const ConfigTopicProductAPIKeyRule = "mod_api_key_rule"
 
-const (
-	TokenStatusEnabled   = 1
-	TokenStatusDisabled  = 2
-	TokenStatusExpired   = 3
-	TokenStatusExhausted = 4
-)
+// maxEntityHierarchyDepth limits the number of ancestor levels walked when
+// resolving Entity hierarchy, protecting against accidental parent_id cycles.
+const maxEntityHierarchyDepth = 10
 
 // ModAPIKeyRuleConf defines the configuration structure for API key rules module
 type ModAPIKeyRuleConf struct {
@@ -57,6 +52,7 @@ type TokenRuleFile struct {
 type ApikeyTag struct {
 	TagName  string //eg entity.type
 	TagValue string //eg entity.name
+	TagLevel int
 }
 
 type ActionFile struct {
@@ -68,19 +64,15 @@ type QuotaPlan struct {
 	Unlimited   bool
 	PassNoQuota bool
 	RedisKey    string
-	CreateTime  int64
 	ExpiredTime int64 // -1 means never expired
 	Quota       int64 // 配额总量
-	ResetMode   int   // 0 – 非周期性；1 – 周期性的配额包
 	Unit        string
 }
 
 type TokenFile struct {
 	Key            string  `json:"key"`
 	KeyID          string  `json:"key_id"`
-	Enabled        int     `json:"enabled"`
-	Status         int     `json:"status"`
-	UpdateTime     int64   `json:"update_time"`
+	Enabled        bool    `json:"enabled"`
 	ExpiredTime    int64   `json:"expired_time"` // -1 means never expired
 	UnlimitedQuota bool    `json:"unlimited_quota"`
 	Models         *string `json:"allow_models"` // allowed models
@@ -178,6 +170,69 @@ func (rlm *APIKeyRuleManager) buildAIRouteAPIKeyRules(ctx context.Context) (map[
 	return product2config, nil
 }
 
+// buildEntityMap loads all entities into a map indexed by EntityID.
+func (rlm *APIKeyRuleManager) buildEntityMap(ctx context.Context) (map[string]*entpkg.EntityParam, error) {
+	if rlm.entityStorager == nil {
+		return nil, nil
+	}
+
+	allEntities, err := rlm.entityStorager.FetchEntityList(ctx, &entpkg.EntityFilter{})
+	if err != nil {
+		return nil, err
+	}
+
+	entityMap := make(map[string]*entpkg.EntityParam, len(allEntities))
+	for _, e := range allEntities {
+		if e.EntityID != nil {
+			entityMap[*e.EntityID] = e
+		}
+	}
+
+	return entityMap, nil
+}
+
+// buildQuotaPlanMap loads all quota plans into a map indexed by ID.
+func (rlm *APIKeyRuleManager) buildQuotaPlanMap(ctx context.Context) (map[int64]*quota.QuotaPlanParam, error) {
+	if rlm.quotaPlanStorager == nil {
+		return nil, nil
+	}
+
+	allPlans, err := rlm.quotaPlanStorager.FetchQuotaPlanList(ctx, &quota.QuotaPlanFilter{})
+	if err != nil {
+		return nil, err
+	}
+
+	planMap := make(map[int64]*quota.QuotaPlanParam, len(allPlans))
+	for _, qp := range allPlans {
+		if qp.ID != nil {
+			planMap[*qp.ID] = qp
+		}
+	}
+
+	return planMap, nil
+}
+
+// buildEntityTypeMap loads all entity types into a map indexed by type name.
+func (rlm *APIKeyRuleManager) buildEntityTypeMap(ctx context.Context) (map[string]*entpkg.EntityTypeParam, error) {
+	if rlm.entityTypeStorager == nil {
+		return nil, nil
+	}
+
+	allTypes, err := rlm.entityTypeStorager.FetchEntityTypeList(ctx, &entpkg.EntityTypeFilter{})
+	if err != nil {
+		return nil, err
+	}
+
+	typeMap := make(map[string]*entpkg.EntityTypeParam, len(allTypes))
+	for _, et := range allTypes {
+		if et.TypeName != nil {
+			typeMap[*et.TypeName] = et
+		}
+	}
+
+	return typeMap, nil
+}
+
 // APIKeyRuleGenerator generates API key rules and token information for BFE configuration
 func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversion_control.ExportData, error) {
 	collectedQuotaPlans := make(map[string][]*QuotaPlan)
@@ -199,25 +254,19 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 		return nil, err
 	}
 
-	// Populate QuotaPlan for status calculation. The raw storager does not load
-	// associated objects, but GetRemainingQuota needs QuotaPlan.Quota to decide
-	// whether the token is exhausted.
-	for _, one := range apiKeyList {
-		if one.QuotaPlanID != nil && rlm.quotaPlanStorager != nil {
-			quotaPlan, err := rlm.quotaPlanStorager.FetchQuotaPlan(ctx, &quota.QuotaPlanFilter{ID: one.QuotaPlanID})
-			if err != nil {
-				return nil, err
-			}
-			if quotaPlan != nil {
-				one.QuotaPlan = &shared.QuotaPlanParam{
-					Unlimited:             quotaPlan.Unlimited,
-					PassWhenNoEnoughQuota: quotaPlan.PassWhenNoEnoughQuota,
-					Quota:                 quotaPlan.Quota,
-					Unit:                  quotaPlan.Unit,
-					ResetPeriod:           quotaPlan.ResetPeriod,
-				}
-			}
-		}
+	entityMap, err := rlm.buildEntityMap(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	quotaPlanMap, err := rlm.buildQuotaPlanMap(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	entityTypeMap, err := rlm.buildEntityTypeMap(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	apiKey2Config := make(map[string]map[string]*TokenFile)
@@ -232,50 +281,23 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 			expiredTime = *one.ExpiredTime
 		}
 
-		status := TokenStatusDisabled
-		var remainQuota float64
-		if one.Enable != nil && *one.Enable {
-			isUnlimited := one.UnlimitedQuota != nil && *one.UnlimitedQuota
-			if !isUnlimited {
-				status = TokenStatusEnabled
-				remainingQuota, err := api_key.GetRemainingQuota(ctx, rlm.quotaCache, one)
-				if err != nil {
-					return nil, err
-				}
-
-				if remainingQuota != nil {
-					remainQuota = *remainingQuota
-					if expiredTime != int64(UnlimitedQuota) && time.Now().Local().Unix() >= expiredTime {
-						status = TokenStatusExpired
-					} else if remainQuota <= 0 {
-						status = TokenStatusExhausted
-					}
-				}
-			} else {
-				status = TokenStatusEnabled
-			}
-		}
+		enabled := one.Enable != nil && *one.Enable
 
 		items := apiKey2Config[*one.ProductName]
 
 		tokenFile := &TokenFile{
 			Key:            *one.Key,
 			KeyID:          *one.ID,
-			Enabled:        2,
-			Status:         status,
+			Enabled:        enabled,
 			ExpiredTime:    expiredTime,
-			UpdateTime:     one.KeyCreateAt.Unix(),
 			UnlimitedQuota: one.UnlimitedQuota != nil && *one.UnlimitedQuota,
-		}
-		if one.Enable != nil && *one.Enable {
-			tokenFile.Enabled = 1
 		}
 
 		// Collect allow_models and block_models from entity hierarchy
 		var entityAllowModels []string
 		var entityBlockModels []string
 		if one.EntityID != nil && *one.EntityID != "" && rlm.entityStorager != nil {
-			entityAllowModels, entityBlockModels, err = rlm.fetchEntityModelHierarchy(ctx, *one.EntityID)
+			entityAllowModels, entityBlockModels, err = rlm.fetchEntityModelHierarchy(ctx, entityMap, *one.EntityID)
 			if err != nil {
 				return nil, fmt.Errorf("fetch entity model hierarchy error: %s", err.Error())
 			}
@@ -310,12 +332,14 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 				// Rule 3: intersection empty → disable the token, models empty
 				modelsStr := ""
 				tokenFile.Models = &modelsStr
-				tokenFile.Enabled = 2
+				enabled = false
 			} else {
 				modelsStr := strings.Join(finalAllowModels, ",")
 				tokenFile.Models = &modelsStr
 			}
 		}
+
+		tokenFile.Enabled = enabled
 
 		// Merge block_models from entity hierarchy (union of all)
 		if len(entityBlockModels) > 0 {
@@ -334,7 +358,7 @@ func (rlm *APIKeyRuleManager) APIKeyRuleGenerator(ctx context.Context) (*iversio
 			tokenFile.Subnet = &subnetStr
 		}
 
-		quotaPlanIDs, tags, err := rlm.fetchQuotaPlansWithEntityHierarchy(ctx, one, *one.ProductName, collectedQuotaPlans)
+		quotaPlanIDs, tags, err := rlm.fetchQuotaPlansWithEntityHierarchy(ctx, one, *one.ProductName, collectedQuotaPlans, entityMap, quotaPlanMap, entityTypeMap)
 		if err != nil {
 			return nil, fmt.Errorf("fetch quota plans error: %s", err.Error())
 		}
@@ -384,16 +408,12 @@ func convertAPIKeyRulesToBfeRules(oldRules []*APIKeyRule) []*TokenRuleFile {
 	return exportRules
 }
 
-func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Context, apiKey *api_key.APIKeyParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
+func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Context, apiKey *api_key.APIKeyParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan, entityMap map[string]*entpkg.EntityParam, quotaPlanMap map[int64]*quota.QuotaPlanParam, entityTypeMap map[string]*entpkg.EntityTypeParam) ([]string, []ApikeyTag, error) {
 	quotaPlanIDs := make([]string, 0)
 	tags := make([]ApikeyTag, 0)
 
 	if apiKey.QuotaPlanID != nil && rlm.quotaPlanStorager != nil {
-		quotaPlan, err := rlm.quotaPlanStorager.FetchQuotaPlan(ctx, &quota.QuotaPlanFilter{ID: apiKey.QuotaPlanID})
-		if err != nil {
-			return nil, nil, err
-		}
-		if quotaPlan != nil {
+		if quotaPlan, ok := quotaPlanMap[*apiKey.QuotaPlanID]; ok && quotaPlan != nil && apiKey.Key != nil {
 			// Skip API-Key own unlimited quota plans: they do not need to be
 			// referenced in the token's quota_plans list.
 			if quotaPlan.Unlimited == nil || !*quotaPlan.Unlimited {
@@ -410,111 +430,101 @@ func (rlm *APIKeyRuleManager) fetchQuotaPlansWithEntityHierarchy(ctx context.Con
 	}
 
 	if apiKey.EntityID != nil && *apiKey.EntityID != "" && rlm.entityStorager != nil {
-		entity, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: apiKey.EntityID})
+		entityQuotaPlanIDs, entityTags, err := rlm.fetchEntityQuotaPlanHierarchy(ctx, entityMap, quotaPlanMap, entityTypeMap, *apiKey.EntityID, productName, collectedQuotaPlans)
 		if err != nil {
 			return nil, nil, err
 		}
-		if entity != nil {
-			entityQuotaPlanIDs, entityTags, err := rlm.fetchEntityQuotaPlanHierarchy(ctx, entity, productName, collectedQuotaPlans)
-			if err != nil {
-				return nil, nil, err
-			}
-			quotaPlanIDs = append(quotaPlanIDs, entityQuotaPlanIDs...)
-			tags = append(tags, entityTags...)
-		}
+		quotaPlanIDs = append(quotaPlanIDs, entityQuotaPlanIDs...)
+		tags = append(tags, entityTags...)
 	}
 
 	return quotaPlanIDs, tags, nil
 }
 
-func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context, entity *entpkg.EntityParam, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
+func (rlm *APIKeyRuleManager) fetchEntityQuotaPlanHierarchy(ctx context.Context, entityMap map[string]*entpkg.EntityParam, quotaPlanMap map[int64]*quota.QuotaPlanParam, entityTypeMap map[string]*entpkg.EntityTypeParam, entityID string, productName string, collectedQuotaPlans map[string][]*QuotaPlan) ([]string, []ApikeyTag, error) {
 	quotaPlanIDs := make([]string, 0)
 	tags := make([]ApikeyTag, 0)
 
-	if entity.EntityID != nil && entity.Type != nil && entity.Name != nil {
-		tags = append(tags, ApikeyTag{
-			TagName:  *entity.Type,
-			TagValue: *entity.Name,
-		})
-	}
-
-	if entity.QuotaPlanID != nil && rlm.quotaPlanStorager != nil {
-		quotaPlan, err := rlm.quotaPlanStorager.FetchQuotaPlan(ctx, &quota.QuotaPlanFilter{ID: entity.QuotaPlanID})
-		if err != nil {
-			return nil, nil, err
+	for depth := 0; depth < maxEntityHierarchyDepth; depth++ {
+		entity, ok := entityMap[entityID]
+		if !ok || entity == nil {
+			break
 		}
-		if quotaPlan != nil && entity.EntityID != nil {
-			// Skip unlimited entity quota plans: they do not enforce any quota
-			// and should not be referenced by the token.
-			if quotaPlan.Unlimited == nil || !*quotaPlan.Unlimited {
-				qp := convertQuotaPlanToExport(quotaPlan, *entity.EntityID, *entity.EntityID)
-				if !containsQuotaPlan(collectedQuotaPlans, productName, qp.Id) {
-					if _, ok := collectedQuotaPlans[productName]; !ok {
-						collectedQuotaPlans[productName] = make([]*QuotaPlan, 0)
-					}
-					collectedQuotaPlans[productName] = append(collectedQuotaPlans[productName], qp)
+
+		if entity.EntityID != nil && entity.Type != nil && entity.Name != nil {
+			tag := ApikeyTag{
+				TagName:  *entity.Type,
+				TagValue: *entity.Name,
+			}
+
+			// Query entity type level for TagLevel.
+			// By business constraint, every entity type must exist and have a valid level.
+			if rlm.entityTypeStorager != nil {
+				entityType, ok := entityTypeMap[*entity.Type]
+				if !ok || entityType == nil || entityType.Level == nil {
+					return nil, nil, fmt.Errorf("entity type %s not found or level invalid", *entity.Type)
 				}
-				quotaPlanIDs = append(quotaPlanIDs, qp.Id)
+				tag.TagLevel = *entityType.Level
 			}
-		}
-	}
 
-	if entity.ParentID != nil && *entity.ParentID != "" && rlm.entityStorager != nil {
-		parentEntity, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: entity.ParentID})
-		if err != nil {
-			return nil, nil, err
+			tags = append(tags, tag)
 		}
-		if parentEntity != nil {
-			parentQuotaPlanIDs, parentTags, err := rlm.fetchEntityQuotaPlanHierarchy(ctx, parentEntity, productName, collectedQuotaPlans)
-			if err != nil {
-				return nil, nil, err
+
+		if entity.QuotaPlanID != nil && rlm.quotaPlanStorager != nil {
+			if quotaPlan, ok := quotaPlanMap[*entity.QuotaPlanID]; ok && quotaPlan != nil && entity.EntityID != nil {
+				// Skip unlimited entity quota plans: they do not enforce any quota
+				// and should not be referenced by the token.
+				if quotaPlan.Unlimited == nil || !*quotaPlan.Unlimited {
+					qp := convertQuotaPlanToExport(quotaPlan, *entity.EntityID, *entity.EntityID)
+					if !containsQuotaPlan(collectedQuotaPlans, productName, qp.Id) {
+						if _, ok := collectedQuotaPlans[productName]; !ok {
+							collectedQuotaPlans[productName] = make([]*QuotaPlan, 0)
+						}
+						collectedQuotaPlans[productName] = append(collectedQuotaPlans[productName], qp)
+					}
+					quotaPlanIDs = append(quotaPlanIDs, qp.Id)
+				}
 			}
-			quotaPlanIDs = append(quotaPlanIDs, parentQuotaPlanIDs...)
-			tags = append(tags, parentTags...)
 		}
+
+		if entity.ParentID == nil || *entity.ParentID == "" {
+			break
+		}
+		entityID = *entity.ParentID
 	}
 
 	return quotaPlanIDs, tags, nil
 }
 
-// fetchEntityModelHierarchy recursively collects AllowModels and BlockModels from the entity hierarchy
+// fetchEntityModelHierarchy collects AllowModels and BlockModels from the entity hierarchy
+// by walking parent_id pointers in the provided entityMap.
 // Returns:
 //   - intersectedAllowModels: intersection of all AllowModels from entities in the hierarchy (nil if any entity has empty AllowModels)
 //   - unionBlockModels: union of all BlockModels from entities in the hierarchy
-func (rlm *APIKeyRuleManager) fetchEntityModelHierarchy(ctx context.Context, entityID string) ([]string, []string, error) {
-	entity, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: &entityID})
-	if err != nil {
-		return nil, nil, err
-	}
-	if entity == nil {
-		return nil, nil, nil
-	}
-
+func (rlm *APIKeyRuleManager) fetchEntityModelHierarchy(ctx context.Context, entityMap map[string]*entpkg.EntityParam, entityID string) ([]string, []string, error) {
 	var allAllowModels [][]string
 	var allBlockModels []string
 
-	rlm.collectEntityModels(ctx, entity, &allAllowModels, &allBlockModels)
+	for depth := 0; depth < maxEntityHierarchyDepth; depth++ {
+		entity, ok := entityMap[entityID]
+		if !ok || entity == nil {
+			break
+		}
+
+		if len(entity.AllowModels) > 0 && !containsStar(entity.AllowModels) {
+			allAllowModels = append(allAllowModels, entity.AllowModels)
+		}
+		if len(entity.BlockModels) > 0 && !containsStar(entity.BlockModels) {
+			allBlockModels = append(allBlockModels, entity.BlockModels...)
+		}
+
+		if entity.ParentID == nil || *entity.ParentID == "" {
+			break
+		}
+		entityID = *entity.ParentID
+	}
 
 	return intersectAllowModels(allAllowModels), allBlockModels, nil
-}
-
-// collectEntityModels recursively walks the entity hierarchy to collect AllowModels and BlockModels
-// If an entity's AllowModels or BlockModels contains "*", it is skipped (meaning allow/block all)
-func (rlm *APIKeyRuleManager) collectEntityModels(ctx context.Context, entity *entpkg.EntityParam, allAllowModels *[][]string, allBlockModels *[]string) {
-	if len(entity.AllowModels) > 0 && !containsStar(entity.AllowModels) {
-		*allAllowModels = append(*allAllowModels, entity.AllowModels)
-	}
-	if len(entity.BlockModels) > 0 && !containsStar(entity.BlockModels) {
-		*allBlockModels = append(*allBlockModels, entity.BlockModels...)
-	}
-
-	if entity.ParentID != nil && *entity.ParentID != "" && rlm.entityStorager != nil {
-		parent, err := rlm.entityStorager.FetchEntity(ctx, &entpkg.EntityFilter{EntityID: entity.ParentID})
-		if err != nil || parent == nil {
-			return
-		}
-		rlm.collectEntityModels(ctx, parent, allAllowModels, allBlockModels)
-	}
 }
 
 // containsStar checks if the string slice contains "*"
@@ -586,18 +596,6 @@ func convertQuotaPlanToExport(qp *quota.QuotaPlanParam, id string, redisKeyID st
 	}
 	if qp.Unit != nil {
 		result.Unit = *qp.Unit
-	}
-	if qp.ResetPeriod != nil {
-		if *qp.ResetPeriod == "weekly" || *qp.ResetPeriod == "monthly" {
-			result.ResetMode = 1
-		} else {
-			result.ResetMode = 0
-		}
-	} else {
-		result.ResetMode = 0
-	}
-	if qp.CreateTime != nil {
-		result.CreateTime = *qp.CreateTime
 	}
 
 	return result

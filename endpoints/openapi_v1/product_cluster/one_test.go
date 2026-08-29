@@ -19,12 +19,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestClusterModel2ControlInstancePoolFields(t *testing.T) {
+func TestClusterModel2Control(t *testing.T) {
 	cluster := &icluster_conf.Cluster{
 		Name:        "my-cluster",
 		Description: "test cluster",
@@ -63,71 +63,20 @@ func TestClusterModel2ControlInstancePoolFields(t *testing.T) {
 			Uri:        "/",
 		},
 		LLMConfig: &icluster_conf.LLMConfig{
-			Models: []string{"gpt-4"},
-		},
-		SubClusters: []*icluster_conf.SubCluster{
-			{
-				InstancePool: &icluster_conf.Pool{
-					Instances: []icluster_conf.Instance{
-						{
-							Name:    "backend-1",
-							Addr:    "10.0.0.1",
-							Port:    8080,
-							Weight:  50,
-							Disable: false,
-						},
-						{
-							Name:    "backend-2",
-							Addr:    "10.0.0.2",
-							Port:    8080,
-							Weight:  50,
-							Disable: true,
-						},
-					},
-				},
-			},
+			Provider: lib.PString("openai"),
+			Models:   []string{"gpt-4"},
 		},
 	}
 
 	rsp := clusterModel2Control(cluster)
-	assert.Len(t, rsp.InstancePool, 2)
+	assert.Equal(t, "my-cluster", rsp.Name)
+	assert.Equal(t, "openai", *rsp.LLMConfig.Provider)
 
-	first := rsp.InstancePool[0]
-	assert.Equal(t, "backend-1", first.Name)
-	assert.Equal(t, "10.0.0.1", first.Addr)
-	assert.Equal(t, 8080, first.Port)
-	assert.Equal(t, int64(50), first.Weight)
-
-	second := rsp.InstancePool[1]
-	assert.Equal(t, "backend-2", second.Name)
-	assert.Equal(t, "10.0.0.2", second.Addr)
-	assert.Equal(t, 8080, second.Port)
-	assert.Equal(t, int64(50), second.Weight)
-
-	// Serialize the response and verify it matches the public API doc:
-	// only name/addr/port/weight should appear; disable must not leak out.
 	data, err := json.Marshal(rsp)
 	assert.NoError(t, err)
 
-	var raw map[string]interface{}
-	assert.NoError(t, json.Unmarshal(data, &raw))
-
-	pool, ok := raw["instance_pool"].([]interface{})
-	assert.True(t, ok)
-	assert.Len(t, pool, 2)
-
-	for i, item := range pool {
-		inst := item.(map[string]interface{})
-		assert.Contains(t, inst, "name", "instance %d", i)
-		assert.Contains(t, inst, "addr", "instance %d", i)
-		assert.Contains(t, inst, "port", "instance %d", i)
-		assert.Contains(t, inst, "weight", "instance %d", i)
-		assert.NotContains(t, inst, "disable", "instance %d", i)
-		assert.NotContains(t, inst, "Disable", "instance %d", i)
-	}
-
-	// Also ensure no old-issue-37 fields are present.
 	body := string(data)
+	assert.False(t, strings.Contains(body, `"instance_pool"`))
 	assert.False(t, strings.Contains(body, `"hostname"`))
 	assert.False(t, strings.Contains(body, `"ip"`))
 	assert.False(t, strings.Contains(body, `"ports"`))

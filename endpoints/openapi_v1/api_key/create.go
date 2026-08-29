@@ -83,9 +83,9 @@ func APIKeyCreateProcess(ctx context.Context, param *api_key.APIKeyParam, produc
 		param.Enable = &enabled
 	}
 
-	apiKeyID, err := generateAPIKeyID(ctx, product.Name)
+	apiKeyID, err := container.APIKeyIDGenerator.Generate(ctx, product.Name)
 	if err != nil {
-		return nil, err
+		return nil, xerror.WrapModelError(err)
 	}
 
 	if param.QuotaPlan == nil {
@@ -137,31 +137,6 @@ func APIKeyCreateProcess(ctx context.Context, param *api_key.APIKeyParam, produc
 		ID:          &apiKeyID,
 		ProductName: &product.Name,
 	})
-}
-
-// generateAPIKeyID generates a unique API-Key ID with format "api-key-{sequence}"
-func generateAPIKeyID(ctx context.Context, productName string) (string, error) {
-	// Get all API keys to find the max sequence number
-	list, err := container.APIKeyManager.FetchAPIKeyList(ctx, &api_key.APIKeyFilter{
-		ProductName: &productName,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	maxSeq := 0
-	for _, apiKey := range list {
-		if apiKey.ID != nil {
-			var seq int
-			if _, err := fmt.Sscanf(*apiKey.ID, "api-key-%d", &seq); err == nil {
-				if seq > maxSeq {
-					maxSeq = seq
-				}
-			}
-		}
-	}
-
-	return fmt.Sprintf("api-key-%d", maxSeq+1), nil
 }
 
 // generateAPIKeyValue generates a random API-Key value with format "{productName}-{randomChars}"

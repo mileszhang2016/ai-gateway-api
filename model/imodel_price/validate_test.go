@@ -26,7 +26,7 @@ func validModelPrice() *ModelPrice {
 		Model:     "gpt-4",
 		BaseModel: "gpt-4",
 		Mode:      "chat",
-		Prices: map[string]float64{
+		Prices: PriceMap{
 			"input_cost_per_token":  0.001,
 			"output_cost_per_token": 0.002,
 		},
@@ -48,8 +48,8 @@ func TestValidateModelPrice(t *testing.T) {
 		{"missing mode", func() *ModelPrice { p := validModelPrice(); p.Mode = ""; return p }(), true},
 		{"invalid mode", func() *ModelPrice { p := validModelPrice(); p.Mode = "unknown"; return p }(), true},
 		{"missing prices", func() *ModelPrice { p := validModelPrice(); p.Prices = nil; return p }(), true},
-		{"empty prices", func() *ModelPrice { p := validModelPrice(); p.Prices = map[string]float64{}; return p }(), true},
-		{"invalid price key", func() *ModelPrice { p := validModelPrice(); p.Prices = map[string]float64{"invalid_key": 1}; return p }(), true},
+		{"empty prices", func() *ModelPrice { p := validModelPrice(); p.Prices = PriceMap{}; return p }(), true},
+		{"invalid price key", func() *ModelPrice { p := validModelPrice(); p.Prices = PriceMap{"invalid_key": 1}; return p }(), true},
 		{"negative price", func() *ModelPrice { p := validModelPrice(); p.Prices["input_cost_per_token"] = -1; return p }(), true},
 		{"invalid currency", func() *ModelPrice { p := validModelPrice(); p.PriceCurrency = "USD"; return p }(), true},
 		{"valid empty currency", func() *ModelPrice { p := validModelPrice(); p.PriceCurrency = ""; return p }(), false},
@@ -64,6 +64,41 @@ func TestValidateModelPrice(t *testing.T) {
 		{"valid positive limit", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": 128000}; return p }(), false},
 		{"valid positive limit float64", func() *ModelPrice { p := validModelPrice(); p.Limits = map[string]interface{}{"context_window": float64(128000)}; return p }(), false},
 		{"invalid metadata key", func() *ModelPrice { p := validModelPrice(); p.Metadata = map[string]interface{}{"unknown": 1}; return p }(), true},
+		{"valid tier prices", func() *ModelPrice {
+			p := validModelPrice()
+			p.TierPrices = TierPriceMap{
+				"peak": {"input_cost_per_token": 0.002},
+			}
+			return p
+		}(), false},
+		{"invalid tier name", func() *ModelPrice {
+			p := validModelPrice()
+			p.TierPrices = TierPriceMap{
+				"off_peak": {"input_cost_per_token": 0.002},
+			}
+			return p
+		}(), true},
+		{"invalid tier price key", func() *ModelPrice {
+			p := validModelPrice()
+			p.TierPrices = TierPriceMap{
+				"peak": {"invalid_key": 0.002},
+			}
+			return p
+		}(), true},
+		{"negative tier price", func() *ModelPrice {
+			p := validModelPrice()
+			p.TierPrices = TierPriceMap{
+				"peak": {"input_cost_per_token": -0.002},
+			}
+			return p
+		}(), true},
+		{"empty tier prices", func() *ModelPrice {
+			p := validModelPrice()
+			p.TierPrices = TierPriceMap{
+				"peak": {},
+			}
+			return p
+		}(), true},
 	}
 
 	for _, tc := range cases {
@@ -139,9 +174,9 @@ func TestNormalizeCurrency(t *testing.T) {
 }
 
 func TestGroupByProvider(t *testing.T) {
-	a := &ModelPrice{Provider: "p1", Model: "m1", BaseModel: "m1", Mode: "chat", Prices: map[string]float64{"input_cost_per_token": 1}}
-	b := &ModelPrice{Provider: "p2", Model: "m2", BaseModel: "m2", Mode: "chat", Prices: map[string]float64{"input_cost_per_token": 1}}
-	c := &ModelPrice{Provider: "p1", Model: "m3", BaseModel: "m3", Mode: "chat", Prices: map[string]float64{"input_cost_per_token": 1}}
+	a := &ModelPrice{Provider: "p1", Model: "m1", BaseModel: "m1", Mode: "chat", Prices: PriceMap{"input_cost_per_token": 1}}
+	b := &ModelPrice{Provider: "p2", Model: "m2", BaseModel: "m2", Mode: "chat", Prices: PriceMap{"input_cost_per_token": 1}}
+	c := &ModelPrice{Provider: "p1", Model: "m3", BaseModel: "m3", Mode: "chat", Prices: PriceMap{"input_cost_per_token": 1}}
 
 	groups := GroupByProvider([]*ModelPrice{a, b, c})
 	assert.Len(t, groups["p1"], 2)

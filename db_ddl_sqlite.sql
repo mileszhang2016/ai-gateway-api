@@ -302,6 +302,13 @@ CREATE INDEX api_keys_route_rules_id ON api_keys (route_rules_id);
 CREATE TRIGGER api_keys_updated_at AFTER UPDATE ON api_keys
   FOR EACH ROW BEGIN UPDATE api_keys SET updated_at = CURRENT_TIMESTAMP WHERE inner_id = OLD.inner_id; END;
 
+-- create api_key_id_seq
+DROP TABLE IF EXISTS api_key_id_seq;
+CREATE TABLE api_key_id_seq (
+  product_name TEXT NOT NULL PRIMARY KEY,
+  next_seq INTEGER NOT NULL DEFAULT 1
+);
+
 -- create api_key_tokens
 DROP TABLE IF EXISTS api_key_tokens;
 CREATE TABLE api_key_tokens (
@@ -396,28 +403,13 @@ CREATE TABLE quota_plans (
   quota REAL DEFAULT 0,
   unit TEXT DEFAULT 'total_token',
   reset_period TEXT DEFAULT 'never',
+  last_reset_at DATETIME DEFAULT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX quota_plans_unlimited ON quota_plans (unlimited);
 CREATE TRIGGER quota_plans_updated_at AFTER UPDATE ON quota_plans
   FOR EACH ROW BEGIN UPDATE quota_plans SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
-
--- create quota_balances
-DROP TABLE IF EXISTS quota_balances;
-CREATE TABLE quota_balances (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  quota_plan_id INTEGER NOT NULL,
-  used REAL DEFAULT 0,
-  remaining REAL DEFAULT 0,
-  last_reset_at DATETIME DEFAULT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (quota_plan_id)
-);
-CREATE INDEX quota_balances_remaining ON quota_balances (remaining);
-CREATE TRIGGER quota_balances_updated_at AFTER UPDATE ON quota_balances
-  FOR EACH ROW BEGIN UPDATE quota_balances SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
 -- create model_prices
 DROP TABLE IF EXISTS model_prices;
@@ -431,6 +423,7 @@ CREATE TABLE model_prices (
   supported_parameters TEXT,
   limits TEXT,
   prices TEXT NOT NULL,
+  tier_prices TEXT,
   price_currency TEXT DEFAULT 'RMB',
   metadata TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -441,6 +434,27 @@ CREATE INDEX model_prices_provider ON model_prices (provider);
 CREATE INDEX model_prices_mode ON model_prices (mode);
 CREATE TRIGGER model_prices_updated_at AFTER UPDATE ON model_prices
   FOR EACH ROW BEGIN UPDATE model_prices SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create providers
+DROP TABLE IF EXISTS providers;
+CREATE TABLE providers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  model_endpoint TEXT,
+  models TEXT,
+  api_keys TEXT,
+  instance_pool TEXT NOT NULL,
+  model_protocols TEXT NOT NULL,
+  time_zone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+  tiers TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE INDEX providers_name ON providers (name);
+CREATE TRIGGER providers_updated_at AFTER UPDATE ON providers
+  FOR EACH ROW BEGIN UPDATE providers SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
 -- create rate_limit_policies
 DROP TABLE IF EXISTS rate_limit_policies;

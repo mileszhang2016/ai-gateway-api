@@ -87,18 +87,6 @@ var PassiveHealthCheckSchema = &testutil.ObjectSchema{
 	},
 }
 
-// EndpointSchema model_endpoint schema
-// headers 在未配置时为 null，设为可选。
-var EndpointSchema = &testutil.ObjectSchema{
-	Required: []string{"schema", "uri"},
-	Optional: []string{"headers"},
-	Fields: map[string]testutil.FieldSpec{
-		"schema":  {Type: testutil.TypeString},
-		"uri":     {Type: testutil.TypeString},
-		"headers": {Type: testutil.TypeObject},
-	},
-}
-
 // ModelMappingSchema 模型映射 schema
 var ModelMappingSchema = &testutil.ObjectSchema{
 	Required: []string{"source_model", "target_model"},
@@ -110,10 +98,9 @@ var ModelMappingSchema = &testutil.ObjectSchema{
 
 // ClusterKeySchema llm_config.keys 元素 schema
 var ClusterKeySchema = &testutil.ObjectSchema{
-	Required: []string{"name", "key", "weight"},
+	Required: []string{"name", "weight"},
 	Fields: map[string]testutil.FieldSpec{
 		"name":   {Type: testutil.TypeString},
-		"key":    {Type: testutil.TypeString},
 		"weight": {Type: testutil.TypeInt},
 	},
 }
@@ -129,22 +116,32 @@ var KeyPolicySchema = &testutil.ObjectSchema{
 	},
 }
 
+// KeyAffinitySchema llm_config.key_affinity schema
+var KeyAffinitySchema = &testutil.ObjectSchema{
+	Required: []string{"enabled", "ttl", "redis_prefix", "penalty_enable"},
+	Fields: map[string]testutil.FieldSpec{
+		"enabled":        {Type: testutil.TypeBool},
+		"ttl":            {Type: testutil.TypeInt},
+		"redis_prefix":   {Type: testutil.TypeString},
+		"penalty_enable": {Type: testutil.TypeBool},
+	},
+}
+
 // LLMConfigSchema LLM 配置 schema
-// model_endpoint、model_mappings、keys、key_policy、provider、match_prefix、strip_prefix
+// model_endpoint、model_mappings、keys、key_policy、key_affinity、match_prefix、strip_prefix
 // 在未配置时为 null，因此设为可选。
 var LLMConfigSchema = &testutil.ObjectSchema{
-	Required: []string{"models", "provider_type"},
+	Required: []string{"models", "provider"},
 	Optional: []string{
-		"model_endpoint", "model_mappings", "keys",
-		"key_policy", "provider", "match_prefix", "strip_prefix",
+		"model_mappings", "keys",
+		"key_policy", "key_affinity", "match_prefix", "strip_prefix",
 	},
 	Fields: map[string]testutil.FieldSpec{
-		"model_endpoint": {Type: testutil.TypeObject, Nested: EndpointSchema},
-		"models":         {Type: testutil.TypeArray},
+		"models":         {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
 		"model_mappings": {Type: testutil.TypeArray, Elem: ModelMappingSchema},
 		"keys":           {Type: testutil.TypeArray, Elem: ClusterKeySchema},
 		"key_policy":     {Type: testutil.TypeObject, Nested: KeyPolicySchema},
-		"provider_type":  {Type: testutil.TypeString},
+		"key_affinity":   {Type: testutil.TypeObject, Nested: KeyAffinitySchema},
 		"provider":       {Type: testutil.TypeString},
 		"match_prefix":   {Type: testutil.TypeString},
 		"strip_prefix":   {Type: testutil.TypeBool},
@@ -152,16 +149,15 @@ var LLMConfigSchema = &testutil.ObjectSchema{
 }
 
 // ClusterSchema Cluster 数据模型 schema
-// 通过 /clusters 接口创建的集群 instance_pool 与 llm_config 必填。
+// 通过 /clusters 接口创建的集群 llm_config 必填。
 var ClusterSchema = &testutil.ObjectSchema{
 	Required: []string{
-		"name", "description", "instance_pool", "llm_config",
+		"name", "description", "llm_config",
 		"basic", "sticky_sessions", "passive_health_check",
 	},
 	Fields: map[string]testutil.FieldSpec{
 		"name":                 {Type: testutil.TypeString},
 		"description":          {Type: testutil.TypeString},
-		"instance_pool":        {Type: testutil.TypeArray, Elem: InstanceSchema},
 		"basic":                {Type: testutil.TypeObject, Nested: BasicSchema},
 		"sticky_sessions":      {Type: testutil.TypeObject, Nested: StickySessionsSchema},
 		"passive_health_check": {Type: testutil.TypeObject, Nested: PassiveHealthCheckSchema},

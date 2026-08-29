@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -26,14 +27,13 @@ func TestOpenAPI_Schema(t *testing.T) {
 	t.Run("entity_types", testEntityTypeSchema)
 	t.Run("entities", testEntitySchema)
 	t.Run("api_keys", testAPIKeySchema)
+	t.Run("providers", testProviderSchema)
 	t.Run("clusters", testClusterSchema)
 	t.Run("certificates", testCertificateSchema)
 	t.Run("auth", testAuthSchema)
 	t.Run("model_prices", testModelPriceSchema)
 	t.Run("route_tables", testRouteTableSchema)
 	t.Run("global_route_rules", testGlobalRouteRulesSchema)
-	t.Run("model_provider_types", testModelProviderTypeSchema)
-	t.Run("tools", testToolSchema)
 }
 
 // ---------- entity-types ----------
@@ -240,20 +240,112 @@ func testAPIKeySchema(t *testing.T) {
 	})
 }
 
+// ---------- providers ----------
+
+func testProviderSchema(t *testing.T) {
+	providerName := testutil.UniqueProviderName()
+
+	createResp, err := testutil.GetClient().Post("/open-api/v1/providers", map[string]interface{}{
+		"name":        providerName,
+		"description": "schema test",
+		"instance_pool": []interface{}{
+			map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080},
+		},
+		"model_protocols": []string{"openai"},
+		"models":          []string{"deepseek-chat"},
+		"time_zone":       "Asia/Shanghai",
+		"tiers": []interface{}{
+			map[string]interface{}{
+				"name": "peak",
+				"time_ranges": []interface{}{
+					map[string]interface{}{
+						"weekdays": []int{1, 2, 3, 4, 5},
+						"start":    "09:00",
+						"end":      "12:00",
+					},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, createResp)
+	testutil.AssertSchema(t, createResp, ProviderSchema)
+	testutil.AssertDataFieldEquals(t, createResp, "time_zone", "Asia/Shanghai")
+
+	listResp, err := testutil.GetClient().Get("/open-api/v1/providers")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, listResp)
+	testutil.AssertPagedListSchema(t, listResp, ProviderSchema)
+
+	oneResp, err := testutil.GetClient().Get("/open-api/v1/providers/" + providerName)
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, oneResp)
+	testutil.AssertSchema(t, oneResp, ProviderSchema)
+
+	patchResp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, map[string]interface{}{
+		"description":     "schema test updated",
+		"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
+		"model_protocols": []string{"openai"},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, patchResp)
+	testutil.AssertSchema(t, patchResp, ProviderSchema)
+
+	// Also validate anthropic protocol provider creation.
+	anthropicProviderName := testutil.UniqueProviderName()
+	anthropicResp, err := testutil.GetClient().Post("/open-api/v1/providers", map[string]interface{}{
+		"name":            anthropicProviderName,
+		"description":     "schema test anthropic",
+		"model_protocols": []string{"anthropic"},
+		"models":          []string{"claude-3-5-sonnet-20241022"},
+		"instance_pool": []interface{}{
+			map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080},
+		},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, anthropicResp)
+	testutil.AssertSchema(t, anthropicResp, ProviderSchema)
+	assertProviderModelProtocols(t, anthropicResp.Data, []string{"anthropic"})
+
+	t.Cleanup(func() {
+		testutil.DeleteProvider(providerName)
+		testutil.DeleteProvider(anthropicProviderName)
+	})
+}
+
+// assertProviderModelProtocols 校验 Provider 响应中的 model_protocols 字段值。
+func assertProviderModelProtocols(t *testing.T, data []byte, want []string) {
+	t.Helper()
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal provider data: %v", err)
+	}
+	protocols, ok := payload["model_protocols"].([]interface{})
+	if !ok || len(protocols) != len(want) {
+		t.Fatalf("expected model_protocols=%v, got %v", want, payload["model_protocols"])
+	}
+	for i, v := range want {
+		if protocols[i] != v {
+			t.Fatalf("expected model_protocols[%d]=%q, got %v", i, v, protocols[i])
+		}
+	}
+}
+
 // ---------- clusters ----------
 
 func testClusterSchema(t *testing.T) {
+	providerName := testutil.UniqueProviderName()
+	_, err := testutil.CreateProvider(providerName)
+	require.NoError(t, err)
+
 	clusterName := testutil.UniqueClusterName()
 
 	createResp, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
 		"name":        clusterName,
 		"description": "schema test",
-		"instance_pool": []interface{}{
-			map[string]interface{}{"name": "backend-1", "addr": "10.0.0.1", "weight": 100, "port": 8080},
-		},
 		"llm_config": map[string]interface{}{
-			"models":        []string{"deepseek-chat"},
-			"provider_type": "deepseek",
+			"models":   []string{"deepseek-chat"},
+			"provider": providerName,
 		},
 	})
 	require.NoError(t, err)
@@ -279,6 +371,7 @@ func testClusterSchema(t *testing.T) {
 
 	t.Cleanup(func() {
 		testutil.DeleteCluster(clusterName)
+		testutil.DeleteProvider(providerName)
 	})
 }
 
@@ -391,6 +484,13 @@ func testAuthSchema(t *testing.T) {
 // ---------- model-prices ----------
 
 func testModelPriceSchema(t *testing.T) {
+	schemaProvider := "schema-test-provider"
+	schemaProvider2 := "schema-test-provider-2"
+	_, err := testutil.CreateProvider(schemaProvider)
+	require.NoError(t, err)
+	_, err = testutil.CreateProvider(schemaProvider2)
+	require.NoError(t, err)
+
 	yamlContent := []byte(`version: v1.0
 default_currency: RMB
 models:
@@ -405,6 +505,10 @@ models:
     prices:
       input_cost_per_token: 0.000002
       output_cost_per_token: 0.000008
+    tier_prices:
+      peak:
+        input_cost_per_token: 0.000004
+        output_cost_per_token: 0.000016
     metadata:
       source: test
 `)
@@ -416,7 +520,7 @@ models:
 	testutil.AssertSchema(t, importResp, ModelPriceImportResultSchema)
 
 	createResp, err := testutil.GetClient().Post("/open-api/v1/model-prices", map[string]interface{}{
-		"provider":             "schema-test-provider-2",
+		"provider":             schemaProvider2,
 		"model":                "schema-test-model-2",
 		"base_model":           "schema-test-model-2",
 		"mode":                 "chat",
@@ -428,6 +532,12 @@ models:
 		"prices": map[string]interface{}{
 			"input_cost_per_token":  0.000002,
 			"output_cost_per_token": 0.000008,
+		},
+		"tier_prices": map[string]interface{}{
+			"peak": map[string]interface{}{
+				"input_cost_per_token":  0.000004,
+				"output_cost_per_token": 0.000016,
+			},
 		},
 		"metadata": map[string]interface{}{
 			"source": "test",
@@ -452,7 +562,7 @@ models:
 	testutil.AssertSchema(t, oneResp, ModelPriceSchema)
 
 	updateResp, err := testutil.GetClient().Put(fmt.Sprintf("/open-api/v1/model-prices/%d", modelPriceID), map[string]interface{}{
-		"provider":             "schema-test-provider-2",
+		"provider":             schemaProvider2,
 		"model":                "schema-test-model-2",
 		"base_model":           "schema-test-model-2",
 		"mode":                 "chat",
@@ -465,6 +575,12 @@ models:
 			"input_cost_per_token":  0.000003,
 			"output_cost_per_token": 0.000009,
 		},
+		"tier_prices": map[string]interface{}{
+			"peak": map[string]interface{}{
+				"input_cost_per_token":  0.000006,
+				"output_cost_per_token": 0.000018,
+			},
+		},
 		"metadata": map[string]interface{}{
 			"source": "test",
 		},
@@ -473,9 +589,16 @@ models:
 	testutil.AssertSuccess(t, updateResp)
 	testutil.AssertSchema(t, updateResp, ModelPriceSchema)
 
+	getProvidersResp, err := testutil.GetClient().Get("/open-api/v1/model-prices/actions/get-providers")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, getProvidersResp)
+	testutil.AssertSchema(t, getProvidersResp, ModelPriceGetProvidersResponseSchema)
+
 	t.Cleanup(func() {
 		testutil.DeleteModelPrice(modelPriceID)
-		testutil.DeleteModelPriceByQuery("schema-test-provider", "schema-test-model", "chat")
+		testutil.DeleteModelPriceByQuery(schemaProvider, "schema-test-model", "chat")
+		testutil.DeleteProvider(schemaProvider)
+		testutil.DeleteProvider(schemaProvider2)
 	})
 }
 
@@ -505,32 +628,4 @@ func testGlobalRouteRulesSchema(t *testing.T) {
 	testutil.AssertSchema(t, putResp, GlobalRouteRulesSchema)
 }
 
-// ---------- model-provider-types ----------
 
-func testModelProviderTypeSchema(t *testing.T) {
-	resp, err := testutil.GetClient().Get("/open-api/v1/model-provider-types")
-	require.NoError(t, err)
-	testutil.AssertSuccess(t, resp)
-
-	// Data 是字符串数组，schema 为 nil 时只校验其为数组
-	testutil.AssertListSchema(t, resp, nil)
-}
-
-// ---------- tools ----------
-
-func testToolSchema(t *testing.T) {
-	resp, err := testutil.GetClient().Post("/open-api/v1/tools/get-models-from-provider", map[string]interface{}{
-		"schema": "https",
-		"uri":    "/v1/models",
-		"hosts":  []string{"api.deepseek.com:443"},
-		"headers": map[string]interface{}{
-			"Authorization": "Bearer sk-test",
-		},
-		"provider_type": "deepseek",
-	})
-	require.NoError(t, err)
-	// 该接口依赖外部网络，可能失败；仅在成功时校验 schema
-	if resp.ErrNum == 200 {
-		testutil.AssertListSchema(t, resp, ModelFromProviderItemSchema)
-	}
-}

@@ -25,6 +25,11 @@ type QuotaCache interface {
 	// representation based on unit.
 	GetRemaining(ctx context.Context, key string, unit *string) (float64, error)
 
+	// BatchGetRemaining returns the current remaining quota for multiple owner keys.
+	// The returned values are already converted back from the internal Redis
+	// representation based on unit.
+	BatchGetRemaining(ctx context.Context, keys []string, unit *string) (map[string]float64, error)
+
 	// SetRemaining sets the Redis remaining quota to the target value.
 	// Internally it uses GetInt64 + IncrBy(delta) to keep the operation
 	// compatible with concurrent request consumption.
@@ -33,4 +38,9 @@ type QuotaCache interface {
 	// ResetToQuota resets the Redis remaining quota to the given quota amount.
 	// Semantically it is equivalent to SetRemaining.
 	ResetToQuota(ctx context.Context, key string, quota *float64, unit *string) error
+
+	// DeleteKeys removes the given Redis keys.
+	// The caller must pass the complete Redis keys (including any prefix);
+	// the implementation deletes them as-is.
+	DeleteKeys(ctx context.Context, keys []string) error
 }

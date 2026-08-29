@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
 )
 
 var sm *testutil.ServerManager
@@ -47,6 +47,7 @@ func TestClusters_List(t *testing.T) {
 		assert.NotContains(t, cluster, "ready")
 		assert.NotContains(t, cluster, "sub_clusters")
 		assert.NotContains(t, cluster, "scheduler")
+		assert.NotContains(t, cluster, "instance_pool")
 	}
 
 	t.Cleanup(func() {

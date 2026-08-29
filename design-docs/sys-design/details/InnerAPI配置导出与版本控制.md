@@ -128,9 +128,9 @@ type RouteRuleExportData struct {
 
 其中 `RouteTable` 包含产品级高级路由规则（来自 `route_advance_rules`），`ClusterConf` 包含集群转发参数。
 
-> 说明：当管理面 Cluster 配置了 `llm_config` 时，导出后的 `ClusterConf.Config.<cluster_name>.AIConf` 会包含模型映射、认证密钥、模型定价表以及前缀路由裁剪开关，供 BFE 侧 AI 转发模块使用。`AIConf` 由 `llm_config.models`/`model_mappings`/`keys`/`key_policy`/`provider`/`match_prefix`/`strip_prefix` 转换而来，字段位置为 `ClusterConf.Config.<cluster_name>.AIConf`。
+> 说明：当管理面 Cluster 配置了 `llm_config` 时，导出后的 `ClusterConf.Config.<cluster_name>.AIConf` 会包含模型映射、认证密钥、模型定价表、前缀路由裁剪开关、协议风格列表以及 Key 亲和性策略，供 BFE 侧 AI 转发模块使用。`AIConf` 由 `llm_config.models`/`model_mappings`/`keys`/`key_policy`/`key_affinity`/`provider`/`match_prefix`/`strip_prefix` 以及 provider 的 `model_protocols` 转换而来，字段位置为 `ClusterConf.Config.<cluster_name>.AIConf`。
 >
-> `AIConf.Provider` 对应 OpenAPI `llm_config.provider`，用于关联 `model_prices` 表；`AIConf.ModelTable` 由 InnerAPI 根据 `Provider` 查询 `model_prices` 自动填充，不在 OpenAPI `/clusters` 端点中展示。`AIConf.MatchPrefix`/`StripPrefix` 对应 OpenAPI `llm_config.match_prefix`/`strip_prefix`，由 BFE 在转发前决定是否裁剪请求 `model` 字段前缀。`model_prices` 变更后不会同步触发 InnerAPI 推送，BFE/Conf Agent 按自身周期拉取配置并热加载。
+> `AIConf.Provider` 对应 OpenAPI `llm_config.provider`，用于关联 `model_prices` 表；`AIConf.ModelTable` 由 InnerAPI 根据 `Provider` 查询 `model_prices` 自动填充，不在 OpenAPI `/clusters` 端点中展示。`AIConf.MatchPrefix`/`StripPrefix` 对应 OpenAPI `llm_config.match_prefix`/`strip_prefix`，由 BFE 在转发前决定是否裁剪请求 `model` 字段前缀。`AIConf.ModelProtocols` 对应 Provider 的 `model_protocols`，供 BFE 判断请求协议风格是否被当前集群支持，例如识别 `anthropic` 请求并注入 `x-api-key` 与 `anthropic-version` 头。`model_prices` 变更后不会同步触发 InnerAPI 推送，BFE/Conf Agent 按自身周期拉取配置并热加载。
 
 ### 4.2 GSLB（`/configs/gslb_data/gslb`）
 
@@ -221,14 +221,17 @@ type ModAPIKeyRuleConf struct {
 生成流程：
 
 1. 构造 AI 路由对应的 API-Key 规则（`buildAIRouteAPIKeyRules`）；
-2. 遍历所有 `api_keys`，为每个 key 生成 `TokenFile`；
-3. **预加载每个 API-Key 关联的 `QuotaPlan`**（raw storager 不会自动填充关联对象，而 `GetRemainingQuota` 需要 `QuotaPlan.Quota` 判断 token 是否耗尽）；
-4. 计算 token 状态（`enabled/disabled/expired/exhausted`）；
-5. 合并 Entity 层级的 `allow_models`（交集）与 `block_models`（并集）；
-6. 收集 API-Key 自身及 Entity 层级向上的配额计划，**跳过 `unlimited=true` 的配额计划**；
-7. 输出 `QuotaPlans`、`Tokens`、`Config`。
+2. **批量预加载**：一次性加载全部 `api_keys`、`entities`、`quota_plans`、`entity_types` 到内存索引（Map），避免 N+1 查询；
+3. 遍历所有 `api_keys`，为每个 key 生成 `TokenFile`；
+4. 根据 API-Key 的 `enabled` 字段及 Entity 层级的 `allow_models` 交集结果，确定导出的 `enabled`（布尔值）；`expired`/`exhausted` 状态由 BFE 根据 `expired_time` 和实时 Redis 配额余额自行判断，不再由导出层计算；
+5. 合并 Entity 层级的 `allow_models`（交集）与 `block_models`（并集），通过内存 Map 沿 `parent_id` 回溯，不再递归查询数据库；
+6. 收集 API-Key 自身及 Entity 层级向上的配额计划，**跳过 `unlimited=true` 的配额计划**，同样通过内存 Map 查询；
+7. 为每个 Entity 标签补充 `TagLevel`（取自内存 Map 中对应 `EntityType.Level`）；
+8. 输出 `QuotaPlans`、`Tokens`、`Config`。
 
 > 详见《API-Key 与 Entity 关联及模型继承.md》。
+>
+> 性能优化记录：参见 `design-docs/modifications/2026-08-24-mod-api-key-export-performance/design-changes.md`。
 
 ### 4.7 mod-body-process（`/configs/mod-body-process`）
 
@@ -367,12 +370,13 @@ Authorization: Token <token>
 
 ---
 
-## 8. 性能优化建议
+## 8. 性能优化
 
-1. **缓存热点配置**：`mod-api-key`、`rate-limit-policy`、`ai-route` 每次导出都全量读取所有 API-Key / Entity，数据量大时建议加缓存。
-2. **异步签名计算**：复杂配置的 MD5 计算可异步化，避免阻塞请求。
-3. **按产品线分片**：当前所有配置按默认产品 `AI_product` 聚合，若未来多产品线并行，可按产品线拆分 Topic。
-4. **压缩传输**：InnerAPI 返回的 JSON 较大时，可启用 Gzip 压缩。
+1. **批量预加载 + 内存回溯**：`mod-api-key` 导出已实现一次性全量加载 `api_keys`、`entities`、`quota_plans`、`entity_types`，并在内存中沿 `parent_id` 回溯 Entity 层级，避免 N+1 查询。
+2. **缓存热点配置**：`rate-limit-policy`、`ai-route` 每次导出仍全量读取所有 API-Key / Entity，数据量大时建议参考 `mod-api-key` 进行批量预加载或加缓存。
+3. **异步签名计算**：复杂配置的 MD5 计算可异步化，避免阻塞请求。
+4. **按产品线分片**：当前所有配置按默认产品 `AI_product` 聚合，若未来多产品线并行，可按产品线拆分 Topic。
+5. **压缩传输**：InnerAPI 返回的 JSON 较大时，可启用 Gzip 压缩。
 
 ---
 
@@ -394,6 +398,7 @@ Authorization: Token <token>
 | `endpoints/innerapi_v1/ai_route/export.go` | AI 路由导出端点 |
 | `model/iroute_conf/exporter.go` | Server Data 配置生成 |
 | `model/icluster_conf/exporter.go` | GSLB / Cluster Table 配置生成；`AIConf.Provider` / `AIConf.ModelTable` 填充 |
+| `model/icluster_conf/cluster.go` | `AIConf` 构造；将 provider `model_protocols` 透传为 `AIConf.ModelProtocols` |
 | `model/imodel_price/model_price.go` | `model_prices` 查询，供 `AIConf.ModelTable` 使用 |
 | `model/iprotocol/exporter.go` | 证书配置生成 |
 | `model/imods/mod_api_key_rule.go` | mod-api-key 配置生成 |

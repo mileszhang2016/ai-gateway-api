@@ -7,8 +7,9 @@ Model Price 模块负责模型定价数据的管理，支持：
 - 通过 `model-list.yaml` 整表导入（`replace` / `merge` 两种模式）
 - 单条记录的增删改查
 - 按 `id` 或按 `(provider, model, mode)` 组合键查询/更新/删除
+- 分时段定价：在 `tier_prices` 中为特定 tier（如 `peak`）设置差异化价格
 
-本次新增该模块的集成测试，覆盖 OpenAPI `/model-prices` 下的全部接口。
+本次新增该模块的集成测试，覆盖 OpenAPI `/model-prices` 下的全部接口，以及 `tier_prices` 字段在创建、更新、导入场景下的正例与异常校验。
 
 ## 2. 接口列表
 
@@ -23,13 +24,14 @@ Model Price 模块负责模型定价数据的管理，支持：
 | MP-7 | 按组合键修改单条 | PUT | `/open-api/v1/model-prices` | 需传 provider + model + mode |
 | MP-8 | 按 ID 删除单条 | DELETE | `/open-api/v1/model-prices/{id}` | - |
 | MP-9 | 按组合键删除单条 | DELETE | `/open-api/v1/model-prices` | 需传 provider + model + mode |
+| MP-10 | 查询 Provider 名称列表 | GET | `/open-api/v1/model-prices/actions/get-providers` | 返回 model-prices 中所有 provider 去重列表 |
 
 ## 3. 测试用例统计
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 整表导入 | 7 |
-| 新增单条记录 | 7 |
+| 整表导入 | 8 |
+| 新增单条记录 | 8 |
 | 分页列表查询 | 4 |
 | 按 ID 查询单条 | 2 |
 | 按组合键查询单条 | 3 |
@@ -37,7 +39,9 @@ Model Price 模块负责模型定价数据的管理，支持：
 | 按组合键修改单条 | 3 |
 | 按 ID 删除单条 | 2 |
 | 按组合键删除单条 | 2 |
-| **合计** | **34** |
+| 查询 Provider 名称列表 | 2 |
+| tier_prices 字段场景 | 6 |
+| **合计** | **44** |
 
 ## 4. 认证方式
 
@@ -58,8 +62,12 @@ model_price/
 │   └── one_test.go
 ├── update/
 │   └── update_test.go
-└── delete/
-    └── delete_test.go
+├── delete/
+│   └── delete_test.go
+├── get_providers/
+│   └── get_providers_test.go
+└── tier_prices/
+    └── tier_prices_test.go
 ```
 
 ## 6. 测试数据约定
@@ -83,6 +91,12 @@ model_price/
         "input_cost_per_token": 0.000002,
         "output_cost_per_token": 0.000008
     },
+    "tier_prices": {
+        "peak": {
+            "input_cost_per_token": 0.000004,
+            "output_cost_per_token": 0.000016
+        }
+    },
     "metadata": {
         "source": "https://platform.deepseek.com/pricing",
         "notes": "DeepSeek V3"
@@ -94,13 +108,25 @@ model_price/
 
 `(provider, model, mode)` 三元组必须唯一。
 
-### 6.3 测试用例编号规则
+### 6.3 分时段价格约束
+
+- `tier_prices` 为可选字段；键名（tier name）初期仅支持 `peak`。
+- 每个 tier 对应的价格对象键名须为 `prices` 的合法枚举键。
+- 价格值必须为非负数。
+
+### 6.4 测试用例编号规则
 
 ```
 MP-{接口编号}-{场景编号}
 ```
 
 例如：`MP-2-001` 表示 MP-2（新增单条记录）的第 1 个场景。
+
+分时段定价专项测试使用独立编号：
+
+```
+MTP-1-{场景编号}
+```
 
 ---
 
@@ -144,6 +170,7 @@ MP-{接口编号}-{场景编号}
 | MP-1-005 | 非法 YAML | 异常参数 | 文件内容非合法 YAML，返回 422 |
 | MP-1-006 | 重复三元组 | 异常参数 | YAML 内 (provider,model,mode) 重复，返回 422 |
 | MP-1-007 | limits 包含负数 | 合法性条件 | 返回 422 |
+| MP-1-008 | 未知 provider 可导入 | 正常参数 | provider 不存在于 `/providers` 时仍可导入 |
 
 ### 7.4 测试场景详细设计
 
@@ -262,6 +289,32 @@ models:
 
 ---
 
+#### MP-1-008：未知 provider 可导入（正常参数）
+
+##### 设计思路
+
+验证 `/model-prices/import` 不再校验 provider 是否已存在于 `/providers`。
+
+##### 执行步骤
+
+1. 构造一个不存在于 `/providers` 的 provider 名称。
+2. 构造包含该 provider 的 `model-list.yaml`。
+3. 以 `mode=replace` 调用导入接口。
+4. 验证返回 200，`imported_count=1`。
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| imported_count | 1 | Equals |
+| skipped_count | 0 | Equals |
+| errors | 空数组 | Len=0 |
+
+---
+
 ## 8. 新增单条记录（MP-2）
 
 ### 8.1 接口信息
@@ -280,7 +333,7 @@ models:
 
 | 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
 |--------|------|------|------|------------|
-| provider | string | Y | Provider 标识 | 非空 |
+| provider | string | Y | Provider / Cluster 标识 | 非空；不强制要求已存在于 `/providers` |
 | model | string | Y | 模型名 | 非空 |
 | base_model | string | Y | 归一化模型名 | 非空 |
 | mode | string | Y | 请求模式 | 枚举值 |
@@ -288,6 +341,7 @@ models:
 | supported_parameters | []string | N | 支持的请求参数 | 元素为枚举值 |
 | limits | object | N | 限制对象 | 键名为枚举值；值为非负整数 |
 | prices | object | Y | 价格对象 | 至少一个键；值为非负数；键名为枚举值 |
+| tier_prices | object | N | 分时段价格 | 键名为 tier 名称（初期仅 `peak`）；值为价格对象，键名须在 `prices` 枚举内 |
 | metadata | object | N | 元数据 | 键名为枚举值 |
 
 #### 返回数据字段
@@ -305,6 +359,7 @@ models:
 | MP-2-005 | prices 包含负数 | 合法性条件 | 返回 422 |
 | MP-2-006 | 重复三元组 | 异常参数 | 返回 422 |
 | MP-2-007 | limits 包含负数 | 合法性条件 | 返回 422 |
+| MP-2-008 | 未知 provider 可创建 | 正常参数 | provider 不存在于 `/providers` 时仍可创建 |
 
 ### 8.4 测试场景详细设计
 
@@ -380,6 +435,30 @@ models:
 
 **ErrNum**：422  
 **ErrMsg**：包含 limit 错误信息
+
+---
+
+#### MP-2-008：未知 provider 可创建（正常参数）
+
+##### 设计思路
+
+验证 `/model-prices` 的 `provider` 字段不再强制引用 `/providers` 中已存在的 provider。
+
+##### 执行步骤
+
+1. 构造一个不存在于 `/providers` 的 provider 名称。
+2. POST `/open-api/v1/model-prices`，Body 含必填字段。
+3. 验证返回 200，记录创建成功。
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| provider | 与请求一致 | Equals |
+| price_currency | "RMB" | Equals |
 
 ---
 
@@ -802,9 +881,150 @@ models:
 
 ---
 
-## 16. 附录
+## 16. 查询 Provider 名称列表（MP-10）
 
-### 16.1 通用断言说明
+### 16.1 接口信息
+
+| 项目 | 值 |
+|------|-----|
+| 模块 | Model Price |
+| 接口名称 | 查询 Provider 名称列表 |
+| 方法 | GET |
+| 路径 | `/open-api/v1/model-prices/actions/get-providers` |
+| 说明 | 返回 `model_prices` 表中所有 `provider` 名称的去重列表，按字典序排列 |
+
+### 16.2 返回数据字段
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| providers | []string | provider 名称去重列表 |
+
+### 16.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| MP-10-001 | 空列表 | 正常参数 | 无 price 记录时返回空数组 |
+| MP-10-002 | 返回去重 provider 列表 | 正常参数 | 创建多条记录后返回去重列表 |
+
+### 16.4 测试场景详细设计
+
+#### MP-10-001：空列表
+
+##### 设计思路
+
+验证无记录时返回空数组。
+
+##### 执行步骤
+
+1. 确保当前无 model price 记录（可先 replace 导入空列表）。
+2. GET `/open-api/v1/model-prices/actions/get-providers`。
+3. 验证返回 200，`providers` 为空数组。
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| providers | [] | Len=0 |
+
+---
+
+#### MP-10-002：返回去重 provider 列表
+
+##### 设计思路
+
+验证返回的 provider 列表按字典序排列且已去重。
+
+##### 前提数据准备
+
+已创建 `(a-provider, m1, chat)`、`(b-provider, m2, chat)`、`(a-provider, m3, chat)` 三条记录。
+
+##### 执行步骤
+
+1. GET `/open-api/v1/model-prices/actions/get-providers`。
+2. 验证返回 200，`providers` 为 `["a-provider", "b-provider"]`。
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| providers | ["a-provider", "b-provider"] | Equals |
+| providers 长度 | 2 | Len=2 |
+
+---
+
+## 17. 分时段价格字段测试（MTP-1）
+
+### 17.1 测试目标
+
+验证 `tier_prices` 在创建、查询、更新、`model-list.yaml` 导入等场景下能够正确写入、读取和校验。
+
+### 17.2 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| MTP-1-001 | 创建含 tier_prices 的记录 | 正常参数 | 创建时携带 `tier_prices.peak`，查询返回一致 |
+| MTP-1-002 | tier_prices 含非法 tier name | 异常参数 | `tier_prices` 中出现非 `peak` 键名，返回 422 |
+| MTP-1-003 | tier_prices 含非法价格键 | 异常参数 | `tier_prices.peak` 中出现非 `prices` 枚举键，返回 422 |
+| MTP-1-004 | tier_prices 含负数价格 | 合法性条件 | `tier_prices.peak.input_cost_per_token=-0.001`，返回 422 |
+| MTP-1-005 | 更新 tier_prices | 正常参数 | PUT `/model-prices/{id}` 可单独更新 `tier_prices` |
+| MTP-1-006 | model-list.yaml 导入含 tier_prices | 正常参数 | 导入的 YAML 携带 `tier_prices`，列表查询返回一致 |
+
+### 17.3 请求参数示例
+
+#### 创建含 tier_prices 的记录
+
+```json
+{
+    "provider": "deepseek",
+    "model": "deepseek-v3",
+    "base_model": "deepseek-v3",
+    "mode": "chat",
+    "prices": {
+        "input_cost_per_token": 0.0000045,
+        "output_cost_per_token": 0.0000135
+    },
+    "tier_prices": {
+        "peak": {
+            "input_cost_per_token": 0.000009,
+            "output_cost_per_token": 0.000027
+        }
+    }
+}
+```
+
+#### model-list.yaml 导入示例
+
+```yaml
+version: v1.0
+default_currency: RMB
+models:
+  - provider: deepseek-tier-test
+    model: deepseek-v3
+    base_model: deepseek-v3
+    mode: chat
+    prices:
+      input_cost_per_token: 0.000002
+    tier_prices:
+      peak:
+        input_cost_per_token: 0.000004
+```
+
+### 17.4 预期返回结果
+
+- **MTP-1-001 / MTP-1-005 / MTP-1-006**：ErrNum=200，`tier_prices.peak` 与输入一致。
+- **MTP-1-002 / MTP-1-003 / MTP-1-004**：ErrNum=422，ErrMsg 包含对应字段校验错误。
+
+---
+
+## 18. 附录
+
+### 18.1 通用断言说明
 
 - `Equals`：字段值与预期值相等
 - `NotEmpty`：字段值非空
@@ -812,7 +1032,7 @@ models:
 - `Len=n`：数组/字符串长度等于 n
 - `IsArray` / `IsObject`：类型校验
 
-### 16.2 返回码约定
+### 18.2 返回码约定
 
 | ErrNum | 含义 |
 |--------|------|

@@ -101,8 +101,8 @@ func TestGetMonthStart(t *testing.T) {
 	expected := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	assert.Equal(t, expected, getMonthStart(input))
 }
-func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
-	// 保存并恢复全局 Redis 客户端，避免影响其他测试
+
+func TestBalanceSyncManager_ResetExpiredBalances(t *testing.T) {
 	origClientSet := stateful.DefaultClientSet
 	defer func() {
 		stateful.DefaultClientSet = origClientSet
@@ -112,62 +112,13 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 
 	ctx := context.Background()
 
-	t.Run("SyncAllBalances calculates used from Redis", func(t *testing.T) {
+	t.Run("resets balance and Redis when expired", func(t *testing.T) {
 		mockRedis.Reset()
 		planID := int64(1)
 		quota := float64(1000)
 		apiKey := "ak-1"
 		entityID := "ent-1"
-
-		planStorager := &fakeQuotaPlanStorager{
-			listFn: func(ctx context.Context, filter *QuotaPlanFilter) ([]*QuotaPlanParam, error) {
-				return []*QuotaPlanParam{{
-					ID:        &planID,
-					Quota:     &quota,
-					Unlimited: lib.PBool(false),
-				}}, nil
-			},
-		}
-		apiKeyStorager := &fakeAPIKeyStorager{
-			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
-				createdAt := time.Now()
-				return []*api_key.APIKeyParam{{
-					Key:         &apiKey,
-					KeyCreateAt: &createdAt,
-				}}, nil
-			},
-		}
-		entityStorager := &fakeEntityStorager{
-			listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
-				return []*entity.EntityParam{{EntityID: &entityID}}, nil
-			},
-		}
-		balanceStorager := &fakeQuotaBalanceStorager{
-			updateFn: func(ctx context.Context, filter *QuotaBalanceFilter, param *QuotaBalanceParam) (int64, error) {
-				return 1, nil
-			},
-		}
-
-		// 设置 Redis 中 API-Key 剩余 800，Entity 剩余 100
-		_, err := mockRedis.IncrBy(stateful.AIUsedQuotaKey(apiKey), 800)
-		require.NoError(t, err)
-		_, err = mockRedis.IncrBy(stateful.AIUsedQuotaKey(entityID), 100)
-		require.NoError(t, err)
-
-		m := NewBalanceSyncManager(&fakeTxn{}, apiKeyStorager, balanceStorager, planStorager, entityStorager, quotacache.NewRedisQuotaCache(mockRedis))
-		require.NoError(t, m.SyncAllBalances(ctx))
-
-		require.Len(t, balanceStorager.updated, 1)
-		assert.Equal(t, float64(100), *balanceStorager.updated[0].param.Used)      // 1000 - 900
-		assert.Equal(t, float64(900), *balanceStorager.updated[0].param.Remaining) // 800 + 100
-	})
-
-	t.Run("ResetExpiredBalances resets balance and Redis", func(t *testing.T) {
-		mockRedis.Reset()
-		planID := int64(1)
-		quota := float64(1000)
-		apiKey := "ak-1"
-		entityID := "ent-1"
+		lastReset := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
 		planStorager := &fakeQuotaPlanStorager{
 			listFn: func(ctx context.Context, filter *QuotaPlanFilter) ([]*QuotaPlanParam, error) {
@@ -176,6 +127,7 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 					Quota:       &quota,
 					Unlimited:   lib.PBool(false),
 					ResetPeriod: lib.PString("monthly"),
+					LastResetAt: &lastReset,
 				}}, nil
 			},
 			fetchFn: func(ctx context.Context, filter *QuotaPlanFilter) (*QuotaPlanParam, error) {
@@ -197,35 +149,20 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 				return []*entity.EntityParam{{EntityID: &entityID}}, nil
 			},
 		}
-		balanceStorager := &fakeQuotaBalanceStorager{
-			fetchFn: func(ctx context.Context, filter *QuotaBalanceFilter) (*QuotaBalanceParam, error) {
-				lastReset := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-				return &QuotaBalanceParam{
-					ID:          lib.PInt64(1),
-					QuotaPlanID: &planID,
-					Used:        lib.PFloat64(500),
-					Remaining:   lib.PFloat64(500),
-					LastResetAt: &lastReset,
-				}, nil
-			},
-			updateFn: func(ctx context.Context, filter *QuotaBalanceFilter, param *QuotaBalanceParam) (int64, error) {
-				return 1, nil
-			},
-		}
 
-		// 模拟 Redis 中已使用 500
+		// Redis 中 API-Key 剩余 500，Entity 剩余 500
 		_, err := mockRedis.IncrBy(stateful.AIUsedQuotaKey(apiKey), 500)
 		require.NoError(t, err)
-		_, err = mockRedis.IncrBy(stateful.AIUsedQuotaKey(entityID), 0)
+		_, err = mockRedis.IncrBy(stateful.AIUsedQuotaKey(entityID), 500)
 		require.NoError(t, err)
 
-		m := NewBalanceSyncManager(&fakeTxn{}, apiKeyStorager, balanceStorager, planStorager, entityStorager, quotacache.NewRedisQuotaCache(mockRedis))
+		m := NewBalanceSyncManager(&fakeTxn{}, apiKeyStorager, planStorager, entityStorager, quotacache.NewRedisQuotaCache(mockRedis), nil)
 		require.NoError(t, m.ResetExpiredBalances(ctx))
 
-		require.Len(t, balanceStorager.updated, 1)
-		assert.Equal(t, float64(0), *balanceStorager.updated[0].param.Used)
-		assert.Equal(t, float64(1000), *balanceStorager.updated[0].param.Remaining)
-		assert.NotNil(t, balanceStorager.updated[0].param.LastResetAt)
+		// 验证 quota_plans.last_reset_at 被更新
+		require.Len(t, planStorager.updated, 1)
+		assert.Equal(t, planID, *planStorager.updated[0].filter.ID)
+		assert.NotNil(t, planStorager.updated[0].param.LastResetAt)
 
 		// Redis 应该被重置为配额总量
 		apiKeyRemaining, _ := mockRedis.GetInt64(stateful.AIUsedQuotaKey(apiKey))
@@ -234,10 +171,11 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 		assert.Equal(t, int64(1000), entityRemaining)
 	})
 
-	t.Run("ResetExpiredBalances skips when not expired", func(t *testing.T) {
+	t.Run("skips when not expired", func(t *testing.T) {
 		mockRedis.Reset()
 		planID := int64(1)
 		quota := float64(1000)
+		lastReset := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 
 		planStorager := &fakeQuotaPlanStorager{
 			listFn: func(ctx context.Context, filter *QuotaPlanFilter) ([]*QuotaPlanParam, error) {
@@ -246,25 +184,22 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 					Quota:       &quota,
 					Unlimited:   lib.PBool(false),
 					ResetPeriod: lib.PString("monthly"),
+					LastResetAt: &lastReset,
 				}}, nil
 			},
 		}
-		balanceStorager := &fakeQuotaBalanceStorager{
-			fetchFn: func(ctx context.Context, filter *QuotaBalanceFilter) (*QuotaBalanceParam, error) {
-				lastReset := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
-				return &QuotaBalanceParam{QuotaPlanID: &planID, LastResetAt: &lastReset}, nil
-			},
-		}
-		m := NewBalanceSyncManager(&fakeTxn{}, &fakeAPIKeyStorager{}, balanceStorager, planStorager, &fakeEntityStorager{}, quotacache.NewRedisQuotaCache(mockRedis))
+		m := NewBalanceSyncManager(&fakeTxn{}, &fakeAPIKeyStorager{}, planStorager, &fakeEntityStorager{}, quotacache.NewRedisQuotaCache(mockRedis), nil)
 
 		require.NoError(t, m.ResetExpiredBalances(ctx))
-		assert.Empty(t, balanceStorager.updated)
+		assert.Empty(t, planStorager.updated)
 	})
 
-	t.Run("ResetExpiredBalances skips when balance not found", func(t *testing.T) {
+	t.Run("nil last_reset_at triggers reset", func(t *testing.T) {
 		mockRedis.Reset()
 		planID := int64(1)
 		quota := float64(1000)
+		apiKey := "ak-nil"
+		entityID := "ent-nil"
 
 		planStorager := &fakeQuotaPlanStorager{
 			listFn: func(ctx context.Context, filter *QuotaPlanFilter) ([]*QuotaPlanParam, error) {
@@ -272,18 +207,157 @@ func TestBalanceSyncManager_WithMockRedis(t *testing.T) {
 					ID:          &planID,
 					Quota:       &quota,
 					Unlimited:   lib.PBool(false),
-					ResetPeriod: lib.PString("monthly"),
+					ResetPeriod: lib.PString("weekly"),
+					LastResetAt: nil,
+				}}, nil
+			},
+			fetchFn: func(ctx context.Context, filter *QuotaPlanFilter) (*QuotaPlanParam, error) {
+				return &QuotaPlanParam{ID: &planID, Quota: &quota}, nil
+			},
+		}
+		apiKeyStorager := &fakeAPIKeyStorager{
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+				createdAt := time.Now()
+				return []*api_key.APIKeyParam{{
+					ID:          lib.PString("ak-id-nil"),
+					Key:         &apiKey,
+					KeyCreateAt: &createdAt,
 				}}, nil
 			},
 		}
-		balanceStorager := &fakeQuotaBalanceStorager{
-			fetchFn: func(ctx context.Context, filter *QuotaBalanceFilter) (*QuotaBalanceParam, error) {
-				return nil, nil
+		entityStorager := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
+				return []*entity.EntityParam{{EntityID: &entityID}}, nil
 			},
 		}
-		m := NewBalanceSyncManager(&fakeTxn{}, &fakeAPIKeyStorager{}, balanceStorager, planStorager, &fakeEntityStorager{}, quotacache.NewRedisQuotaCache(mockRedis))
+
+		m := NewBalanceSyncManager(&fakeTxn{}, apiKeyStorager, planStorager, entityStorager, quotacache.NewRedisQuotaCache(mockRedis), nil)
+		require.NoError(t, m.ResetExpiredBalances(ctx))
+
+		require.Len(t, planStorager.updated, 1)
+		assert.NotNil(t, planStorager.updated[0].param.LastResetAt)
+	})
+}
+
+// fakeClock is a test Clock that returns a fixed time.
+type fakeClock struct {
+	t time.Time
+}
+
+func (f *fakeClock) Now() time.Time { return f.t }
+
+// newResetTestManager creates a BalanceSyncManager configured for reset-period
+// tests with a fake clock, mock Redis, and the supplied storagers.
+func newResetTestManager(
+	planStorager QuotaPlanStorager,
+	apiKeyStorager api_key.APIKeyStorager,
+	entityStorager entity.EntityStorager,
+	clock Clock,
+) *BalanceSyncManager {
+	if clock == nil {
+		clock = NewRealClock()
+	}
+	return NewBalanceSyncManager(&fakeTxn{}, apiKeyStorager, planStorager, entityStorager, quotacache.NewRedisQuotaCache(stateful.NewMockRedisClient()), clock)
+}
+
+func TestResetExpiredBalances_WithFakeClock(t *testing.T) {
+	ctx := context.Background()
+	planID := int64(1)
+	quota := float64(1000)
+	apiKey := "ak-reset-1"
+	entityID := "ent-reset-1"
+
+	makePlanStorager := func(period string, lastResetAt *time.Time) *fakeQuotaPlanStorager {
+		return &fakeQuotaPlanStorager{
+			listFn: func(ctx context.Context, filter *QuotaPlanFilter) ([]*QuotaPlanParam, error) {
+				return []*QuotaPlanParam{{
+					ID:          &planID,
+					Quota:       &quota,
+					Unlimited:   lib.PBool(false),
+					ResetPeriod: lib.PString(period),
+					LastResetAt: lastResetAt,
+				}}, nil
+			},
+			fetchFn: func(ctx context.Context, filter *QuotaPlanFilter) (*QuotaPlanParam, error) {
+				return &QuotaPlanParam{ID: &planID, Quota: &quota}, nil
+			},
+		}
+	}
+
+	makeAPIKeyStorager := func() *fakeAPIKeyStorager {
+		return &fakeAPIKeyStorager{
+			fetchListFn: func(ctx context.Context, filter *api_key.APIKeyFilter) ([]*api_key.APIKeyParam, error) {
+				createdAt := time.Now()
+				return []*api_key.APIKeyParam{{
+					ID:          lib.PString("ak-id-1"),
+					Key:         &apiKey,
+					KeyCreateAt: &createdAt,
+				}}, nil
+			},
+		}
+	}
+
+	makeEntityStorager := func() *fakeEntityStorager {
+		return &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *entity.EntityFilter) ([]*entity.EntityParam, error) {
+				return []*entity.EntityParam{{EntityID: &entityID}}, nil
+			},
+		}
+	}
+
+	t.Run("weekly resets on next Monday", func(t *testing.T) {
+		lastReset := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)               // Monday
+		clock := &fakeClock{t: time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC)}      // next Monday
+		planStorager := makePlanStorager("weekly", &lastReset)
+		m := newResetTestManager(planStorager, makeAPIKeyStorager(), makeEntityStorager(), clock)
 
 		require.NoError(t, m.ResetExpiredBalances(ctx))
-		assert.Empty(t, balanceStorager.updated)
+
+		require.Len(t, planStorager.updated, 1)
+		assert.Equal(t, clock.Now(), *planStorager.updated[0].param.LastResetAt)
+	})
+
+	t.Run("weekly does not reset within same week", func(t *testing.T) {
+		lastReset := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)               // Monday
+		clock := &fakeClock{t: time.Date(2026, 7, 29, 9, 0, 0, 0, time.UTC)}     // Wednesday
+		planStorager := makePlanStorager("weekly", &lastReset)
+		m := newResetTestManager(planStorager, makeAPIKeyStorager(), makeEntityStorager(), clock)
+
+		require.NoError(t, m.ResetExpiredBalances(ctx))
+		assert.Empty(t, planStorager.updated)
+	})
+
+	t.Run("monthly resets on next month first day", func(t *testing.T) {
+		lastReset := time.Date(2026, 7, 31, 10, 0, 0, 0, time.UTC)               // Jul 31
+		clock := &fakeClock{t: time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC)}      // Aug 1
+		planStorager := makePlanStorager("monthly", &lastReset)
+		m := newResetTestManager(planStorager, makeAPIKeyStorager(), makeEntityStorager(), clock)
+
+		require.NoError(t, m.ResetExpiredBalances(ctx))
+
+		require.Len(t, planStorager.updated, 1)
+		assert.Equal(t, clock.Now(), *planStorager.updated[0].param.LastResetAt)
+	})
+
+	t.Run("monthly does not reset within same month", func(t *testing.T) {
+		lastReset := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)                // Aug 1
+		clock := &fakeClock{t: time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)}     // Aug 15
+		planStorager := makePlanStorager("monthly", &lastReset)
+		m := newResetTestManager(planStorager, makeAPIKeyStorager(), makeEntityStorager(), clock)
+
+		require.NoError(t, m.ResetExpiredBalances(ctx))
+		assert.Empty(t, planStorager.updated)
+	})
+
+	t.Run("monthly resets across year boundary", func(t *testing.T) {
+		lastReset := time.Date(2025, 12, 31, 10, 0, 0, 0, time.UTC)              // Dec 31
+		clock := &fakeClock{t: time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)}      // Jan 1
+		planStorager := makePlanStorager("monthly", &lastReset)
+		m := newResetTestManager(planStorager, makeAPIKeyStorager(), makeEntityStorager(), clock)
+
+		require.NoError(t, m.ResetExpiredBalances(ctx))
+
+		require.Len(t, planStorager.updated, 1)
+		assert.Equal(t, clock.Now(), *planStorager.updated[0].param.LastResetAt)
 	})
 }

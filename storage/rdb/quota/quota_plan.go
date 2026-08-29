@@ -125,6 +125,7 @@ func quotaPlanDataToParam(param *quota.QuotaPlanParam) *dao.TQuotaPlanParam {
 		Quota:                 float64PtrToDecimalPtr(param.Quota),
 		Unit:                  param.Unit,
 		ResetPeriod:           param.ResetPeriod,
+		LastResetAt:           param.LastResetAt,
 	}
 }
 
@@ -137,6 +138,7 @@ func quotaPlanParamToData(one *dao.TQuotaPlan) *quota.QuotaPlanParam {
 		Quota:                 decimalToFloat64Ptr(one.Quota),
 		Unit:                  &one.Unit,
 		ResetPeriod:           &one.ResetPeriod,
+		LastResetAt:           one.LastResetAt,
 		CreateTime:            &createTime,
 	}
 }

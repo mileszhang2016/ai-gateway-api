@@ -37,6 +37,9 @@ func TestExpressionVerify(t *testing.T) {
 		{"EV-1-006 括号不匹配", "default_t(", nil, 500, false},
 		{"EV-1-007 未知函数", "unknown_func()", nil, 500, false},
 		{"EV-1-008 缺少引号", "req_path_prefix(/v1)", nil, 500, false},
+		{"EV-1-009 req_body_larger_than", "req_body_larger_than(8192)", nil, 200, true},
+		{"EV-1-010 req_body_less_than", "req_body_less_than(2048)", nil, 200, true},
+		{"EV-1-011 req_body_larger_than 参数非法", "req_body_larger_than(\"abc\")", nil, 500, false},
 	}
 
 	for _, tt := range tests {

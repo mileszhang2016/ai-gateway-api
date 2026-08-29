@@ -30,14 +30,15 @@ func (f *fakeTxn) AtomExecute(ctx context.Context, do func(context.Context) erro
 }
 
 type fakeModelPriceStorager struct {
-	createFn           func(ctx context.Context, param *ModelPrice) (int64, error)
-	updateFn           func(ctx context.Context, filter *ModelPriceFilter, param *ModelPrice) (int64, error)
-	deleteFn           func(ctx context.Context, filter *ModelPriceFilter) error
-	deleteAllFn        func(ctx context.Context) error
-	fetchFn            func(ctx context.Context, filter *ModelPriceFilter) (*ModelPrice, error)
-	fetchListFn        func(ctx context.Context, filter *ModelPriceFilter) ([]*ModelPrice, int64, error)
-	created            []*ModelPrice
-	updated            []struct {
+	createFn      func(ctx context.Context, param *ModelPrice) (int64, error)
+	updateFn      func(ctx context.Context, filter *ModelPriceFilter, param *ModelPrice) (int64, error)
+	deleteFn      func(ctx context.Context, filter *ModelPriceFilter) error
+	deleteAllFn   func(ctx context.Context) error
+	fetchFn       func(ctx context.Context, filter *ModelPriceFilter) (*ModelPrice, error)
+	fetchListFn   func(ctx context.Context, filter *ModelPriceFilter) ([]*ModelPrice, int64, error)
+	listProviders func(ctx context.Context) ([]string, error)
+	created       []*ModelPrice
+	updated       []struct {
 		filter *ModelPriceFilter
 		param  *ModelPrice
 	}
@@ -92,6 +93,13 @@ func (s *fakeModelPriceStorager) FetchModelPriceList(ctx context.Context, filter
 		return s.fetchListFn(ctx, filter)
 	}
 	return nil, 0, nil
+}
+
+func (s *fakeModelPriceStorager) ListProviders(ctx context.Context) ([]string, error) {
+	if s.listProviders != nil {
+		return s.listProviders(ctx)
+	}
+	return nil, nil
 }
 
 func TestManagerCreateModelPrice(t *testing.T) {
@@ -240,4 +248,18 @@ func TestManagerImportModelPricesStorageError(t *testing.T) {
 	_, _, err := m.ImportModelPrices(ctx, []*ModelPrice{validModelPrice()}, string(ImportModeReplace))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "delete failed")
+}
+
+func TestManagerListProviders(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeModelPriceStorager{
+		listProviders: func(ctx context.Context) ([]string, error) {
+			return []string{"deepseek", "openai"}, nil
+		},
+	}
+	m := NewManager(&fakeTxn{}, store)
+
+	providers, err := m.ListProviders(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"deepseek", "openai"}, providers)
 }

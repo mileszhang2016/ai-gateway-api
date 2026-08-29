@@ -31,6 +31,7 @@ type APIKeyRuleManager struct {
 	aiRouteStorager       iai_route.AIRouteRuleStorager
 	quotaPlanStorager     quota.QuotaPlanStorager
 	entityStorager        entity.EntityStorager
+	entityTypeStorager    entity.EntityTypeStorager
 	quotaCache            quotacache.QuotaCache
 }
 
@@ -70,6 +71,7 @@ func NewAPIKeyRuleManager(txn itxn.TxnStorager,
 	aiRouteStorager iai_route.AIRouteRuleStorager,
 	quotaPlanStorager quota.QuotaPlanStorager,
 	entityStorager entity.EntityStorager,
+	entityTypeStorager entity.EntityTypeStorager,
 	quotaCache quotacache.QuotaCache) *APIKeyRuleManager {
 	return &APIKeyRuleManager{
 		txn:                   txn,
@@ -78,6 +80,7 @@ func NewAPIKeyRuleManager(txn itxn.TxnStorager,
 		aiRouteStorager:       aiRouteStorager,
 		quotaPlanStorager:     quotaPlanStorager,
 		entityStorager:        entityStorager,
+		entityTypeStorager:    entityTypeStorager,
 		quotaCache:            quotaCache,
 	}
 }
