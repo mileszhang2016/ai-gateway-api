@@ -205,7 +205,7 @@ type KeyPolicy struct {
 }
 
 type KeyAffinity struct {
-	Enabled       *bool   `json:"enabled"`        // default false
+	Enabled       *bool   `json:"enabled"`        // default true
 	TTL           *int    `json:"ttl"`            // idle timeout in seconds, default 600
 	RedisPrefix   *string `json:"redis_prefix"`   // default "bfe:ai:key_affinity"
 	PenaltyEnable *bool   `json:"penalty_enable"` // default true
@@ -1261,7 +1261,7 @@ func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,
 		MaxRetries:                   0,
 		RetryBackoffInitial:          500,
 		RetryBackoffMax:              5000,
-		SessionAffinity:              false,
+		SessionAffinity:              true,
 		SessionAffinityTTL:           600,
 		SessionAffinityRedisPrefix:   "bfe:ai:key_affinity",
 		SessionAffinityPenaltyEnable: true,
@@ -1273,7 +1273,7 @@ func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,
 		aiConf.KeyPolicy.RetryBackoffMax = derefInt(llmConfig.KeyPolicy.RetryBackoffMax, 5000)
 	}
 	if llmConfig.KeyAffinity != nil {
-		aiConf.KeyPolicy.SessionAffinity = derefBool(llmConfig.KeyAffinity.Enabled, false)
+		aiConf.KeyPolicy.SessionAffinity = derefBool(llmConfig.KeyAffinity.Enabled, true)
 		aiConf.KeyPolicy.SessionAffinityTTL = derefInt(llmConfig.KeyAffinity.TTL, 600)
 		aiConf.KeyPolicy.SessionAffinityRedisPrefix = derefString(llmConfig.KeyAffinity.RedisPrefix, "bfe:ai:key_affinity")
 		aiConf.KeyPolicy.SessionAffinityPenaltyEnable = derefBool(llmConfig.KeyAffinity.PenaltyEnable, true)

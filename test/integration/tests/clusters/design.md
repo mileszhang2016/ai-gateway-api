@@ -15,7 +15,7 @@ v0.0.7 起，`llm_config` 支持多 API-Key：
   - 两个字段透传到 InnerAPI 导出的 `AIConf.MatchPrefix` / `StripPrefix`，由 BFE 在转发前执行前缀裁剪。
 - v0.6 起，`llm_config` 新增 `key_affinity`（会话级 Key 亲和性）：
   - 非必填，用于基于 Redis + `ClientKeyId` 保持同一客户端会话在一段时间内命中同一个后端 API-Key；
-  - 包含 `enabled`（默认 `false`）、`ttl`（空闲超时秒数，默认 `600`）、`redis_prefix`（默认 `"bfe:ai:key_affinity"`）、`penalty_enable`（默认 `true`）；
+  - 包含 `enabled`（默认 `true`）、`ttl`（空闲超时秒数，默认 `600`）、`redis_prefix`（默认 `"bfe:ai:key_affinity"`）、`penalty_enable`（默认 `true`）；
   - 若传入 `ttl` 必须 `>0`；若传入 `redis_prefix` 必须非空；
   - 导出到 InnerAPI 的 `AIConf.KeyPolicy.SessionAffinity*` 字段。
 
