@@ -128,7 +128,7 @@ func TestInnerAPI_TlsConf(t *testing.T) {
 		assert.Equal(t, float64(3), policy["MaxRetries"])
 		assert.Equal(t, float64(100), policy["RetryBackoffInitial"])
 		assert.Equal(t, float64(5000), policy["RetryBackoffMax"])
-		assert.Equal(t, false, policy["SessionAffinity"])
+		assert.Equal(t, true, policy["SessionAffinity"])
 		assert.Equal(t, float64(600), policy["SessionAffinityTTL"])
 		assert.Equal(t, "bfe:ai:key_affinity", policy["SessionAffinityRedisPrefix"])
 		assert.Equal(t, true, policy["SessionAffinityPenaltyEnable"])
@@ -435,7 +435,7 @@ models:
 		if !assert.True(t, ok, "AIConf.KeyPolicy should be an object") {
 			return
 		}
-		assert.Equal(t, false, keyPolicy["SessionAffinity"])
+		assert.Equal(t, true, keyPolicy["SessionAffinity"])
 		assert.Equal(t, float64(600), keyPolicy["SessionAffinityTTL"])
 		assert.Equal(t, "bfe:ai:key_affinity", keyPolicy["SessionAffinityRedisPrefix"])
 		assert.Equal(t, true, keyPolicy["SessionAffinityPenaltyEnable"])

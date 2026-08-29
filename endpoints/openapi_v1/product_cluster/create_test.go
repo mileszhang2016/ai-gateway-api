@@ -204,4 +204,31 @@ func TestNormalizeLLMConfig(t *testing.T) {
 		assert.Equal(t, "bfe:ai:key_affinity", *got.KeyAffinity.RedisPrefix)
 		assert.Equal(t, true, *got.KeyAffinity.PenaltyEnable)
 	})
+
+	t.Run("key_affinity fills defaults when empty object", func(t *testing.T) {
+		in := &icluster_conf.LLMConfig{
+			Models:      []string{"gpt-4"},
+			KeyAffinity: &icluster_conf.KeyAffinity{},
+		}
+		got := normalizeLLMConfig(in)
+		require.NotNil(t, got)
+		require.NotNil(t, got.KeyAffinity)
+		assert.Equal(t, true, *got.KeyAffinity.Enabled)
+		assert.Equal(t, 600, *got.KeyAffinity.TTL)
+		assert.Equal(t, "bfe:ai:key_affinity", *got.KeyAffinity.RedisPrefix)
+		assert.Equal(t, true, *got.KeyAffinity.PenaltyEnable)
+	})
+
+	t.Run("key_affinity fills defaults when nil", func(t *testing.T) {
+		in := &icluster_conf.LLMConfig{
+			Models: []string{"gpt-4"},
+		}
+		got := normalizeLLMConfig(in)
+		require.NotNil(t, got)
+		require.NotNil(t, got.KeyAffinity)
+		assert.Equal(t, true, *got.KeyAffinity.Enabled)
+		assert.Equal(t, 600, *got.KeyAffinity.TTL)
+		assert.Equal(t, "bfe:ai:key_affinity", *got.KeyAffinity.RedisPrefix)
+		assert.Equal(t, true, *got.KeyAffinity.PenaltyEnable)
+	})
 }

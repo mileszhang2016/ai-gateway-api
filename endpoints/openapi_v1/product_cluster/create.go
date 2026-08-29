@@ -331,13 +331,37 @@ func normalizeLLMConfig(llm *icluster_conf.LLMConfig) *icluster_conf.LLMConfig {
 		ModelMappings: llm.ModelMappings,
 		Keys:          llm.Keys,
 		KeyPolicy:     llm.KeyPolicy,
-		KeyAffinity:   llm.KeyAffinity,
+		KeyAffinity:   normalizeKeyAffinity(llm.KeyAffinity),
 		Provider:      llm.Provider,
 		MatchPrefix:   llm.MatchPrefix,
 		StripPrefix:   llm.StripPrefix,
 	}
 	if rst.Keys == nil {
 		rst.Keys = []icluster_conf.ClusterKeyRef{}
+	}
+
+	return rst
+}
+
+func normalizeKeyAffinity(affinity *icluster_conf.KeyAffinity) *icluster_conf.KeyAffinity {
+	rst := &icluster_conf.KeyAffinity{}
+	if affinity != nil {
+		rst.Enabled = affinity.Enabled
+		rst.TTL = affinity.TTL
+		rst.RedisPrefix = affinity.RedisPrefix
+		rst.PenaltyEnable = affinity.PenaltyEnable
+	}
+	if rst.Enabled == nil {
+		rst.Enabled = lib.PBool(true)
+	}
+	if rst.TTL == nil {
+		rst.TTL = lib.PInt(600)
+	}
+	if rst.RedisPrefix == nil {
+		rst.RedisPrefix = lib.PString("bfe:ai:key_affinity")
+	}
+	if rst.PenaltyEnable == nil {
+		rst.PenaltyEnable = lib.PBool(true)
 	}
 
 	return rst

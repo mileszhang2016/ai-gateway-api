@@ -223,7 +223,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
 | KeyPolicy.MaxRetries | int | 请求内总额外重试次数 |
 | KeyPolicy.RetryBackoffInitial | int | 初始退避时间，单位毫秒 |
 | KeyPolicy.RetryBackoffMax | int | 最大退避时间，单位毫秒 |
-| KeyPolicy.SessionAffinity | bool | 是否开启会话级 Key 亲和性；对应 OpenAPI `llm_config.key_affinity.enabled`，默认 `false` |
+| KeyPolicy.SessionAffinity | bool | 是否开启会话级 Key 亲和性；对应 OpenAPI `llm_config.key_affinity.enabled`，默认 `true` |
 | KeyPolicy.SessionAffinityTTL | int | 绑定空闲超时时间，单位秒；对应 OpenAPI `llm_config.key_affinity.ttl`，默认 `600`；命中后 BFE 会刷新 TTL |
 | KeyPolicy.SessionAffinityRedisPrefix | string | Redis 绑定键前缀；对应 OpenAPI `llm_config.key_affinity.redis_prefix`，默认 `"bfe:ai:key_affinity"` |
 | KeyPolicy.SessionAffinityPenaltyEnable | bool | 是否开启 Key 惩罚；对应 OpenAPI `llm_config.key_affinity.penalty_enable`，默认 `true` |

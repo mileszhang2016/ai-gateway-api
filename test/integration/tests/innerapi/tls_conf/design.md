@@ -112,7 +112,7 @@ innerapi/tls_conf/
 - **前置**：创建集群时不传 `key_affinity`。
 - **请求**：`GET /inner-api/v1/configs/tls_conf/server_data_conf`
 - **预期**：
-  - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinity == false`；
+  - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinity == true`；
   - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinityTTL == 600`；
   - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinityRedisPrefix == "bfe:ai:key_affinity"`；
   - `ClusterConf.Config.<cluster>.AIConf.KeyPolicy.SessionAffinityPenaltyEnable == true`。
