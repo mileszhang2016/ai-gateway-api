@@ -7,7 +7,7 @@ toolchain go1.22.8
 require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/DATA-DOG/go-sqlmock v1.4.0
-	github.com/bfenetworks/bfe v1.8.5
+	github.com/bfenetworks/bfe v1.8.6
 	github.com/bfenetworks/go-lib v0.0.3
 	github.com/codegangsta/negroni v1.0.0
 	github.com/didi/gendry v1.7.0
@@ -28,11 +28,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.com/bfenetworks/bfe => ../bfe
-
 require (
-	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
-	github.com/alicebob/miniredis/v2 v2.34.0 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/asergeyev/nradix v0.0.0-20170505151046-3872ab85bb56 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -59,7 +55,6 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tjfoc/gmsm v1.3.2 // indirect
-	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/zmap/go-iptree v0.0.0-20170831022036-1948b1097e25 // indirect
 	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
