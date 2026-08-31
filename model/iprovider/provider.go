@@ -24,6 +24,7 @@ import (
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 )
 
@@ -143,8 +144,14 @@ func NewProviderManager(txn itxn.TxnStorager, storager ProviderStorager) *Provid
 
 // ProviderManager provides business-level operations for providers.
 type ProviderManager struct {
-	txn      itxn.TxnStorager
-	storager ProviderStorager
+	txn                 itxn.TxnStorager
+	storager            ProviderStorager
+	operationLogManager ioperlog.OperationLogRecorder
+}
+
+// SetOperationLogManager injects the operation log recorder.
+func (m *ProviderManager) SetOperationLogManager(manager ioperlog.OperationLogRecorder) {
+	m.operationLogManager = manager
 }
 
 // CreateProvider creates a new provider after validation.
@@ -166,7 +173,12 @@ func (m *ProviderManager) CreateProvider(ctx context.Context, param *ProviderPar
 		id, err = m.storager.CreateProvider(ctx, param)
 		return err
 	})
-	return id, err
+	if err != nil {
+		return 0, err
+	}
+
+	m.recordProviderOperation(ctx, string(ioperlog.ActionCreate), *param.Name, nil, providerParamToMap(param))
+	return id, nil
 }
 
 // UpdateProvider updates an existing provider.
@@ -182,7 +194,8 @@ func (m *ProviderManager) UpdateProvider(ctx context.Context, name string,
 		return err
 	}
 
-	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+	var oldProvider *Provider
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		existing, err := m.storager.FetchProvider(ctx, &ProviderFilter{Name: &name})
 		if err != nil {
 			return err
@@ -190,6 +203,7 @@ func (m *ProviderManager) UpdateProvider(ctx context.Context, name string,
 		if existing == nil {
 			return xerror.WrapRecordNotExist("provider")
 		}
+		oldProvider = existing
 
 		// Capture which cluster-relevant fields are explicitly provided before
 		// the storager applies defaults (FillDefaults mutates nil slices into
@@ -238,6 +252,12 @@ func (m *ProviderManager) UpdateProvider(ctx context.Context, name string,
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	m.recordProviderOperation(ctx, string(ioperlog.ActionUpdate), name, providerToMap(oldProvider), providerParamToMap(param))
+	return nil
 }
 
 // UpdatePricingTiers updates the time zone and pricing tiers of a provider.
@@ -276,7 +296,8 @@ func (m *ProviderManager) UpdatePricingTiers(ctx context.Context, name string, p
 func (m *ProviderManager) DeleteProvider(ctx context.Context, name string,
 	refCheckers ...func(context.Context, string) error) error {
 
-	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+	var oldProvider *Provider
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		existing, err := m.storager.FetchProvider(ctx, &ProviderFilter{Name: &name})
 		if err != nil {
 			return err
@@ -284,6 +305,7 @@ func (m *ProviderManager) DeleteProvider(ctx context.Context, name string,
 		if existing == nil {
 			return xerror.WrapRecordNotExist("provider")
 		}
+		oldProvider = existing
 
 		for _, checker := range refCheckers {
 			if err := checker(ctx, name); err != nil {
@@ -293,6 +315,12 @@ func (m *ProviderManager) DeleteProvider(ctx context.Context, name string,
 
 		return m.storager.DeleteProvider(ctx, name)
 	})
+	if err != nil {
+		return err
+	}
+
+	m.recordProviderOperation(ctx, string(ioperlog.ActionDelete), name, providerToMap(oldProvider), nil)
+	return nil
 }
 
 // FetchProvider fetches a single provider by filter.

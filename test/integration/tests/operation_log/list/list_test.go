@@ -1,0 +1,238 @@
+package operation_log_test
+
+import (
+	"fmt"
+	"os"
+	"testing"
+
+	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+var sm *testutil.ServerManager
+
+func TestMain(m *testing.M) {
+	var err error
+	sm, err = testutil.StartServer()
+	if err != nil {
+		panic("failed to start server: " + err.Error())
+	}
+	code := m.Run()
+	sm.Shutdown()
+	os.Exit(code)
+}
+
+// TestOperationLog_GenerationForVariousAPIs 验证各类配置域的写操作都会生成对应的操作日志。
+func TestOperationLog_GenerationForVariousAPIs(t *testing.T) {
+	client := testutil.GetClient()
+
+	// 1. 创建 entity-type
+	typeName := testutil.UniqueEntityTypeName()
+	_, err := testutil.CreateEntityType(typeName, 1)
+	require.NoError(t, err, "create entity type failed")
+
+	// 2. 创建 entity
+	entityName := testutil.UniqueEntityName()
+	entityID, err := testutil.CreateEntity(entityName, typeName, "")
+	require.NoError(t, err, "create entity failed")
+
+	// 3. 创建 api-key
+	apiKeyID, err := testutil.CreateAPIKey("test-key-for-operation-log", entityID)
+	require.NoError(t, err, "create api key failed")
+
+	// 4. 创建 provider
+	providerName := testutil.UniqueProviderName()
+	_, err = testutil.CreateProvider(providerName)
+	require.NoError(t, err, "create provider failed")
+
+	// 5. 创建 cluster（依赖 provider）
+	clusterName := testutil.UniqueClusterName()
+	_, err = testutil.CreateCluster(clusterName)
+	require.NoError(t, err, "create cluster failed")
+
+	// 6. 创建 certificate：先创建默认证书，再创建非默认证书。
+	defaultCertName := testutil.UniqueCertName()
+	_, err = testutil.CreateCertificate(defaultCertName, true)
+	require.NoError(t, err, "create default certificate failed")
+
+	certName := testutil.UniqueCertName()
+	_, err = testutil.CreateCertificate(certName, false)
+	require.NoError(t, err, "create certificate failed")
+
+	// 7. 创建 user
+	userName := testutil.UniqueUserName()
+	password := "TestPass123!"
+	require.NoError(t, testutil.CreateUser(userName, password), "create user failed")
+
+	// 8. 创建 token
+	tokenName := testutil.UniqueTokenName()
+	_, err = testutil.CreateToken(tokenName, "System")
+	require.NoError(t, err, "create token failed")
+
+	// 9. 更新 entity-type（产生 update 日志）
+	resp, err := client.Patch("/open-api/v1/entity-types/"+typeName, map[string]interface{}{
+		"description": "updated description",
+	})
+	require.NoError(t, err, "update entity-type request failed")
+	testutil.AssertSuccess(t, resp)
+
+	// 10. 删除 api-key（产生 delete 日志）
+	require.NoError(t, testutil.DeleteAPIKey(apiKeyID), "delete api key failed")
+
+	// 轮询等待各域操作日志落库。
+	// 大部分域使用业务 ID（resource_id）查询；cluster/user/token 使用资源名称（resource_name）查询。
+	expectedLogs := []struct {
+		resourceType string
+		action       string
+		resourceID   string
+		resourceName string
+	}{
+		{"entity_type", "create", typeName, ""},
+		{"entity_type", "update", typeName, ""},
+		{"entity", "create", entityID, ""},
+		{"api_key", "create", apiKeyID, ""},
+		{"api_key", "delete", apiKeyID, ""},
+		{"provider", "create", providerName, ""},
+		{"cluster", "create", "", clusterName},
+		{"certificate", "create", defaultCertName, ""},
+		{"certificate", "create", certName, ""},
+		{"user", "create", "", userName},
+		{"token", "create", "", tokenName},
+	}
+
+	for _, expected := range expectedLogs {
+		t.Run(fmt.Sprintf("%s/%s", expected.resourceType, expected.action), func(t *testing.T) {
+			filter := map[string]string{
+				"resource_type": expected.resourceType,
+				"action":        expected.action,
+			}
+			if expected.resourceID != "" {
+				filter["resource_id"] = expected.resourceID
+			}
+			if expected.resourceName != "" {
+				filter["resource_name"] = expected.resourceName
+			}
+
+			entry, err := testutil.WaitForOperationLog(filter, 0)
+			require.NoError(t, err, "expected operation log not found")
+			assert.Equal(t, expected.action, entry.Action)
+			assert.Equal(t, expected.resourceType, entry.ResourceType)
+			assert.Equal(t, float64(1), entry.Status, "operation should be success")
+			assert.NotEmpty(t, entry.RequestPath)
+			assert.NotEmpty(t, entry.CreatedAt)
+		})
+	}
+
+	// 清理资源
+	_ = testutil.DeleteToken(tokenName)
+	_ = testutil.DeleteUser(userName)
+	_ = testutil.DeleteCertificate(certName)
+	_ = testutil.DeleteCertificate(defaultCertName)
+	_ = testutil.DeleteCluster(clusterName)
+	_ = testutil.DeleteProvider(providerName)
+	_ = testutil.DeleteEntity(entityID)
+	_ = testutil.DeleteEntityType(typeName)
+}
+
+// TestOperationLog_ListFilters 验证操作日志查询接口的过滤与分页能力。
+func TestOperationLog_ListFilters(t *testing.T) {
+	// 前置：创建 entity-type、entity 和 api-key，产生操作日志。
+	typeName := testutil.UniqueEntityTypeName()
+	_, err := testutil.CreateEntityType(typeName, 1)
+	require.NoError(t, err, "setup entity type failed")
+
+	entityName := testutil.UniqueEntityName()
+	entityID, err := testutil.CreateEntity(entityName, typeName, "")
+	require.NoError(t, err, "setup entity failed")
+
+	apiKeyID, err := testutil.CreateAPIKey("test-key-for-operation-log", entityID)
+	require.NoError(t, err, "setup api key failed")
+
+	// 等待异步操作日志落库。
+	_, err = testutil.WaitForOperationLog(map[string]string{
+		"resource_type": "api_key",
+		"action":        "create",
+		"resource_id":   apiKeyID,
+	}, 0)
+	require.NoError(t, err, "api_key create log not found")
+
+	tests := []struct {
+		name       string
+		query      map[string]string
+		minTotal   int
+		wantAction string
+	}{
+		{
+			name:     "OL-2-001 无条件查询",
+			query:    map[string]string{},
+			minTotal: 3,
+		},
+		{
+			name:       "OL-2-002 按 action 过滤",
+			query:      map[string]string{"action": "create"},
+			minTotal:   3,
+			wantAction: "create",
+		},
+		{
+			name:     "OL-2-003 按 resource_type 过滤",
+			query:    map[string]string{"resource_type": "entity"},
+			minTotal: 1,
+		},
+		{
+			name:     "OL-2-004 按 resource_id 过滤",
+			query:    map[string]string{"resource_id": entityID},
+			minTotal: 1,
+		},
+		{
+			name:     "OL-2-005 按不存在 action 过滤",
+			query:    map[string]string{"action": "not_exist_action"},
+			minTotal: 0,
+		},
+		{
+			name:     "OL-2-006 分页查询",
+			query:    map[string]string{"page": "1", "page_size": "2"},
+			minTotal: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, resp, err := testutil.QueryOperationLogs(tt.query)
+			require.NoError(t, err)
+			testutil.AssertSuccess(t, resp)
+
+			assert.GreaterOrEqual(t, result.Pagination.Total, int64(tt.minTotal), "total should >= %d", tt.minTotal)
+			if tt.minTotal > 0 {
+				testutil.AssertDataNotEmpty(t, resp)
+				assert.NotEmpty(t, result.List)
+			}
+
+			if tt.wantAction != "" {
+				for _, item := range result.List {
+					assert.Equal(t, tt.wantAction, item.Action)
+				}
+			}
+
+			// 校验列表中至少包含一条当前测试创建的 entity 日志，且 change_summary 已被记录。
+			if tt.name == "OL-2-001 无条件查询" {
+				foundEntityLog := false
+				for _, item := range result.List {
+					if item.ResourceType == "entity" && item.ResourceID == entityID && item.Action == "create" {
+						foundEntityLog = true
+						assert.Equal(t, entityName, item.ResourceName)
+						assert.Equal(t, float64(1), item.Status)
+						assert.NotEmpty(t, item.CreatedAt)
+						assert.NotNil(t, item.ChangeSummary)
+					}
+				}
+				assert.True(t, foundEntityLog, "should find create entity operation log")
+			}
+		})
+	}
+
+	// 清理
+	_ = testutil.DeleteAPIKey(apiKeyID)
+	_ = testutil.DeleteEntity(entityID)
+	_ = testutil.DeleteEntityType(typeName)
+}

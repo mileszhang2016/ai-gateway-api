@@ -36,6 +36,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprotocol"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
@@ -108,4 +109,8 @@ var (
 	AIRouteExporter        *imods.AIRouteExporter
 	BalanceSyncManager     *quota.BalanceSyncManager
 	QuotaResetScheduler    *quota.QuotaResetScheduler
+
+	// Operation logs
+	OperationLogStorager ioperlog.OperationLogStorager
+	OperationLogManager  ioperlog.OperationLogManagerInterface
 )

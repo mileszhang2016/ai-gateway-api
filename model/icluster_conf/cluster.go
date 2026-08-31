@@ -40,6 +40,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
@@ -364,9 +365,15 @@ type ClusterManager struct {
 	providerStorager   iprovider.ProviderStorager
 
 	versionControlManager *iversion_control.VersionControlManager
+	operationLogManager   ioperlog.OperationLogRecorder
 
 	deleteCheckers map[string]func(context.Context, *ibasic.Product, *Cluster) error
 	updateCheckers map[string]func(context.Context, *ibasic.Product, *Cluster, *ClusterParam) error
+}
+
+// SetOperationLogManager injects the operation log recorder.
+func (cm *ClusterManager) SetOperationLogManager(manager ioperlog.OperationLogRecorder) {
+	cm.operationLogManager = manager
 }
 
 func (rm *ClusterManager) FetchClusterList(ctx context.Context, param *ClusterFilter) (list []*Cluster, err error) {
@@ -394,6 +401,7 @@ func (cm *ClusterManager) FetchCluster(ctx context.Context, param *ClusterFilter
 func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Product, param *ClusterParam) (err error) {
 	param.ProductID = &product.ID
 
+	var clusterID int64
 	err = cm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		old, err := cm.storager.FetchClusterList(ctx, &ClusterFilter{
 			Name: param.Name,
@@ -508,7 +516,7 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 			}
 		}
 
-		clusterID, err := cm.storager.ClusterCreate(ctx, product, param, bindingSubClusters)
+		clusterID, err = cm.storager.ClusterCreate(ctx, product, param, bindingSubClusters)
 		if err != nil {
 			return err
 		}
@@ -517,8 +525,16 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 			ID: clusterID,
 		}, bindingSubClusters, nil)
 	})
+	if err != nil {
+		return err
+	}
 
-	return
+	clusterName := ""
+	if param.Name != nil {
+		clusterName = *param.Name
+	}
+	cm.recordClusterOperation(ctx, string(ioperlog.ActionCreate), clusterID, clusterName, nil, clusterParamToMap(param))
+	return nil
 }
 
 const BlackHole = "GSLB_BLACKHOLE"
@@ -737,8 +753,12 @@ func (cm *ClusterManager) UpdateCluster(ctx context.Context, product *ibasic.Pro
 
 		return cm.storager.ClusterUpdate(ctx, product, oldData, param)
 	})
+	if err != nil {
+		return err
+	}
 
-	return
+	cm.recordClusterOperation(ctx, string(ioperlog.ActionUpdate), oldData.ID, oldData.Name, clusterToMap(oldData), clusterParamToMap(param))
+	return nil
 }
 
 // ProviderDeleteChecker returns an error if any cluster references the provider.
@@ -1035,8 +1055,12 @@ func (cm *ClusterManager) DeleteCluster(ctx context.Context, product *ibasic.Pro
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
 
-	return
+	cm.recordClusterOperation(ctx, string(ioperlog.ActionDelete), cluster.ID, cluster.Name, clusterToMap(cluster), nil)
+	return nil
 }
 
 // IsBFEClusterUsed checks if a BFE cluster is referenced in any lb_matrix (scheduler) of any AI cluster

@@ -3,6 +3,7 @@ package testutil
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // CreateEntityType 创建 Entity-Type，返回 type_name
@@ -421,4 +422,63 @@ func FieldExists(resp *APIResponse, field string) (bool, error) {
 		return false, err
 	}
 	return !ok, nil
+}
+
+// OperationLogEntry 是查询操作日志返回的单个条目结构（仅包含测试常用字段）。
+type OperationLogEntry struct {
+	ID           float64                `json:"id"`
+	Action       string                 `json:"action"`
+	ResourceType string                 `json:"resource_type"`
+	ResourceID   string                 `json:"resource_id"`
+	ResourceName string                 `json:"resource_name"`
+	Status       float64                `json:"status"`
+	RequestPath  string                 `json:"request_path"`
+	RequestMethod string                `json:"request_method"`
+	CreatedAt    float64                `json:"created_at"`
+	ChangeSummary map[string]interface{} `json:"change_summary"`
+}
+
+// OperationLogListResult 是 GET /operation-logs 的分页结果。
+type OperationLogListResult struct {
+	List       []OperationLogEntry `json:"list"`
+	Pagination struct {
+		Page     int   `json:"page"`
+		PageSize int   `json:"page_size"`
+		Total    int64 `json:"total"`
+	} `json:"pagination"`
+}
+
+// QueryOperationLogs 查询操作日志列表。
+func QueryOperationLogs(query map[string]string) (*OperationLogListResult, *APIResponse, error) {
+	resp, err := GetClient().Get("/open-api/v1/operation-logs", query)
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.ErrNum != 200 {
+		return nil, resp, fmt.Errorf("query operation logs failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	var result OperationLogListResult
+	if err := UnmarshalData(resp, &result); err != nil {
+		return nil, resp, fmt.Errorf("unmarshal operation logs: %w", err)
+	}
+	return &result, resp, nil
+}
+
+// WaitForOperationLog 轮询等待匹配 filter 的操作日志出现，默认最长等待 10 秒。
+func WaitForOperationLog(filter map[string]string, timeout time.Duration) (*OperationLogEntry, error) {
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		result, _, err := QueryOperationLogs(filter)
+		if err != nil {
+			return nil, err
+		}
+		if len(result.List) > 0 {
+			return &result.List[0], nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("operation log not found after %v, filter=%v", timeout, filter)
 }

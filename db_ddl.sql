@@ -462,6 +462,36 @@ CREATE TABLE `route_rules` (
   INDEX `idx_enabled` (`enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='路由规则表';
 
+-- create operation_logs
+DROP TABLE IF EXISTS `operation_logs`;
+CREATE TABLE `operation_logs` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `log_id` varchar(64) NOT NULL COMMENT '请求唯一标识，与 access log 中的 LogID 一致，用于关联与去重',
+  `operator_type` tinyint(4) NOT NULL DEFAULT '0' COMMENT '操作者类型：0=user, 1=token',
+  `operator_id` bigint(20) NOT NULL DEFAULT '0' COMMENT '操作者在对应表中的主键 ID',
+  `operator_name` varchar(255) NOT NULL DEFAULT '' COMMENT '操作者名称（user_name 或 token_name）',
+  `action` varchar(32) NOT NULL COMMENT '操作动作：create/update/delete/reset/...',
+  `resource_type` varchar(64) NOT NULL COMMENT '资源类型：entity/api_key/provider/...',
+  `resource_id` varchar(255) NOT NULL DEFAULT '' COMMENT '被操作资源业务 ID',
+  `resource_name` varchar(512) NOT NULL DEFAULT '' COMMENT '被操作资源名称，便于展示',
+  `resource_parent_id` varchar(255) NOT NULL DEFAULT '' COMMENT '资源父级业务 ID（如 entity 层级中的父节点）',
+  `status` tinyint(4) NOT NULL DEFAULT '1' COMMENT '操作结果：1=success, 2=failed',
+  `error_msg` varchar(1024) NOT NULL DEFAULT '' COMMENT '失败时的简要错误信息',
+  `change_summary` mediumtext COMMENT '变更摘要 JSON，记录变更前后关键字段（脱敏后）',
+  `request_path` varchar(512) NOT NULL DEFAULT '' COMMENT '请求路径',
+  `request_method` varchar(16) NOT NULL DEFAULT '' COMMENT '请求方法',
+  `client_ip` varchar(64) NOT NULL DEFAULT '' COMMENT '客户端 IP',
+  `user_agent` varchar(512) NOT NULL DEFAULT '' COMMENT 'User-Agent',
+  `created_at` datetime NOT NULL COMMENT '操作发生时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_operator` (`operator_type`, `operator_id`),
+  KEY `idx_resource` (`resource_type`, `resource_id`),
+  KEY `idx_action` (`action`),
+  KEY `idx_created_at` (`created_at`),
+  KEY `idx_log_id` (`log_id`),
+  KEY `idx_resource_parent` (`resource_parent_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 网关配置操作日志表';
+
 -- insert default user
 insert into users (id, name, password, scopes, created_at) values(1, 'admin', 'admin', 'System', now());
 

@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
@@ -116,6 +117,7 @@ type APIKeyManager struct {
 	routeRulesStorager      shared.RouteRulesStorager
 	entityStorager          shared.EntityStorager
 	quotaCache              quotacache.QuotaCache
+	operationLogManager     ioperlog.OperationLogRecorder
 }
 
 // QuotaPlanStorager interface defines storage operations for quota plans
@@ -148,6 +150,11 @@ func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager,
 		entityStorager:          entityStorager,
 		quotaCache:              quotaCache,
 	}
+}
+
+// SetOperationLogManager injects the operation log recorder.
+func (rppm *APIKeyManager) SetOperationLogManager(manager ioperlog.OperationLogRecorder) {
+	rppm.operationLogManager = manager
 }
 
 // GetRemainingQuota calculates the remaining quota for an API key.
@@ -403,6 +410,7 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 	var (
 		quotaKey        string
 		rateLimitKeys   []string
+		oldAPIKey       *APIKeyParam
 	)
 
 	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
@@ -415,6 +423,7 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 		}
 
 		one := list[0]
+		oldAPIKey = one
 
 		if one.Key != nil {
 			quotaKey = *one.Key
@@ -456,6 +465,8 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 
 	// 事务提交成功后清理 Redis Key
 	rppm.cleanupRedisKeys(ctx, quotaKey, rateLimitKeys)
+
+	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionDelete), oldAPIKey, nil, apiKeyParamToMap(oldAPIKey))
 	return nil
 }
 
@@ -483,7 +494,10 @@ func (rppm *APIKeyManager) cleanupRedisKeys(ctx context.Context, quotaKey string
 
 // UpdateAPIKey updates an existing API key
 func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) error {
-	var rateLimitKeysToDelete []string
+	var (
+		rateLimitKeysToDelete []string
+		oldAPIKey             *APIKeyParam
+	)
 
 	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		list, err := rppm.storager.FetchAPIKeyList(ctx, filter)
@@ -495,6 +509,7 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		}
 
 		one := list[0]
+		oldAPIKey = one
 
 		// key is immutable through update endpoints
 		param.Key = nil
@@ -564,6 +579,8 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 	if len(rateLimitKeysToDelete) > 0 {
 		rppm.cleanupRedisKeys(ctx, "", rateLimitKeysToDelete)
 	}
+
+	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionUpdate), oldAPIKey, apiKeyParamToMap(oldAPIKey), apiKeyParamToMap(param))
 	return nil
 }
 
@@ -673,6 +690,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 		}
 	}
 
+	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionCreate), param, nil, apiKeyParamToMap(param))
 	return nil
 }
 
