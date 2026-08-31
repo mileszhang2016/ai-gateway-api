@@ -31,6 +31,7 @@ package rdb
 import (
 	"context"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
@@ -38,6 +39,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprotocol"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
@@ -55,6 +57,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
 	entityStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/model_price"
+	operationLogStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/protocol"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/provider"
 	quotaStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/quota"
@@ -70,6 +73,10 @@ import (
 func Init() error {
 	container.TxnStoragerSingleton = txn.NewRDBTxnStorager(stateful.NewBFEDBContext)
 	container.VersionControlStoragerSingleton = version_control.NewVersionControllerStorage(stateful.NewBFEDBContext)
+	container.OperationLogStorager = operationLogStorage.NewOperationLogStorager(stateful.NewBFEDBContext)
+	container.OperationLogManager = ioperlog.NewOperationLogManager(container.OperationLogStorager, 0)
+	container.OperationLogManager.SetContextExtractor(operationLogContextExtractor)
+
 	container.RouteRuleStoragerSingleton = route_conf.NewRouteRuleStorager(
 		stateful.NewBFEDBContext,
 		container.VersionControlStoragerSingleton)
@@ -91,6 +98,7 @@ func Init() error {
 	container.ProviderManager = iprovider.NewProviderManager(
 		container.TxnStoragerSingleton,
 		container.ProviderStoragerSingleton)
+	container.ProviderManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.APIKeyStorager = apiKeyStorage.NewAPIKeyStorager(
 		stateful.NewBFEDBContext,
@@ -126,6 +134,7 @@ func Init() error {
 		container.CertificateStoragerSingleton,
 		container.VersionControlManager,
 		container.ExtraFileStoragerSingleton)
+	container.CertificateManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.ProductManager = ibasic.NewProductManager(
 		container.TxnStoragerSingleton,
@@ -143,6 +152,7 @@ func Init() error {
 	container.ModelPriceManager = imodel_price.NewManager(
 		container.TxnStoragerSingleton,
 		container.ModelPriceStorager)
+	container.ModelPriceManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.RouteRuleManager = iroute_conf.NewRouteRuleManager(
 		container.TxnStoragerSingleton,
@@ -153,6 +163,7 @@ func Init() error {
 		container.DomainStoragerSingleton)
 	container.RouteRuleManager.SetModelPriceStorager(container.ModelPriceStorager)
 	container.RouteRuleManager.SetProviderStorager(container.ProviderStoragerSingleton)
+	container.RouteRuleManager.SetOperationLogManager(container.OperationLogManager)
 
 	// Initialize route rules components before cluster manager because the
 	// cluster delete checker depends on RouteRulesManager.
@@ -176,6 +187,7 @@ func Init() error {
 		map[string]func(context.Context, *ibasic.Product, *icluster_conf.Cluster, *icluster_conf.ClusterParam) error{
 			"route_rules": container.RouteRulesManager.ClusterModelUpdateChecker,
 		})
+	container.ClusterManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.SubClusterManager = icluster_conf.NewSubClusterManager(
 		container.TxnStoragerSingleton,
@@ -188,15 +200,18 @@ func Init() error {
 		container.TxnStoragerSingleton,
 		container.DomainStoragerSingleton,
 		container.RouteRuleManager)
+	container.DomainManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.AuthenticateManager = iauth.NewAuthenticateManager(
 		container.TxnStoragerSingleton,
 		container.AuthenticateStoragerSingleton,
 		container.AuthorizeStoragerSingleton,
 	)
+	container.AuthenticateManager.SetOperationLogManager(container.OperationLogManager)
 	container.AuthorizeManager = iauth.NewAuthorizeManager(
 		container.TxnStoragerSingleton,
 		container.AuthorizeStoragerSingleton)
+	container.AuthorizeManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.PoolManager = icluster_conf.NewPoolManager(
 		container.TxnStoragerSingleton,
@@ -217,6 +232,7 @@ func Init() error {
 	container.EntityTypeManager = entity.NewEntityTypeManager(
 		container.TxnStoragerSingleton,
 		container.EntityTypeStorager)
+	container.EntityTypeManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.EntityManager = entity.NewEntityManager(
 		container.TxnStoragerSingleton,
@@ -226,6 +242,7 @@ func Init() error {
 		rate_limit_policy.NewRateLimitPolicyStoragerAdapter(container.RateLimitPolicyStorager),
 		container.RouteRulesStorager,
 		container.QuotaCacheSingleton)
+	container.EntityManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.APIKeyRuleManager = imods.NewAPIKeyRuleManager(
 		container.TxnStoragerSingleton,
@@ -248,6 +265,7 @@ func Init() error {
 		container.APIKeyStorager,
 		container.EntityStorager,
 		container.QuotaCacheSingleton)
+	container.QuotaPlanManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.RateLimitPolicyManager = rate_limit_policy.NewRateLimitPolicyManager(
 		container.TxnStoragerSingleton,
@@ -255,6 +273,7 @@ func Init() error {
 		container.APIKeyStorager,
 		container.EntityStorager,
 		container.VersionControlManager)
+	container.RateLimitPolicyManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.AIRouteExporter = imods.NewAIRouteExporter(
 		container.APIKeyStorager,
@@ -271,6 +290,7 @@ func Init() error {
 		quota.NewEntityStoragerAdapter(container.EntityStorager),
 		container.QuotaCacheSingleton,
 	)
+	container.APIKeyManager.SetOperationLogManager(container.OperationLogManager)
 
 	// Initialize quota reset scheduler
 	container.BalanceSyncManager = quota.NewBalanceSyncManager(
@@ -283,7 +303,8 @@ func Init() error {
 
 	container.QuotaResetScheduler = quota.NewQuotaResetScheduler(
 		container.TxnStoragerSingleton,
-		container.BalanceSyncManager)
+		container.BalanceSyncManager,
+		quotacache.NewRedisDistributedLock(stateful.DefaultClientSet.RedisClient))
 
 	container.QuotaResetScheduler.Start()
 
@@ -293,4 +314,24 @@ func Init() error {
 	}
 
 	return nil
+}
+
+func operationLogContextExtractor(ctx context.Context, entry *ioperlog.OperationLogEntry) {
+	if visitor, err := iauth.MustGetVisitor(ctx); err == nil && visitor != nil {
+		entry.OperatorName = visitor.GetName()
+		if visitor.User != nil {
+			entry.OperatorType = ioperlog.OperatorTypeUser
+			entry.OperatorID = visitor.User.ID
+		} else if visitor.Token != nil {
+			entry.OperatorType = ioperlog.OperatorTypeToken
+			entry.OperatorID = visitor.Token.ID
+		}
+	}
+
+	if reqInfo := xreq.GetRequestInfo(ctx); reqInfo != nil {
+		entry.LogID = reqInfo.LogID
+		entry.RequestPath = reqInfo.URLPath
+		entry.RequestMethod = reqInfo.Method
+		entry.ClientIP = reqInfo.ClientIP
+	}
 }

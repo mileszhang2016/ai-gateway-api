@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
@@ -34,6 +35,7 @@ type EntityManager struct {
 	rateLimitPolicyStorager shared.RateLimitPolicyStorager
 	routeRulesStorager      shared.RouteRulesStorager
 	quotaCache              quotacache.QuotaCache
+	operationLogManager     ioperlog.OperationLogRecorder
 }
 
 // NewEntityManager 创建 Entity 管理器
@@ -52,6 +54,11 @@ func NewEntityManager(txn itxn.TxnStorager, storager EntityStorager,
 		routeRulesStorager:      routeRulesStorager,
 		quotaCache:              quotaCache,
 	}
+}
+
+// SetOperationLogManager injects the operation log recorder.
+func (m *EntityManager) SetOperationLogManager(manager ioperlog.OperationLogRecorder) {
+	m.operationLogManager = manager
 }
 
 // CreateEntity 创建 Entity
@@ -134,6 +141,20 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 			}
 		}
 	}
+
+	entityName := ""
+	if param.Name != nil {
+		entityName = *param.Name
+	}
+	entityID := ""
+	if param.EntityID != nil {
+		entityID = *param.EntityID
+	}
+	parentID := ""
+	if param.ParentID != nil {
+		parentID = *param.ParentID
+	}
+	m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param))
 
 	return id, nil
 }
@@ -218,6 +239,7 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 	var (
 		affected              int64
 		rateLimitKeysToDelete []string
+		oldEntity             *EntityParam
 	)
 	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		var err error
@@ -231,6 +253,7 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 		}
 
 		one := list[0]
+		oldEntity = one
 
 		if param.QuotaPlan != nil && m.quotaPlanStorager != nil {
 			if one.QuotaPlanID != nil {
@@ -294,6 +317,23 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 	if len(rateLimitKeysToDelete) > 0 {
 		m.cleanupRedisKeys(ctx, "", rateLimitKeysToDelete)
 	}
+
+	entityID := ""
+	entityName := ""
+	parentID := ""
+	if oldEntity != nil {
+		if oldEntity.EntityID != nil {
+			entityID = *oldEntity.EntityID
+		}
+		if oldEntity.Name != nil {
+			entityName = *oldEntity.Name
+		}
+		if oldEntity.ParentID != nil {
+			parentID = *oldEntity.ParentID
+		}
+	}
+	m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(oldEntity), entityParamToMap(param))
+
 	return affected, nil
 }
 
@@ -302,6 +342,7 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 	var (
 		quotaKey      string
 		rateLimitKeys []string
+		oldEntity     *EntityParam
 	)
 
 	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
@@ -314,6 +355,7 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 		}
 
 		one := list[0]
+		oldEntity = one
 
 		if one.EntityID != nil && *one.EntityID != "" {
 			quotaKey = *one.EntityID
@@ -363,6 +405,23 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 
 	// 事务提交成功后清理 Redis Key
 	m.cleanupRedisKeys(ctx, quotaKey, rateLimitKeys)
+
+	entityID := ""
+	entityName := ""
+	parentID := ""
+	if oldEntity != nil {
+		if oldEntity.EntityID != nil {
+			entityID = *oldEntity.EntityID
+		}
+		if oldEntity.Name != nil {
+			entityName = *oldEntity.Name
+		}
+		if oldEntity.ParentID != nil {
+			parentID = *oldEntity.ParentID
+		}
+	}
+	m.recordEntityOperation(ctx, string(ioperlog.ActionDelete), entityID, entityName, parentID, entityParamToMap(oldEntity), nil)
+
 	return nil
 }
 

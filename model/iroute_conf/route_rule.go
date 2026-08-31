@@ -41,6 +41,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
@@ -193,6 +194,7 @@ type RouteRuleManager struct {
 	domainStorager        DomainStorager
 	modelPriceStorager    imodel_price.ModelPriceStorager
 	providerStorager      iprovider.ProviderStorager
+	operationLogManager   ioperlog.OperationLogRecorder
 }
 
 // SetModelPriceStorager sets the optional model price storager used to enrich
@@ -207,6 +209,11 @@ func (rm *RouteRuleManager) SetProviderStorager(storager iprovider.ProviderStora
 	rm.providerStorager = storager
 }
 
+// SetOperationLogManager injects the operation log recorder.
+func (rm *RouteRuleManager) SetOperationLogManager(manager ioperlog.OperationLogRecorder) {
+	rm.operationLogManager = manager
+}
+
 func (rm *RouteRuleManager) ExpressionVerify(ctx context.Context, expression string) (err error) {
 	_, err = condition.Build(expression)
 	return err
@@ -217,6 +224,8 @@ func (rm *RouteRuleManager) UpsertProductRule(ctx context.Context, product *ibas
 	if err != nil {
 		return err
 	}
+
+	beforeRule := productRouteRuleToMap(rule)
 
 	var clusterList []*icluster_conf.Cluster
 	var clusterMap map[string]*icluster_conf.Cluster
@@ -265,8 +274,13 @@ func (rm *RouteRuleManager) UpsertProductRule(ctx context.Context, product *ibas
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
 
-	return err
+	rm.recordRouteRuleOperation(ctx, string(ioperlog.ActionUpdate), product, beforeRule, productRouteRuleToMap(rule))
+
+	return nil
 }
 
 func (rm *RouteRuleManager) ClusterDeleteChecker(ctx context.Context, product *ibasic.Product, cluster *icluster_conf.Cluster) error {

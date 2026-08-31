@@ -28,6 +28,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/entity_type"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/global_route_rules"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/model_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/operation_log"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product_cluster"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product_pool"
@@ -67,6 +68,7 @@ func endpoints() []*xreq.Endpoint {
 		global_route_rules.Endpoints,
 		route_tables.Endpoints,
 		model_price.Endpoints,
+		operation_log.Endpoints,
 		provider.Endpoints,
 	)
 }

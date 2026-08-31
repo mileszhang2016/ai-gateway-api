@@ -22,6 +22,7 @@ import (
 	"strconv"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 )
 
@@ -148,8 +149,9 @@ type ModelPriceStorager interface {
 
 // Manager provides business-level operations for model pricing records.
 type Manager struct {
-	txn      itxn.TxnStorager
-	storager ModelPriceStorager
+	txn                 itxn.TxnStorager
+	storager            ModelPriceStorager
+	operationLogManager ioperlog.OperationLogRecorder
 }
 
 // NewManager creates a new Manager instance.
@@ -160,12 +162,23 @@ func NewManager(txn itxn.TxnStorager, storager ModelPriceStorager) *Manager {
 	}
 }
 
+// SetOperationLogManager injects the operation log recorder.
+func (m *Manager) SetOperationLogManager(manager ioperlog.OperationLogRecorder) {
+	m.operationLogManager = manager
+}
+
 // CreateModelPrice creates a single model price record.
 func (m *Manager) CreateModelPrice(ctx context.Context, param *ModelPrice) (int64, error) {
 	if err := ValidateModelPrice(param); err != nil {
 		return 0, err
 	}
-	return m.storager.CreateModelPrice(ctx, param)
+	id, err := m.storager.CreateModelPrice(ctx, param)
+	if err != nil {
+		return 0, err
+	}
+
+	m.recordModelPriceOperation(ctx, string(ioperlog.ActionCreate), modelPriceIDString(id), modelPriceName(param), nil, modelPriceToMap(param))
+	return id, nil
 }
 
 // UpdateModelPrice updates a model price record matched by filter.
@@ -173,7 +186,23 @@ func (m *Manager) UpdateModelPrice(ctx context.Context, filter *ModelPriceFilter
 	if err := ValidateModelPrice(param); err != nil {
 		return 0, err
 	}
-	return m.storager.UpdateModelPrice(ctx, filter, param)
+
+	oldPrice, err := m.storager.FetchModelPrice(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	affected, err := m.storager.UpdateModelPrice(ctx, filter, param)
+	if err != nil {
+		return affected, err
+	}
+
+	resourceID := ""
+	if filter != nil && filter.ID != nil {
+		resourceID = modelPriceIDString(*filter.ID)
+	}
+	m.recordModelPriceOperation(ctx, string(ioperlog.ActionUpdate), resourceID, modelPriceName(param), modelPriceToMap(oldPrice), modelPriceToMap(param))
+	return affected, nil
 }
 
 // ListProviders returns all distinct provider names in model_prices.
@@ -183,7 +212,21 @@ func (m *Manager) ListProviders(ctx context.Context) ([]string, error) {
 
 // DeleteModelPrice deletes model price records matched by filter.
 func (m *Manager) DeleteModelPrice(ctx context.Context, filter *ModelPriceFilter) error {
-	return m.storager.DeleteModelPrice(ctx, filter)
+	oldPrice, err := m.storager.FetchModelPrice(ctx, filter)
+	if err != nil {
+		return err
+	}
+
+	if err := m.storager.DeleteModelPrice(ctx, filter); err != nil {
+		return err
+	}
+
+	resourceID := ""
+	if filter != nil && filter.ID != nil {
+		resourceID = modelPriceIDString(*filter.ID)
+	}
+	m.recordModelPriceOperation(ctx, string(ioperlog.ActionDelete), resourceID, modelPriceName(oldPrice), modelPriceToMap(oldPrice), nil)
+	return nil
 }
 
 // FetchModelPrice fetches a single model price record matched by filter.
@@ -261,6 +304,10 @@ func (m *Manager) ImportModelPrices(ctx context.Context, entries []*ModelPrice, 
 		}
 		return nil
 	})
+	if err != nil {
+		return imported, skipped, err
+	}
 
-	return imported, skipped, err
+	m.recordModelPriceImport(ctx, mode, imported, entries)
+	return imported, skipped, nil
 }

@@ -487,6 +487,35 @@ CREATE INDEX route_rules_enabled ON route_rules (enabled);
 CREATE TRIGGER route_rules_updated_at AFTER UPDATE ON route_rules
   FOR EACH ROW BEGIN UPDATE route_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
+-- create operation_logs (操作日志表)
+DROP TABLE IF EXISTS operation_logs;
+CREATE TABLE operation_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  log_id TEXT NOT NULL,
+  operator_type INTEGER NOT NULL DEFAULT 0,
+  operator_id INTEGER NOT NULL DEFAULT 0,
+  operator_name TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT NOT NULL DEFAULT '',
+  resource_name TEXT NOT NULL DEFAULT '',
+  resource_parent_id TEXT NOT NULL DEFAULT '',
+  status INTEGER NOT NULL DEFAULT 1,
+  error_msg TEXT NOT NULL DEFAULT '',
+  change_summary TEXT,
+  request_path TEXT NOT NULL DEFAULT '',
+  request_method TEXT NOT NULL DEFAULT '',
+  client_ip TEXT NOT NULL DEFAULT '',
+  user_agent TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL
+);
+CREATE INDEX operation_logs_operator ON operation_logs (operator_type, operator_id);
+CREATE INDEX operation_logs_resource ON operation_logs (resource_type, resource_id);
+CREATE INDEX operation_logs_action ON operation_logs (action);
+CREATE INDEX operation_logs_created_at ON operation_logs (created_at);
+CREATE INDEX operation_logs_log_id ON operation_logs (log_id);
+CREATE INDEX operation_logs_resource_parent ON operation_logs (resource_parent_id);
+
 -- insert default user
 INSERT INTO users (id, name, password, scopes, created_at) VALUES (1, 'admin', 'admin', 'System', CURRENT_TIMESTAMP);
 
