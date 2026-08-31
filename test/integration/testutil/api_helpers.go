@@ -50,6 +50,12 @@ func CreateEntity(name, typeName, parentID string) (string, error) {
 
 // CreateAPIKey 创建 API-Key，返回 id
 func CreateAPIKey(description string, entityID string) (string, error) {
+	id, _, err := CreateAPIKeyWithKey(description, entityID)
+	return id, err
+}
+
+// CreateAPIKeyWithKey 创建 API-Key，返回 id 与 key 值
+func CreateAPIKeyWithKey(description string, entityID string) (string, string, error) {
 	body := map[string]interface{}{
 		"description": description,
 	}
@@ -58,16 +64,20 @@ func CreateAPIKey(description string, entityID string) (string, error) {
 	}
 	resp, err := GetClient().Post("/open-api/v1/api-keys", body)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if resp.ErrNum != 200 {
-		return "", fmt.Errorf("create api-key failed: %d %s", resp.ErrNum, resp.ErrMsg)
+		return "", "", fmt.Errorf("create api-key failed: %d %s", resp.ErrNum, resp.ErrMsg)
 	}
 	id, err := GetDataField(resp, "id")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return id.(string), nil
+	key, err := GetDataField(resp, "key")
+	if err != nil {
+		return "", "", err
+	}
+	return id.(string), key.(string), nil
 }
 
 // CreateProvider 创建 Provider，返回 name

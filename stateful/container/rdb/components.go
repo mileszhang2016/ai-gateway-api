@@ -283,7 +283,8 @@ func Init() error {
 
 	container.QuotaResetScheduler = quota.NewQuotaResetScheduler(
 		container.TxnStoragerSingleton,
-		container.BalanceSyncManager)
+		container.BalanceSyncManager,
+		quotacache.NewRedisDistributedLock(stateful.DefaultClientSet.RedisClient))
 
 	container.QuotaResetScheduler.Start()
 
