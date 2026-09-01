@@ -58,10 +58,11 @@ func (m *RateLimitPolicyManager) SetOperationLogManager(manager ioperlog.Operati
 func (m *RateLimitPolicyManager) CreateRateLimitPolicy(ctx context.Context, param *RateLimitPolicyParam) (int64, error) {
 	id, err := m.storager.CreateRateLimitPolicy(ctx, param)
 	if err != nil {
+		m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionCreate), "", "", nil, rateLimitPolicyParamToMap(param), err)
 		return 0, err
 	}
 
-	m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionCreate), rateLimitPolicyIDString(id), "", nil, rateLimitPolicyParamToMap(param))
+	m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionCreate), rateLimitPolicyIDString(id), "", nil, rateLimitPolicyParamToMap(param), nil)
 	return id, nil
 }
 
@@ -77,40 +78,46 @@ func (m *RateLimitPolicyManager) FetchRateLimitPolicyList(ctx context.Context, f
 
 // UpdateRateLimitPolicy 更新限流策略
 func (m *RateLimitPolicyManager) UpdateRateLimitPolicy(ctx context.Context, filter *RateLimitPolicyFilter, param *RateLimitPolicyParam) (int64, error) {
+	resourceID := ""
+	if filter != nil && filter.ID != nil {
+		resourceID = rateLimitPolicyIDString(*filter.ID)
+	}
+
 	oldPolicy, err := m.storager.FetchRateLimitPolicy(ctx, filter)
 	if err != nil {
+		m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionUpdate), resourceID, "", nil, rateLimitPolicyParamToMap(param), err)
 		return 0, err
 	}
 
 	affected, err := m.storager.UpdateRateLimitPolicy(ctx, filter, param)
 	if err != nil {
+		m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionUpdate), resourceID, "", rateLimitPolicyParamToMap(oldPolicy), rateLimitPolicyParamToMap(param), err)
 		return affected, err
 	}
 
-	resourceID := ""
-	if filter != nil && filter.ID != nil {
-		resourceID = rateLimitPolicyIDString(*filter.ID)
-	}
-	m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionUpdate), resourceID, "", rateLimitPolicyParamToMap(oldPolicy), rateLimitPolicyParamToMap(param))
+	m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionUpdate), resourceID, "", rateLimitPolicyParamToMap(oldPolicy), rateLimitPolicyParamToMap(param), nil)
 	return affected, nil
 }
 
 // DeleteRateLimitPolicy 删除限流策略
 func (m *RateLimitPolicyManager) DeleteRateLimitPolicy(ctx context.Context, filter *RateLimitPolicyFilter) error {
-	oldPolicy, err := m.storager.FetchRateLimitPolicy(ctx, filter)
-	if err != nil {
-		return err
-	}
-
-	if err := m.storager.DeleteRateLimitPolicy(ctx, filter); err != nil {
-		return err
-	}
-
 	resourceID := ""
 	if filter != nil && filter.ID != nil {
 		resourceID = rateLimitPolicyIDString(*filter.ID)
 	}
-	m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionDelete), resourceID, "", rateLimitPolicyParamToMap(oldPolicy), nil)
+
+	oldPolicy, err := m.storager.FetchRateLimitPolicy(ctx, filter)
+	if err != nil {
+		m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionDelete), resourceID, "", nil, nil, err)
+		return err
+	}
+
+	if err := m.storager.DeleteRateLimitPolicy(ctx, filter); err != nil {
+		m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionDelete), resourceID, "", rateLimitPolicyParamToMap(oldPolicy), nil, err)
+		return err
+	}
+
+	m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionDelete), resourceID, "", rateLimitPolicyParamToMap(oldPolicy), nil, nil)
 	return nil
 }
 

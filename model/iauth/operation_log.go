@@ -23,31 +23,31 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 )
 
-func (m *AuthenticateManager) recordUserOperation(ctx context.Context, action string, userID int64, userName, parentID string, before, after map[string]interface{}) {
+func (m *AuthenticateManager) recordUserOperation(ctx context.Context, action string, userID int64, userName, parentID string, before, after map[string]interface{}, err error) {
 	if m.operationLogManager == nil {
 		return
 	}
 
-	recordAuthOperation(m.operationLogManager, ctx, action, ioperlog.ResourceTypeUser, userID, userName, parentID, before, after)
+	recordAuthOperation(m.operationLogManager, ctx, action, ioperlog.ResourceTypeUser, userID, userName, parentID, before, after, err)
 }
 
-func (m *AuthenticateManager) recordTokenOperation(ctx context.Context, action string, tokenID int64, tokenName, parentID string, before, after map[string]interface{}) {
+func (m *AuthenticateManager) recordTokenOperation(ctx context.Context, action string, tokenID int64, tokenName, parentID string, before, after map[string]interface{}, err error) {
 	if m.operationLogManager == nil {
 		return
 	}
 
-	recordAuthOperation(m.operationLogManager, ctx, action, ioperlog.ResourceTypeToken, tokenID, tokenName, parentID, before, after)
+	recordAuthOperation(m.operationLogManager, ctx, action, ioperlog.ResourceTypeToken, tokenID, tokenName, parentID, before, after, err)
 }
 
-func (m *AuthorizeManager) recordUserOperation(ctx context.Context, action string, userID int64, userName, parentID string, before, after map[string]interface{}) {
+func (m *AuthorizeManager) recordUserOperation(ctx context.Context, action string, userID int64, userName, parentID string, before, after map[string]interface{}, err error) {
 	if m.operationLogManager == nil {
 		return
 	}
 
-	recordAuthOperation(m.operationLogManager, ctx, action, ioperlog.ResourceTypeUser, userID, userName, parentID, before, after)
+	recordAuthOperation(m.operationLogManager, ctx, action, ioperlog.ResourceTypeUser, userID, userName, parentID, before, after, err)
 }
 
-func (m *AuthorizeManager) recordUserProductBinding(ctx context.Context, action string, user *User, product *ibasic.Product) {
+func (m *AuthorizeManager) recordUserProductBinding(ctx context.Context, action string, user *User, product *ibasic.Product, err error) {
 	if m.operationLogManager == nil || user == nil {
 		return
 	}
@@ -60,13 +60,21 @@ func (m *AuthorizeManager) recordUserProductBinding(ctx context.Context, action 
 	recordAuthOperation(m.operationLogManager, ctx, action, ioperlog.ResourceTypeUser, user.ID, user.Name, parentID,
 		map[string]interface{}{"user": userToMap(user)},
 		map[string]interface{}{"product": productToMap(product)},
+		err,
 	)
 }
 
-func recordAuthOperation(recorder ioperlog.OperationLogRecorder, ctx context.Context, action string, resourceType ioperlog.ResourceType, resourceID int64, resourceName, parentID string, before, after map[string]interface{}) {
+func recordAuthOperation(recorder ioperlog.OperationLogRecorder, ctx context.Context, action string, resourceType ioperlog.ResourceType, resourceID int64, resourceName, parentID string, before, after map[string]interface{}, err error) {
 	idStr := ""
 	if resourceID != 0 {
 		idStr = strconv.FormatInt(resourceID, 10)
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
 	}
 
 	entry := &ioperlog.OperationLogEntry{
@@ -75,7 +83,8 @@ func recordAuthOperation(recorder ioperlog.OperationLogRecorder, ctx context.Con
 		ResourceID:       idStr,
 		ResourceName:     resourceName,
 		ResourceParentID: parentID,
-		Status:           ioperlog.StatusSuccess,
+		Status:           status,
+		ErrorMsg:         errorMsg,
 		CreatedAt:        time.Now(),
 	}
 

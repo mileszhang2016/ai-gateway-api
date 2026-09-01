@@ -66,25 +66,24 @@ func (m *AuthorizeManager) SetOperationLogManager(manager ioperlog.OperationLogR
 }
 
 func (m *AuthorizeManager) UpdateUserIsAdmin(ctx context.Context, user *User, isAdmin bool) (err error) {
-	err = m.txn.AtomExecute(ctx, func(ctx context.Context) error {
-		mapping := map[bool][]string{
-			false: {ScopeProduct},
-			true:  {ScopeSystem},
-		}
-
-		return m.storager.UpdateUserScopes(ctx, user, mapping[isAdmin])
-	})
-	if err != nil {
-		return err
-	}
-
 	scopes := []string{ScopeProduct}
 	if isAdmin {
 		scopes = []string{ScopeSystem}
 	}
+
+	err = m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		return m.storager.UpdateUserScopes(ctx, user, scopes)
+	})
+	if err != nil {
+		m.recordUserOperation(ctx, string(ioperlog.ActionUpdate), user.ID, user.Name, "", userToMap(user), map[string]interface{}{
+			"scopes": scopes,
+		}, err)
+		return err
+	}
+
 	m.recordUserOperation(ctx, string(ioperlog.ActionUpdate), user.ID, user.Name, "", userToMap(user), map[string]interface{}{
 		"scopes": scopes,
-	})
+	}, nil)
 	return nil
 }
 
@@ -188,10 +187,11 @@ func (m *AuthorizeManager) BindUserProduct(ctx context.Context, user *User, prod
 		return err
 	})
 	if err != nil {
+		m.recordUserProductBinding(ctx, string(ioperlog.ActionBind), user, product, err)
 		return err
 	}
 
-	m.recordUserProductBinding(ctx, string(ioperlog.ActionBind), user, product)
+	m.recordUserProductBinding(ctx, string(ioperlog.ActionBind), user, product, nil)
 	return nil
 }
 
@@ -208,10 +208,11 @@ func (m *AuthorizeManager) UnBindUserProduct(ctx context.Context, user *User, pr
 		return m.storager.UnbindUserProduct(ctx, user, product)
 	})
 	if err != nil {
+		m.recordUserProductBinding(ctx, string(ioperlog.ActionUnbind), user, product, err)
 		return err
 	}
 
-	m.recordUserProductBinding(ctx, string(ioperlog.ActionUnbind), user, product)
+	m.recordUserProductBinding(ctx, string(ioperlog.ActionUnbind), user, product, nil)
 	return nil
 }
 

@@ -105,20 +105,20 @@ func (t TierPriceMap) MarshalJSON() ([]byte, error) {
 
 // ModelPrice represents a single model pricing/capability record.
 type ModelPrice struct {
-	ID                  int64                       `json:"id" yaml:"id,omitempty"`
-	Provider            string                      `json:"provider" yaml:"provider"`
-	Model               string                      `json:"model" yaml:"model"`
-	BaseModel           string                      `json:"base_model" yaml:"base_model"`
-	Mode                string                      `json:"mode" yaml:"mode"`
-	Capabilities        []string                    `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
-	SupportedParameters []string                    `json:"supported_parameters,omitempty" yaml:"supported_parameters,omitempty"`
-	Limits              map[string]interface{}      `json:"limits,omitempty" yaml:"limits,omitempty"`
-	Prices              PriceMap                    `json:"prices,omitempty" yaml:"prices,omitempty"`
-	TierPrices          TierPriceMap                `json:"tier_prices,omitempty" yaml:"tier_prices,omitempty"`
-	PriceCurrency       string                      `json:"price_currency,omitempty" yaml:"price_currency,omitempty"`
-	Metadata            map[string]interface{}      `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	CreateTime          *int64                      `json:"create_time,omitempty" yaml:"create_time,omitempty"`
-	UpdateTime          *int64                      `json:"update_time,omitempty" yaml:"update_time,omitempty"`
+	ID                  int64                  `json:"id" yaml:"id,omitempty"`
+	Provider            string                 `json:"provider" yaml:"provider"`
+	Model               string                 `json:"model" yaml:"model"`
+	BaseModel           string                 `json:"base_model" yaml:"base_model"`
+	Mode                string                 `json:"mode" yaml:"mode"`
+	Capabilities        []string               `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
+	SupportedParameters []string               `json:"supported_parameters,omitempty" yaml:"supported_parameters,omitempty"`
+	Limits              map[string]interface{} `json:"limits,omitempty" yaml:"limits,omitempty"`
+	Prices              PriceMap               `json:"prices,omitempty" yaml:"prices,omitempty"`
+	TierPrices          TierPriceMap           `json:"tier_prices,omitempty" yaml:"tier_prices,omitempty"`
+	PriceCurrency       string                 `json:"price_currency,omitempty" yaml:"price_currency,omitempty"`
+	Metadata            map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	CreateTime          *int64                 `json:"create_time,omitempty" yaml:"create_time,omitempty"`
+	UpdateTime          *int64                 `json:"update_time,omitempty" yaml:"update_time,omitempty"`
 }
 
 // ModelPriceFilter is used to query model price records.
@@ -170,38 +170,44 @@ func (m *Manager) SetOperationLogManager(manager ioperlog.OperationLogRecorder) 
 // CreateModelPrice creates a single model price record.
 func (m *Manager) CreateModelPrice(ctx context.Context, param *ModelPrice) (int64, error) {
 	if err := ValidateModelPrice(param); err != nil {
+		m.recordModelPriceOperation(ctx, string(ioperlog.ActionCreate), "", modelPriceName(param), nil, modelPriceToMap(param), err)
 		return 0, err
 	}
 	id, err := m.storager.CreateModelPrice(ctx, param)
 	if err != nil {
+		m.recordModelPriceOperation(ctx, string(ioperlog.ActionCreate), "", modelPriceName(param), nil, modelPriceToMap(param), err)
 		return 0, err
 	}
 
-	m.recordModelPriceOperation(ctx, string(ioperlog.ActionCreate), modelPriceIDString(id), modelPriceName(param), nil, modelPriceToMap(param))
+	m.recordModelPriceOperation(ctx, string(ioperlog.ActionCreate), modelPriceIDString(id), modelPriceName(param), nil, modelPriceToMap(param), nil)
 	return id, nil
 }
 
 // UpdateModelPrice updates a model price record matched by filter.
 func (m *Manager) UpdateModelPrice(ctx context.Context, filter *ModelPriceFilter, param *ModelPrice) (int64, error) {
+	resourceID := ""
+	if filter != nil && filter.ID != nil {
+		resourceID = modelPriceIDString(*filter.ID)
+	}
+
 	if err := ValidateModelPrice(param); err != nil {
+		m.recordModelPriceOperation(ctx, string(ioperlog.ActionUpdate), resourceID, modelPriceName(param), nil, modelPriceToMap(param), err)
 		return 0, err
 	}
 
 	oldPrice, err := m.storager.FetchModelPrice(ctx, filter)
 	if err != nil {
+		m.recordModelPriceOperation(ctx, string(ioperlog.ActionUpdate), resourceID, modelPriceName(param), nil, modelPriceToMap(param), err)
 		return 0, err
 	}
 
 	affected, err := m.storager.UpdateModelPrice(ctx, filter, param)
 	if err != nil {
+		m.recordModelPriceOperation(ctx, string(ioperlog.ActionUpdate), resourceID, modelPriceName(param), modelPriceToMap(oldPrice), modelPriceToMap(param), err)
 		return affected, err
 	}
 
-	resourceID := ""
-	if filter != nil && filter.ID != nil {
-		resourceID = modelPriceIDString(*filter.ID)
-	}
-	m.recordModelPriceOperation(ctx, string(ioperlog.ActionUpdate), resourceID, modelPriceName(param), modelPriceToMap(oldPrice), modelPriceToMap(param))
+	m.recordModelPriceOperation(ctx, string(ioperlog.ActionUpdate), resourceID, modelPriceName(param), modelPriceToMap(oldPrice), modelPriceToMap(param), nil)
 	return affected, nil
 }
 
@@ -212,20 +218,23 @@ func (m *Manager) ListProviders(ctx context.Context) ([]string, error) {
 
 // DeleteModelPrice deletes model price records matched by filter.
 func (m *Manager) DeleteModelPrice(ctx context.Context, filter *ModelPriceFilter) error {
-	oldPrice, err := m.storager.FetchModelPrice(ctx, filter)
-	if err != nil {
-		return err
-	}
-
-	if err := m.storager.DeleteModelPrice(ctx, filter); err != nil {
-		return err
-	}
-
 	resourceID := ""
 	if filter != nil && filter.ID != nil {
 		resourceID = modelPriceIDString(*filter.ID)
 	}
-	m.recordModelPriceOperation(ctx, string(ioperlog.ActionDelete), resourceID, modelPriceName(oldPrice), modelPriceToMap(oldPrice), nil)
+
+	oldPrice, err := m.storager.FetchModelPrice(ctx, filter)
+	if err != nil {
+		m.recordModelPriceOperation(ctx, string(ioperlog.ActionDelete), resourceID, "", nil, nil, err)
+		return err
+	}
+
+	if err := m.storager.DeleteModelPrice(ctx, filter); err != nil {
+		m.recordModelPriceOperation(ctx, string(ioperlog.ActionDelete), resourceID, modelPriceName(oldPrice), modelPriceToMap(oldPrice), nil, err)
+		return err
+	}
+
+	m.recordModelPriceOperation(ctx, string(ioperlog.ActionDelete), resourceID, modelPriceName(oldPrice), modelPriceToMap(oldPrice), nil, nil)
 	return nil
 }
 
@@ -252,11 +261,14 @@ const (
 // mode = "merge":  update existing (provider, model, mode) records and insert new ones.
 func (m *Manager) ImportModelPrices(ctx context.Context, entries []*ModelPrice, mode string) (imported int, skipped int, err error) {
 	if mode != string(ImportModeReplace) && mode != string(ImportModeMerge) {
-		return 0, 0, xerror.WrapParamErrorWithMsg("import mode must be replace or merge")
+		err = xerror.WrapParamErrorWithMsg("import mode must be replace or merge")
+		m.recordModelPriceImport(ctx, mode, 0, entries, err)
+		return 0, 0, err
 	}
 
 	for _, entry := range entries {
 		if err := ValidateModelPrice(entry); err != nil {
+			m.recordModelPriceImport(ctx, mode, 0, entries, err)
 			return 0, 0, err
 		}
 	}
@@ -305,9 +317,10 @@ func (m *Manager) ImportModelPrices(ctx context.Context, entries []*ModelPrice, 
 		return nil
 	})
 	if err != nil {
+		m.recordModelPriceImport(ctx, mode, imported, entries, err)
 		return imported, skipped, err
 	}
 
-	m.recordModelPriceImport(ctx, mode, imported, entries)
+	m.recordModelPriceImport(ctx, mode, imported, entries, nil)
 	return imported, skipped, nil
 }

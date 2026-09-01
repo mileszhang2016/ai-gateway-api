@@ -408,9 +408,9 @@ func (rppm *APIKeyManager) populateQuotaBalances(ctx context.Context, list []*AP
 // DeleteAPIKey deletes an API key based on filter criteria
 func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilter) error {
 	var (
-		quotaKey        string
-		rateLimitKeys   []string
-		oldAPIKey       *APIKeyParam
+		quotaKey      string
+		rateLimitKeys []string
+		oldAPIKey     *APIKeyParam
 	)
 
 	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
@@ -460,13 +460,14 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 		return rppm.storager.DeleteAPIKey(ctx, filter)
 	})
 	if err != nil {
+		rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionDelete), oldAPIKey, nil, apiKeyParamToMap(oldAPIKey), err)
 		return err
 	}
 
 	// 事务提交成功后清理 Redis Key
 	rppm.cleanupRedisKeys(ctx, quotaKey, rateLimitKeys)
 
-	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionDelete), oldAPIKey, nil, apiKeyParamToMap(oldAPIKey))
+	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionDelete), oldAPIKey, nil, apiKeyParamToMap(oldAPIKey), nil)
 	return nil
 }
 
@@ -527,7 +528,7 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 				}
 				param.QuotaPlanID = &quotaPlanID
 
-				}
+			}
 		}
 
 		if param.RateLimitPolicy != nil && rppm.rateLimitPolicyStorager != nil {
@@ -573,6 +574,7 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		return err
 	})
 	if err != nil {
+		rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionUpdate), oldAPIKey, apiKeyParamToMap(oldAPIKey), apiKeyParamToMap(param), err)
 		return err
 	}
 
@@ -580,7 +582,7 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		rppm.cleanupRedisKeys(ctx, "", rateLimitKeysToDelete)
 	}
 
-	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionUpdate), oldAPIKey, apiKeyParamToMap(oldAPIKey), apiKeyParamToMap(param))
+	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionUpdate), oldAPIKey, apiKeyParamToMap(oldAPIKey), apiKeyParamToMap(param), nil)
 	return nil
 }
 
@@ -678,6 +680,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 		return err
 	})
 	if err != nil {
+		rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionCreate), param, nil, apiKeyParamToMap(param), err)
 		return err
 	}
 
@@ -690,7 +693,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 		}
 	}
 
-	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionCreate), param, nil, apiKeyParamToMap(param))
+	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionCreate), param, nil, apiKeyParamToMap(param), nil)
 	return nil
 }
 

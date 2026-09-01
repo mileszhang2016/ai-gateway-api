@@ -21,9 +21,16 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 )
 
-func (pm *CertificateManager) recordCertificateOperation(ctx context.Context, action, resourceID, resourceName, parentID string, before, after map[string]interface{}) {
+func (pm *CertificateManager) recordCertificateOperation(ctx context.Context, action, resourceID, resourceName, parentID string, before, after map[string]interface{}, err error) {
 	if pm.operationLogManager == nil {
 		return
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
 	}
 
 	entry := &ioperlog.OperationLogEntry{
@@ -32,7 +39,8 @@ func (pm *CertificateManager) recordCertificateOperation(ctx context.Context, ac
 		ResourceID:       resourceID,
 		ResourceName:     resourceName,
 		ResourceParentID: parentID,
-		Status:           ioperlog.StatusSuccess,
+		Status:           status,
+		ErrorMsg:         errorMsg,
 		CreatedAt:        time.Now(),
 	}
 

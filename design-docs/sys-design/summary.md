@@ -20,7 +20,7 @@
 
 | 文档名称 | 相对路径 | 摘要说明 |
 |---------|---------|---------|
-| 操作日志模块 | [design-docs/modifications/2026-08-31-operation-log/change-summary.md](../modifications/2026-08-31-operation-log/change-summary.md) | 描述 `model/ioperlog` 操作日志设计：覆盖 entity / api-key / provider / cluster 等域的变更记录、异步批量写入、敏感字段脱敏与 `GET /operation-logs` 查询接口。 |
+| 操作日志模块 | [details/操作日志模块.md](./details/操作日志模块.md) | 描述 `model/ioperlog` 操作日志设计：覆盖 entity / api-key / provider / cluster 等域的变更记录、成功与失败双路径日志、异步批量写入、敏感字段脱敏与 `GET /operation-logs` 查询接口。 |
 | 认证授权机制 | [details/认证授权机制.md](./details/认证授权机制.md) | 描述 `model/iauth` 的认证授权设计，包括用户与 Token 共用 `users` 表、`Visitor` 统一抽象、Scope 作用域、Feature-Action 权限模型、四种认证方式以及中间件集成与数据库表设计。 |
 | InnerAPI 配置导出与版本控制 | [details/InnerAPI配置导出与版本控制.md](./details/InnerAPI配置导出与版本控制.md) | 描述面向 BFE/Conf Agent 的 InnerAPI 配置导出机制，包括 `VersionControlManager` 的 MD5 签名比对、版本号生成、`config_versions` 表持久化、9 类配置导出主题、增量同步流程，以及 `mod-api-key` 的批量预加载 + 内存回溯性能优化。 |
 | API-Key 与 Entity 关联及模型继承 | [details/API-Key与Entity关联及模型继承.md](./details/API-Key与Entity关联及模型继承.md) | 描述 API-Key 与 Entity 的挂载关系、Entity 层级树约束、模型白名单交集与黑名单继承、配额计划层级合并、限流策略与路由规则的层级收集，以及导出到 BFE 时的最终生效规则。 |

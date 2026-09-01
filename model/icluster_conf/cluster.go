@@ -525,15 +525,18 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 			ID: clusterID,
 		}, bindingSubClusters, nil)
 	})
-	if err != nil {
-		return err
-	}
 
 	clusterName := ""
 	if param.Name != nil {
 		clusterName = *param.Name
 	}
-	cm.recordClusterOperation(ctx, string(ioperlog.ActionCreate), clusterID, clusterName, nil, clusterParamToMap(param))
+
+	if err != nil {
+		cm.recordClusterOperation(ctx, string(ioperlog.ActionCreate), clusterID, clusterName, nil, clusterParamToMap(param), err)
+		return err
+	}
+
+	cm.recordClusterOperation(ctx, string(ioperlog.ActionCreate), clusterID, clusterName, nil, clusterParamToMap(param), nil)
 	return nil
 }
 
@@ -754,10 +757,11 @@ func (cm *ClusterManager) UpdateCluster(ctx context.Context, product *ibasic.Pro
 		return cm.storager.ClusterUpdate(ctx, product, oldData, param)
 	})
 	if err != nil {
+		cm.recordClusterOperation(ctx, string(ioperlog.ActionUpdate), oldData.ID, oldData.Name, clusterToMap(oldData), clusterParamToMap(param), err)
 		return err
 	}
 
-	cm.recordClusterOperation(ctx, string(ioperlog.ActionUpdate), oldData.ID, oldData.Name, clusterToMap(oldData), clusterParamToMap(param))
+	cm.recordClusterOperation(ctx, string(ioperlog.ActionUpdate), oldData.ID, oldData.Name, clusterToMap(oldData), clusterParamToMap(param), nil)
 	return nil
 }
 
@@ -1056,10 +1060,11 @@ func (cm *ClusterManager) DeleteCluster(ctx context.Context, product *ibasic.Pro
 		return nil
 	})
 	if err != nil {
+		cm.recordClusterOperation(ctx, string(ioperlog.ActionDelete), cluster.ID, cluster.Name, clusterToMap(cluster), nil, err)
 		return err
 	}
 
-	cm.recordClusterOperation(ctx, string(ioperlog.ActionDelete), cluster.ID, cluster.Name, clusterToMap(cluster), nil)
+	cm.recordClusterOperation(ctx, string(ioperlog.ActionDelete), cluster.ID, cluster.Name, clusterToMap(cluster), nil, nil)
 	return nil
 }
 

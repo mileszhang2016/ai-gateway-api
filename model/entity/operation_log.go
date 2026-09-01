@@ -21,9 +21,16 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 )
 
-func (m *EntityManager) recordEntityOperation(ctx context.Context, action string, entityID, entityName, parentID string, before, after map[string]interface{}) {
+func (m *EntityManager) recordEntityOperation(ctx context.Context, action string, entityID, entityName, parentID string, before, after map[string]interface{}, err error) {
 	if m.operationLogManager == nil {
 		return
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
 	}
 
 	entry := &ioperlog.OperationLogEntry{
@@ -32,7 +39,8 @@ func (m *EntityManager) recordEntityOperation(ctx context.Context, action string
 		ResourceID:       entityID,
 		ResourceName:     entityName,
 		ResourceParentID: parentID,
-		Status:           ioperlog.StatusSuccess,
+		Status:           status,
+		ErrorMsg:         errorMsg,
 		CreatedAt:        time.Now(),
 	}
 
@@ -50,7 +58,7 @@ func (m *EntityManager) recordEntityOperation(ctx context.Context, action string
 	m.operationLogManager.Record(ctx, entry)
 }
 
-func (m *EntityTypeManager) recordEntityTypeOperation(ctx context.Context, action string, param *EntityTypeParam, before, after map[string]interface{}) {
+func (m *EntityTypeManager) recordEntityTypeOperation(ctx context.Context, action string, param *EntityTypeParam, before, after map[string]interface{}, err error) {
 	if m.operationLogManager == nil || param == nil {
 		return
 	}
@@ -64,12 +72,20 @@ func (m *EntityTypeManager) recordEntityTypeOperation(ctx context.Context, actio
 		resourceName = *param.Description
 	}
 
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
+	}
+
 	entry := &ioperlog.OperationLogEntry{
 		Action:       action,
 		ResourceType: string(ioperlog.ResourceTypeEntityType),
 		ResourceID:   resourceID,
 		ResourceName: resourceName,
-		Status:       ioperlog.StatusSuccess,
+		Status:       status,
+		ErrorMsg:     errorMsg,
 		CreatedAt:    time.Now(),
 	}
 

@@ -16,6 +16,7 @@ package entity
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
@@ -219,4 +220,80 @@ func TestEntityManager_DeleteEntity_RecordsOperationLog(t *testing.T) {
 	assert.Equal(t, string(ioperlog.ActionDelete), entry.Action)
 	assert.Equal(t, entityID, entry.ResourceID)
 	assert.Equal(t, entityName, entry.ResourceName)
+}
+
+func TestEntityManager_CreateEntity_RecordsFailedOperationLog(t *testing.T) {
+	ctx := context.Background()
+	recorder := &fakeOperationLogRecorder{}
+
+	entityID := "ent-1"
+	entityName := "entity-one"
+	entityType := "tenant"
+
+	manager := NewEntityManager(&fakeTxn{}, &fakeEntityStorager{
+		fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+			return nil, nil
+		},
+		createFn: func(ctx context.Context, param *EntityParam) (int64, error) {
+			return 0, errors.New("db connection failed")
+		},
+	}, &fakeEntityTypeStorager{
+		fetchFn: func(ctx context.Context, filter *EntityTypeFilter) (*EntityTypeParam, error) {
+			return &EntityTypeParam{TypeName: lib.PString(entityType), Level: lib.PInt(1)}, nil
+		},
+	}, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+	manager.SetOperationLogManager(recorder)
+
+	_, err := manager.CreateEntity(ctx, &EntityParam{
+		EntityID: &entityID,
+		Name:     &entityName,
+		Type:     &entityType,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "db connection failed")
+
+	require.Len(t, recorder.entries, 1)
+	entry := recorder.entries[0]
+	assert.Equal(t, string(ioperlog.ActionCreate), entry.Action)
+	assert.Equal(t, string(ioperlog.ResourceTypeEntity), entry.ResourceType)
+	assert.Equal(t, entityID, entry.ResourceID)
+	assert.Equal(t, entityName, entry.ResourceName)
+	assert.Equal(t, ioperlog.StatusFailed, entry.Status)
+	assert.Contains(t, entry.ErrorMsg, "db connection failed")
+}
+
+func TestEntityManager_DeleteEntity_RecordsFailedOperationLog(t *testing.T) {
+	ctx := context.Background()
+	recorder := &fakeOperationLogRecorder{}
+
+	entityID := "ent-1"
+	entityName := "entity-one"
+
+	manager := NewEntityManager(&fakeTxn{}, &fakeEntityStorager{
+		fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+			return &EntityParam{EntityID: &entityID, Name: &entityName}, nil
+		},
+		listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+			if filter.EntityID != nil && *filter.EntityID == entityID {
+				return []*EntityParam{{EntityID: &entityID, Name: &entityName}}, nil
+			}
+			return nil, nil
+		},
+		deleteFn: func(ctx context.Context, filter *EntityFilter) error {
+			return errors.New("delete constraint violation")
+		},
+	}, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+	manager.SetOperationLogManager(recorder)
+
+	err := manager.DeleteEntity(ctx, &EntityFilter{EntityID: &entityID})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "delete constraint violation")
+
+	require.Len(t, recorder.entries, 1)
+	entry := recorder.entries[0]
+	assert.Equal(t, string(ioperlog.ActionDelete), entry.Action)
+	assert.Equal(t, entityID, entry.ResourceID)
+	assert.Equal(t, entityName, entry.ResourceName)
+	assert.Equal(t, ioperlog.StatusFailed, entry.Status)
+	assert.Contains(t, entry.ErrorMsg, "delete constraint violation")
 }
