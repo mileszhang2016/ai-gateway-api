@@ -23,9 +23,16 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 )
 
-func (cm *ClusterManager) recordClusterOperation(ctx context.Context, action string, clusterID int64, clusterName string, before, after map[string]interface{}) {
+func (cm *ClusterManager) recordClusterOperation(ctx context.Context, action string, clusterID int64, clusterName string, before, after map[string]interface{}, err error) {
 	if cm.operationLogManager == nil {
 		return
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
 	}
 
 	entry := &ioperlog.OperationLogEntry{
@@ -33,7 +40,8 @@ func (cm *ClusterManager) recordClusterOperation(ctx context.Context, action str
 		ResourceType: string(ioperlog.ResourceTypeCluster),
 		ResourceID:   strconv.FormatInt(clusterID, 10),
 		ResourceName: clusterName,
-		Status:       ioperlog.StatusSuccess,
+		Status:       status,
+		ErrorMsg:     errorMsg,
 		CreatedAt:    time.Now(),
 	}
 

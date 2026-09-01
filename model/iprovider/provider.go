@@ -157,6 +157,11 @@ func (m *ProviderManager) SetOperationLogManager(manager ioperlog.OperationLogRe
 // CreateProvider creates a new provider after validation.
 func (m *ProviderManager) CreateProvider(ctx context.Context, param *ProviderParam) (int64, error) {
 	if err := ValidateProviderParam(param); err != nil {
+		name := ""
+		if param != nil && param.Name != nil {
+			name = *param.Name
+		}
+		m.recordProviderOperation(ctx, string(ioperlog.ActionCreate), name, nil, providerParamToMap(param), err)
 		return 0, err
 	}
 
@@ -174,10 +179,11 @@ func (m *ProviderManager) CreateProvider(ctx context.Context, param *ProviderPar
 		return err
 	})
 	if err != nil {
+		m.recordProviderOperation(ctx, string(ioperlog.ActionCreate), *param.Name, nil, providerParamToMap(param), err)
 		return 0, err
 	}
 
-	m.recordProviderOperation(ctx, string(ioperlog.ActionCreate), *param.Name, nil, providerParamToMap(param))
+	m.recordProviderOperation(ctx, string(ioperlog.ActionCreate), *param.Name, nil, providerParamToMap(param), nil)
 	return id, nil
 }
 
@@ -191,6 +197,7 @@ func (m *ProviderManager) UpdateProvider(ctx context.Context, name string,
 	syncHooks ...func(ctx context.Context, oldProvider, newProvider *Provider) error) error {
 
 	if err := ValidateProviderParam(param); err != nil {
+		m.recordProviderOperation(ctx, string(ioperlog.ActionUpdate), name, nil, providerParamToMap(param), err)
 		return err
 	}
 
@@ -253,10 +260,11 @@ func (m *ProviderManager) UpdateProvider(ctx context.Context, name string,
 		return nil
 	})
 	if err != nil {
+		m.recordProviderOperation(ctx, string(ioperlog.ActionUpdate), name, providerToMap(oldProvider), providerParamToMap(param), err)
 		return err
 	}
 
-	m.recordProviderOperation(ctx, string(ioperlog.ActionUpdate), name, providerToMap(oldProvider), providerParamToMap(param))
+	m.recordProviderOperation(ctx, string(ioperlog.ActionUpdate), name, providerToMap(oldProvider), providerParamToMap(param), nil)
 	return nil
 }
 
@@ -264,10 +272,12 @@ func (m *ProviderManager) UpdateProvider(ctx context.Context, name string,
 // It supports both JSON (parsed into PricingTiersParam) and YAML bodies at the endpoint layer.
 func (m *ProviderManager) UpdatePricingTiers(ctx context.Context, name string, param *PricingTiersParam) error {
 	if err := ValidatePricingTiersParam(param); err != nil {
+		m.recordProviderOperation(ctx, string(ioperlog.ActionUpdate), name, nil, nil, err)
 		return err
 	}
 
-	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+	var oldProvider *Provider
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		existing, err := m.storager.FetchProvider(ctx, &ProviderFilter{Name: &name})
 		if err != nil {
 			return err
@@ -275,6 +285,7 @@ func (m *ProviderManager) UpdatePricingTiers(ctx context.Context, name string, p
 		if existing == nil {
 			return xerror.WrapRecordNotExist("provider")
 		}
+		oldProvider = existing
 
 		// Preserve all existing provider fields; only update time_zone and tiers.
 		updateParam := &ProviderParam{
@@ -290,6 +301,17 @@ func (m *ProviderManager) UpdatePricingTiers(ctx context.Context, name string, p
 		}
 		return m.storager.UpdateProvider(ctx, name, updateParam)
 	})
+	if err != nil {
+		m.recordProviderOperation(ctx, string(ioperlog.ActionUpdate), name, providerToMap(oldProvider), nil, err)
+		return err
+	}
+
+	after := map[string]interface{}{
+		"time_zone": param.TimeZone,
+		"tiers":     param.Tiers,
+	}
+	m.recordProviderOperation(ctx, string(ioperlog.ActionUpdate), name, providerToMap(oldProvider), after, nil)
+	return nil
 }
 
 // DeleteProvider deletes a provider if it is not referenced.
@@ -316,10 +338,11 @@ func (m *ProviderManager) DeleteProvider(ctx context.Context, name string,
 		return m.storager.DeleteProvider(ctx, name)
 	})
 	if err != nil {
+		m.recordProviderOperation(ctx, string(ioperlog.ActionDelete), name, providerToMap(oldProvider), nil, err)
 		return err
 	}
 
-	m.recordProviderOperation(ctx, string(ioperlog.ActionDelete), name, providerToMap(oldProvider), nil)
+	m.recordProviderOperation(ctx, string(ioperlog.ActionDelete), name, providerToMap(oldProvider), nil, nil)
 	return nil
 }
 

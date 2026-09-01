@@ -236,3 +236,46 @@ func TestOperationLog_ListFilters(t *testing.T) {
 	_ = testutil.DeleteEntity(entityID)
 	_ = testutil.DeleteEntityType(typeName)
 }
+
+// TestOperationLog_FailedOperationRecordsError 验证写操作失败时同样会生成 status=2 的操作日志。
+// 该用例复现 GitHub issue #117：删除仍被路由规则引用的集群时接口返回 500，但此前操作日志为空。
+func TestOperationLog_FailedOperationRecordsError(t *testing.T) {
+	client := testutil.GetClient()
+
+	// 1. 清理全局路由规则，避免受其他测试影响。
+	require.NoError(t, testutil.ResetGlobalRouteRules(), "reset global route rules failed")
+
+	// 2. 创建 cluster。
+	clusterName := testutil.UniqueClusterName()
+	_, err := testutil.CreateCluster(clusterName)
+	require.NoError(t, err, "create cluster failed")
+
+	// 3. 设置 global route rules 引用该 cluster，使删除失败。
+	require.NoError(t, testutil.SetGlobalRouteRules([]interface{}{testutil.SimpleRouteRule("failed-op-ref", clusterName)}), "set global route rules failed")
+
+	// 4. 调用删除接口，预期失败。
+	resp, err := client.Delete("/open-api/v1/clusters/" + clusterName)
+	require.NoError(t, err, "delete cluster request failed")
+	assert.NotEqual(t, 200, resp.ErrNum, "expected delete cluster to fail")
+
+	// 5. 轮询等待失败的操作日志落库。
+	entry, err := testutil.WaitForOperationLog(map[string]string{
+		"resource_type": "cluster",
+		"action":        "delete",
+		"resource_name": clusterName,
+		"status":        "2",
+	}, 0)
+	require.NoError(t, err, "expected failed operation log not found")
+
+	assert.Equal(t, "delete", entry.Action)
+	assert.Equal(t, "cluster", entry.ResourceType)
+	assert.Equal(t, clusterName, entry.ResourceName)
+	assert.Equal(t, float64(2), entry.Status, "operation should be failed")
+	assert.NotEmpty(t, entry.ErrorMsg, "failed operation log should contain error message")
+	assert.NotEmpty(t, entry.RequestPath)
+	assert.NotEmpty(t, entry.CreatedAt)
+
+	// 6. 清理。
+	require.NoError(t, testutil.ResetGlobalRouteRules(), "cleanup global route rules failed")
+	_ = testutil.DeleteCluster(clusterName)
+}

@@ -22,9 +22,16 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 )
 
-func (m *Manager) recordModelPriceOperation(ctx context.Context, action, resourceID, resourceName string, before, after map[string]interface{}) {
+func (m *Manager) recordModelPriceOperation(ctx context.Context, action, resourceID, resourceName string, before, after map[string]interface{}, err error) {
 	if m.operationLogManager == nil {
 		return
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
 	}
 
 	entry := &ioperlog.OperationLogEntry{
@@ -33,7 +40,8 @@ func (m *Manager) recordModelPriceOperation(ctx context.Context, action, resourc
 		ResourceID:       resourceID,
 		ResourceName:     resourceName,
 		ResourceParentID: "",
-		Status:           ioperlog.StatusSuccess,
+		Status:           status,
+		ErrorMsg:         errorMsg,
 		CreatedAt:        time.Now(),
 	}
 
@@ -51,9 +59,16 @@ func (m *Manager) recordModelPriceOperation(ctx context.Context, action, resourc
 	m.operationLogManager.Record(ctx, entry)
 }
 
-func (m *Manager) recordModelPriceImport(ctx context.Context, mode string, imported int, entries []*ModelPrice) {
+func (m *Manager) recordModelPriceImport(ctx context.Context, mode string, imported int, entries []*ModelPrice, err error) {
 	if m.operationLogManager == nil {
 		return
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
 	}
 
 	entry := &ioperlog.OperationLogEntry{
@@ -62,7 +77,8 @@ func (m *Manager) recordModelPriceImport(ctx context.Context, mode string, impor
 		ResourceID:       "batch",
 		ResourceName:     "model_price_import",
 		ResourceParentID: "",
-		Status:           ioperlog.StatusSuccess,
+		Status:           status,
+		ErrorMsg:         errorMsg,
 		CreatedAt:        time.Now(),
 	}
 

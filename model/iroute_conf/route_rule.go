@@ -222,6 +222,7 @@ func (rm *RouteRuleManager) ExpressionVerify(ctx context.Context, expression str
 func (rm *RouteRuleManager) UpsertProductRule(ctx context.Context, product *ibasic.Product, rule *ProductRouteRule) error {
 	cr, err := rule.Convert()
 	if err != nil {
+		rm.recordRouteRuleOperation(ctx, string(ioperlog.ActionUpdate), product, nil, nil, err)
 		return err
 	}
 
@@ -275,10 +276,11 @@ func (rm *RouteRuleManager) UpsertProductRule(ctx context.Context, product *ibas
 		return nil
 	})
 	if err != nil {
+		rm.recordRouteRuleOperation(ctx, string(ioperlog.ActionUpdate), product, beforeRule, nil, err)
 		return err
 	}
 
-	rm.recordRouteRuleOperation(ctx, string(ioperlog.ActionUpdate), product, beforeRule, productRouteRuleToMap(rule))
+	rm.recordRouteRuleOperation(ctx, string(ioperlog.ActionUpdate), product, beforeRule, productRouteRuleToMap(rule), nil)
 
 	return nil
 }

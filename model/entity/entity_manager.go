@@ -66,25 +66,37 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 	if param.Type != nil && m.entityTypeStorager != nil {
 		entityTypeInfo, err := m.entityTypeStorager.FetchEntityType(ctx, &EntityTypeFilter{TypeName: param.Type})
 		if err != nil {
+			entityID, entityName, parentID := entityParamIdentifiers(param)
+			m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param), err)
 			return 0, err
 		}
 		if entityTypeInfo == nil {
-			return 0, xerror.WrapParamError(fmt.Errorf("entity type not found: %s", *param.Type))
+			err := xerror.WrapParamError(fmt.Errorf("entity type not found: %s", *param.Type))
+			entityID, entityName, parentID := entityParamIdentifiers(param)
+			m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param), err)
+			return 0, err
 		}
 	}
 
 	if param.Name != nil && *param.Name != "" {
 		existing, err := m.storager.FetchEntity(ctx, &EntityFilter{Name: param.Name})
 		if err != nil {
+			entityID, entityName, parentID := entityParamIdentifiers(param)
+			m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param), err)
 			return 0, err
 		}
 		if existing != nil {
-			return 0, xerror.WrapRecordExisted("Entity")
+			err := xerror.WrapRecordExisted("Entity")
+			entityID, entityName, parentID := entityParamIdentifiers(param)
+			m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param), err)
+			return 0, err
 		}
 	}
 
 	if param.ParentID != nil && *param.ParentID != "" && param.Type != nil && m.entityTypeStorager != nil {
 		if err := m.checkEntityLevel(ctx, *param.Type, *param.ParentID); err != nil {
+			entityID, entityName, parentID := entityParamIdentifiers(param)
+			m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param), err)
 			return 0, err
 		}
 	}
@@ -125,6 +137,8 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 		return nil
 	})
 	if err != nil {
+		entityID, entityName, parentID := entityParamIdentifiers(param)
+		m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param), err)
 		return 0, err
 	}
 
@@ -154,7 +168,7 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 	if param.ParentID != nil {
 		parentID = *param.ParentID
 	}
-	m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param))
+	m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param), nil)
 
 	return id, nil
 }
@@ -219,18 +233,27 @@ func (m *EntityManager) FetchEntityList(ctx context.Context, filter *EntityFilte
 func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
 	if param.ParentID != nil && *param.ParentID != "" && param.Type != nil && m.entityTypeStorager != nil {
 		if err := m.checkEntityLevel(ctx, *param.Type, *param.ParentID); err != nil {
+			entityID, entityName, parentID := entityParamIdentifiers(param)
+			m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(param), nil, err)
 			return 0, err
 		}
 	} else if param.ParentID != nil && *param.ParentID != "" && m.entityTypeStorager != nil {
 		list, err := m.storager.FetchEntityList(ctx, filter)
 		if err != nil {
+			entityID, entityName, parentID := entityParamIdentifiers(param)
+			m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(param), nil, err)
 			return 0, err
 		}
 		if len(list) == 0 {
-			return 0, xerror.WrapRecordNotExist("Entity")
+			err := xerror.WrapRecordNotExist("Entity")
+			entityID, entityName, parentID := entityParamIdentifiers(param)
+			m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(param), nil, err)
+			return 0, err
 		}
 		if list[0].Type != nil {
 			if err := m.checkEntityLevel(ctx, *list[0].Type, *param.ParentID); err != nil {
+				entityID, entityName, parentID := entityParamIdentifiers(param)
+				m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(param), nil, err)
 				return 0, err
 			}
 		}
@@ -311,6 +334,11 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 		return err
 	})
 	if err != nil {
+		entityID, entityName, parentID := entityParamIdentifiers(param)
+		if oldEntity != nil {
+			entityID, entityName, parentID = entityParamIdentifiers(oldEntity)
+		}
+		m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(oldEntity), entityParamToMap(param), err)
 		return affected, err
 	}
 
@@ -332,7 +360,7 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 			parentID = *oldEntity.ParentID
 		}
 	}
-	m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(oldEntity), entityParamToMap(param))
+	m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(oldEntity), entityParamToMap(param), nil)
 
 	return affected, nil
 }
@@ -400,6 +428,8 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 		return m.storager.DeleteEntity(ctx, filter)
 	})
 	if err != nil {
+		entityID, entityName, parentID := entityParamIdentifiers(oldEntity)
+		m.recordEntityOperation(ctx, string(ioperlog.ActionDelete), entityID, entityName, parentID, entityParamToMap(oldEntity), nil, err)
 		return err
 	}
 
@@ -420,7 +450,7 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 			parentID = *oldEntity.ParentID
 		}
 	}
-	m.recordEntityOperation(ctx, string(ioperlog.ActionDelete), entityID, entityName, parentID, entityParamToMap(oldEntity), nil)
+	m.recordEntityOperation(ctx, string(ioperlog.ActionDelete), entityID, entityName, parentID, entityParamToMap(oldEntity), nil, nil)
 
 	return nil
 }
@@ -694,4 +724,20 @@ func (a *entityStoragerAdapter) FetchEntity(ctx context.Context, filter *shared.
 		Name: entity.Name,
 		Type: entity.Type,
 	}, nil
+}
+
+func entityParamIdentifiers(param *EntityParam) (entityID, entityName, parentID string) {
+	if param == nil {
+		return "", "", ""
+	}
+	if param.EntityID != nil {
+		entityID = *param.EntityID
+	}
+	if param.Name != nil {
+		entityName = *param.Name
+	}
+	if param.ParentID != nil {
+		parentID = *param.ParentID
+	}
+	return
 }

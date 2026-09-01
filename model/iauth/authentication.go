@@ -353,7 +353,13 @@ func (m *AuthenticateManager) Authenticate(ctx context.Context, param *Authentic
 }
 
 func (m *AuthenticateManager) DestroySessionKey(ctx context.Context, sessionKey string) (err error) {
-	return m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+	var oldUser *User
+	updateParam := &UserParam{
+		SessionKey:         lib.PString(""),
+		SessionKeyCreateAt: lib.PTime(time.Time{}.AddDate(0, 1, 1)),
+	}
+
+	err = m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		user, err := m.storager.FetchUser(ctx, &UserFilter{
 			SessionKey: &sessionKey,
 		})
@@ -364,12 +370,23 @@ func (m *AuthenticateManager) DestroySessionKey(ctx context.Context, sessionKey 
 		if user == nil {
 			return xerror.WrapAuthenticateFailErrorWithMsg("Session Key Not Exist")
 		}
+		oldUser = user
 
-		return m.storager.UpdateUser(ctx, user, &UserParam{
-			SessionKey:         lib.PString(""),
-			SessionKeyCreateAt: lib.PTime(time.Time{}.AddDate(0, 1, 1)),
-		})
+		return m.storager.UpdateUser(ctx, user, updateParam)
 	})
+	if err != nil {
+		userID := int64(0)
+		name := ""
+		if oldUser != nil {
+			userID = oldUser.ID
+			name = oldUser.Name
+		}
+		m.recordUserOperation(ctx, string(ioperlog.ActionReset), userID, name, "", userToMap(oldUser), userParamToMap(updateParam), err)
+		return err
+	}
+
+	m.recordUserOperation(ctx, string(ioperlog.ActionReset), oldUser.ID, oldUser.Name, "", userToMap(oldUser), userParamToMap(updateParam), nil)
+	return nil
 }
 
 type TokenFilter struct {
@@ -415,10 +432,11 @@ func (m *AuthenticateManager) DeleteToken(ctx context.Context, token *Token) (er
 		return m.authorizeStorager.UnbindTokenAllProduct(ctx, token)
 	})
 	if err != nil {
+		m.recordTokenOperation(ctx, string(ioperlog.ActionDelete), token.ID, token.Name, "", tokenToMap(token), nil, err)
 		return err
 	}
 
-	m.recordTokenOperation(ctx, string(ioperlog.ActionDelete), token.ID, token.Name, "", tokenToMap(token), nil)
+	m.recordTokenOperation(ctx, string(ioperlog.ActionDelete), token.ID, token.Name, "", tokenToMap(token), nil, nil)
 	return nil
 }
 
@@ -482,6 +500,17 @@ func (m *AuthenticateManager) CreateToken(ctx context.Context, param *TokenParam
 		return err
 	})
 	if err != nil {
+		tokenName := ""
+		if token != nil {
+			tokenName = token.Name
+		} else if param != nil && param.Name != nil {
+			tokenName = *param.Name
+		}
+		parentID := ""
+		if product != nil {
+			parentID = product.Name
+		}
+		m.recordTokenOperation(ctx, string(ioperlog.ActionCreate), 0, tokenName, parentID, nil, tokenParamToMap(param), err)
 		return nil, err
 	}
 
@@ -489,7 +518,7 @@ func (m *AuthenticateManager) CreateToken(ctx context.Context, param *TokenParam
 	if product != nil {
 		parentID = product.Name
 	}
-	m.recordTokenOperation(ctx, string(ioperlog.ActionCreate), token.ID, token.Name, parentID, nil, tokenToMap(token))
+	m.recordTokenOperation(ctx, string(ioperlog.ActionCreate), token.ID, token.Name, parentID, nil, tokenToMap(token), nil)
 	return token, nil
 }
 
@@ -514,10 +543,11 @@ func (m *AuthenticateManager) CreateUser(ctx context.Context, param *UserParam) 
 
 		return m.storager.CreateUser(ctx, param)
 	}); err != nil {
+		m.recordUserOperation(ctx, string(ioperlog.ActionCreate), 0, userParamName(param), "", nil, userParamToMap(param), err)
 		return err
 	}
 
-	m.recordUserOperation(ctx, string(ioperlog.ActionCreate), 0, userParamName(param), "", nil, userParamToMap(param))
+	m.recordUserOperation(ctx, string(ioperlog.ActionCreate), 0, userParamName(param), "", nil, userParamToMap(param), nil)
 	return nil
 }
 
@@ -543,10 +573,17 @@ func (m *AuthenticateManager) DeleteUser(ctx context.Context, userName string) (
 		return m.authorizeStorager.UnbindUserAllProduct(ctx, user)
 	})
 	if err != nil {
+		userID := int64(0)
+		name := userName
+		if oldUser != nil {
+			userID = oldUser.ID
+			name = oldUser.Name
+		}
+		m.recordUserOperation(ctx, string(ioperlog.ActionDelete), userID, name, "", userToMap(oldUser), nil, err)
 		return err
 	}
 
-	m.recordUserOperation(ctx, string(ioperlog.ActionDelete), oldUser.ID, oldUser.Name, "", userToMap(oldUser), nil)
+	m.recordUserOperation(ctx, string(ioperlog.ActionDelete), oldUser.ID, oldUser.Name, "", userToMap(oldUser), nil, nil)
 	return nil
 }
 
@@ -584,6 +621,17 @@ func (m *AuthenticateManager) UpdateUserPassword(ctx context.Context, pcd *Passw
 		SessionKeyCreateAt: lib.PTime(time.Time{}.AddDate(0, 1, 1)),
 	})
 	if err != nil {
+		userID := int64(0)
+		name := pcd.UserName
+		if oldUser != nil {
+			userID = oldUser.ID
+			name = oldUser.Name
+		}
+		m.recordUserOperation(ctx, string(ioperlog.ActionUpdate), userID, name, "", userToMap(oldUser), userParamToMap(&UserParam{
+			Password:           &pcd.Password,
+			SessionKey:         lib.PString(""),
+			SessionKeyCreateAt: lib.PTime(time.Time{}.AddDate(0, 1, 1)),
+		}), err)
 		return err
 	}
 
@@ -591,7 +639,7 @@ func (m *AuthenticateManager) UpdateUserPassword(ctx context.Context, pcd *Passw
 		Password:           &pcd.Password,
 		SessionKey:         lib.PString(""),
 		SessionKeyCreateAt: lib.PTime(time.Time{}.AddDate(0, 1, 1)),
-	}))
+	}), nil)
 	return nil
 }
 

@@ -59,10 +59,11 @@ func (m *QuotaPlanManager) SetOperationLogManager(manager ioperlog.OperationLogR
 func (m *QuotaPlanManager) CreateQuotaPlan(ctx context.Context, param *QuotaPlanParam) (int64, error) {
 	id, err := m.storager.CreateQuotaPlan(ctx, param)
 	if err != nil {
+		m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionCreate), "", "", nil, quotaPlanParamToMap(param), err)
 		return 0, err
 	}
 
-	m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionCreate), quotaPlanIDString(id), "", nil, quotaPlanParamToMap(param))
+	m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionCreate), quotaPlanIDString(id), "", nil, quotaPlanParamToMap(param), nil)
 	return id, nil
 }
 
@@ -80,11 +81,21 @@ func (m *QuotaPlanManager) FetchQuotaPlanList(ctx context.Context, filter *Quota
 func (m *QuotaPlanManager) UpdateQuotaPlan(ctx context.Context, filter *QuotaPlanFilter, param *QuotaPlanParam) (int64, error) {
 	oldPlan, err := m.storager.FetchQuotaPlan(ctx, filter)
 	if err != nil {
+		resourceID := ""
+		if filter != nil && filter.ID != nil {
+			resourceID = quotaPlanIDString(*filter.ID)
+		}
+		m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionUpdate), resourceID, "", nil, quotaPlanParamToMap(param), err)
 		return 0, err
 	}
 
 	affected, err := m.storager.UpdateQuotaPlan(ctx, filter, param)
 	if err != nil {
+		resourceID := ""
+		if filter != nil && filter.ID != nil {
+			resourceID = quotaPlanIDString(*filter.ID)
+		}
+		m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionUpdate), resourceID, "", quotaPlanParamToMap(oldPlan), quotaPlanParamToMap(param), err)
 		return affected, err
 	}
 
@@ -92,7 +103,7 @@ func (m *QuotaPlanManager) UpdateQuotaPlan(ctx context.Context, filter *QuotaPla
 	if filter != nil && filter.ID != nil {
 		resourceID = quotaPlanIDString(*filter.ID)
 	}
-	m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionUpdate), resourceID, "", quotaPlanParamToMap(oldPlan), quotaPlanParamToMap(param))
+	m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionUpdate), resourceID, "", quotaPlanParamToMap(oldPlan), quotaPlanParamToMap(param), nil)
 	return affected, nil
 }
 
@@ -100,10 +111,20 @@ func (m *QuotaPlanManager) UpdateQuotaPlan(ctx context.Context, filter *QuotaPla
 func (m *QuotaPlanManager) DeleteQuotaPlan(ctx context.Context, filter *QuotaPlanFilter) error {
 	oldPlan, err := m.storager.FetchQuotaPlan(ctx, filter)
 	if err != nil {
+		resourceID := ""
+		if filter != nil && filter.ID != nil {
+			resourceID = quotaPlanIDString(*filter.ID)
+		}
+		m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionDelete), resourceID, "", nil, nil, err)
 		return err
 	}
 
 	if err := m.storager.DeleteQuotaPlan(ctx, filter); err != nil {
+		resourceID := ""
+		if filter != nil && filter.ID != nil {
+			resourceID = quotaPlanIDString(*filter.ID)
+		}
+		m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionDelete), resourceID, "", quotaPlanParamToMap(oldPlan), nil, err)
 		return err
 	}
 
@@ -111,7 +132,7 @@ func (m *QuotaPlanManager) DeleteQuotaPlan(ctx context.Context, filter *QuotaPla
 	if filter != nil && filter.ID != nil {
 		resourceID = quotaPlanIDString(*filter.ID)
 	}
-	m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionDelete), resourceID, "", quotaPlanParamToMap(oldPlan), nil)
+	m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionDelete), resourceID, "", quotaPlanParamToMap(oldPlan), nil, nil)
 	return nil
 }
 
@@ -168,6 +189,18 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 		return nil
 	})
 	if err != nil {
+		afterMap := quotaPlanParamToMap(oldPlan)
+		if afterMap == nil {
+			afterMap = map[string]interface{}{}
+		}
+		if resetQuota != nil {
+			afterMap["quota"] = *resetQuota
+		}
+		if updateLastResetAt {
+			now := time.Now()
+			afterMap["last_reset_at"] = now
+		}
+		m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionReset), quotaPlanIDString(planID), "", quotaPlanParamToMap(oldPlan), afterMap, err)
 		return err
 	}
 
@@ -180,7 +213,7 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 		now := time.Now()
 		afterMap["last_reset_at"] = now
 	}
-	m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionReset), quotaPlanIDString(planID), "", quotaPlanParamToMap(oldPlan), afterMap)
+	m.recordQuotaPlanOperation(ctx, string(ioperlog.ActionReset), quotaPlanIDString(planID), "", quotaPlanParamToMap(oldPlan), afterMap, nil)
 
 	// 5. 重置该 quota_plan 下所有 API-Key / Entity 的 Redis 剩余量（事务外，最终一致）
 	if m.quotaCache == nil || resetQuota == nil {
@@ -238,10 +271,10 @@ func (m *QuotaPlanManager) ApplyQuotaPlanChange(ctx context.Context, planID int6
 // - 新建计划、unit 变化 或 unlimited 切换：used 清零，remaining 置为新配额（unlimited 时用 sentinel）。
 func (m *QuotaPlanManager) adjustQuota(ctx context.Context, planID int64, oldPlan, newPlan *shared.QuotaPlanParam) error {
 	var (
-		newQuota     *float64
-		oldQuota     *float64
-		planUnit     *string
-		useReset     bool
+		newQuota *float64
+		oldQuota *float64
+		planUnit *string
+		useReset bool
 	)
 
 	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
@@ -448,4 +481,3 @@ func ptrStringEqual(a, b *string) bool {
 	}
 	return *a == *b
 }
-

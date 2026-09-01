@@ -22,7 +22,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 )
 
-func (rppm *APIKeyManager) recordAPIKeyOperation(ctx context.Context, action string, apiKey *APIKeyParam, before, after map[string]interface{}) {
+func (rppm *APIKeyManager) recordAPIKeyOperation(ctx context.Context, action string, apiKey *APIKeyParam, before, after map[string]interface{}, err error) {
 	if rppm.operationLogManager == nil || apiKey == nil {
 		return
 	}
@@ -42,13 +42,21 @@ func (rppm *APIKeyManager) recordAPIKeyOperation(ctx context.Context, action str
 		resourceParentID = *apiKey.EntityID
 	}
 
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
+	}
+
 	entry := &ioperlog.OperationLogEntry{
 		Action:           action,
 		ResourceType:     string(ioperlog.ResourceTypeAPIKey),
 		ResourceID:       resourceID,
 		ResourceName:     resourceName,
 		ResourceParentID: resourceParentID,
-		Status:           ioperlog.StatusSuccess,
+		Status:           status,
+		ErrorMsg:         errorMsg,
 		CreatedAt:        time.Now(),
 	}
 

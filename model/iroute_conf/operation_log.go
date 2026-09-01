@@ -23,9 +23,16 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 )
 
-func (rm *RouteRuleManager) recordRouteRuleOperation(ctx context.Context, action string, product *ibasic.Product, before, after map[string]interface{}) {
+func (rm *RouteRuleManager) recordRouteRuleOperation(ctx context.Context, action string, product *ibasic.Product, before, after map[string]interface{}, err error) {
 	if rm.operationLogManager == nil || product == nil {
 		return
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
 	}
 
 	entry := &ioperlog.OperationLogEntry{
@@ -34,7 +41,8 @@ func (rm *RouteRuleManager) recordRouteRuleOperation(ctx context.Context, action
 		ResourceID:       product.Name,
 		ResourceName:     product.Name,
 		ResourceParentID: strconv.FormatInt(product.ID, 10),
-		Status:           ioperlog.StatusSuccess,
+		Status:           status,
+		ErrorMsg:         errorMsg,
 		CreatedAt:        time.Now(),
 	}
 
@@ -84,9 +92,16 @@ func productRouteRuleToMap(rule *ProductRouteRule) map[string]interface{} {
 	return m
 }
 
-func (m *DomainManager) recordDomainOperation(ctx context.Context, action, resourceID, resourceName, parentID string, before, after map[string]interface{}) {
+func (m *DomainManager) recordDomainOperation(ctx context.Context, action, resourceID, resourceName, parentID string, before, after map[string]interface{}, err error) {
 	if m.operationLogManager == nil {
 		return
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
 	}
 
 	entry := &ioperlog.OperationLogEntry{
@@ -95,7 +110,8 @@ func (m *DomainManager) recordDomainOperation(ctx context.Context, action, resou
 		ResourceID:       resourceID,
 		ResourceName:     resourceName,
 		ResourceParentID: parentID,
-		Status:           ioperlog.StatusSuccess,
+		Status:           status,
+		ErrorMsg:         errorMsg,
 		CreatedAt:        time.Now(),
 	}
 
@@ -141,10 +157,10 @@ func domainToMap(domain *Domain) map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"id":                       domain.ID,
-		"product_id":               domain.ProductID,
-		"name":                     domain.Name,
-		"using_advanced_redirect":  domain.UsingAdvancedRedirect,
-		"using_advanced_hsts":      domain.UsingAdvancedHsts,
+		"id":                      domain.ID,
+		"product_id":              domain.ProductID,
+		"name":                    domain.Name,
+		"using_advanced_redirect": domain.UsingAdvancedRedirect,
+		"using_advanced_hsts":     domain.UsingAdvancedHsts,
 	}
 }

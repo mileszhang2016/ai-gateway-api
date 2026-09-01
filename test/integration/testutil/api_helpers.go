@@ -426,15 +426,16 @@ func FieldExists(resp *APIResponse, field string) (bool, error) {
 
 // OperationLogEntry 是查询操作日志返回的单个条目结构（仅包含测试常用字段）。
 type OperationLogEntry struct {
-	ID           float64                `json:"id"`
-	Action       string                 `json:"action"`
-	ResourceType string                 `json:"resource_type"`
-	ResourceID   string                 `json:"resource_id"`
-	ResourceName string                 `json:"resource_name"`
-	Status       float64                `json:"status"`
-	RequestPath  string                 `json:"request_path"`
-	RequestMethod string                `json:"request_method"`
-	CreatedAt    float64                `json:"created_at"`
+	ID            float64                `json:"id"`
+	Action        string                 `json:"action"`
+	ResourceType  string                 `json:"resource_type"`
+	ResourceID    string                 `json:"resource_id"`
+	ResourceName  string                 `json:"resource_name"`
+	Status        float64                `json:"status"`
+	ErrorMsg      string                 `json:"error_msg"`
+	RequestPath   string                 `json:"request_path"`
+	RequestMethod string                 `json:"request_method"`
+	CreatedAt     float64                `json:"created_at"`
 	ChangeSummary map[string]interface{} `json:"change_summary"`
 }
 
@@ -481,4 +482,42 @@ func WaitForOperationLog(filter map[string]string, timeout time.Duration) (*Oper
 		time.Sleep(200 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("operation log not found after %v, filter=%v", timeout, filter)
+}
+
+// ResetGlobalRouteRules 清空全局路由规则。
+func ResetGlobalRouteRules() error {
+	resp, err := GetClient().Put("/open-api/v1/global-route-rules", map[string]interface{}{
+		"rules": []interface{}{},
+	})
+	if err != nil {
+		return err
+	}
+	if resp.ErrNum != 200 {
+		return fmt.Errorf("reset global route rules failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	return nil
+}
+
+// SetGlobalRouteRules 设置全局路由规则。
+func SetGlobalRouteRules(rules []interface{}) error {
+	resp, err := GetClient().Put("/open-api/v1/global-route-rules", map[string]interface{}{
+		"rules": rules,
+	})
+	if err != nil {
+		return err
+	}
+	if resp.ErrNum != 200 {
+		return fmt.Errorf("set global route rules failed: %d %s", resp.ErrNum, resp.ErrMsg)
+	}
+	return nil
+}
+
+// SimpleRouteRule 构造一条最简单的 global route rule，用于集成测试。
+func SimpleRouteRule(name, clusterName string) map[string]interface{} {
+	return map[string]interface{}{
+		"name":      name,
+		"cond":      "default_t()",
+		"targets":   []interface{}{map[string]interface{}{"cluster_name": clusterName, "model": "", "weight": 100}},
+		"fallbacks": []interface{}{},
+	}
 }

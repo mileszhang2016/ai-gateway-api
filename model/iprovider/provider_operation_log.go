@@ -22,9 +22,16 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 )
 
-func (m *ProviderManager) recordProviderOperation(ctx context.Context, action, name string, before, after map[string]interface{}) {
+func (m *ProviderManager) recordProviderOperation(ctx context.Context, action, name string, before, after map[string]interface{}, err error) {
 	if m.operationLogManager == nil || name == "" {
 		return
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
 	}
 
 	entry := &ioperlog.OperationLogEntry{
@@ -32,7 +39,8 @@ func (m *ProviderManager) recordProviderOperation(ctx context.Context, action, n
 		ResourceType: string(ioperlog.ResourceTypeProvider),
 		ResourceID:   name,
 		ResourceName: name,
-		Status:       ioperlog.StatusSuccess,
+		Status:       status,
+		ErrorMsg:     errorMsg,
 		CreatedAt:    time.Now(),
 	}
 

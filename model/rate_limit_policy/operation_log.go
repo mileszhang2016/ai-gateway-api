@@ -22,9 +22,16 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 )
 
-func (m *RateLimitPolicyManager) recordRateLimitPolicyOperation(ctx context.Context, action string, policyID, parentID string, before, after map[string]interface{}) {
+func (m *RateLimitPolicyManager) recordRateLimitPolicyOperation(ctx context.Context, action string, policyID, parentID string, before, after map[string]interface{}, err error) {
 	if m.operationLogManager == nil {
 		return
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
 	}
 
 	entry := &ioperlog.OperationLogEntry{
@@ -33,7 +40,8 @@ func (m *RateLimitPolicyManager) recordRateLimitPolicyOperation(ctx context.Cont
 		ResourceID:       policyID,
 		ResourceName:     "",
 		ResourceParentID: parentID,
-		Status:           ioperlog.StatusSuccess,
+		Status:           status,
+		ErrorMsg:         errorMsg,
 		CreatedAt:        time.Now(),
 	}
 

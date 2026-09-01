@@ -23,6 +23,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
@@ -1378,4 +1379,36 @@ func newClusterManagerForExport(t *testing.T, version string) *ClusterManager {
 		},
 	}
 	return NewClusterManager(&fakeTxn{}, clusterStore, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, vcm, nil, nil)
+}
+
+type fakeOperationLogRecorder struct {
+	entries []*ioperlog.OperationLogEntry
+}
+
+func (r *fakeOperationLogRecorder) Record(ctx context.Context, entry *ioperlog.OperationLogEntry) {
+	r.entries = append(r.entries, entry)
+}
+
+func TestClusterManager_DeleteCluster_RecordsFailedOperationLog(t *testing.T) {
+	ctx := context.Background()
+	product := &ibasic.Product{ID: 2, Name: "test"}
+	recorder := &fakeOperationLogRecorder{}
+
+	m := NewClusterManager(&fakeTxn{}, &fakeClusterStorager{}, &fakeSubClusterStorager{}, &fakeBFEClusterStorager{}, &fakePoolStorager{}, nil, nil, map[string]func(context.Context, *ibasic.Product, *Cluster) error{
+		"route": func(ctx context.Context, p *ibasic.Product, c *Cluster) error {
+			return errors.New("route in use")
+		},
+	}, nil)
+	m.SetOperationLogManager(recorder)
+
+	err := m.DeleteCluster(ctx, product, newTestClusterBase())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "route in use")
+
+	require.Len(t, recorder.entries, 1)
+	entry := recorder.entries[0]
+	assert.Equal(t, string(ioperlog.ActionDelete), entry.Action)
+	assert.Equal(t, string(ioperlog.ResourceTypeCluster), entry.ResourceType)
+	assert.Equal(t, ioperlog.StatusFailed, entry.Status)
+	assert.Contains(t, entry.ErrorMsg, "route in use")
 }

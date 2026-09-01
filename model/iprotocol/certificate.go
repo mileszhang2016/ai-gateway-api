@@ -21,13 +21,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bfenetworks/bfe/bfe_tls"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/bfenetworks/bfe/bfe_tls"
 )
 
 const certificateExpiredDateLayout = "2006-01-02 15:04:05"
@@ -105,11 +105,15 @@ func (pm *CertificateManager) FetchCertificates(ctx context.Context, param *Cert
 
 func (pm *CertificateManager) DeleteCertificate(ctx context.Context, certificate *Certificate) (err error) {
 	if certificate.IsDefault {
-		return xerror.WrapModelErrorWithMsg("Cant Delete Default Certificate")
+		err = xerror.WrapModelErrorWithMsg("Cant Delete Default Certificate")
+		pm.recordCertificateOperation(ctx, string(ioperlog.ActionDelete), certificate.CertName, certificate.CertName, "", certificateToMap(certificate), nil, err)
+		return
 	}
 
 	if len(certificate.Products) > 0 {
-		return xerror.WrapModelErrorWithMsg("Cant Delete Certificate Be Refer By Product")
+		err = xerror.WrapModelErrorWithMsg("Cant Delete Certificate Be Refer By Product")
+		pm.recordCertificateOperation(ctx, string(ioperlog.ActionDelete), certificate.CertName, certificate.CertName, "", certificateToMap(certificate), nil, err)
+		return
 	}
 
 	err = pm.txn.AtomExecute(ctx, func(ctx context.Context) error {
@@ -122,10 +126,11 @@ func (pm *CertificateManager) DeleteCertificate(ctx context.Context, certificate
 		return pm.storager.DeleteCertificate(ctx, certificate)
 	})
 	if err != nil {
+		pm.recordCertificateOperation(ctx, string(ioperlog.ActionDelete), certificate.CertName, certificate.CertName, "", certificateToMap(certificate), nil, err)
 		return
 	}
 
-	pm.recordCertificateOperation(ctx, string(ioperlog.ActionDelete), certificate.CertName, certificate.CertName, "", certificateToMap(certificate), nil)
+	pm.recordCertificateOperation(ctx, string(ioperlog.ActionDelete), certificate.CertName, certificate.CertName, "", certificateToMap(certificate), nil, nil)
 	return
 }
 
@@ -194,12 +199,19 @@ func parseExpiredDate(certFileContent string) (string, error) {
 }
 
 func (pm *CertificateManager) CreateCertificate(ctx context.Context, param *CertificateParam) (err error) {
+	certName := ""
+	if param.CertName != nil {
+		certName = *param.CertName
+	}
+
 	if err = validateCertPair(*param.CertFileContent, *param.KeyFileContent); err != nil {
+		pm.recordCertificateOperation(ctx, string(ioperlog.ActionCreate), certName, certName, "", nil, certificateParamToMap(param), err)
 		return err
 	}
 
 	expiredDate, err := parseExpiredDate(*param.CertFileContent)
 	if err != nil {
+		pm.recordCertificateOperation(ctx, string(ioperlog.ActionCreate), certName, certName, "", nil, certificateParamToMap(param), err)
 		return err
 	}
 	param.ExpiredDate = &expiredDate
@@ -252,14 +264,11 @@ func (pm *CertificateManager) CreateCertificate(ctx context.Context, param *Cert
 		return pm.storager.CreateCertificate(ctx, param)
 	})
 	if err != nil {
+		pm.recordCertificateOperation(ctx, string(ioperlog.ActionCreate), certName, certName, "", nil, certificateParamToMap(param), err)
 		return
 	}
 
-	certName := ""
-	if param.CertName != nil {
-		certName = *param.CertName
-	}
-	pm.recordCertificateOperation(ctx, string(ioperlog.ActionCreate), certName, certName, "", nil, certificateParamToMap(param))
+	pm.recordCertificateOperation(ctx, string(ioperlog.ActionCreate), certName, certName, "", nil, certificateParamToMap(param), nil)
 
 	return
 }
@@ -290,12 +299,16 @@ func (pm *CertificateManager) UpdateAsDefaultCertificate(ctx context.Context, ce
 		})
 	})
 	if err != nil {
+		pm.recordCertificateOperation(ctx, string(ioperlog.ActionUpdate), cert.CertName, cert.CertName, "", certificateToMap(cert), map[string]interface{}{
+			"cert_name":  cert.CertName,
+			"is_default": true,
+		}, err)
 		return
 	}
 
 	pm.recordCertificateOperation(ctx, string(ioperlog.ActionUpdate), cert.CertName, cert.CertName, "", certificateToMap(cert), map[string]interface{}{
 		"cert_name":  cert.CertName,
 		"is_default": true,
-	})
+	}, nil)
 	return
 }
