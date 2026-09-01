@@ -44,16 +44,7 @@ func (m *EntityManager) recordEntityOperation(ctx context.Context, action string
 		CreatedAt:        time.Now(),
 	}
 
-	changeSummary := map[string]interface{}{}
-	if len(before) > 0 {
-		changeSummary["before"] = ioperlog.MaskSensitiveFields(before)
-	}
-	if len(after) > 0 {
-		changeSummary["after"] = ioperlog.MaskSensitiveFields(after)
-	}
-	if len(changeSummary) > 0 {
-		entry.ChangeSummary = changeSummary
-	}
+	entry.ChangeSummary = ioperlog.BuildChangeSummary(action, before, after)
 
 	m.operationLogManager.Record(ctx, entry)
 }
@@ -89,16 +80,7 @@ func (m *EntityTypeManager) recordEntityTypeOperation(ctx context.Context, actio
 		CreatedAt:    time.Now(),
 	}
 
-	changeSummary := map[string]interface{}{}
-	if len(before) > 0 {
-		changeSummary["before"] = ioperlog.MaskSensitiveFields(before)
-	}
-	if len(after) > 0 {
-		changeSummary["after"] = ioperlog.MaskSensitiveFields(after)
-	}
-	if len(changeSummary) > 0 {
-		entry.ChangeSummary = changeSummary
-	}
+	entry.ChangeSummary = ioperlog.BuildChangeSummary(action, before, after)
 
 	m.operationLogManager.Record(ctx, entry)
 }

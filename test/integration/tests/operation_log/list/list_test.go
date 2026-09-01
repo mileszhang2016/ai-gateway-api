@@ -279,3 +279,42 @@ func TestOperationLog_FailedOperationRecordsError(t *testing.T) {
 	require.NoError(t, testutil.ResetGlobalRouteRules(), "cleanup global route rules failed")
 	_ = testutil.DeleteCluster(clusterName)
 }
+
+// TestOperationLog_UpdateEntityTypeHasDiffKeys 验证 update 动作的操作日志包含 diff_keys。
+func TestOperationLog_UpdateEntityTypeHasDiffKeys(t *testing.T) {
+	client := testutil.GetClient()
+
+	typeName := testutil.UniqueEntityTypeName()
+	_, err := testutil.CreateEntityType(typeName, 1)
+	require.NoError(t, err, "setup entity type failed")
+
+	// 更新 entity-type 的 description，产生 update 日志。
+	resp, err := client.Patch("/open-api/v1/entity-types/"+typeName, map[string]interface{}{
+		"description": "updated description for diff_keys test",
+	})
+	require.NoError(t, err, "update entity-type request failed")
+	testutil.AssertSuccess(t, resp)
+
+	entry, err := testutil.WaitForOperationLog(map[string]string{
+		"resource_type": "entity_type",
+		"action":        "update",
+		"resource_id":   typeName,
+	}, 0)
+	require.NoError(t, err, "expected update operation log not found")
+
+	assert.Equal(t, "update", entry.Action)
+	assert.Equal(t, "entity_type", entry.ResourceType)
+	assert.Equal(t, typeName, entry.ResourceID)
+
+	require.NotNil(t, entry.ChangeSummary, "change_summary should be present")
+	assert.Contains(t, entry.ChangeSummary, "before")
+	assert.Contains(t, entry.ChangeSummary, "after")
+	require.Contains(t, entry.ChangeSummary, "diff_keys")
+
+	diffKeys, ok := entry.ChangeSummary["diff_keys"].([]interface{})
+	require.True(t, ok, "diff_keys should be an array")
+	assert.Contains(t, diffKeys, "description")
+
+	// 清理
+	_ = testutil.DeleteEntityType(typeName)
+}
