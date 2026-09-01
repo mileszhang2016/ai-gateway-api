@@ -98,6 +98,8 @@ func TestEntityManager_UpdateEntity_RecordsOperationLog(t *testing.T) {
 	entry := recorder.entries[0]
 	assert.Equal(t, string(ioperlog.ActionUpdate), entry.Action)
 	assert.Equal(t, entityID, entry.ResourceID)
+	require.NotNil(t, entry.ChangeSummary)
+	assert.Equal(t, []string{"name"}, entry.ChangeSummary["diff_keys"])
 }
 
 func TestEntityTypeManager_CreateEntityType_RecordsOperationLog(t *testing.T) {
@@ -159,6 +161,8 @@ func TestEntityTypeManager_UpdateEntityType_RecordsOperationLog(t *testing.T) {
 	entry := recorder.entries[0]
 	assert.Equal(t, string(ioperlog.ActionUpdate), entry.Action)
 	assert.Equal(t, typeName, entry.ResourceID)
+	require.NotNil(t, entry.ChangeSummary)
+	assert.Equal(t, []string{"description"}, entry.ChangeSummary["diff_keys"])
 }
 
 func TestEntityTypeManager_DeleteEntityType_RecordsOperationLog(t *testing.T) {
