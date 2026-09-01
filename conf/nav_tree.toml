@@ -34,3 +34,8 @@ children = [
 id = "user.list"
 text = "UserManage"
 allowed_roles = ["admin"]
+
+[[children]]
+id = "OperationLog.list"
+text = "OperationLogManage"
+allowed_roles = ["admin"]
