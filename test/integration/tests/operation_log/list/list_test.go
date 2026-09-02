@@ -407,3 +407,51 @@ func TestOperationLog_UpdateGlobalRouteRulesHasLog(t *testing.T) {
 	_ = testutil.DeleteCluster(clusterName)
 	_ = testutil.DeleteProvider(providerName)
 }
+
+// TestOperationLog_PaginationPageTwoHasTotal 验证操作日志分页到第二页时 total 不为 0（issue #123）。
+func TestOperationLog_PaginationPageTwoHasTotal(t *testing.T) {
+	// 创建 3 个 entity-type，产生至少 3 条 create 日志，以便分页。
+	names := make([]string, 3)
+	for i := range names {
+		names[i] = testutil.UniqueEntityTypeName()
+		_, err := testutil.CreateEntityType(names[i], 1)
+		require.NoError(t, err, "create entity type failed")
+	}
+
+	// 等待日志落库。
+	_, err := testutil.WaitForOperationLog(map[string]string{
+		"resource_type": "entity_type",
+		"action":        "create",
+		"resource_id":   names[2],
+	}, 0)
+	require.NoError(t, err, "expected entity_type create log not found")
+
+	// 查询第一页。
+	page1, resp, err := testutil.QueryOperationLogs(map[string]string{
+		"resource_type": "entity_type",
+		"action":        "create",
+		"page":          "1",
+		"page_size":     "2",
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, resp)
+	assert.Len(t, page1.List, 2, "page 1 should contain 2 records")
+	assert.GreaterOrEqual(t, page1.Pagination.Total, int64(3), "total should be at least 3")
+
+	// 查询第二页，重点校验 total 不应变为 0。
+	page2, resp, err := testutil.QueryOperationLogs(map[string]string{
+		"resource_type": "entity_type",
+		"action":        "create",
+		"page":          "2",
+		"page_size":     "2",
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, resp)
+	assert.GreaterOrEqual(t, page2.Pagination.Total, int64(3), "page 2 total should still be at least 3")
+	assert.GreaterOrEqual(t, len(page2.List), 1, "page 2 should contain at least 1 record")
+
+	// 清理。
+	for _, name := range names {
+		_ = testutil.DeleteEntityType(name)
+	}
+}

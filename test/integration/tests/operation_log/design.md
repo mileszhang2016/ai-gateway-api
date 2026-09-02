@@ -15,9 +15,9 @@
 | 场景 | 测试用例数 |
 |------|-----------|
 | 多域 API 操作日志生成 | 13 |
-| 查询过滤与分页 | 6 |
+| 查询过滤与分页 | 7 |
 | update diff_keys 验证 | 2 |
-| **合计** | **21** |
+| **合计** | **22** |
 
 ## 4. 认证方式
 
@@ -148,6 +148,7 @@ operation_log/
 | OL-2-004 | 按 resource_id 过滤 | 正常参数 | 精确匹配指定 entity ID |
 | OL-2-005 | 按不存在 action 过滤 | 异常参数 | 返回空列表，total=0 |
 | OL-2-006 | 分页查询 | 边界值 | `page=1&page_size=2` |
+| OL-2-007 | 第二页仍有 total | 边界值 | `page=2&page_size=2`，验证 total 不为 0 |
 
 ### 7.4 测试场景详细设计
 
@@ -301,6 +302,37 @@ page=1&page_size=2
 |------|--------|---------|
 | `list` | 长度为 2 | Len=2 |
 | `pagination.page` | 1 | Equals |
+| `pagination.page_size` | 2 | Equals |
+| `pagination.total` | ≥ 3 | Gte |
+
+---
+
+#### 7.4.7 OL-2-007：第二页仍有 total
+
+##### 设计思路
+
+验证分页到第二页时，`pagination.total` 仍然返回正确总数，而不是因 count SQL 带 LIMIT 导致 total 变为 0（issue #123）。
+
+##### 前提数据准备
+
+已创建至少 3 个 `entity-type`，产生 3 条 `entity_type/create` 日志。
+
+##### 请求参数
+
+```
+resource_type=entity_type&action=create&page=2&page_size=2
+```
+
+##### 预期返回结果
+
+**ErrNum**：200
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| `list` | 长度 ≥ 1 | Gte |
+| `pagination.page` | 2 | Equals |
 | `pagination.page_size` | 2 | Equals |
 | `pagination.total` | ≥ 3 | Gte |
 
