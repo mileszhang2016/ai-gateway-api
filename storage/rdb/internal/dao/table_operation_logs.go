@@ -105,6 +105,9 @@ func TOperationLogCount(dbCtx lib.DBContexter, where *TOperationLogParam) (int64
 	}
 	list := []*countResult{}
 	whereMap := internal.Struct2Where(where)
+	// Count should not be constrained by pagination/order clauses.
+	delete(whereMap, "_limit")
+	delete(whereMap, "_orderby")
 	build := internal.NewSelectBuilder(tOperationLogTableName, whereMap, []string{"count(*)"})
 	sql, args, err := build.Compile()
 	if err != nil {

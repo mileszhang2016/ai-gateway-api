@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 	"github.com/stretchr/testify/assert"
@@ -51,6 +52,10 @@ func TestOperationLog_GenerationForVariousAPIs(t *testing.T) {
 	_, err = testutil.CreateCluster(clusterName)
 	require.NoError(t, err, "create cluster failed")
 
+	// 5.1 更新 Global 路由表（产生 route/update 日志）
+	require.NoError(t, testutil.ResetGlobalRouteRules(), "reset global route rules failed")
+	require.NoError(t, testutil.SetGlobalRouteRules([]interface{}{testutil.SimpleRouteRule("global-route-for-operation-log", clusterName)}), "set global route rules failed")
+
 	// 6. 创建 certificate：先创建默认证书，再创建非默认证书。
 	defaultCertName := testutil.UniqueCertName()
 	_, err = testutil.CreateCertificate(defaultCertName, true)
@@ -95,6 +100,7 @@ func TestOperationLog_GenerationForVariousAPIs(t *testing.T) {
 		{"api_key", "delete", apiKeyID, ""},
 		{"provider", "create", providerName, ""},
 		{"cluster", "create", "", clusterName},
+		{"route", "update", "global", ""},
 		{"certificate", "create", defaultCertName, ""},
 		{"certificate", "create", certName, ""},
 		{"user", "create", "", userName},
@@ -125,6 +131,7 @@ func TestOperationLog_GenerationForVariousAPIs(t *testing.T) {
 	}
 
 	// 清理资源
+	_ = testutil.ResetGlobalRouteRules()
 	_ = testutil.DeleteToken(tokenName)
 	_ = testutil.DeleteUser(userName)
 	_ = testutil.DeleteCertificate(certName)
@@ -317,4 +324,134 @@ func TestOperationLog_UpdateEntityTypeHasDiffKeys(t *testing.T) {
 
 	// 清理
 	_ = testutil.DeleteEntityType(typeName)
+}
+
+// TestOperationLog_UpdateGlobalRouteRulesHasLog 验证更新 Global 路由表会生成操作日志（issue #124）。
+func TestOperationLog_UpdateGlobalRouteRulesHasLog(t *testing.T) {
+	// 0. 记录当前 route/global 的最大日志 ID，避免被旧日志干扰。
+	var maxIDBefore float64
+	result, _, err := testutil.QueryOperationLogs(map[string]string{
+		"resource_type": "route",
+		"action":        "update",
+		"resource_id":   "global",
+	})
+	require.NoError(t, err)
+	for _, item := range result.List {
+		if item.ID > maxIDBefore {
+			maxIDBefore = item.ID
+		}
+	}
+
+	// 1. 准备依赖：provider + cluster。
+	providerName := testutil.UniqueProviderName()
+	_, err = testutil.CreateProvider(providerName)
+	require.NoError(t, err, "setup provider failed")
+
+	clusterName := testutil.UniqueClusterName()
+	_, err = testutil.CreateCluster(clusterName)
+	require.NoError(t, err, "setup cluster failed")
+
+	// 2. 将 Global 路由表重置为空，作为 before 状态。
+	require.NoError(t, testutil.ResetGlobalRouteRules(), "reset global route rules failed")
+
+	// 3. 更新 Global 路由表，产生 update 日志。
+	ruleName := "global-route-log-diff"
+	require.NoError(t, testutil.SetGlobalRouteRules([]interface{}{testutil.SimpleRouteRule(ruleName, clusterName)}), "set global route rules failed")
+
+	// 4. 等待本次操作产生的新日志落库。
+	deadline := time.Now().Add(10 * time.Second)
+	var entry *testutil.OperationLogEntry
+	for time.Now().Before(deadline) {
+		result, _, err = testutil.QueryOperationLogs(map[string]string{
+			"resource_type": "route",
+			"action":        "update",
+			"resource_id":   "global",
+			"status":        "1",
+		})
+		require.NoError(t, err)
+		for i := range result.List {
+			if result.List[i].ID > maxIDBefore {
+				entry = &result.List[i]
+				break
+			}
+		}
+		if entry != nil {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	require.NotNil(t, entry, "expected new global route rules operation log not found")
+
+	// 5. 校验操作日志字段。
+	assert.Equal(t, "update", entry.Action)
+	assert.Equal(t, "route", entry.ResourceType)
+	assert.Equal(t, "global", entry.ResourceID)
+	assert.Equal(t, "global", entry.ResourceName)
+	assert.Equal(t, float64(1), entry.Status)
+	assert.Equal(t, "/open-api/v1/global-route-rules", entry.RequestPath)
+	assert.Equal(t, "PUT", entry.RequestMethod)
+	assert.NotEmpty(t, entry.CreatedAt)
+
+	// 6. 校验变更摘要包含 before / after / diff_keys。
+	require.NotNil(t, entry.ChangeSummary, "change_summary should be present")
+	assert.Contains(t, entry.ChangeSummary, "before")
+	assert.Contains(t, entry.ChangeSummary, "after")
+	require.Contains(t, entry.ChangeSummary, "diff_keys")
+
+	diffKeys, ok := entry.ChangeSummary["diff_keys"].([]interface{})
+	require.True(t, ok, "diff_keys should be an array")
+	assert.Contains(t, diffKeys, "rules")
+
+	// 7. 清理。
+	require.NoError(t, testutil.ResetGlobalRouteRules(), "cleanup global route rules failed")
+	_ = testutil.DeleteCluster(clusterName)
+	_ = testutil.DeleteProvider(providerName)
+}
+
+// TestOperationLog_PaginationPageTwoHasTotal 验证操作日志分页到第二页时 total 不为 0（issue #123）。
+func TestOperationLog_PaginationPageTwoHasTotal(t *testing.T) {
+	// 创建 3 个 entity-type，产生至少 3 条 create 日志，以便分页。
+	names := make([]string, 3)
+	for i := range names {
+		names[i] = testutil.UniqueEntityTypeName()
+		_, err := testutil.CreateEntityType(names[i], 1)
+		require.NoError(t, err, "create entity type failed")
+	}
+
+	// 等待日志落库。
+	_, err := testutil.WaitForOperationLog(map[string]string{
+		"resource_type": "entity_type",
+		"action":        "create",
+		"resource_id":   names[2],
+	}, 0)
+	require.NoError(t, err, "expected entity_type create log not found")
+
+	// 查询第一页。
+	page1, resp, err := testutil.QueryOperationLogs(map[string]string{
+		"resource_type": "entity_type",
+		"action":        "create",
+		"page":          "1",
+		"page_size":     "2",
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, resp)
+	assert.Len(t, page1.List, 2, "page 1 should contain 2 records")
+	assert.GreaterOrEqual(t, page1.Pagination.Total, int64(3), "total should be at least 3")
+
+	// 查询第二页，重点校验 total 不应变为 0。
+	page2, resp, err := testutil.QueryOperationLogs(map[string]string{
+		"resource_type": "entity_type",
+		"action":        "create",
+		"page":          "2",
+		"page_size":     "2",
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, resp)
+	assert.GreaterOrEqual(t, page2.Pagination.Total, int64(3), "page 2 total should still be at least 3")
+	assert.GreaterOrEqual(t, len(page2.List), 1, "page 2 should contain at least 1 record")
+
+	// 清理。
+	for _, name := range names {
+		_ = testutil.DeleteEntityType(name)
+	}
 }

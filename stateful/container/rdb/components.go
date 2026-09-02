@@ -56,8 +56,8 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/basic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
 	entityStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/entity"
-	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/model_price"
 	operationLogStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ioperlog"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/model_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/protocol"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/provider"
 	quotaStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/quota"
@@ -171,6 +171,7 @@ func Init() error {
 	container.RouteRulesManager = route_rules.NewRouteRulesManager(
 		container.TxnStoragerSingleton,
 		container.RouteRulesStorager)
+	container.RouteRulesManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.ClusterManager = icluster_conf.NewClusterManager(
 		container.TxnStoragerSingleton,

@@ -198,6 +198,7 @@
 - `/providers` 的 POST / PUT / DELETE
 - `/clusters` 的 POST / PUT / DELETE
 - `/routes` 的 POST / PUT / DELETE
+- `/global-route-rules` 的 PUT
 - `/domains` 的 POST / PUT / DELETE
 - `/certificates` 的 POST / PUT / DELETE
 - `/quota-plans` 的 POST / PUT / DELETE / reset
