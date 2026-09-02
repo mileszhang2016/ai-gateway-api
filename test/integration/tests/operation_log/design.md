@@ -14,9 +14,10 @@
 
 | 场景 | 测试用例数 |
 |------|-----------|
-| 多域 API 操作日志生成 | 11 |
+| 多域 API 操作日志生成 | 13 |
 | 查询过滤与分页 | 6 |
-| **合计** | **17** |
+| update diff_keys 验证 | 2 |
+| **合计** | **21** |
 
 ## 4. 认证方式
 
@@ -52,6 +53,7 @@ operation_log/
 | OL-GEN-009 | `certificate` | `create` | `POST /open-api/v1/certificates`（非默认证书） |
 | OL-GEN-010 | `user` | `create` | `POST /open-api/v1/auth/users` |
 | OL-GEN-011 | `token` | `create` | `POST /open-api/v1/auth/tokens` |
+| OL-GEN-012 | `route` | `update` | `PUT /open-api/v1/global-route-rules` |
 
 ### 6.3 校验点
 
@@ -71,11 +73,12 @@ operation_log/
 1. 创建 `entity` 前需先创建 `entity-type`。
 2. 创建 `api-key` 前需先创建 `entity`。
 3. 创建 `cluster` 前需先创建 `provider`。
-4. 创建非默认证书前需先创建默认证书。
+4. 更新 Global 路由表前需先创建 `cluster`。
+5. 创建非默认证书前需先创建默认证书。
 
 ### 6.5 清理策略
 
-测试完成后按相反顺序删除创建的资源：token、user、certificate、cluster、provider、api-key、entity、entity-type。
+测试完成后按相反顺序删除创建的资源并重置 Global 路由表：ResetGlobalRouteRules、token、user、certificate、cluster、provider、api-key、entity、entity-type。
 
 ---
 
@@ -303,16 +306,45 @@ page=1&page_size=2
 
 ---
 
-## 8. 工具辅助函数
+## 8. update diff_keys 验证
 
-集成测试在 `testutil` 中新增以下辅助函数：
+### 8.1 设计思路
+
+针对 `update` 动作的操作日志，除校验基本字段外，进一步验证 `change_summary` 中包含 `before`、`after` 以及 `diff_keys`，确保变更差异可被前端正确展示。
+
+### 8.2 覆盖场景
+
+| 编号 | 资源类型 | 操作 | 触发 API | 校验重点 |
+|------|----------|------|----------|----------|
+| OL-DIFF-001 | `entity_type` | `update` | `PATCH /open-api/v1/entity-types/{type_name}` | `diff_keys` 包含变更的字段 |
+| OL-DIFF-002 | `route` | `update` | `PUT /open-api/v1/global-route-rules` | `diff_keys` 包含 `rules`；`before` 与 `after` 分别对应清空与写入后的 Global 路由表 |
+
+### 8.3 数据准备
+
+- `OL-DIFF-002` 需要先创建 `provider` 与 `cluster`，再使用 `ResetGlobalRouteRules` 将 Global 路由表置空作为 `before` 状态，最后调用 `SetGlobalRouteRules` 写入一条规则作为 `after` 状态。
+
+### 8.4 校验点
+
+- `change_summary` 非空且包含 `before`、`after`、`diff_keys`。
+- `diff_keys` 数组中包含预期变更的字段名。
+- 由于操作日志异步落库且可能存在历史日志，测试通过比对日志 `id` 确保拿到的是本次操作产生的新记录。
+
+---
+
+## 9. 工具辅助函数
+
+集成测试在 `testutil` 中新增/使用以下辅助函数：
 
 - `QueryOperationLogs(query map[string]string) (*OperationLogListResult, *APIResponse, error)`：查询操作日志。
 - `WaitForOperationLog(filter map[string]string, timeout time.Duration) (*OperationLogEntry, error)`：轮询等待匹配的操作日志出现，默认最长 10 秒，避免固定 sleep 导致的不稳定。
+- `ResetGlobalRouteRules() error`：清空 Global 路由表。
+- `SetGlobalRouteRules(rules []interface{}) error`：设置 Global 路由表。
+- `SimpleRouteRule(name, clusterName string) map[string]interface{}`：构造一条最简单的 Global 路由规则。
 
-## 9. 注意事项
+## 10. 注意事项
 
 1. 操作日志为异步批量落库，默认 5 秒 flush 一次；测试使用轮询而非固定 sleep 等待日志出现。
 2. 不同测试用例共享同一 SQLite 数据库，但每个用例使用唯一资源 ID / 名称，避免相互干扰。
 3. `cluster`、`user`、`token` 的 `resource_id` 为内部数值 ID，测试中通过 `resource_name` 查询。
-4. 测试环境 `SkipTokenValidate=true`，无需认证头。
+4. `route` 类型的 Global 路由表操作日志使用 `resource_id=global`、`resource_name=global` 标识。
+5. 测试环境 `SkipTokenValidate=true`，无需认证头。

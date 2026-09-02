@@ -23,14 +23,16 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 // RouteRulesManager manages route rules with transaction support
 type RouteRulesManager struct {
-	txn      itxn.TxnStorager
-	storager shared.RouteRulesStorager
+	txn                 itxn.TxnStorager
+	storager            shared.RouteRulesStorager
+	operationLogManager ioperlog.OperationLogRecorder
 }
 
 // NewRouteRulesManager creates a new RouteRulesManager instance
@@ -39,6 +41,11 @@ func NewRouteRulesManager(txn itxn.TxnStorager, storager shared.RouteRulesStorag
 		txn:      txn,
 		storager: storager,
 	}
+}
+
+// SetOperationLogManager injects the operation log recorder.
+func (m *RouteRulesManager) SetOperationLogManager(manager ioperlog.OperationLogRecorder) {
+	m.operationLogManager = manager
 }
 
 // CreateRouteRules creates route rules for a given type and owner
@@ -120,12 +127,31 @@ func (m *RouteRulesManager) GetGlobalRouteRules(ctx context.Context) (*shared.Ro
 // SetGlobalRouteRules sets global route rules
 func (m *RouteRulesManager) SetGlobalRouteRules(ctx context.Context, param *shared.RouteRulesParam) (*shared.RouteRulesParam, error) {
 	owner := shared.RouteRulesTypeGlobal
+
+	// Fetch existing rules for change summary; ignore errors here because
+	// UpdateRouteRules will re-fetch inside its transaction.
+	before, _ := m.storager.FetchRouteRules(ctx, shared.RouteRulesTypeGlobal, &owner)
+	beforeMap := routeRulesParamToMap(before)
+
 	id, err := m.UpdateRouteRules(ctx, shared.RouteRulesTypeGlobal, &owner, param)
 	if err != nil {
+		m.recordGlobalRouteRulesOperation(ctx, string(ioperlog.ActionUpdate), beforeMap, routeRulesParamToMap(param), err)
 		return nil, err
 	}
 
-	return m.storager.FetchRouteRulesByID(ctx, id)
+	updated, err := m.storager.FetchRouteRulesByID(ctx, id)
+	if err != nil {
+		m.recordGlobalRouteRulesOperation(ctx, string(ioperlog.ActionUpdate), beforeMap, routeRulesParamToMap(param), err)
+		return nil, err
+	}
+	if updated == nil {
+		err = xerror.WrapRecordNotExist("global route rules")
+		m.recordGlobalRouteRulesOperation(ctx, string(ioperlog.ActionUpdate), beforeMap, routeRulesParamToMap(param), err)
+		return nil, err
+	}
+
+	m.recordGlobalRouteRulesOperation(ctx, string(ioperlog.ActionUpdate), beforeMap, routeRulesParamToMap(updated), nil)
+	return updated, nil
 }
 
 // EnsureGlobalRouteRules ensures the global route table exists.
