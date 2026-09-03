@@ -297,11 +297,11 @@ func (rm *RouteRuleManager) ClusterDeleteChecker(ctx context.Context, product *i
 
 	rule := m[product.ID]
 	if len(rule.AdvanceRouteRules) > 0 {
-		return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", rule.AdvanceRouteRules[0].Name)
+		return xerror.WrapConflictErrorWithMsg("Rule %s Refer To This Cluster", rule.AdvanceRouteRules[0].Name)
 	}
 
 	if len(rule.BasicRouteRules) > 0 {
-		return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", rule.BasicRouteRules[0].Description)
+		return xerror.WrapConflictErrorWithMsg("Rule %s Refer To This Cluster", rule.BasicRouteRules[0].Description)
 	}
 
 	return nil

@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
@@ -440,6 +441,7 @@ func TestRouteRulesManager_ClusterDeleteChecker(t *testing.T) {
 		err := m.ClusterDeleteChecker(ctx, product, cluster)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "Rule rule1 Refer To This Cluster")
+		assert.Equal(t, 409, xerror.Resolve(err).ErrNo)
 	})
 
 	t.Run("route rule fallback refers cluster", func(t *testing.T) {

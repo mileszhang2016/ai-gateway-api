@@ -97,8 +97,8 @@ func assertDeleteBlocked(t *testing.T, clusterName string) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	if resp.ErrNum != 500 {
-		t.Fatalf("expected ErrNum=500, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+	if resp.ErrNum != 409 {
+		t.Fatalf("expected ErrNum=409, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
 	}
 	if resp.ErrMsg != "" && !strings.Contains(resp.ErrMsg, "Refer To This Cluster") && !strings.Contains(resp.ErrMsg, "集群被转发规则") {
 		t.Errorf("expected error message to contain reference hint, got: %s", resp.ErrMsg)
