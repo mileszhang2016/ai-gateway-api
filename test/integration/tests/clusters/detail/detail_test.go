@@ -56,3 +56,23 @@ func TestClusters_Detail(t *testing.T) {
 		testutil.DeleteCluster(clusterName)
 	})
 }
+
+// TestClusters_Detail_SingleCharName 验证单字符名称的集群可以正常查询。
+// 回归测试：单查 URI 参数曾要求名称至少 2 个字符，导致创建成功的单字符集群无法被查询。
+func TestClusters_Detail_SingleCharName(t *testing.T) {
+	const clusterName = "c"
+	if _, err := testutil.CreateCluster(clusterName); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	resp, err := testutil.GetClient().Get("/open-api/v1/clusters/" + clusterName)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	testutil.AssertSuccess(t, resp)
+	testutil.AssertDataFieldEquals(t, resp, "name", clusterName)
+
+	t.Cleanup(func() {
+		testutil.DeleteCluster(clusterName)
+	})
+}

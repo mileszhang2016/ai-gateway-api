@@ -82,7 +82,7 @@ type Timeouts struct {
 
 // OneParam Request Param
 type OneParam struct {
-	Name *string `uri:"cluster_name" validate:"required,min=2"`
+	Name *string `uri:"cluster_name" validate:"required,min=1"`
 }
 
 type PassiveHealthCheck struct {

@@ -257,4 +257,12 @@ func TestClusters_Delete(t *testing.T) {
 			testutil.DeleteCluster(referredCluster)
 		})
 	})
+
+	t.Run("CL-5-009 删除单字符名称的集群", func(t *testing.T) {
+		clusterName := "c"
+		if _, err := testutil.CreateCluster(clusterName); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		assertDeleteSuccess(t, clusterName)
+	})
 }
