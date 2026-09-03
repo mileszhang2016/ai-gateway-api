@@ -234,13 +234,13 @@ func checkClusterReferencedByRouteRules(clusterName string, routeRules []*shared
 
 			for _, target := range rule.Targets {
 				if target != nil && target.ClusterName != nil && *target.ClusterName == clusterName {
-					return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
+					return xerror.WrapConflictErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
 				}
 			}
 
 			for _, fallback := range rule.Fallbacks {
 				if fallback != nil && fallback.ClusterName != nil && *fallback.ClusterName == clusterName {
-					return xerror.WrapModelErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
+					return xerror.WrapConflictErrorWithMsg("Rule %s Refer To This Cluster", ruleName)
 				}
 			}
 		}
@@ -314,14 +314,14 @@ func checkClusterModelsReferenced(clusterName string, models []string, routeRule
 			for _, target := range rule.Targets {
 				if target != nil && target.ClusterName != nil && *target.ClusterName == clusterName &&
 					target.Model != nil && modelSet[*target.Model] {
-					return xerror.WrapModelErrorWithMsg("Rule %s Refer To Model %s In Cluster %s", ruleName, *target.Model, clusterName)
+					return xerror.WrapConflictErrorWithMsg("Rule %s Refer To Model %s In Cluster %s", ruleName, *target.Model, clusterName)
 				}
 			}
 
 			for _, fallback := range rule.Fallbacks {
 				if fallback != nil && fallback.ClusterName != nil && *fallback.ClusterName == clusterName &&
 					fallback.Model != nil && modelSet[*fallback.Model] {
-					return xerror.WrapModelErrorWithMsg("Rule %s Refer To Model %s In Cluster %s", ruleName, *fallback.Model, clusterName)
+					return xerror.WrapConflictErrorWithMsg("Rule %s Refer To Model %s In Cluster %s", ruleName, *fallback.Model, clusterName)
 				}
 			}
 		}

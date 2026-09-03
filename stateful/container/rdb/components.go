@@ -334,5 +334,6 @@ func operationLogContextExtractor(ctx context.Context, entry *ioperlog.Operation
 		entry.RequestPath = reqInfo.URLPath
 		entry.RequestMethod = reqInfo.Method
 		entry.ClientIP = reqInfo.ClientIP
+		entry.UserAgent = reqInfo.UserAgent
 	}
 }

@@ -1785,7 +1785,7 @@ URI：`cluster_full`
 | CL-4-006 | 更新 keys（全量替换） | 正常参数 | 验证 PATCH 后 keys 被完整替换 |
 | CL-4-007 | 更新 key_policy | 正常参数 | 验证 PATCH 后 key_policy 更新生效 |
 | CL-4-008 | 更新 match_prefix / strip_prefix | 正常参数 | 验证 PATCH 后前缀配置更新生效，InnerAPI 导出一致 |
-| CL-4-009 | 删除被路由引用的模型 | 业务规则 | `llm_config.models` 移除仍被路由规则引用的模型，验证 ErrNum=500 |
+| CL-4-009 | 删除被路由引用的模型 | 业务规则 | `llm_config.models` 移除仍被路由规则引用的模型，验证 ErrNum=409 |
 | CL-4-010 | 清理路由引用后可删除模型 | 正常参数 | 移除 API-Key 路由规则引用后，可成功删除集群模型 |
 | CL-4-011 | 更新 key_affinity | 正常参数 | 验证 PATCH 后 key_affinity 更新生效，InnerAPI 导出一致 |
 | CL-4-012 | 请求体不包含 `name` | 正常参数 | 请求体不传 `name`，验证返回的 `name` 与 URI 一致 |
@@ -2160,7 +2160,7 @@ URI：`cluster_update_prefix`
 
 ##### 设计思路
 
-验证更新集群时，若 `llm_config.models` 中移除的模型仍被 global/Entity/API-Key 路由规则的 `targets` 或 `fallbacks` 引用（同时匹配 `ClusterName` 与 `Model`），则更新应被拒绝，返回 500 业务错误。
+验证更新集群时，若 `llm_config.models` 中移除的模型仍被 global/Entity/API-Key 路由规则的 `targets` 或 `fallbacks` 引用（同时匹配 `ClusterName` 与 `Model`），则更新应被拒绝，返回 409 资源依赖冲突错误。
 
 ##### 前提数据准备
 
@@ -2186,7 +2186,7 @@ URI：`cluster_ref_model`
 
 ##### 预期返回结果
 
-**ErrNum**：500  
+**ErrNum**：409  
 **ErrMsg**：包含 `Rule rule-ref-model Refer To Model test-model In Cluster`  
 **Data**：null
 
@@ -2347,10 +2347,10 @@ URI：`cluster_update_key_affinity`
 |------|------|---------|---------|
 | CL-5-001 | 删除集群 | 正常参数 | 级联清理，再次查询返回 404 |
 | CL-5-002 | 删除不存在的集群 | 异常参数 | 验证 ErrNum=404 |
-| CL-5-003 | 删除被 global 路由规则 target 引用的集群 | 业务规则 | 验证 ErrNum=500，错误信息包含规则名 |
-| CL-5-004 | 删除被 global 路由规则 fallback 引用的集群 | 业务规则 | 验证 ErrNum=500，fallback 同样会拦截删除 |
-| CL-5-005 | 删除被 entity 路由规则 target 引用的集群 | 业务规则 | 验证 ErrNum=500 |
-| CL-5-006 | 删除被 apikey 路由规则 target 引用的集群 | 业务规则 | 验证 ErrNum=500 |
+| CL-5-003 | 删除被 global 路由规则 target 引用的集群 | 业务规则 | 验证 ErrNum=409，错误信息包含规则名 |
+| CL-5-004 | 删除被 global 路由规则 fallback 引用的集群 | 业务规则 | 验证 ErrNum=409，fallback 同样会拦截删除 |
+| CL-5-005 | 删除被 entity 路由规则 target 引用的集群 | 业务规则 | 验证 ErrNum=409 |
+| CL-5-006 | 删除被 apikey 路由规则 target 引用的集群 | 业务规则 | 验证 ErrNum=409 |
 | CL-5-007 | 解除引用后可删除集群 | 正常参数 | 更新 global 路由规则移除引用后删除成功 |
 | CL-5-008 | 路由规则引用其他集群时可删除 | 正常参数 | 规则引用 cluster_other，删除 cluster_unref 成功 |
 
@@ -2456,7 +2456,7 @@ Global 路由规则准备请求：
 
 ##### 预期返回结果
 
-**ErrNum**：500  
+**ErrNum**：409  
 **ErrMsg**：包含 "Rule global-ref Refer To This Cluster" 或本地化的“集群被转发规则 global-ref 引用”  
 **Data**：null
 
@@ -2504,7 +2504,7 @@ Global 路由规则准备请求：
 
 ##### 预期返回结果
 
-**ErrNum**：500  
+**ErrNum**：409  
 **ErrMsg**：包含 "Rule global-fb-ref Refer To This Cluster" 或本地化的“集群被转发规则 global-fb-ref 引用”  
 **Data**：null
 
@@ -2554,7 +2554,7 @@ Entity 路由规则准备请求：
 
 ##### 预期返回结果
 
-**ErrNum**：500  
+**ErrNum**：409  
 **ErrMsg**：包含 "Rule entity-ref Refer To This Cluster" 或本地化的“集群被转发规则 entity-ref 引用”  
 **Data**：null
 
@@ -2603,7 +2603,7 @@ API-Key 路由规则准备请求：
 
 ##### 预期返回结果
 
-**ErrNum**：500  
+**ErrNum**：409  
 **ErrMsg**：包含 "Rule apikey-ref Refer To This Cluster" 或本地化的“集群被转发规则 apikey-ref 引用”  
 **Data**：null
 

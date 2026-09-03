@@ -420,7 +420,7 @@ func TestClusters_Update_PreventDeleteReferencedModel(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
 		}
-		testutil.AssertErrCode(t, resp, 500)
+		testutil.AssertErrCode(t, resp, 409)
 		assert.Contains(t, resp.ErrMsg, "Rule rule-ref-model Refer To Model test-model In Cluster")
 	})
 

@@ -111,7 +111,7 @@ func (pm *CertificateManager) DeleteCertificate(ctx context.Context, certificate
 	}
 
 	if len(certificate.Products) > 0 {
-		err = xerror.WrapModelErrorWithMsg("Cant Delete Certificate Be Refer By Product")
+		err = xerror.WrapConflictErrorWithMsg("Cant Delete Certificate Be Refer By Product")
 		pm.recordCertificateOperation(ctx, string(ioperlog.ActionDelete), certificate.CertName, certificate.CertName, "", certificateToMap(certificate), nil, err)
 		return
 	}

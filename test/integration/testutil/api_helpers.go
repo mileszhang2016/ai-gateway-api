@@ -433,6 +433,8 @@ type OperationLogEntry struct {
 	ResourceName  string                 `json:"resource_name"`
 	Status        float64                `json:"status"`
 	ErrorMsg      string                 `json:"error_msg"`
+	ClientIP      string                 `json:"client_ip"`
+	UserAgent     string                 `json:"user_agent"`
 	RequestPath   string                 `json:"request_path"`
 	RequestMethod string                 `json:"request_method"`
 	CreatedAt     float64                `json:"created_at"`
