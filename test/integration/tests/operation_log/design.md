@@ -17,7 +17,8 @@
 | 多域 API 操作日志生成 | 13 |
 | 查询过滤与分页 | 7 |
 | update diff_keys 验证 | 2 |
-| **合计** | **22** |
+| 溯源字段记录 | 1 |
+| **合计** | **23** |
 
 ## 4. 认证方式
 
@@ -363,7 +364,27 @@ resource_type=entity_type&action=create&page=2&page_size=2
 
 ---
 
-## 9. 工具辅助函数
+## 9. 溯源字段记录（issue #127）
+
+### 9.1 设计思路
+
+验证操作日志正确记录 `user_agent` 与 `client_ip` 溯源字段，满足审计合规要求（能回答"谁、从哪发起"）。
+
+### 9.2 覆盖场景
+
+| 编号 | 场景 | 触发 API | 校验重点 |
+|------|------|----------|----------|
+| OL-TRACE-001 | 记录 User-Agent | `POST /open-api/v1/entity-types` | `user_agent` 非空，与请求 `User-Agent` 头一致 |
+| OL-TRACE-001 | 记录真实来源 IP | `POST /open-api/v1/entity-types` | `client_ip` 非空，回退自 `RemoteAddr`/`X-Forwarded-For` |
+
+### 9.3 校验点
+
+- `user_agent` 应记录请求的 `User-Agent` 头（修复前恒为空）。
+- `client_ip` 优先取自定义 `ClientIp` 头（兼容既有调用方），否则回退 `X-Forwarded-For` 首段，最后回退 `RemoteAddr` 去端口。
+
+---
+
+## 10. 工具辅助函数
 
 集成测试在 `testutil` 中新增/使用以下辅助函数：
 
@@ -373,7 +394,7 @@ resource_type=entity_type&action=create&page=2&page_size=2
 - `SetGlobalRouteRules(rules []interface{}) error`：设置 Global 路由表。
 - `SimpleRouteRule(name, clusterName string) map[string]interface{}`：构造一条最简单的 Global 路由规则。
 
-## 10. 注意事项
+## 11. 注意事项
 
 1. 操作日志为异步批量落库，默认 5 秒 flush 一次；测试使用轮询而非固定 sleep 等待日志出现。
 2. 不同测试用例共享同一 SQLite 数据库，但每个用例使用唯一资源 ID / 名称，避免相互干扰。

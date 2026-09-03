@@ -455,3 +455,27 @@ func TestOperationLog_PaginationPageTwoHasTotal(t *testing.T) {
 		_ = testutil.DeleteEntityType(name)
 	}
 }
+
+// TestOperationLog_RecordsUserAgentAndClientIP 验证操作日志记录 user_agent 与真实 client_ip（issue #127）。
+func TestOperationLog_RecordsUserAgentAndClientIP(t *testing.T) {
+	// 创建 entity-type 产生一条 create 日志；Go HTTP 客户端会自动携带 User-Agent。
+	typeName := testutil.UniqueEntityTypeName()
+	_, err := testutil.CreateEntityType(typeName, 1)
+	require.NoError(t, err, "create entity type failed")
+
+	entry, err := testutil.WaitForOperationLog(map[string]string{
+		"resource_type": "entity_type",
+		"action":        "create",
+		"resource_id":   typeName,
+	}, 0)
+	require.NoError(t, err, "expected entity_type create log not found")
+
+	// user_agent 应记录请求 User-Agent 头。
+	assert.NotEmpty(t, entry.UserAgent, "user_agent should not be empty")
+
+	// client_ip 应回退到真实来源 IP（测试进程经 loopback 访问，应为 127.0.0.1）。
+	assert.NotEmpty(t, entry.ClientIP, "client_ip should not be empty")
+
+	// 清理。
+	_ = testutil.DeleteEntityType(typeName)
+}
