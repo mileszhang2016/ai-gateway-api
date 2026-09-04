@@ -88,6 +88,7 @@ var (
 	// Quota management
 	EntityTypeStorager      entity.EntityTypeStorager
 	EntityStorager          entity.EntityStorager
+	EntityIDGenerator       entity.EntityIDGenerator
 	QuotaPlanStorager       quota.QuotaPlanStorager
 	RateLimitPolicyStorager rate_limit_policy.RateLimitPolicyStorager
 	RouteRulesStorager      shared.RouteRulesStorager

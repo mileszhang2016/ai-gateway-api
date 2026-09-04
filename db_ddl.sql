@@ -380,6 +380,14 @@ CREATE TABLE `entities` (
   INDEX `idx_route_rules_id` (`route_rules_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Entity实体表';
 
+-- create entity_id_seq (Entity ID序号分配表)
+DROP TABLE IF EXISTS `entity_id_seq`;
+CREATE TABLE `entity_id_seq` (
+  `name` varchar(32) NOT NULL COMMENT '序号键（固定为entity）',
+  `next_seq` bigint NOT NULL DEFAULT '1' COMMENT '下一个可用序号',
+  PRIMARY KEY (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Entity ID序号分配表';
+
 -- create quota_plans (配额计划表)
 DROP TABLE IF EXISTS `quota_plans`;
 CREATE TABLE `quota_plans` (
