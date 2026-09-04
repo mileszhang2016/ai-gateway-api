@@ -88,6 +88,27 @@ func TestClusterName(t *testing.T) {
 	assert.Error(t, ClusterName("cluster."))
 }
 
+func TestCertName(t *testing.T) {
+	assert.NoError(t, CertName("demo-cert"))
+	assert.NoError(t, CertName("tc009.qa-20260904"))
+	assert.NoError(t, CertName("my_cert_01"))
+	assert.NoError(t, CertName("ab"))
+	assert.NoError(t, CertName(strings.Repeat("a", 64)))
+
+	assert.Error(t, CertName(""))
+	assert.Error(t, CertName("a"))
+	assert.Error(t, CertName(strings.Repeat("a", 65)))
+	assert.Error(t, CertName("demo/child"))
+	assert.Error(t, CertName("demo?x=1"))
+	assert.Error(t, CertName("demo#1"))
+	assert.Error(t, CertName("demo cert"))
+	assert.Error(t, CertName("demo%2F"))
+	assert.Error(t, CertName("-demo"))
+	assert.Error(t, CertName("demo-"))
+	assert.Error(t, CertName("_demo"))
+	assert.Error(t, CertName("demo_"))
+}
+
 func TestEntityTypeName(t *testing.T) {
 	assert.NoError(t, EntityTypeName("dep_1"))
 	assert.Error(t, EntityTypeName("Dep"))

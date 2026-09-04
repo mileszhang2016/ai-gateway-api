@@ -46,6 +46,7 @@ const (
 	MaxUserNameLength       = 64
 	MaxTokenNameLength      = 64
 	MaxClusterNameLength    = 64
+	MaxCertNameLength       = 64
 	MaxEntityTypeNameLength = 32
 	MaxEntityNameLength     = 64
 	MaxDescriptionLength    = 256
@@ -252,6 +253,22 @@ func ClusterName(s string) error {
 		return err
 	}
 	if err := validateNameEdges(s, "cluster_name"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// CertName validates a certificate name.
+// Rules are aligned with ClusterName, except the length limit starts at 2
+// to match the existing "required,min=2" constraint on cert_name.
+func CertName(s string) error {
+	if err := validateName(s, 2, MaxCertNameLength, "cert_name"); err != nil {
+		return err
+	}
+	if err := validateNamePattern(s, nameToken, "cert_name"); err != nil {
+		return err
+	}
+	if err := validateNameEdges(s, "cert_name"); err != nil {
 		return err
 	}
 	return nil
