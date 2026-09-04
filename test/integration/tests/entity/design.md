@@ -4,6 +4,8 @@
 
 Entity 模块用于管理组织架构实体（部门、团队、项目、个人等），支持层级关系、模型黑白名单、配额计划、限流策略、路由规则。v0.3.0 列表接口明确为分页结构 `{list, pagination}`，详情/创建/更新返回不含 `balance`。配额计划 `unit` 支持 `total_token` 与 `RMB`，金额型配额使用 `DECIMAL(18,8)` 存储，余额从 Redis 实时读取，精度为 1e8。
 
+Entity ID 生成机制（issue #132）：未显式指定 `id` 时，系统从数据库序列表 `entity_id_seq` 原子分配序号，生成 `entity-{seq}` 形式的 ID。序号单调递增、分配即消耗，删除 Entity 后不回退，保证旧 ID 永不复用（避免 ABA 身份混淆）；显式传入 `id` 时保留唯一性查重，`uk_entity_id` 唯一索引作为最终一致性防线。
+
 ## 2. 接口列表
 
 | 编号 | 接口名称 | 方法 | 路径 | 说明 |
@@ -22,16 +24,16 @@ Entity 模块用于管理组织架构实体（部门、团队、项目、个人�
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建 Entity | 11 |
+| 创建 Entity | 20 |
 | 查询 Entity 列表 | 3 |
 | 查询单个 Entity | 2 |
 | 全量更新 Entity | 6 |
 | 部分更新 Entity | 4 |
-| 删除 Entity | 3 |
+| 删除 Entity | 4 |
 | 查询配额计划 | 2 |
 | 重置配额余额 | 3 |
 | 更新配额计划（余额差异化调整） | 6 |
-| **合计** | **38** |
+| **合计** | **48** |
 
 ## 4. 认证方式
 
@@ -82,6 +84,7 @@ entity/
 
 | 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
 |--------|------|------|------|------------|
+| id | string | N | Entity 唯一标识；不传时系统自动生成 `entity-{seq}`（seq 从 `entity_id_seq` 序列表原子分配，单调不回退） | 全局唯一（`uk_entity_id` 约束），重复返回 422 |
 | name | string | Y | Entity 名称，全局唯一 | 长度 1-64；不能包含控制字符；不能有首尾空白；全局唯一 |
 | type | string | Y | Entity 类型，必须引用已定义的 Entity-Type | 必须为已存在的 EntityTypeName |
 | parent_id | string | N | 父 Entity ID，为空表示根节点 | 若非空，父 Entity 必须存在，且其父类型的 level 必须小于当前类型的 level |
@@ -95,7 +98,7 @@ entity/
 
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| id | string | Entity 唯一标识 |
+| id | string | Entity 唯一标识，格式 `entity-{seq}`（未显式传入时由系统从 `entity_id_seq` 序列表原子分配） |
 | name | string | Entity 名称 |
 | type | string | Entity 类型 |
 | parent_id | string | 父 Entity ID |
@@ -121,6 +124,8 @@ entity/
 | E-1-008 | 创建层级 Entity（非法 parent level） | 异常参数 | 父 level 必须小于子 |
 | E-1-009 | type 格式非法（含大写） | 合法性条件 | 验证 ErrNum=422 |
 | E-1-010 | Entity name 包含首尾空白 | 合法性条件 | 验证 ErrNum=422 |
+| E-1-101 | 自动生成 ID 格式为 entity-N | 返回数据 | 未传 id 时返回 `entity-{正整数}` 格式 ID |
+| E-1-102 | 连续创建 Entity ID 单调递增 | 业务规则 | 串行创建 5 个，ID 序号严格递增 |
 
 ### 6.4 测试场景详细设计
 
@@ -525,6 +530,73 @@ entity/
 | quota_plan.unit | "RMB" | Equals |
 | quota_plan.quota | 5555.5555 | Equals |
 | quota_plan.balance | 不存在 | NotExists |
+
+#### 6.4.12 E-1-101：自动生成 ID 格式为 entity-N（返回数据）
+
+##### 设计思路
+
+验证未显式传入 `id` 时，系统从 `entity_id_seq` 序列表分配序号并返回 `entity-{seq}` 格式的 ID（issue #132）。
+
+##### 前提数据准备
+
+已创建 Entity-Type `department`。
+
+##### 执行步骤
+
+1. 发送 POST 请求到 `/open-api/v1/entities`，Body 中只含 `name`、`type`。
+2. 验证返回 `id` 以 `entity-` 为前缀，后缀为正整数。
+
+##### 请求参数
+
+```json
+{
+    "name": "ent_auto_id",
+    "type": "department"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| id | 以 "entity-" 前缀、后缀为正整数 | Matches/GreaterThan(0) |
+
+> 说明：并发分配的正确性由 DAO 层单元测试 `TestTEntityIDSeqAllocate_Concurrent`（50 goroutine）覆盖；集成测试环境为 SQLite 文件库，多连接并发写会触发 busy 等待，故此处不启用并发 HTTP 用例。
+
+#### 6.4.13 E-1-102：连续创建 Entity ID 单调递增（业务规则）
+
+##### 设计思路
+
+验证序列表分配的 ID 严格单调递增，不会因删除或其他用例执行而复用旧序号。
+
+##### 前提数据准备
+
+已创建 Entity-Type `department`。
+
+##### 执行步骤
+
+1. 串行创建 5 个 Entity（每次仅传 `name`、`type`）。
+2. 记录每次返回的 `id`，解析序号并断言严格递增。
+
+##### 请求参数
+
+```json
+{
+    "name": "ent_seq_<i>",
+    "type": "department"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200（5 次均成功）
+
+**断言**：5 个 ID 序号 `seq_i` 满足 `seq_1 < seq_2 < ... < seq_5`（GreaterThan 逐次比较）。
 
 ---
 
@@ -1371,6 +1443,7 @@ Data 为 null。
 | E-6-001 | 删除 Entity | 正常参数 | 删除成功，再次查询返回 404 |
 | E-6-002 | 删除存在子节点的 Entity | 业务规则 | 验证 ErrNum=409 |
 | E-6-003 | 删除被 API-Key 挂载的 Entity | 业务规则 | 验证 ErrNum=409 |
+| E-6-004 | 删除最大编号 Entity 后新建不复用 ID | 业务规则 | 删除后重建的 ID 序号大于被删 ID |
 
 ### 11.4 测试场景详细设计
 
@@ -1458,6 +1531,39 @@ URI：Entity id
 **ErrNum**：409  
 **ErrMsg**：Entity 被挂载无法删除的错误信息  
 **Data**：null
+
+#### 11.4.4 E-6-004：删除最大编号 Entity 后新建不复用 ID（业务规则）
+
+##### 设计思路
+
+验证 Entity ID 序号分配单调不回退：删除当前最大编号的 Entity 后，新建 Entity 的 ID 序号必须大于被删 ID，不会复用（issue #132 的 ABA 场景）。
+
+##### 前提数据准备
+
+已创建 Entity-Type `department`；创建一个 Entity 并记录其自动分配的 `id`。
+
+##### 执行步骤
+
+1. 发送 DELETE 请求删除该 Entity，验证删除成功。
+2. 再次创建 Entity（仅传 `name`、`type`），记录新 `id`。
+3. 断言新 ID 不等于被删 ID，且其序号大于被删 ID 序号。
+
+##### 请求参数
+
+第一步 URI：被删 Entity id  
+第三步 Body：
+
+```json
+{
+    "name": "ent_recreated",
+    "type": "department"
+}
+```
+
+##### 预期返回结果
+
+第一步：**ErrNum**：200，Data 为 null。  
+第三步：**ErrNum**：200，返回 `id` 满足 `seq(new_id) > seq(deleted_id)` 且 `new_id != deleted_id`。
 
 ---
 
@@ -2040,3 +2146,6 @@ URI：`id`
 2. `name` 全局唯一，测试用例间注意清理。
 3. 层级修改必须保证父节点 Entity-Type 的 `level` 小于当前节点。
 4. 测试环境 `SkipTokenValidate=true`，无需认证头。
+5. 自动生成的 Entity ID 为 `entity-{seq}`，序号来自 `entity_id_seq` 序列表且永不复用；用例间不能假设 ID 从 1 开始或连续，断言时应以相对大小（递增）而非绝对值为准。
+6. 集成测试启动的是项目根目录预编译的 `ai-gateway-api.exe`，修改被测代码后必须先重新编译（`go build -o ai-gateway-api.exe .`），否则测试运行的是旧二进制。
+7. 不要在集成测试中做多并发写请求：SQLite 文件库在多连接并发写下会触发 busy 等待直至请求超时（旧实现同样存在该限制），并发正确性由 DAO 层单元测试覆盖。

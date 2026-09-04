@@ -223,6 +223,7 @@ func Init() error {
 	// Initialize quota management components
 	container.EntityTypeStorager = entityStorage.NewEntityTypeStorager(stateful.NewBFEDBContext)
 	container.EntityStorager = entityStorage.NewEntityStorager(stateful.NewBFEDBContext)
+	container.EntityIDGenerator = entityStorage.NewRDBEntityIDGenerator(stateful.NewBFEDBContext)
 	container.QuotaPlanStorager = quotaStorage.NewQuotaPlanStorager(stateful.NewBFEDBContext)
 	container.RateLimitPolicyStorager = rateLimitPolicyStorage.NewRateLimitPolicyStorager(stateful.NewBFEDBContext)
 

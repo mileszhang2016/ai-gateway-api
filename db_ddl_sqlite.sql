@@ -394,6 +394,13 @@ CREATE INDEX entities_route_rules_id ON entities (route_rules_id);
 CREATE TRIGGER entities_updated_at AFTER UPDATE ON entities
   FOR EACH ROW BEGIN UPDATE entities SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
+-- create entity_id_seq
+DROP TABLE IF EXISTS entity_id_seq;
+CREATE TABLE entity_id_seq (
+  name TEXT NOT NULL PRIMARY KEY,
+  next_seq INTEGER NOT NULL DEFAULT 1
+);
+
 -- create quota_plans
 DROP TABLE IF EXISTS quota_plans;
 CREATE TABLE quota_plans (
