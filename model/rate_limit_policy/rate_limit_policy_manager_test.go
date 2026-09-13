@@ -23,6 +23,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +39,7 @@ func TestRateLimitPolicyManager_CRUD(t *testing.T) {
 		}
 		m := NewRateLimitPolicyManager(&fakeTxn{}, store, &fakeAPIKeyStorager{}, &fakeEntityStorager{}, nil)
 
-		id, err := m.CreateRateLimitPolicy(ctx, &RateLimitPolicyParam{Enabled: lib.PBool(true)})
+		id, err := m.CreateRateLimitPolicy(ctx, &RateLimitPolicyParam{Enabled: lib.PBool(true)}, shared.ResourceOwner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(11), id)
 	})
@@ -78,7 +79,7 @@ func TestRateLimitPolicyManager_CRUD(t *testing.T) {
 		}
 		m := NewRateLimitPolicyManager(&fakeTxn{}, store, &fakeAPIKeyStorager{}, &fakeEntityStorager{}, nil)
 
-		affected, err := m.UpdateRateLimitPolicy(ctx, &RateLimitPolicyFilter{ID: lib.PInt64(11)}, &RateLimitPolicyParam{Enabled: lib.PBool(false)})
+		affected, err := m.UpdateRateLimitPolicy(ctx, &RateLimitPolicyFilter{ID: lib.PInt64(11)}, &RateLimitPolicyParam{Enabled: lib.PBool(false)}, shared.ResourceOwner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), affected)
 	})
@@ -91,7 +92,7 @@ func TestRateLimitPolicyManager_CRUD(t *testing.T) {
 		}
 		m := NewRateLimitPolicyManager(&fakeTxn{}, store, &fakeAPIKeyStorager{}, &fakeEntityStorager{}, nil)
 
-		require.NoError(t, m.DeleteRateLimitPolicy(ctx, &RateLimitPolicyFilter{ID: lib.PInt64(11)}))
+		require.NoError(t, m.DeleteRateLimitPolicy(ctx, &RateLimitPolicyFilter{ID: lib.PInt64(11)}, shared.ResourceOwner{}))
 	})
 }
 

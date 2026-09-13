@@ -22,7 +22,9 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -107,7 +109,13 @@ func EntityResetQuotaAction(req *http.Request) (interface{}, error) {
 		previousRemaining = *ent.QuotaPlan.Balance.Remaining
 	}
 
-	err = container.QuotaPlanManager.ResetBalance(req.Context(), *ent.QuotaPlanID, bodyReq.Quota, false)
+	// owner 透传 URI 中的 Entity ID，修复 reset 审计日志 resource_parent_id 为空（issue #161）。
+	ownerID := ""
+	if resetReq.EntityID != nil {
+		ownerID = *resetReq.EntityID
+	}
+	owner := shared.ResourceOwner{Type: string(ioperlog.ResourceTypeEntity), ID: ownerID}
+	err = container.QuotaPlanManager.ResetBalance(req.Context(), *ent.QuotaPlanID, bodyReq.Quota, false, owner)
 	if err != nil {
 		return nil, err
 	}

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 func (m *EntityManager) recordEntityOperation(ctx context.Context, action string, entityID, entityName, parentID string, before, after map[string]interface{}, err error) {
@@ -130,4 +131,84 @@ func entityParamToMap(param *EntityParam) map[string]interface{} {
 	}
 
 	return m
+}
+
+// entityResourceOwner builds the ResourceOwner for nested-resource audit
+// entries owned by an Entity (issue #161).
+func entityResourceOwner(entityID *string) shared.ResourceOwner {
+	owner := shared.ResourceOwner{Type: string(ioperlog.ResourceTypeEntity)}
+	if entityID != nil {
+		owner.ID = *entityID
+	}
+	return owner
+}
+
+// auditNestedQuotaPlanCreate records the nested quota-plan create audit on the
+// entity create path. planID is 0 on failure (the rolled-back ID is dropped).
+func (m *EntityManager) auditNestedQuotaPlanCreate(ctx context.Context, param *EntityParam, planID int64, err error) {
+	if m.quotaPlanAuditor == nil || param == nil || param.QuotaPlan == nil {
+		return
+	}
+	m.quotaPlanAuditor.AuditQuotaPlanCreate(ctx, param.QuotaPlan, planID, entityResourceOwner(param.EntityID), err)
+}
+
+// auditNestedQuotaPlanChange records the nested quota-plan audit on the entity
+// update path: update when the entity already had a plan, create otherwise.
+func (m *EntityManager) auditNestedQuotaPlanChange(ctx context.Context, oldEntity, param *EntityParam, createdPlanID int64, oldPlan *shared.QuotaPlanParam, err error) {
+	if m.quotaPlanAuditor == nil || param == nil || param.QuotaPlan == nil {
+		return
+	}
+	owner := entityResourceOwner(nil)
+	if oldEntity != nil {
+		owner = entityResourceOwner(oldEntity.EntityID)
+	}
+	if oldEntity != nil && oldEntity.QuotaPlanID != nil {
+		m.quotaPlanAuditor.AuditQuotaPlanUpdate(ctx, oldPlan, param.QuotaPlan, *oldEntity.QuotaPlanID, owner, err)
+		return
+	}
+	m.quotaPlanAuditor.AuditQuotaPlanCreate(ctx, param.QuotaPlan, createdPlanID, owner, err)
+}
+
+// auditNestedQuotaPlanDelete records the nested quota-plan delete audit on the
+// entity delete path.
+func (m *EntityManager) auditNestedQuotaPlanDelete(ctx context.Context, oldEntity *EntityParam, oldPlan *shared.QuotaPlanParam, err error) {
+	if m.quotaPlanAuditor == nil || oldEntity == nil || oldEntity.QuotaPlanID == nil {
+		return
+	}
+	m.quotaPlanAuditor.AuditQuotaPlanDelete(ctx, oldPlan, *oldEntity.QuotaPlanID, entityResourceOwner(oldEntity.EntityID), err)
+}
+
+// auditNestedRateLimitPolicyCreate records the nested rate-limit-policy
+// create audit on the entity create path.
+func (m *EntityManager) auditNestedRateLimitPolicyCreate(ctx context.Context, param *EntityParam, policyID int64, err error) {
+	if m.rateLimitPolicyAuditor == nil || param == nil || param.RateLimitPolicy == nil {
+		return
+	}
+	m.rateLimitPolicyAuditor.AuditRateLimitPolicyCreate(ctx, param.RateLimitPolicy, policyID, entityResourceOwner(param.EntityID), err)
+}
+
+// auditNestedRateLimitPolicyChange records the nested rate-limit-policy audit
+// on the entity update path.
+func (m *EntityManager) auditNestedRateLimitPolicyChange(ctx context.Context, oldEntity, param *EntityParam, createdPolicyID int64, oldPolicy *shared.RateLimitPolicyParam, err error) {
+	if m.rateLimitPolicyAuditor == nil || param == nil || param.RateLimitPolicy == nil {
+		return
+	}
+	owner := entityResourceOwner(nil)
+	if oldEntity != nil {
+		owner = entityResourceOwner(oldEntity.EntityID)
+	}
+	if oldEntity != nil && oldEntity.RateLimitPolicyID != nil {
+		m.rateLimitPolicyAuditor.AuditRateLimitPolicyUpdate(ctx, oldPolicy, param.RateLimitPolicy, *oldEntity.RateLimitPolicyID, owner, err)
+		return
+	}
+	m.rateLimitPolicyAuditor.AuditRateLimitPolicyCreate(ctx, param.RateLimitPolicy, createdPolicyID, owner, err)
+}
+
+// auditNestedRateLimitPolicyDelete records the nested rate-limit-policy
+// delete audit on the entity delete path.
+func (m *EntityManager) auditNestedRateLimitPolicyDelete(ctx context.Context, oldEntity *EntityParam, oldPolicy *shared.RateLimitPolicyParam, err error) {
+	if m.rateLimitPolicyAuditor == nil || oldEntity == nil || oldEntity.RateLimitPolicyID == nil {
+		return
+	}
+	m.rateLimitPolicyAuditor.AuditRateLimitPolicyDelete(ctx, oldPolicy, *oldEntity.RateLimitPolicyID, entityResourceOwner(oldEntity.EntityID), err)
 }

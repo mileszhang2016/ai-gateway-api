@@ -298,6 +298,12 @@ func Init() error {
 		container.VersionControlManager)
 	container.RateLimitPolicyManager.SetOperationLogManager(container.OperationLogManager)
 
+	// Wire nested-resource auditors so Entity/API Key nested quota-plan and
+	// rate-limit-policy writes emit operation logs with resource_parent_id
+	// filled (issue #161).
+	container.EntityManager.SetQuotaPlanAuditor(container.QuotaPlanManager)
+	container.EntityManager.SetRateLimitPolicyAuditor(container.RateLimitPolicyManager)
+
 	container.AIRouteExporter = imods.NewAIRouteExporter(
 		container.APIKeyStorager,
 		container.EntityStorager,
@@ -314,6 +320,8 @@ func Init() error {
 		container.QuotaCacheSingleton,
 	)
 	container.APIKeyManager.SetOperationLogManager(container.OperationLogManager)
+	container.APIKeyManager.SetQuotaPlanAuditor(container.QuotaPlanManager)
+	container.APIKeyManager.SetRateLimitPolicyAuditor(container.RateLimitPolicyManager)
 
 	// Initialize quota reset scheduler
 	container.BalanceSyncManager = quota.NewBalanceSyncManager(

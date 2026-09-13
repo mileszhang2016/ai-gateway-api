@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
 
 func (m *RateLimitPolicyManager) recordRateLimitPolicyOperation(ctx context.Context, action string, policyID, parentID string, before, after map[string]interface{}, err error) {
@@ -52,6 +53,75 @@ func (m *RateLimitPolicyManager) recordRateLimitPolicyOperation(ctx context.Cont
 
 func rateLimitPolicyIDString(id int64) string {
 	return strconv.FormatInt(id, 10)
+}
+
+// AuditRateLimitPolicyCreate records the audit entry for a rate-limit-policy
+// create whose write was executed inside the owning resource's transaction
+// (issue #161). policyID is the created policy ID on success and 0 on failure.
+func (m *RateLimitPolicyManager) AuditRateLimitPolicyCreate(ctx context.Context, param *shared.RateLimitPolicyParam, policyID int64, owner shared.ResourceOwner, err error) {
+	resourceID := ""
+	if policyID > 0 {
+		resourceID = rateLimitPolicyIDString(policyID)
+	}
+	m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionCreate), resourceID, owner.ID, nil, rateLimitPolicyParamToMap(rateLimitPolicyParamFromShared(param)), err)
+}
+
+// AuditRateLimitPolicyUpdate records the audit entry for a rate-limit-policy
+// update whose write was executed inside the owning resource's transaction.
+func (m *RateLimitPolicyManager) AuditRateLimitPolicyUpdate(ctx context.Context, oldPolicy, param *shared.RateLimitPolicyParam, policyID int64, owner shared.ResourceOwner, err error) {
+	resourceID := ""
+	if policyID > 0 {
+		resourceID = rateLimitPolicyIDString(policyID)
+	}
+	m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionUpdate), resourceID, owner.ID, rateLimitPolicyParamToMap(rateLimitPolicyParamFromShared(oldPolicy)), rateLimitPolicyParamToMap(rateLimitPolicyParamFromShared(param)), err)
+}
+
+// AuditRateLimitPolicyDelete records the audit entry for a rate-limit-policy
+// delete whose write was executed inside the owning resource's transaction.
+func (m *RateLimitPolicyManager) AuditRateLimitPolicyDelete(ctx context.Context, oldPolicy *shared.RateLimitPolicyParam, policyID int64, owner shared.ResourceOwner, err error) {
+	resourceID := ""
+	if policyID > 0 {
+		resourceID = rateLimitPolicyIDString(policyID)
+	}
+	m.recordRateLimitPolicyOperation(ctx, string(ioperlog.ActionDelete), resourceID, owner.ID, rateLimitPolicyParamToMap(rateLimitPolicyParamFromShared(oldPolicy)), nil, err)
+}
+
+// rateLimitPolicyParamFromShared converts the shared rate-limit-policy param
+// into the storage-level param so the audit map builder can be reused.
+func rateLimitPolicyParamFromShared(param *shared.RateLimitPolicyParam) *RateLimitPolicyParam {
+	if param == nil {
+		return nil
+	}
+	result := &RateLimitPolicyParam{
+		Enabled: param.Enabled,
+	}
+	if param.Rules != nil {
+		result.MaxConcurrency = param.Rules.MaxConcurrency
+		if len(param.Rules.TpmConfigs) > 0 {
+			result.TpmConfigs = make([]TPMConfig, 0, len(param.Rules.TpmConfigs))
+			for _, c := range param.Rules.TpmConfigs {
+				result.TpmConfigs = append(result.TpmConfigs, TPMConfig{
+					Name:          c.Name,
+					Model:         c.Model,
+					WindowMinutes: c.WindowMinutes,
+					MaxTokens:     c.MaxTokens,
+					StepMinutes:   c.StepMinutes,
+				})
+			}
+		}
+		if len(param.Rules.RpmConfigs) > 0 {
+			result.RpmConfigs = make([]RPMConfig, 0, len(param.Rules.RpmConfigs))
+			for _, c := range param.Rules.RpmConfigs {
+				result.RpmConfigs = append(result.RpmConfigs, RPMConfig{
+					Name:          c.Name,
+					Model:         c.Model,
+					WindowMinutes: c.WindowMinutes,
+					MaxRequests:   c.MaxRequests,
+				})
+			}
+		}
+	}
+	return result
 }
 
 func rateLimitPolicyParamToMap(param *RateLimitPolicyParam) map[string]interface{} {
