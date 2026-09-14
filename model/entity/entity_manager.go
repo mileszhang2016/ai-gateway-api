@@ -36,6 +36,8 @@ type EntityManager struct {
 	routeRulesStorager      shared.RouteRulesStorager
 	quotaCache              quotacache.QuotaCache
 	operationLogManager     ioperlog.OperationLogRecorder
+	quotaPlanAuditor        shared.QuotaPlanAuditor
+	rateLimitPolicyAuditor  shared.RateLimitPolicyAuditor
 }
 
 // NewEntityManager 创建 Entity 管理器
@@ -59,6 +61,18 @@ func NewEntityManager(txn itxn.TxnStorager, storager EntityStorager,
 // SetOperationLogManager injects the operation log recorder.
 func (m *EntityManager) SetOperationLogManager(manager ioperlog.OperationLogRecorder) {
 	m.operationLogManager = manager
+}
+
+// SetQuotaPlanAuditor injects the auditor that records nested quota-plan
+// operation logs (issue #161). Nil disables the nested audit entries.
+func (m *EntityManager) SetQuotaPlanAuditor(auditor shared.QuotaPlanAuditor) {
+	m.quotaPlanAuditor = auditor
+}
+
+// SetRateLimitPolicyAuditor injects the auditor that records nested
+// rate-limit-policy operation logs (issue #161). Nil disables the entries.
+func (m *EntityManager) SetRateLimitPolicyAuditor(auditor shared.RateLimitPolicyAuditor) {
+	m.rateLimitPolicyAuditor = auditor
 }
 
 // CreateEntity 创建 Entity
@@ -101,12 +115,16 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 		}
 	}
 
-	var id int64
+	var (
+		id                int64
+		quotaPlanID       int64
+		rateLimitPolicyID int64
+	)
 	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		var err error
 
 		if param.QuotaPlan != nil && m.quotaPlanStorager != nil {
-			quotaPlanID, err := m.quotaPlanStorager.CreateQuotaPlan(ctx, param.QuotaPlan)
+			quotaPlanID, err = m.quotaPlanStorager.CreateQuotaPlan(ctx, param.QuotaPlan)
 			if err != nil {
 				return err
 			}
@@ -114,7 +132,7 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 		}
 
 		if param.RateLimitPolicy != nil && m.rateLimitPolicyStorager != nil {
-			rateLimitPolicyID, err := m.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
+			rateLimitPolicyID, err = m.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
 			if err != nil {
 				return err
 			}
@@ -139,6 +157,8 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 	if err != nil {
 		entityID, entityName, parentID := entityParamIdentifiers(param)
 		m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param), err)
+		m.auditNestedQuotaPlanCreate(ctx, param, 0, err)
+		m.auditNestedRateLimitPolicyCreate(ctx, param, 0, err)
 		return 0, err
 	}
 
@@ -169,6 +189,8 @@ func (m *EntityManager) CreateEntity(ctx context.Context, param *EntityParam) (i
 		parentID = *param.ParentID
 	}
 	m.recordEntityOperation(ctx, string(ioperlog.ActionCreate), entityID, entityName, parentID, nil, entityParamToMap(param), nil)
+	m.auditNestedQuotaPlanCreate(ctx, param, quotaPlanID, nil)
+	m.auditNestedRateLimitPolicyCreate(ctx, param, rateLimitPolicyID, nil)
 
 	return id, nil
 }
@@ -239,6 +261,15 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 		oldEntity = existing[0]
 	}
 
+	// Pre-fetch the old quota plan for the nested audit before-snapshot
+	// (soft: audit-only, a fetch failure only leaves the before map empty).
+	var oldQuotaPlan *shared.QuotaPlanParam
+	if param.QuotaPlan != nil && oldEntity != nil && oldEntity.QuotaPlanID != nil && m.quotaPlanStorager != nil {
+		if plan, planErr := m.quotaPlanStorager.FetchQuotaPlan(ctx, *oldEntity.QuotaPlanID); planErr == nil {
+			oldQuotaPlan = plan
+		}
+	}
+
 	if param.ParentID != nil && *param.ParentID != "" && param.Type != nil && m.entityTypeStorager != nil {
 		if err := m.checkEntityLevel(ctx, *param.Type, *param.ParentID); err != nil {
 			entityID, entityName, parentID := resolveEntityIdentifiers(filter, param, oldEntity)
@@ -267,8 +298,11 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 	}
 
 	var (
-		affected              int64
-		rateLimitKeysToDelete []string
+		affected               int64
+		rateLimitKeysToDelete  []string
+		createdQuotaPlanID     int64
+		createdRateLimitPolicy int64
+		oldRateLimitPolicy     *shared.RateLimitPolicyParam
 	)
 	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		var err error
@@ -291,11 +325,11 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 					return err
 				}
 			} else {
-				quotaPlanID, err := m.quotaPlanStorager.CreateQuotaPlan(ctx, param.QuotaPlan)
+				createdQuotaPlanID, err = m.quotaPlanStorager.CreateQuotaPlan(ctx, param.QuotaPlan)
 				if err != nil {
 					return err
 				}
-				param.QuotaPlanID = &quotaPlanID
+				param.QuotaPlanID = &createdQuotaPlanID
 			}
 		}
 
@@ -305,6 +339,7 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 				if err != nil {
 					return err
 				}
+				oldRateLimitPolicy = oldPolicy
 				_, err = m.rateLimitPolicyStorager.UpdateRateLimitPolicy(ctx, *one.RateLimitPolicyID, param.RateLimitPolicy)
 				if err != nil {
 					return err
@@ -313,11 +348,11 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 					rateLimitKeysToDelete = shared.DiffRateLimitRedisKeys(*one.RateLimitPolicyID, oldPolicy.Rules, param.RateLimitPolicy.Rules)
 				}
 			} else {
-				rateLimitPolicyID, err := m.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
+				createdRateLimitPolicy, err = m.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
 				if err != nil {
 					return err
 				}
-				param.RateLimitPolicyID = &rateLimitPolicyID
+				param.RateLimitPolicyID = &createdRateLimitPolicy
 			}
 		}
 
@@ -345,6 +380,8 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 			entityID, entityName, parentID = entityParamIdentifiers(oldEntity)
 		}
 		m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(oldEntity), entityParamToMap(param), err)
+		m.auditNestedQuotaPlanChange(ctx, oldEntity, param, 0, oldQuotaPlan, err)
+		m.auditNestedRateLimitPolicyChange(ctx, oldEntity, param, 0, oldRateLimitPolicy, err)
 		return affected, err
 	}
 
@@ -367,6 +404,8 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 		}
 	}
 	m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(oldEntity), entityParamToMap(param), nil)
+	m.auditNestedQuotaPlanChange(ctx, oldEntity, param, createdQuotaPlanID, oldQuotaPlan, nil)
+	m.auditNestedRateLimitPolicyChange(ctx, oldEntity, param, createdRateLimitPolicy, oldRateLimitPolicy, nil)
 
 	return affected, nil
 }
@@ -374,9 +413,11 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 // DeleteEntity 删除 Entity
 func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) error {
 	var (
-		quotaKey      string
-		rateLimitKeys []string
-		oldEntity     *EntityParam
+		quotaKey           string
+		rateLimitKeys      []string
+		oldEntity          *EntityParam
+		oldQuotaPlan       *shared.QuotaPlanParam
+		oldRateLimitPolicy *shared.RateLimitPolicyParam
 	)
 
 	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
@@ -400,8 +441,17 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 			if err != nil {
 				return err
 			}
+			oldRateLimitPolicy = policy
 			if policy != nil && policy.Rules != nil {
 				rateLimitKeys = shared.BuildRateLimitRedisKeys(*one.RateLimitPolicyID, policy.Rules)
+			}
+		}
+
+		// Soft-fetch the quota plan for the nested audit before-snapshot
+		// (a fetch failure only leaves the before map empty).
+		if one.QuotaPlanID != nil && m.quotaPlanStorager != nil {
+			if plan, planErr := m.quotaPlanStorager.FetchQuotaPlan(ctx, *one.QuotaPlanID); planErr == nil {
+				oldQuotaPlan = plan
 			}
 		}
 
@@ -436,6 +486,8 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 	if err != nil {
 		entityID, entityName, parentID := entityParamIdentifiers(oldEntity)
 		m.recordEntityOperation(ctx, string(ioperlog.ActionDelete), entityID, entityName, parentID, entityParamToMap(oldEntity), nil, err)
+		m.auditNestedQuotaPlanDelete(ctx, oldEntity, oldQuotaPlan, err)
+		m.auditNestedRateLimitPolicyDelete(ctx, oldEntity, oldRateLimitPolicy, err)
 		return err
 	}
 
@@ -457,6 +509,8 @@ func (m *EntityManager) DeleteEntity(ctx context.Context, filter *EntityFilter) 
 		}
 	}
 	m.recordEntityOperation(ctx, string(ioperlog.ActionDelete), entityID, entityName, parentID, entityParamToMap(oldEntity), nil, nil)
+	m.auditNestedQuotaPlanDelete(ctx, oldEntity, oldQuotaPlan, nil)
+	m.auditNestedRateLimitPolicyDelete(ctx, oldEntity, oldRateLimitPolicy, nil)
 
 	return nil
 }
