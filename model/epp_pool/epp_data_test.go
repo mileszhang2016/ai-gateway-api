@@ -86,7 +86,7 @@ func TestEppDataGenerator_SingleInstanceStandbyNull(t *testing.T) {
 	}}
 	store.seedAssignments(&AssignmentParam{Cluster: "cluster-a", GroupName: "g1", PrimaryInstanceID: "epp-a"})
 
-	m := NewEppPoolManager(&fakeTxn{}, store, source, nil, &ManagerOptions{ValidationMode: ValidationModeTest})
+	m := NewEppPoolManager(&fakeTxn{}, store, source, nil, nil)
 
 	exportData, err := m.EppDataGenerator(ctx)
 	require.NoError(t, err)

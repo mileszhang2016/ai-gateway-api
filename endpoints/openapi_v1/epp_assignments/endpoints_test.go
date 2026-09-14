@@ -192,7 +192,7 @@ func setupManager(t *testing.T) (*fakeEppPoolStorager, func()) {
 		storager,
 		clusterSource,
 		nil,
-		&epp_pool.ManagerOptions{ValidationMode: epp_pool.ValidationModeTest},
+		nil,
 	)
 	return storager, func() { container.EppPoolManager = old }
 }

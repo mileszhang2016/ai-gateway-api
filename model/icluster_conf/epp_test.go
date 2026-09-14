@@ -114,9 +114,7 @@ func newFakeEppPoolManager(assigned map[string]*epp_pool.AssignmentParam, storag
 			return storagerErr
 		},
 	}
-	return epp_pool.NewEppPoolManager(&fakeTxn{}, storager, nil, nil, &epp_pool.ManagerOptions{
-		ValidationMode: epp_pool.ValidationModeTest,
-	})
+	return epp_pool.NewEppPoolManager(&fakeTxn{}, storager, nil, nil, nil)
 }
 
 const validEppConfigJSON = `{"scheduling_profile":"balanced","kv_cache_utilization_max":0.9}`

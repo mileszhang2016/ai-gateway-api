@@ -57,7 +57,6 @@ type RunTimeConfig struct {
 
 	// EPP scheduling integration (see model/epp_pool).
 	DefaultEPPInstancePoolName  string // default EPP instance pool name, e.g. "EPP.pool"
-	EPPValidationMode           string // epp pool group size check: "production" (default, exactly 2 per group) / "test" (>=1)
 	EPPReconcileIntervalSeconds int    // assignment reconciler period in seconds, default 30
 }
 

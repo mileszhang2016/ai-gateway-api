@@ -25,8 +25,7 @@ import (
 
 func testManager(store *memoryEppPoolStorager, source EPPClusterSource) *EppPoolManager {
 	return NewEppPoolManager(&fakeTxn{}, store, source, nil, &ManagerOptions{
-		PoolName:       "EPP.pool",
-		ValidationMode: ValidationModeProduction,
+		PoolName: "EPP.pool",
 	})
 }
 
@@ -113,7 +112,8 @@ func TestPatchPool_Validation(t *testing.T) {
 		{"duplicated address", []*InstanceGroup{{Name: "g1", Instances: []*InstanceParam{{ID: "epp-a", Host: "10.0.0.1", Port: 9002}, {ID: "epp-b", Host: "10.0.0.1", Port: 9002}}}}},
 		{"bad host", []*InstanceGroup{{Name: "g1", Instances: []*InstanceParam{{ID: "epp-a", Host: "-bad", Port: 9002}, {ID: "epp-b", Host: "10.0.0.2", Port: 9002}}}}},
 		{"bad port", []*InstanceGroup{{Name: "g1", Instances: []*InstanceParam{{ID: "epp-a", Host: "10.0.0.1", Port: 0}, {ID: "epp-b", Host: "10.0.0.2", Port: 9002}}}}},
-		{"production requires exactly 2", []*InstanceGroup{{Name: "g1", Instances: []*InstanceParam{{ID: "epp-a", Host: "10.0.0.1", Port: 9002}}}}},
+		{"three instances rejected", []*InstanceGroup{{Name: "g1", Instances: []*InstanceParam{{ID: "epp-a", Host: "10.0.0.1", Port: 9002}, {ID: "epp-b", Host: "10.0.0.2", Port: 9002}, {ID: "epp-c", Host: "10.0.0.3", Port: 9002}}}}},
+		{"empty group rejected", []*InstanceGroup{{Name: "g1", Instances: nil}}},
 		{"nil group", []*InstanceGroup{nil}},
 		{"nil instance", []*InstanceGroup{{Name: "g1", Instances: []*InstanceParam{nil, {ID: "epp-b", Host: "10.0.0.2", Port: 9002}}}}},
 	}
@@ -127,11 +127,9 @@ func TestPatchPool_Validation(t *testing.T) {
 		})
 	}
 
-	t.Run("test mode allows single instance group", func(t *testing.T) {
+	t.Run("single instance group allowed", func(t *testing.T) {
 		store := newMemoryEppPoolStorager()
-		m := NewEppPoolManager(&fakeTxn{}, store, &fakeClusterSource{}, nil, &ManagerOptions{
-			ValidationMode: ValidationModeTest,
-		})
+		m := testManager(store, &fakeClusterSource{})
 		_, err := m.PatchPool(ctx, []*InstanceGroup{
 			{Name: "g1", Instances: []*InstanceParam{{ID: "epp-a", Host: "10.0.0.1", Port: 9002}}},
 		})
@@ -253,7 +251,6 @@ func TestRepairDangling(t *testing.T) {
 
 	t.Run("clear when pool has no candidate groups", func(t *testing.T) {
 		store := newMemoryEppPoolStorager()
-		store.seedInstances(inst("epp-a", "g1", "10.0.0.1", 9002)) // undersized
 		store.seedAssignments(&AssignmentParam{Cluster: "cluster-a", GroupName: "g1", PrimaryInstanceID: "epp-a"})
 		m := testManager(store, &fakeClusterSource{})
 
@@ -418,7 +415,6 @@ func TestReconcile_NilSource(t *testing.T) {
 func TestManagerOptionsDefaults(t *testing.T) {
 	m := NewEppPoolManager(&fakeTxn{}, newMemoryEppPoolStorager(), nil, nil, nil)
 	assert.Equal(t, DefaultEPPInstancePoolName, m.PoolName())
-	assert.Equal(t, ValidationModeProduction, m.validationMode)
 	assert.Equal(t, DefaultReconcileInterval, m.ReconcileInterval())
 }
 

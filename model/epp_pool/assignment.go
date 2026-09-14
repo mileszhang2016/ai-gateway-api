@@ -42,7 +42,7 @@ func (m *EppPoolManager) AssignCluster(ctx context.Context, clusterName string) 
 		return err
 	}
 
-	if findValidAssignment(pool, assignments, clusterName, m.validationMode) != nil {
+	if findValidAssignment(pool, assignments, clusterName) != nil {
 		return nil
 	}
 
@@ -71,7 +71,7 @@ func (m *EppPoolManager) GetAssignmentEndpoints(ctx context.Context, clusterName
 		return nil, false, err
 	}
 
-	assignment := findValidAssignment(pool, assignments, clusterName, m.validationMode)
+	assignment := findValidAssignment(pool, assignments, clusterName)
 	if assignment == nil {
 		return nil, false, nil
 	}
@@ -98,7 +98,7 @@ func (m *EppPoolManager) GetAssignmentEndpoints(ctx context.Context, clusterName
 // unique-key conflict fallback: on conflict the latest assignments are
 // re-read and the allocation is retried once (design-changes.md §4.2.2).
 func (m *EppPoolManager) allocateAndUpsert(ctx context.Context, pool *EppPool, assignments []*AssignmentParam, clusterName string) error {
-	assignment, err := allocateCluster(pool, assignments, clusterName, m.validationMode)
+	assignment, err := allocateCluster(pool, assignments, clusterName)
 	if err != nil {
 		// No assignable candidate group: clear the assignment (unassigned state).
 		if errDel := m.storager.DeleteAssignment(ctx, clusterName); errDel != nil {
@@ -119,7 +119,7 @@ func (m *EppPoolManager) allocateAndUpsert(ctx context.Context, pool *EppPool, a
 	if err != nil {
 		return err
 	}
-	assignment, err = allocateCluster(pool, assignments, clusterName, m.validationMode)
+	assignment, err = allocateCluster(pool, assignments, clusterName)
 	if err != nil {
 		if errDel := m.storager.DeleteAssignment(ctx, clusterName); errDel != nil {
 			return errDel
@@ -134,9 +134,9 @@ func (m *EppPoolManager) allocateAndUpsert(ctx context.Context, pool *EppPool, a
 
 // RepairDangling repairs assignments that became dangling after an
 // /epp-pool change (design-changes.md §4.2.1):
-//   - group still exists and meets the group-size rule -> reselect the
-//     primary within the same group (no group change);
-//   - group gone or undersized -> cross-group reallocation (greedy);
+//   - group still exists -> reselect the primary within the same group
+//     (no group change);
+//   - group gone -> cross-group reallocation (greedy);
 //   - no candidate group left -> clear the assignment (unassigned state).
 func (m *EppPoolManager) RepairDangling(ctx context.Context) error {
 	instances, err := m.storager.FetchInstanceList(ctx, &InstanceFilter{})
@@ -155,7 +155,7 @@ func (m *EppPoolManager) RepairDangling(ctx context.Context) error {
 
 	changed := false
 	for _, assignment := range assignments {
-		repaired, action := repairOne(pool, assignments, assignment, m.validationMode)
+		repaired, action := repairOne(pool, assignments, assignment)
 		switch action {
 		case repairKeep:
 			continue
@@ -218,7 +218,7 @@ func (m *EppPoolManager) Reconcile(ctx context.Context) error {
 	sort.Slice(eppClusters, func(i, j int) bool { return eppClusters[i].Name < eppClusters[j].Name })
 
 	for _, cluster := range eppClusters {
-		if findValidAssignment(pool, assignments, cluster.Name, m.validationMode) != nil {
+		if findValidAssignment(pool, assignments, cluster.Name) != nil {
 			continue
 		}
 		if err := m.allocateAndUpsert(ctx, pool, assignments, cluster.Name); err != nil {
@@ -440,10 +440,9 @@ func expandPrimaryAndStandby(instances []*InstanceParam, primaryID string) (*Ins
 	return primary, standby
 }
 
-// findValidAssignment returns the assignment of the cluster if it exists,
-// its group meets the deployment shape requirement, and its primary instance
-// is still present in the assigned group.
-func findValidAssignment(pool *EppPool, assignments []*AssignmentParam, clusterName, validationMode string) *AssignmentParam {
+// findValidAssignment returns the assignment of the cluster if it exists and
+// its primary instance is still present in the assigned group.
+func findValidAssignment(pool *EppPool, assignments []*AssignmentParam, clusterName string) *AssignmentParam {
 	groupMap := map[string]*InstanceGroup{}
 	for _, group := range pool.Groups {
 		groupMap[group.Name] = group
@@ -454,7 +453,7 @@ func findValidAssignment(pool *EppPool, assignments []*AssignmentParam, clusterN
 			continue
 		}
 		group := groupMap[assignment.GroupName]
-		if group == nil || !groupMeetsValidationMode(group, validationMode) {
+		if group == nil {
 			return nil
 		}
 		primary, _ := expandPrimaryAndStandby(group.Instances, assignment.PrimaryInstanceID)
@@ -478,13 +477,13 @@ const (
 
 // repairOne decides the repair action for one dangling-or-valid assignment.
 // A valid assignment maps to repairKeep.
-func repairOne(pool *EppPool, assignments []*AssignmentParam, assignment *AssignmentParam, validationMode string) (*AssignmentParam, repairAction) {
-	if findValidAssignment(pool, assignments, assignment.Cluster, validationMode) != nil {
+func repairOne(pool *EppPool, assignments []*AssignmentParam, assignment *AssignmentParam) (*AssignmentParam, repairAction) {
+	if findValidAssignment(pool, assignments, assignment.Cluster) != nil {
 		return assignment, repairKeep
 	}
 
 	group := findGroup(pool, assignment.GroupName)
-	if group != nil && groupMeetsValidationMode(group, validationMode) {
+	if group != nil {
 		// Group still exists: reselect the primary within the same group.
 		primary := selectPrimaryInGroup(group.Instances, assignments)
 		if primary != nil {
@@ -496,8 +495,8 @@ func repairOne(pool *EppPool, assignments []*AssignmentParam, assignment *Assign
 		}
 	}
 
-	// Group gone or undersized: cross-group reallocation; clear if impossible.
-	reallocated, err := allocateCluster(pool, assignments, assignment.Cluster, validationMode)
+	// Group gone: cross-group reallocation; clear if impossible.
+	reallocated, err := allocateCluster(pool, assignments, assignment.Cluster)
 	if err != nil {
 		return nil, repairClear
 	}
@@ -506,8 +505,8 @@ func repairOne(pool *EppPool, assignments []*AssignmentParam, assignment *Assign
 
 // allocateCluster implements the greedy deterministic allocator
 // (design-changes.md §4.2.2).
-func allocateCluster(pool *EppPool, assignments []*AssignmentParam, clusterName, validationMode string) (*AssignmentParam, error) {
-	candidates := candidateGroups(pool, validationMode)
+func allocateCluster(pool *EppPool, assignments []*AssignmentParam, clusterName string) (*AssignmentParam, error) {
+	candidates := candidateGroups(pool)
 	if len(candidates) == 0 {
 		return nil, xerror.WrapModelErrorWithMsg("epp pool has no assignable instance group")
 	}
@@ -538,27 +537,14 @@ func allocateCluster(pool *EppPool, assignments []*AssignmentParam, clusterName,
 	}, nil
 }
 
-// candidateGroups filters groups meeting the deployment shape requirement,
-// ordered by group name for determinism.
-func candidateGroups(pool *EppPool, validationMode string) []*InstanceGroup {
-	var candidates []*InstanceGroup
-	for _, group := range pool.Groups {
-		if groupMeetsValidationMode(group, validationMode) {
-			candidates = append(candidates, group)
-		}
-	}
+// candidateGroups returns all pool groups ordered by group name for
+// determinism. Every group in the pool is a valid candidate: PATCH
+// validation rejects empty groups and groups with 3+ instances, so every
+// group holds 1-2 instances.
+func candidateGroups(pool *EppPool) []*InstanceGroup {
+	candidates := append([]*InstanceGroup(nil), pool.Groups...)
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].Name < candidates[j].Name })
 	return candidates
-}
-
-// groupMeetsValidationMode checks the group size against the deployment shape.
-func groupMeetsValidationMode(group *InstanceGroup, validationMode string) bool {
-	switch validationMode {
-	case ValidationModeTest:
-		return len(group.Instances) >= 1
-	default:
-		return len(group.Instances) == 2
-	}
 }
 
 // countPrimaries counts, per instance id, in how many assignments the

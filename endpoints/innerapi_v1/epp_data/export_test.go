@@ -159,7 +159,7 @@ func setupManager(t *testing.T) func() {
 		storager,
 		clusterSource,
 		testutil.NewVersionControlManager(testExportedVersion),
-		&epp_pool.ManagerOptions{ValidationMode: epp_pool.ValidationModeTest},
+		nil,
 	)
 	return func() { container.EppPoolManager = old }
 }
