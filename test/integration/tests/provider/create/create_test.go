@@ -58,6 +58,7 @@ func TestProvider_Create(t *testing.T) {
 	providerGemini := testutil.UniqueProviderName()
 	providerNoInstName := testutil.UniqueProviderName()
 	providerDup := testutil.UniqueProviderName()
+	providerProtoPaths := testutil.UniqueProviderName()
 
 	tests := []struct {
 		name     string
@@ -365,6 +366,100 @@ func TestProvider_Create(t *testing.T) {
 			},
 			wantCode: 422,
 		},
+		{
+			name: "PV-1-014 创建带 protocol_paths 的 Provider（双协议百炼形态）",
+			body: map[string]interface{}{
+				"name": providerProtoPaths,
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"addr":   "dashscope.aliyuncs.com",
+						"weight": 100,
+						"port":   443,
+					},
+				},
+				"model_protocols": []string{"openai", "anthropic"},
+				"protocol_paths": map[string]interface{}{
+					"openai":    "/compatible-mode/v1",
+					"anthropic": "/apps/anthropic",
+				},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				testutil.AssertDataFieldEquals(t, resp, "name", providerProtoPaths)
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				paths, ok := data["protocol_paths"].(map[string]interface{})
+				if !assert.True(t, ok, "protocol_paths should be an object") {
+					return
+				}
+				assert.Equal(t, "/compatible-mode/v1", paths["openai"])
+				assert.Equal(t, "/apps/anthropic", paths["anthropic"])
+			},
+		},
+		{
+			name: "PV-1-015 protocol_paths 键未在 model_protocols 声明",
+			body: map[string]interface{}{
+				"name": testutil.UniqueProviderName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"model_protocols": []string{"openai"},
+				"protocol_paths":  map[string]interface{}{"anthropic": "/apps/anthropic"},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "PV-1-016 protocol_paths 非法协议键",
+			body: map[string]interface{}{
+				"name": testutil.UniqueProviderName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"model_protocols": []string{"openai", "anthropic", "gemini"},
+				"protocol_paths":  map[string]interface{}{"gemini": "/v1beta"},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "PV-1-017 protocol_paths 值缺少 / 前缀",
+			body: map[string]interface{}{
+				"name": testutil.UniqueProviderName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"model_protocols": []string{"openai"},
+				"protocol_paths":  map[string]interface{}{"openai": "compatible-mode/v1"},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "PV-1-018 protocol_paths 值以 / 结尾",
+			body: map[string]interface{}{
+				"name": testutil.UniqueProviderName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"model_protocols": []string{"openai"},
+				"protocol_paths":  map[string]interface{}{"openai": "/compatible-mode/"},
+			},
+			wantCode: 422,
+		},
 	}
 
 	// 预先创建重复 Provider
@@ -394,5 +489,6 @@ func TestProvider_Create(t *testing.T) {
 		testutil.DeleteProvider(providerGemini)
 		testutil.DeleteProvider(providerNoInstName)
 		testutil.DeleteProvider(providerDup)
+		testutil.DeleteProvider(providerProtoPaths)
 	})
 }

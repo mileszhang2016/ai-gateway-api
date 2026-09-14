@@ -181,6 +181,10 @@ func toDAOParam(param *iprovider.ProviderParam) (*dao.TProviderParam, error) {
 	if err != nil {
 		return nil, err
 	}
+	protocolPaths, err := marshalJSON(param.ProtocolPaths)
+	if err != nil {
+		return nil, err
+	}
 	tiers, err := marshalJSON(param.Tiers)
 	if err != nil {
 		return nil, err
@@ -194,6 +198,7 @@ func toDAOParam(param *iprovider.ProviderParam) (*dao.TProviderParam, error) {
 		Keys:           keys,
 		InstancePool:   instancePool,
 		ModelProtocols: modelProtocols,
+		ProtocolPaths:  protocolPaths,
 		TimeZone:       param.TimeZone,
 		Tiers:          tiers,
 	}, nil
@@ -237,6 +242,7 @@ func fromDAO(one *dao.TProvider) *iprovider.Provider {
 		Keys:           unmarshalKeys(one.Keys),
 		InstancePool:   unmarshalInstancePool(one.InstancePool),
 		ModelProtocols: unmarshalStringSlice(one.ModelProtocols),
+		ProtocolPaths:  unmarshalStringMap(one.ProtocolPaths),
 		TimeZone:       timeZone,
 		Tiers:          tiers,
 		CreateTime:     createTime,
@@ -269,6 +275,10 @@ func toDAOParamForUpdate(param *iprovider.ProviderParam) (*dao.TProviderParam, e
 	if err != nil {
 		return nil, err
 	}
+	protocolPaths, err := marshalJSONPtr(param.ProtocolPaths)
+	if err != nil {
+		return nil, err
+	}
 	tiers, err := marshalJSONPtr(param.Tiers)
 	if err != nil {
 		return nil, err
@@ -282,6 +292,7 @@ func toDAOParamForUpdate(param *iprovider.ProviderParam) (*dao.TProviderParam, e
 		Keys:           keys,
 		InstancePool:   instancePool,
 		ModelProtocols: modelProtocols,
+		ProtocolPaths:  protocolPaths,
 		TimeZone:       param.TimeZone,
 		Tiers:          tiers,
 	}, nil
@@ -375,6 +386,17 @@ func unmarshalTiers(s string) []iprovider.PricingTier {
 		return nil
 	}
 	var rst []iprovider.PricingTier
+	if err := json.Unmarshal([]byte(s), &rst); err != nil {
+		return nil
+	}
+	return rst
+}
+
+func unmarshalStringMap(s string) map[string]string {
+	if s == "" || s == "null" {
+		return nil
+	}
+	var rst map[string]string
 	if err := json.Unmarshal([]byte(s), &rst); err != nil {
 		return nil
 	}

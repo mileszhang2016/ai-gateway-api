@@ -17,6 +17,7 @@ package iprovider
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
@@ -999,4 +1000,220 @@ func TestApplyProviderUpdate(t *testing.T) {
 	assert.Equal(t, []string{"m1", "m2"}, updated.Models)
 	// Unchanged fields are preserved.
 	assert.Equal(t, existing.ModelProtocols, updated.ModelProtocols)
+}
+
+func TestValidateProviderParam_ProtocolPaths(t *testing.T) {
+	base := func() *ProviderParam {
+		p := validProviderParam()
+		p.ModelProtocols = []string{"openai", "anthropic"}
+		return p
+	}
+
+	t.Run("nil protocol paths is valid", func(t *testing.T) {
+		require.NoError(t, ValidateProviderParam(base()))
+	})
+
+	t.Run("empty protocol paths is valid", func(t *testing.T) {
+		p := base()
+		p.ProtocolPaths = map[string]string{}
+		require.NoError(t, ValidateProviderParam(p))
+	})
+
+	t.Run("valid provider paths", func(t *testing.T) {
+		p := base()
+		p.ProtocolPaths = map[string]string{
+			"openai":    "/compatible-mode/v1",
+			"anthropic": "/apps/anthropic",
+		}
+		require.NoError(t, ValidateProviderParam(p))
+	})
+
+	t.Run("unsupported protocol key", func(t *testing.T) {
+		p := base()
+		p.ProtocolPaths = map[string]string{"gemini": "/v1beta"}
+		require.Error(t, ValidateProviderParam(p))
+	})
+
+	t.Run("key not declared in model_protocols", func(t *testing.T) {
+		p := base()
+		p.ProtocolPaths = map[string]string{"anthropic": "/apps/anthropic"}
+		p.ModelProtocols = []string{"openai"}
+		require.Error(t, ValidateProviderParam(p))
+	})
+
+	t.Run("empty base path", func(t *testing.T) {
+		p := base()
+		p.ProtocolPaths = map[string]string{"openai": ""}
+		require.Error(t, ValidateProviderParam(p))
+	})
+
+	t.Run("missing leading slash", func(t *testing.T) {
+		p := base()
+		p.ProtocolPaths = map[string]string{"openai": "compatible-mode/v1"}
+		require.Error(t, ValidateProviderParam(p))
+	})
+
+	t.Run("trailing slash", func(t *testing.T) {
+		p := base()
+		p.ProtocolPaths = map[string]string{"openai": "/compatible-mode/"}
+		require.Error(t, ValidateProviderParam(p))
+	})
+
+	t.Run("root slash", func(t *testing.T) {
+		p := base()
+		p.ProtocolPaths = map[string]string{"openai": "/"}
+		require.Error(t, ValidateProviderParam(p))
+	})
+
+	t.Run("dot dot", func(t *testing.T) {
+		p := base()
+		p.ProtocolPaths = map[string]string{"openai": "/.. /x"}
+		require.Error(t, ValidateProviderParam(p))
+	})
+
+	t.Run("query and fragment", func(t *testing.T) {
+		for _, base0 := range []string{"/api?v=1", "/api#frag"} {
+			p := base()
+			p.ProtocolPaths = map[string]string{"openai": base0}
+			require.Error(t, ValidateProviderParam(p))
+		}
+	})
+
+	t.Run("too long", func(t *testing.T) {
+		p := base()
+		p.ProtocolPaths = map[string]string{"openai": "/" + strings.Repeat("a", 128)}
+		require.Error(t, ValidateProviderParam(p))
+	})
+}
+
+func TestApplyProviderUpdate_ProtocolPaths(t *testing.T) {
+	existing := &Provider{
+		Name:           "bailian",
+		ModelProtocols: []string{"openai", "anthropic"},
+		ProtocolPaths:  map[string]string{"openai": "/compatible-mode/v1", "anthropic": "/apps/anthropic"},
+	}
+
+	t.Run("nil param preserves existing", func(t *testing.T) {
+		updated := applyProviderUpdate(existing, &ProviderParam{Name: lib.PString("bailian")})
+		require.NotNil(t, updated)
+		assert.Equal(t, existing.ProtocolPaths, updated.ProtocolPaths)
+	})
+
+	t.Run("explicit empty map clears", func(t *testing.T) {
+		updated := applyProviderUpdate(existing, &ProviderParam{
+			Name:          lib.PString("bailian"),
+			ProtocolPaths: map[string]string{},
+		})
+		require.NotNil(t, updated)
+		assert.Equal(t, map[string]string{}, updated.ProtocolPaths)
+	})
+
+	t.Run("new value replaces", func(t *testing.T) {
+		updated := applyProviderUpdate(existing, &ProviderParam{
+			Name:          lib.PString("bailian"),
+			ProtocolPaths: map[string]string{"openai": "/v1"},
+		})
+		require.NotNil(t, updated)
+		assert.Equal(t, map[string]string{"openai": "/v1"}, updated.ProtocolPaths)
+	})
+}
+
+func TestProviderManager_UpdatePricingTiers_PreservesProtocolPaths(t *testing.T) {
+	existing := &Provider{
+		Name:           "bailian",
+		Description:    "desc",
+		ModelProtocols: []string{"openai", "anthropic"},
+		ProtocolPaths:  map[string]string{"openai": "/compatible-mode/v1", "anthropic": "/apps/anthropic"},
+	}
+	var updated *ProviderParam
+	storager := &fakeProviderStorager{
+		fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+			return existing, nil
+		},
+		updateFn: func(ctx context.Context, name string, param *ProviderParam) error {
+			updated = param
+			return nil
+		},
+	}
+	m := NewProviderManager(&fakeTxn{}, storager)
+	err := m.UpdatePricingTiers(context.Background(), "bailian", &PricingTiersParam{
+		TimeZone: "Asia/Shanghai",
+		Tiers: []PricingTier{
+			{Name: "peak", TimeRanges: []TimeRange{{Start: "09:00", End: "12:00"}}},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, existing.ProtocolPaths, updated.ProtocolPaths)
+}
+
+func TestProviderManager_UpdateProvider_EffectiveProtocolPaths(t *testing.T) {
+	existing := &Provider{
+		Name:           "bailian",
+		Description:    "desc",
+		ModelProtocols: []string{"openai", "anthropic"},
+		ProtocolPaths:  map[string]string{"openai": "/v1", "anthropic": "/anthropic"},
+	}
+	baseParam := func() *ProviderParam {
+		return &ProviderParam{
+			Name:           lib.PString("bailian"),
+			InstancePool:   []ProviderInstance{{Addr: "api.example.com", Port: 443, Weight: 100}},
+			ModelProtocols: []string{"openai"},
+		}
+	}
+
+	t.Run("omitted protocol_paths orphaned by shrunk protocols rejected", func(t *testing.T) {
+		updateCalled := false
+		storager := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return existing, nil
+			},
+			updateFn: func(ctx context.Context, name string, param *ProviderParam) error {
+				updateCalled = true
+				return nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, storager)
+		err := m.UpdateProvider(context.Background(), "bailian", baseParam())
+		require.Error(t, err)
+		assert.False(t, updateCalled, "storager must not be called when effective check fails")
+	})
+
+	t.Run("protocol_paths provided matching shrunk protocols passes", func(t *testing.T) {
+		updateCalled := false
+		storager := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return existing, nil
+			},
+			updateFn: func(ctx context.Context, name string, param *ProviderParam) error {
+				updateCalled = true
+				return nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, storager)
+		param := baseParam()
+		param.ProtocolPaths = map[string]string{"openai": "/v1"}
+		err := m.UpdateProvider(context.Background(), "bailian", param)
+		require.NoError(t, err)
+		assert.True(t, updateCalled)
+	})
+
+	t.Run("protocols unchanged passes with stored paths", func(t *testing.T) {
+		updateCalled := false
+		storager := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return existing, nil
+			},
+			updateFn: func(ctx context.Context, name string, param *ProviderParam) error {
+				updateCalled = true
+				return nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, storager)
+		param := baseParam()
+		param.ModelProtocols = []string{"openai", "anthropic"}
+		err := m.UpdateProvider(context.Background(), "bailian", param)
+		require.NoError(t, err)
+		assert.True(t, updateCalled)
+	})
 }

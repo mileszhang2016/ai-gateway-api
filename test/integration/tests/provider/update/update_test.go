@@ -158,6 +158,131 @@ func TestProvider_Update(t *testing.T) {
 		testutil.AssertErrCode(t, resp, 422)
 	})
 
+	t.Run("PV-4-011 更新 protocol_paths（全量替换）", func(t *testing.T) {
+		name := testutil.UniqueProviderName()
+		if _, err := testutil.CreateProvider(name, map[string]interface{}{
+			"model_protocols": []string{"openai", "anthropic"},
+			"protocol_paths":  map[string]interface{}{"openai": "/v1", "anthropic": "/anthropic"},
+		}); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteProvider(name)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+name, map[string]interface{}{
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"model_protocols": []string{"openai", "anthropic"},
+			"protocol_paths":  map[string]interface{}{"openai": "/compatible-mode/v1", "anthropic": "/apps/anthropic"},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		require.NoError(t, json.Unmarshal(resp.Data, &data))
+		paths, _ := data["protocol_paths"].(map[string]interface{})
+		assert.Equal(t, "/compatible-mode/v1", paths["openai"])
+		assert.Equal(t, "/apps/anthropic", paths["anthropic"])
+	})
+
+	t.Run("PV-4-012 省略 protocol_paths 保持原值", func(t *testing.T) {
+		name := testutil.UniqueProviderName()
+		if _, err := testutil.CreateProvider(name, map[string]interface{}{
+			"model_protocols": []string{"openai"},
+			"protocol_paths":  map[string]interface{}{"openai": "/compatible-mode/v1"},
+		}); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteProvider(name)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+name, map[string]interface{}{
+			"description":     "仅更新描述",
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"model_protocols": []string{"openai"},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		require.NoError(t, json.Unmarshal(resp.Data, &data))
+		paths, _ := data["protocol_paths"].(map[string]interface{})
+		assert.Equal(t, "/compatible-mode/v1", paths["openai"], "protocol_paths should be preserved when omitted")
+	})
+
+	t.Run("PV-4-013 显式空对象清空 protocol_paths", func(t *testing.T) {
+		name := testutil.UniqueProviderName()
+		if _, err := testutil.CreateProvider(name, map[string]interface{}{
+			"model_protocols": []string{"openai"},
+			"protocol_paths":  map[string]interface{}{"openai": "/compatible-mode/v1"},
+		}); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteProvider(name)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+name, map[string]interface{}{
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"model_protocols": []string{"openai"},
+			"protocol_paths":  map[string]interface{}{},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		require.NoError(t, json.Unmarshal(resp.Data, &data))
+		paths, _ := data["protocol_paths"].(map[string]interface{})
+		assert.Empty(t, paths, "protocol_paths should be cleared by explicit empty object")
+	})
+
+	t.Run("PV-4-014 收缩 model_protocols 与 protocol_paths 同请求给出合法组合", func(t *testing.T) {
+		name := testutil.UniqueProviderName()
+		if _, err := testutil.CreateProvider(name, map[string]interface{}{
+			"model_protocols": []string{"openai", "anthropic"},
+			"protocol_paths":  map[string]interface{}{"openai": "/v1", "anthropic": "/anthropic"},
+		}); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteProvider(name)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+name, map[string]interface{}{
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"model_protocols": []string{"openai"},
+			"protocol_paths":  map[string]interface{}{"openai": "/v1"},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		require.NoError(t, json.Unmarshal(resp.Data, &data))
+		protocols, _ := data["model_protocols"].([]interface{})
+		assert.Len(t, protocols, 1)
+		paths, _ := data["protocol_paths"].(map[string]interface{})
+		assert.Equal(t, "/v1", paths["openai"])
+		_, hasAnthropic := paths["anthropic"]
+		assert.False(t, hasAnthropic)
+	})
+
+	t.Run("PV-4-015 仅收缩 model_protocols 使存量 protocol_paths 非法", func(t *testing.T) {
+		name := testutil.UniqueProviderName()
+		if _, err := testutil.CreateProvider(name, map[string]interface{}{
+			"model_protocols": []string{"openai", "anthropic"},
+			"protocol_paths":  map[string]interface{}{"openai": "/v1", "anthropic": "/anthropic"},
+		}); err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteProvider(name)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+name, map[string]interface{}{
+			"instance_pool":   []interface{}{map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080}},
+			"model_protocols": []string{"openai"},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteProvider(providerName)
 	})

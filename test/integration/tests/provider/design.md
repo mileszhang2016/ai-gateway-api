@@ -28,17 +28,17 @@ Provider 与 Cluster 概念分离后：
 
 | 接口 / 场景 | 测试用例数 |
 |-------------|-----------|
-| 创建 Provider | 15 |
+| 创建 Provider | 20 |
 | 查询 Provider 列表 | 3 |
 | 查询 Provider 详情 | 3 |
-| 更新 Provider | 7 |
+| 更新 Provider | 12 |
 | Provider instance_pool 同步到 Inner API | 5 |
 | 删除 Provider | 4 |
 | 触发模型发现 | 6 |
 | 获取所有 Provider 名称 | 1 |
 | instance_pool 默认 name 生成 | 1 |
-| 设置高峰/闲时模板 | 10 |
-| **合计** | **55** |
+| 设置高峰/闲时模板 | 11 |
+| **合计** | **66** |
 
 ## 4. 认证方式
 
@@ -168,6 +168,11 @@ provider/
 | PV-1-011 | 重复实例 `(addr, port)` 组合 | 422 |
 | PV-1-012 | `models` 元素重复 | 422 |
 | PV-1-013 | `keys` 中 `name` 重复 | 422 |
+| PV-1-014 | 创建带 `protocol_paths` 的 Provider（双协议百炼形态） | 200，返回的 `protocol_paths` 与输入一致 |
+| PV-1-015 | `protocol_paths` 键未在 `model_protocols` 声明 | 422 |
+| PV-1-016 | `protocol_paths` 非法协议键（如 `gemini`） | 422 |
+| PV-1-017 | `protocol_paths` 值缺少 `/` 前缀 | 422 |
+| PV-1-018 | `protocol_paths` 值以 `/` 结尾 | 422 |
 
 ### 6.4 测试场景详细设计
 
@@ -292,11 +297,11 @@ provider/
 
 ---
 
-#### 6.4.4 PV-1-004 ~ PV-1-013：参数校验异常场景
+#### 6.4.4 PV-1-004 ~ PV-1-018：参数校验异常场景
 
 ##### 设计思路
 
-统一覆盖创建接口的字段级校验，包括必填缺失、枚举非法、数组唯一性约束、数值范围等。所有异常场景均应返回 422。
+统一覆盖创建接口的字段级校验，包括必填缺失、枚举非法、数组唯一性约束、数值范围、`protocol_paths` 键值合法性等。所有异常场景均应返回 422。
 
 ##### 典型异常参数
 
@@ -312,10 +317,38 @@ provider/
 | PV-1-011 | 重复 `(addr, port)` | 两个实例使用相同 `addr` 与 `port` |
 | PV-1-012 | `models` 元素重复 | `"models": ["m", "m"]` |
 | PV-1-013 | `keys` 中 `name` 重复 | 两个 key 使用相同 `name` |
+| PV-1-015 | `protocol_paths` 键未声明 | `model_protocols=["openai"]` 但配置 `anthropic` 路径 |
+| PV-1-016 | `protocol_paths` 非法协议键 | 键为 `gemini`（BFE 改写公式不支持） |
+| PV-1-017 | `protocol_paths` 值缺少 `/` 前缀 | `"openai": "compatible-mode/v1"` |
+| PV-1-018 | `protocol_paths` 值以 `/` 结尾 | `"openai": "/compatible-mode/"` |
 
 ##### 预期返回结果
 
 **ErrNum**：422
+
+#### 6.4.5 PV-1-014：创建带 protocol_paths 的 Provider
+
+##### 设计思路
+
+验证 `protocol_paths`（按协议的上游路径前缀）随创建请求持久化，并在响应中原样返回。配置取百炼双协议形态：`openai=/compatible-mode/v1`、`anthropic=/apps/anthropic`。
+
+##### 请求参数关键字段
+
+```json
+{
+  "name": "provider-xxx",
+  "instance_pool": [{"addr": "dashscope.aliyuncs.com", "weight": 100, "port": 443}],
+  "model_protocols": ["openai", "anthropic"],
+  "protocol_paths": {
+    "openai": "/compatible-mode/v1",
+    "anthropic": "/apps/anthropic"
+  }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200；`protocol_paths` 为对象，`openai`/`anthropic` 键值与输入一致。
 
 
 ## 7. 查询 Provider 列表
@@ -608,6 +641,11 @@ provider/
 | PV-4-008 | 只更新 `time_zone` | 200，`time_zone` 更新成功，其余字段（含 `tiers`）保留原值 |
 | PV-4-009 | 显式空数组清空字段 | 200，显式传入的 `models`/`keys`/`tiers` 被清空，未提供的 `time_zone`/`description`/`model_endpoint` 保留原值 |
 | PV-4-010 | 非法 `time_zone` | 422，且已存储的 `time_zone` 不被修改 |
+| PV-4-011 | 更新 `protocol_paths`（全量替换） | 200，`protocol_paths` 被替换为新值 |
+| PV-4-012 | 省略 `protocol_paths` 保持原值 | 200，未提供时保留原 `protocol_paths` |
+| PV-4-013 | 显式空对象清空 `protocol_paths` | 200，`protocol_paths` 被清空 |
+| PV-4-014 | 收缩 `model_protocols` 与 `protocol_paths` 同请求给出合法组合 | 200，两者同时生效 |
+| PV-4-015 | 仅收缩 `model_protocols` 使存量 `protocol_paths` 非法 | 422，已存储的 `protocol_paths` 不被修改 |
 
 ### 9.4 测试场景详细设计
 
@@ -745,6 +783,28 @@ provider/
 | PV-4-008 | 200，`time_zone` 更新为 `Europe/London`，其余字段保留 |
 | PV-4-009 | 200，显式空数组字段被清空，省略字段保留 |
 | PV-4-010 | 422，存储的 `time_zone` 不被修改 |
+
+#### 9.4.4 PV-4-011 ~ PV-4-015：protocol_paths 更新语义
+
+##### 设计思路
+
+验证 `protocol_paths` 在 PATCH 下的部分更新语义：
+
+- **全量替换**（PV-4-011）：显式提供时整体替换；
+- **省略保留**（PV-4-012）：未提供时保持原值（DAO nil-skip）；
+- **显式清空**（PV-4-013）：显式空对象 `{}` 清空（与数组字段的"显式空数组清空"语义对齐）；
+- **组合调整**（PV-4-014）：收缩 `model_protocols` 时，须在同一请求中给出与其兼容的 `protocol_paths`；
+- **孤儿校验**（PV-4-015）：仅收缩 `model_protocols`、省略 `protocol_paths` 时，存量 `protocol_paths` 中的被移除协议成为孤儿，必须 422 拒绝且存储值不被修改（`UpdateProvider` 对"有效 protocol_paths = 存量值"做交叉校验）。
+
+##### 预期返回结果
+
+| 用例 | 预期 |
+|------|------|
+| PV-4-011 | 200，`protocol_paths` 等于请求值 |
+| PV-4-012 | 200，`protocol_paths` 保持创建时的值 |
+| PV-4-013 | 200，`protocol_paths` 为空对象 |
+| PV-4-014 | 200，`model_protocols` 与 `protocol_paths` 同时生效 |
+| PV-4-015 | 422，存储值不被修改 |
 
 
 ## 10. Provider instance_pool 同步到 Inner API
@@ -1288,6 +1348,7 @@ PV-SYNC-1-003 只断言了 409 响应；本用例钉死 issue #156 的完整契�
 | PT-1-008 | `end <= start` | 422 |
 | PT-1-009 | `weekdays` 越界 | 422 |
 | PT-1-010 | GET provider 返回 tiers | 200，响应中包含 `time_zone`/`tiers` |
+| PT-1-011 | 设置 pricing tiers 后 `protocol_paths` 保留 | 200，`protocol_paths` 与创建时一致（`UpdatePricingTiers` 手工构造 updateParam 不丢字段回归） |
 
 ### 15.4 测试场景详细设计
 
