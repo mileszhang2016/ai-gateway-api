@@ -89,6 +89,7 @@ type Provider struct {
 	Keys           []ProviderKey      `json:"keys"`
 	InstancePool   []ProviderInstance `json:"instance_pool"`
 	ModelProtocols []string           `json:"model_protocols"`
+	ProtocolPaths  map[string]string  `json:"protocol_paths"`
 	TimeZone       string             `json:"time_zone"`
 	Tiers          []PricingTier      `json:"tiers"`
 	CreateTime     int64              `json:"create_time"`
@@ -105,6 +106,7 @@ type ProviderParam struct {
 	Keys           []ProviderKey      `json:"keys,omitempty"`
 	InstancePool   []ProviderInstance `json:"instance_pool"`
 	ModelProtocols []string           `json:"model_protocols"`
+	ProtocolPaths  map[string]string  `json:"protocol_paths"`
 	TimeZone       *string            `json:"time_zone,omitempty"`
 	Tiers          []PricingTier      `json:"tiers,omitempty"`
 }
@@ -213,6 +215,18 @@ func (m *ProviderManager) UpdateProvider(ctx context.Context, name string,
 		}
 		oldProvider = existing
 
+		// Effective consistency: when protocol_paths is omitted, the stored
+		// value must still be consistent with the (possibly shrunk)
+		// model_protocols of this request. ValidateProviderParam only checks
+		// the explicitly provided protocol_paths.
+		effectivePaths := param.ProtocolPaths
+		if effectivePaths == nil {
+			effectivePaths = existing.ProtocolPaths
+		}
+		if err := validateProviderProtocolPaths(effectivePaths, param.ModelProtocols); err != nil {
+			return err
+		}
+
 		// Capture which cluster-relevant fields are explicitly provided before
 		// the storager applies defaults (FillDefaults mutates nil slices into
 		// empty slices, which would be mistaken for an intentional clear).
@@ -297,6 +311,7 @@ func (m *ProviderManager) UpdatePricingTiers(ctx context.Context, name string, p
 			Keys:           existing.Keys,
 			InstancePool:   existing.InstancePool,
 			ModelProtocols: existing.ModelProtocols,
+			ProtocolPaths:  existing.ProtocolPaths,
 			TimeZone:       &param.TimeZone,
 			Tiers:          param.Tiers,
 		}
@@ -460,6 +475,10 @@ func ValidateProviderParam(param *ProviderParam) error {
 		seenProtocol[p] = true
 	}
 
+	if err := validateProviderProtocolPaths(param.ProtocolPaths, param.ModelProtocols); err != nil {
+		return err
+	}
+
 	if param.ModelEndpoint != nil {
 		if param.ModelEndpoint.Schema == "" {
 			param.ModelEndpoint.Schema = "https"
@@ -521,6 +540,56 @@ func ValidateProviderParam(param *ProviderParam) error {
 		return err
 	}
 
+	return nil
+}
+
+// validateProviderProtocolPaths validates the per-protocol upstream base
+// paths. Keys must be protocols supported by the BFE rewrite formula
+// (openai, anthropic) and must be declared in model_protocols; values must
+// be well-formed absolute paths. A nil or empty map is valid and means
+// disabled (BFE forwards request paths unchanged).
+func validateProviderProtocolPaths(paths map[string]string, modelProtocols []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	declared := make(map[string]bool, len(modelProtocols))
+	for _, p := range modelProtocols {
+		declared[p] = true
+	}
+	for proto, base := range paths {
+		if proto != "openai" && proto != "anthropic" {
+			return xerror.WrapParamErrorWithMsg("protocol_paths: unsupported protocol %q (expect openai or anthropic)", proto)
+		}
+		if !declared[proto] {
+			return xerror.WrapParamErrorWithMsg("protocol_paths: protocol %q not declared in model_protocols", proto)
+		}
+		if err := validateUpstreamBasePath(base); err != nil {
+			return xerror.WrapParamErrorWithMsg("protocol_paths[%s]: %s", proto, err.Error())
+		}
+	}
+	return nil
+}
+
+// validateUpstreamBasePath validates a single upstream base path.
+func validateUpstreamBasePath(base string) error {
+	if base == "" {
+		return fmt.Errorf("base path is empty")
+	}
+	if len(base) > 128 {
+		return fmt.Errorf("base path length must be <= 128")
+	}
+	if !strings.HasPrefix(base, "/") {
+		return fmt.Errorf("base path must start with '/'")
+	}
+	if strings.HasSuffix(base, "/") {
+		return fmt.Errorf("base path must not end with '/'")
+	}
+	if strings.ContainsAny(base, "?#") {
+		return fmt.Errorf("base path must not contain '?' or '#'")
+	}
+	if strings.Contains(base, "..") {
+		return fmt.Errorf("base path must not contain '..'")
+	}
 	return nil
 }
 
@@ -872,6 +941,9 @@ func applyProviderUpdate(existing *Provider, param *ProviderParam) *Provider {
 	}
 	if param.ModelProtocols != nil {
 		newProvider.ModelProtocols = param.ModelProtocols
+	}
+	if param.ProtocolPaths != nil {
+		newProvider.ProtocolPaths = param.ProtocolPaths
 	}
 	if param.TimeZone != nil {
 		newProvider.TimeZone = *param.TimeZone

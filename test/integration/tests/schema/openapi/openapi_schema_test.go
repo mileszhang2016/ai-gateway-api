@@ -268,6 +268,7 @@ func testProviderSchema(t *testing.T) {
 			map[string]interface{}{"addr": "10.0.0.1", "weight": 100, "port": 8080},
 		},
 		"model_protocols": []string{"openai"},
+		"protocol_paths":  map[string]interface{}{"openai": "/compatible-mode/v1"},
 		"models":          []string{"deepseek-chat"},
 		"time_zone":       "Asia/Shanghai",
 		"tiers": []interface{}{

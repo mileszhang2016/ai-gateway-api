@@ -1208,6 +1208,7 @@ func NewBfeClusterConf(ctx context.Context, version string, clusters []*Cluster,
 	providerModelTable map[string][]*imodel_price.ModelPrice,
 	providerKeyTable map[string][]iprovider.ProviderKey,
 	providerProtocolTable map[string][]string,
+	providerProtocolPathsTable map[string]map[string]string,
 	providerPricingTable map[string]ProviderPricingInfo,
 	eppResolver EPPAssignmentResolver) *cluster_conf.BfeClusterConf {
 	clusterConfMap := cluster_conf.ClusterToConf{}
@@ -1327,7 +1328,8 @@ func NewBfeClusterConf(ctx context.Context, version string, clusters []*Cluster,
 			}
 			providerKeys := providerKeyTable[provider]
 			providerProtocols := providerProtocolTable[provider]
-			clusterConf.AIConf = newAIConf(cluster.LLMConfig, modelTable, providerKeys, providerProtocols)
+			providerProtocolPaths := providerProtocolPathsTable[provider]
+			clusterConf.AIConf = newAIConf(cluster.LLMConfig, modelTable, providerKeys, providerProtocols, providerProtocolPaths)
 		}
 
 		clusterConfMap[cluster.Name] = clusterConf
@@ -1339,12 +1341,14 @@ func NewBfeClusterConf(ctx context.Context, version string, clusters []*Cluster,
 }
 
 func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,
-	providerKeys []iprovider.ProviderKey, providerModelProtocols []string) *cluster_conf.AIConf {
+	providerKeys []iprovider.ProviderKey, providerModelProtocols []string,
+	providerProtocolPaths map[string]string) *cluster_conf.AIConf {
 	aiConf := &cluster_conf.AIConf{
 		Type:           0,
 		ModelMapping:   convertToBFEModelMapping(llmConfig.ModelMappings),
 		Keys:           []cluster_conf.AIKey{},
 		ModelProtocols: providerModelProtocols,
+		ProtocolPaths:  providerProtocolPaths,
 	}
 
 	if llmConfig.Provider != nil {

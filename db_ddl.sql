@@ -464,6 +464,7 @@ CREATE TABLE `providers` (
   `api_keys` JSON COMMENT 'API key 列表',
   `instance_pool` JSON NOT NULL COMMENT '实例池列表',
   `model_protocols` JSON NOT NULL COMMENT '支持的模型协议列表',
+  `protocol_paths` JSON COMMENT '按协议的上游路径前缀（protocol -> base path）',
   `time_zone` VARCHAR(255) NOT NULL DEFAULT 'Asia/Shanghai' COMMENT '计算时段所使用的时区',
   `tiers` JSON COMMENT '时段 tier 定义列表',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

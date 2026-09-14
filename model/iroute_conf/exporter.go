@@ -101,6 +101,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 
 	providerKeyTable := map[string][]iprovider.ProviderKey{}
 	providerProtocolTable := map[string][]string{}
+	providerProtocolPathsTable := map[string]map[string]string{}
 	providerPricingTable := map[string]icluster_conf.ProviderPricingInfo{}
 	if rm.providerStorager != nil {
 		providers, _, err := rm.providerStorager.FetchProviderList(ctx, &iprovider.ProviderFilter{})
@@ -111,6 +112,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 			if p != nil {
 				providerKeyTable[p.Name] = p.Keys
 				providerProtocolTable[p.Name] = p.ModelProtocols
+				providerProtocolPathsTable[p.Name] = p.ProtocolPaths
 				providerPricingTable[p.Name] = icluster_conf.ProviderPricingInfo{
 					TimeZone: p.TimeZone,
 					Tiers:    convertPricingTiers(p.Tiers),
@@ -156,7 +158,7 @@ func (rm *RouteRuleManager) exportRouteRule(ctx context.Context) (*iversion_cont
 		Version:     emptyVersion,
 		RouteTable:  newRouteTableFile(emptyVersion, productMapID2Name, routeRules),
 		HostTable:   newHostTableConf(emptyVersion, productMapID2Name, domains),
-		ClusterConf: icluster_conf.NewBfeClusterConf(ctx, emptyVersion, clusters, providerModelTable, providerKeyTable, providerProtocolTable, providerPricingTable, rm.eppAssignmentResolver),
+		ClusterConf: icluster_conf.NewBfeClusterConf(ctx, emptyVersion, clusters, providerModelTable, providerKeyTable, providerProtocolTable, providerProtocolPathsTable, providerPricingTable, rm.eppAssignmentResolver),
 	}
 
 	return &iversion_control.ExportData{

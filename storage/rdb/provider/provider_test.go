@@ -48,6 +48,7 @@ CREATE TABLE providers (
   api_keys TEXT,
   instance_pool TEXT NOT NULL,
   model_protocols TEXT NOT NULL,
+  protocol_paths TEXT,
   time_zone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
   tiers TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
