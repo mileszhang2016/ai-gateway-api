@@ -133,7 +133,7 @@ func (f *fakeClusterSource) FetchEPPClusters(ctx context.Context) ([]*epp_pool.E
 
 // setupManager swaps container.EppPoolManager with one backed by in-memory
 // fakes and returns the storager plus a restore function.
-func setupManager(t *testing.T, validationMode string) (*fakeEppPoolStorager, func()) {
+func setupManager(t *testing.T) (*fakeEppPoolStorager, func()) {
 	old := container.EppPoolManager
 	storager := newFakeEppPoolStorager()
 	container.EppPoolManager = epp_pool.NewEppPoolManager(
@@ -141,7 +141,7 @@ func setupManager(t *testing.T, validationMode string) (*fakeEppPoolStorager, fu
 		storager,
 		&fakeClusterSource{},
 		nil,
-		&epp_pool.ManagerOptions{ValidationMode: validationMode},
+		nil,
 	)
 	return storager, func() { container.EppPoolManager = old }
 }
@@ -164,7 +164,7 @@ func TestEndpoints(t *testing.T) {
 }
 
 func TestGetAction(t *testing.T) {
-	storager, teardown := setupManager(t, epp_pool.ValidationModeTest)
+	storager, teardown := setupManager(t)
 	defer teardown()
 
 	storager.seedInstances(
@@ -193,7 +193,7 @@ func TestGetAction(t *testing.T) {
 }
 
 func TestGetAction_PoolNotExist(t *testing.T) {
-	_, teardown := setupManager(t, epp_pool.ValidationModeTest)
+	_, teardown := setupManager(t)
 	defer teardown()
 
 	// Per epp-pool.md §2.1 the pool does not exist until the first PATCH:
@@ -204,7 +204,7 @@ func TestGetAction_PoolNotExist(t *testing.T) {
 }
 
 func TestPatchAction(t *testing.T) {
-	storager, teardown := setupManager(t, epp_pool.ValidationModeTest)
+	storager, teardown := setupManager(t)
 	defer teardown()
 
 	storager.seedInstances(
@@ -234,7 +234,7 @@ func TestPatchAction(t *testing.T) {
 }
 
 func TestPatchAction_ValidationErrors(t *testing.T) {
-	_, teardown := setupManager(t, epp_pool.ValidationModeTest)
+	_, teardown := setupManager(t)
 	defer teardown()
 
 	cases := []struct {
@@ -272,23 +272,25 @@ func TestPatchAction_ValidationErrors(t *testing.T) {
 	}
 }
 
-func TestPatchAction_GroupSizeProduction(t *testing.T) {
-	_, teardown := setupManager(t, epp_pool.ValidationModeProduction)
+func TestPatchAction_GroupSize(t *testing.T) {
+	_, teardown := setupManager(t)
 	defer teardown()
 
-	// Test mode allows single instance groups; production requires exactly 2.
+	// Single instance group (primary only) is allowed.
 	one := `{"groups":[{"name":"g1","instances":[{"id":"a","host":"10.0.0.1","port":9002}]}]}`
-	_, err := PatchAction(newJSONRequest(http.MethodPatch, "/epp-pool", one))
-	require.Error(t, err)
-	assert.Equal(t, 422, xerror.Resolve(err).ErrNo)
-
-	two := `{"groups":[{"name":"g1","instances":[
-		{"id":"a","host":"10.0.0.1","port":9002},
-		{"id":"b","host":"10.0.0.2","port":9002}]}]}`
-	data, err := PatchAction(newJSONRequest(http.MethodPatch, "/epp-pool", two))
+	data, err := PatchAction(newJSONRequest(http.MethodPatch, "/epp-pool", one))
 	require.NoError(t, err)
 	pool, ok := data.(*PoolData)
 	require.True(t, ok)
 	require.Len(t, pool.Groups, 1)
-	assert.Len(t, pool.Groups[0].Instances, 2)
+	assert.Len(t, pool.Groups[0].Instances, 1)
+
+	// Three or more instances per group are rejected.
+	three := `{"groups":[{"name":"g1","instances":[
+		{"id":"a","host":"10.0.0.1","port":9002},
+		{"id":"b","host":"10.0.0.2","port":9002},
+		{"id":"c","host":"10.0.0.3","port":9002}]}]}`
+	_, err = PatchAction(newJSONRequest(http.MethodPatch, "/epp-pool", three))
+	require.Error(t, err)
+	assert.Equal(t, 422, xerror.Resolve(err).ErrNo)
 }

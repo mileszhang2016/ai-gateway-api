@@ -192,3 +192,71 @@ func TestEppAssignments_Get(t *testing.T) {
 		testutil.AssertErrCode(t, resp, 404)
 	})
 }
+
+// TestEppAssignments_GroupShrinkRepair 验证统一组规模规则（每组 1~2 实例）下的
+// 悬空修复语义：PATCH /epp-pool 同步触发修复，单实例组是合法组。
+func TestEppAssignments_GroupShrinkRepair(t *testing.T) {
+	t.Run("EA-1-005 组缩容到单实例（保留 primary）后分配保留", func(t *testing.T) {
+		resp := patchEppPool(t, twoGroupsBody())
+		testutil.AssertSuccess(t, resp)
+
+		cluster := testutil.UniqueClusterName()
+		createEPPCluster(t, cluster)
+		defer testutil.DeleteCluster(cluster)
+
+		entry := findClusterEntry(t, getAssignments(t), cluster)
+		require.NotNil(t, entry)
+		group := entry["group"].(string)
+		primary := entry["primary"].(map[string]interface{})
+
+		// 全量替换为：组名不变、仅保留该 primary 的单实例组。
+		resp = patchEppPool(t, map[string]interface{}{
+			"groups": []interface{}{
+				map[string]interface{}{
+					"name":      group,
+					"instances": []interface{}{primary},
+				},
+			},
+		})
+		testutil.AssertSuccess(t, resp)
+
+		entry = findClusterEntry(t, getAssignments(t), cluster)
+		require.NotNil(t, entry)
+		assert.Equal(t, group, entry["group"], "单实例组合法：分配不换组")
+		assert.Equal(t, primary["id"], entry["primary"].(map[string]interface{})["id"], "分配不换主")
+		assert.Nil(t, entry["standby"])
+		assert.False(t, entry["degraded"].(bool))
+	})
+
+	t.Run("EA-1-006 primary 被移除后同组重选", func(t *testing.T) {
+		resp := patchEppPool(t, twoGroupsBody())
+		testutil.AssertSuccess(t, resp)
+
+		cluster := testutil.UniqueClusterName()
+		createEPPCluster(t, cluster)
+		defer testutil.DeleteCluster(cluster)
+
+		entry := findClusterEntry(t, getAssignments(t), cluster)
+		require.NotNil(t, entry)
+		group := entry["group"].(string)
+
+		// 同组名替换为全新实例（模拟原 primary 下线、同组换机）。
+		replacement := map[string]interface{}{"id": "epp-replacement", "host": "10.0.9.9", "port": 9002}
+		resp = patchEppPool(t, map[string]interface{}{
+			"groups": []interface{}{
+				map[string]interface{}{
+					"name":      group,
+					"instances": []interface{}{replacement},
+				},
+			},
+		})
+		testutil.AssertSuccess(t, resp)
+
+		entry = findClusterEntry(t, getAssignments(t), cluster)
+		require.NotNil(t, entry)
+		assert.Equal(t, group, entry["group"], "组仍存在：不换组，同组重选 primary")
+		assert.Equal(t, replacement["id"], entry["primary"].(map[string]interface{})["id"])
+		assert.Nil(t, entry["standby"])
+		assert.False(t, entry["degraded"].(bool))
+	})
+}

@@ -204,7 +204,6 @@ func Init() error {
 		container.VersionControlManager,
 		&epp_pool.ManagerOptions{
 			PoolName:          stateful.DefaultConfig.RunTime.DefaultEPPInstancePoolName,
-			ValidationMode:    stateful.DefaultConfig.RunTime.EPPValidationMode,
 			ReconcileInterval: time.Duration(stateful.DefaultConfig.RunTime.EPPReconcileIntervalSeconds) * time.Second,
 		})
 	container.ClusterManager.SetEppPoolManager(container.EppPoolManager)
