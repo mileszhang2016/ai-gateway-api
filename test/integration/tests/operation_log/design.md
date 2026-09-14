@@ -20,7 +20,8 @@
 | 溯源字段记录 | 1 |
 | 失败日志资源身份 | 1 |
 | 嵌套资源审计归属（issue #161） | 9 |
-| **合计** | **33** |
+| change_summary 敏感字段脱敏（issue #162） | 5 |
+| **合计** | **38** |
 
 ## 4. 认证方式
 
@@ -33,6 +34,8 @@ operation_log/
 ├── design.md
 ├── list/
 │   └── list_test.go
+├── masking/
+│   └── masking_test.go
 └── nested_audit/
     └── nested_audit_test.go
 ```
@@ -442,7 +445,35 @@ Entity / API Key 生命周期中嵌套创建、更新、删除配额计划（及
 
 ---
 
-## 12. 工具辅助函数
+## 12. change_summary 敏感字段脱敏（issue #162）
+
+### 12.1 设计思路
+
+审计日志的 `change_summary` 承诺敏感字段脱敏（api-define operation-logs.md），但 issue #162 实证 Token 创建/删除日志以明文记录凭证原文（经审计通道可提权），同族排查另发现 Provider 上游凭证 `keys[].key` 经数组结构绕过脱敏。本场景以真实 API 调用触发审计写入，断言 change_summary 序列化后不含任何凭证明文，作为 SC2101-TC049 的集成层回归锚点。
+
+### 12.2 覆盖场景
+
+| 编号 | 场景 | 触发 API | 校验重点 |
+|------|------|----------|----------|
+| OL-MASK-001 | Token 创建日志脱敏 | `POST /open-api/v1/auth/tokens` | `after.token` == `******`；after 键集合 [id,name,scope,token] 不变；序列化结果不含响应明文 |
+| OL-MASK-002 | Token 删除日志脱敏 | `DELETE /open-api/v1/auth/tokens/{name}` | `before.token` == `******`；序列化结果不含明文（删除资源不能止损已落库明文） |
+| OL-MASK-003 | Provider 创建日志 keys 脱敏 | `POST /open-api/v1/providers` | `after.keys[].key` 部分掩码（首4+`****`+尾4），`name` 保留；不含 `sk-aaaa…`/`sk-bbbb…` 明文 |
+| OL-MASK-004 | Provider 更新日志 before/after 双侧 keys 脱敏 | `PATCH /open-api/v1/providers/{name}`（全量替换 keys） | `before.keys[].key`（库快照）与 `after.keys[].key`（请求参数）均部分掩码；双侧均不含明文 |
+| OL-MASK-005 | 用户创建日志 password 路径不回退 | `POST /open-api/v1/auth/users` | `after.password` == `******`；序列化结果不含明文 |
+
+### 12.3 校验点
+
+- 掩码值精确断言：`token`/`password` 为 `******`；provider key 为 `MaskAPIKeyToken` 形态（如 `sk-aaaaaaaaaaaa` → `sk-a****aaaa`）。
+- "不含明文"断言作用于 `change_summary` 整体序列化结果，而非仅目标字段——防止明文经其他键/嵌套结构二次泄漏。
+- 通过 `resource_type`+`action`+`resource_name`/`resource_id` 三元组过滤轮询锚定日志；token/user 按 `resource_name`、provider 按 `resource_id`（provider 名称）查询。
+
+### 12.4 依赖与清理
+
+各用例资源完全独立（唯一名称），无前置依赖；清理顺序：token 删除、provider 删除、user 删除。修复前 OL-MASK-001/002/003/004 均为 FAIL（明文落库），OL-MASK-005 恒 PASS（密码路径本已干净，作回归保护）。
+
+---
+
+## 13. 工具辅助函数
 
 集成测试在 `testutil` 中新增/使用以下辅助函数：
 
@@ -454,7 +485,7 @@ Entity / API Key 生命周期中嵌套创建、更新、删除配额计划（及
 - `SetGlobalRouteRules(rules []interface{}) error`：设置 Global 路由表。
 - `SimpleRouteRule(name, clusterName string) map[string]interface{}`：构造一条最简单的 Global 路由规则。
 
-## 13. 注意事项
+## 14. 注意事项
 
 1. 操作日志为异步批量落库，默认 5 秒 flush 一次；测试使用轮询而非固定 sleep 等待日志出现。
 2. 不同测试用例共享同一 SQLite 数据库，但每个用例使用唯一资源 ID / 名称，避免相互干扰。
