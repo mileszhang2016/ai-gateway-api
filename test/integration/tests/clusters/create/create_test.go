@@ -46,6 +46,22 @@ func minClusterBody(name, provider string) map[string]interface{} {
 	}
 }
 
+// clusterBodyWithPHC builds a minimal cluster body carrying the given
+// passive_health_check payload (issue #172 validation cases).
+func clusterBodyWithPHC(name, provider string, phc map[string]interface{}) map[string]interface{} {
+	body := minClusterBody(name, provider)
+	body["passive_health_check"] = phc
+	return body
+}
+
+// clusterBodyWithBasic builds a minimal cluster body carrying the given
+// basic payload (issue #173 validation cases).
+func clusterBodyWithBasic(name, provider string, basic map[string]interface{}) map[string]interface{} {
+	body := minClusterBody(name, provider)
+	body["basic"] = basic
+	return body
+}
+
 func assertNoInternalFields(t *testing.T, data map[string]interface{}) {
 	assert.NotContains(t, data, "ready")
 	assert.NotContains(t, data, "sub_clusters")
@@ -96,6 +112,7 @@ func TestClusters_Create(t *testing.T) {
 		name     string
 		body     map[string]interface{}
 		wantCode int
+		wantMsg  string
 		skip     string
 		check    func(t *testing.T, resp *testutil.APIResponse)
 	}{
@@ -527,6 +544,143 @@ func TestClusters_Create(t *testing.T) {
 			},
 			wantCode: 422,
 		},
+		{
+			name:     "CL-1-032 被动健康检查 failnum 负值",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"failnum": -1}),
+			wantCode: 422,
+			wantMsg:  "passive_health_check.failnum must be >= 0",
+		},
+		{
+			name:     "CL-1-033 被动健康检查 interval 负值",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"interval": -1}),
+			wantCode: 422,
+			wantMsg:  "passive_health_check.interval must be >= 0",
+		},
+		{
+			name:     "CL-1-034 被动健康检查 statuscode 超范围",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"statuscode": 999}),
+			wantCode: 422,
+			wantMsg:  "passive_health_check.statuscode must be 0 or in [100, 599]",
+		},
+		{
+			name:     "CL-1-035 被动健康检查 uri 非 / 开头",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"uri": "healthz"}),
+			wantCode: 422,
+			wantMsg:  "passive_health_check.uri must be non-empty and start with '/'",
+		},
+		{
+			name:     "CL-1-036 被动健康检查 uri 显式空串",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"uri": ""}),
+			wantCode: 422,
+			wantMsg:  "passive_health_check.uri must be non-empty and start with '/'",
+		},
+		{
+			name: "CL-1-037 被动健康检查边界合法值",
+			body: clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{
+				"failnum":    0,
+				"interval":   0,
+				"statuscode": 0,
+				"uri":        "/probe",
+			}),
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				phc, ok := data["passive_health_check"].(map[string]interface{})
+				if assert.True(t, ok, "passive_health_check should be an object") {
+					assert.Equal(t, float64(0), phc["failnum"])
+					assert.Equal(t, float64(0), phc["interval"])
+					assert.Equal(t, float64(0), phc["statuscode"])
+					assert.Equal(t, "/probe", phc["uri"])
+				}
+			},
+		},
+		{
+			name:     "CL-1-038 被动健康检查空对象走默认值",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{}),
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				phc, ok := data["passive_health_check"].(map[string]interface{})
+				if assert.True(t, ok, "passive_health_check should be an object") {
+					assert.Equal(t, float64(3), phc["failnum"])
+					assert.Equal(t, float64(1000), phc["interval"])
+					assert.Equal(t, float64(0), phc["statuscode"])
+					assert.Equal(t, "/", phc["uri"])
+				}
+			},
+		},
+		{
+			name:     "CL-1-039 basic.connection.max_idle_conn_per_rs 负值",
+			body:     clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"connection": map[string]interface{}{"max_idle_conn_per_rs": -1}}),
+			wantCode: 422,
+			wantMsg:  "basic.connection.max_idle_conn_per_rs must be >= 0",
+		},
+		{
+			name:     "CL-1-040 basic.retries.max_retry_in_cluster 负值",
+			body:     clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"retries": map[string]interface{}{"max_retry_in_cluster": -1}}),
+			wantCode: 422,
+			wantMsg:  "basic.retries.max_retry_in_cluster must be >= 0",
+		},
+		{
+			name:     "CL-1-041 basic.buffers.req_write_buffer_size 零值",
+			body:     clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"buffers": map[string]interface{}{"req_write_buffer_size": 0}}),
+			wantCode: 422,
+			wantMsg:  "basic.buffers.req_write_buffer_size must be > 0",
+		},
+		{
+			name:     "CL-1-042 basic.timeouts.timeout_conn_serv 零值",
+			body:     clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"timeouts": map[string]interface{}{"timeout_conn_serv": 0}}),
+			wantCode: 422,
+			wantMsg:  "basic.timeouts.timeout_conn_serv must be > 0",
+		},
+		{
+			name: "CL-1-043 basic 边界合法值",
+			body: clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{
+				"connection": map[string]interface{}{"max_idle_conn_per_rs": 0},
+				"retries":    map[string]interface{}{"max_retry_in_cluster": 0},
+				"buffers":    map[string]interface{}{"req_write_buffer_size": 1},
+				"timeouts":   map[string]interface{}{"timeout_conn_serv": 1},
+			}),
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				basic, ok := data["basic"].(map[string]interface{})
+				if assert.True(t, ok, "basic should be an object") {
+					conn, _ := basic["connection"].(map[string]interface{})
+					assert.Equal(t, float64(0), conn["max_idle_conn_per_rs"])
+					retries, _ := basic["retries"].(map[string]interface{})
+					assert.Equal(t, float64(0), retries["max_retry_in_cluster"])
+					buffers, _ := basic["buffers"].(map[string]interface{})
+					assert.Equal(t, float64(1), buffers["req_write_buffer_size"])
+					timeouts, _ := basic["timeouts"].(map[string]interface{})
+					assert.Equal(t, float64(1), timeouts["timeout_conn_serv"])
+				}
+			},
+		},
+		{
+			name:     "CL-1-044 basic 空对象走默认值",
+			body:     clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{}),
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				basic, ok := data["basic"].(map[string]interface{})
+				if assert.True(t, ok, "basic should be an object") {
+					conn, _ := basic["connection"].(map[string]interface{})
+					assert.Equal(t, float64(0), conn["max_idle_conn_per_rs"])
+					retries, _ := basic["retries"].(map[string]interface{})
+					assert.Equal(t, float64(2), retries["max_retry_in_cluster"])
+					buffers, _ := basic["buffers"].(map[string]interface{})
+					assert.Equal(t, float64(512), buffers["req_write_buffer_size"])
+					timeouts, _ := basic["timeouts"].(map[string]interface{})
+					assert.Equal(t, float64(50000), timeouts["timeout_conn_serv"])
+					assert.Equal(t, float64(60000), timeouts["timeout_write_client"])
+				}
+			},
+		},
 	}
 
 	// 预先创建重复集群
@@ -545,6 +699,9 @@ func TestClusters_Create(t *testing.T) {
 			}
 			if resp.ErrNum != tt.wantCode {
 				t.Errorf("expected ErrNum=%d, got ErrNum=%d, ErrMsg=%s", tt.wantCode, resp.ErrNum, resp.ErrMsg)
+			}
+			if tt.wantMsg != "" {
+				assert.Contains(t, resp.ErrMsg, tt.wantMsg)
 			}
 			if tt.check != nil && resp.ErrNum == 200 {
 				tt.check(t, resp)
