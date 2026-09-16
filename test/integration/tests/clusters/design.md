@@ -178,6 +178,16 @@ clusters/
 | CL-1-026 | 合法 key_affinity 配置 | 正常参数 | 验证创建成功且字段回显正确 |
 | CL-1-027 | key_affinity.ttl ≤ 0 | 合法性条件 | 验证 ErrNum=422 |
 | CL-1-028 | key_affinity.redis_prefix 为空 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-029 | provider 不存在 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-030 | model 不在 provider 模型列表中 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-031 | key name 不在 provider 中 | 合法性条件 | 验证 ErrNum=422 |
+| CL-1-032 | 被动健康检查 failnum 负值 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
+| CL-1-033 | 被动健康检查 interval 负值 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
+| CL-1-034 | 被动健康检查 statuscode 超范围 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
+| CL-1-035 | 被动健康检查 uri 非 `/` 开头 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
+| CL-1-036 | 被动健康检查 uri 显式空串 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
+| CL-1-037 | 被动健康检查边界合法值 | 正常参数 | failnum=0/interval=0/statuscode=0 创建成功且回显正确 |
+| CL-1-038 | 被动健康检查空对象 | 正常参数 | 验证默认值填充（3/1000/0/`/`） |
 
 ### 6.4 测试场景详细设计
 
@@ -1822,6 +1832,11 @@ URI：`c`
 | CL-4-011 | 更新 key_affinity | 正常参数 | 验证 PATCH 后 key_affinity 更新生效，InnerAPI 导出一致 |
 | CL-4-012 | 请求体不包含 `name` | 正常参数 | 请求体不传 `name`，验证返回的 `name` 与 URI 一致 |
 | CL-4-013 | 请求体包含 `name` | 异常参数 | 验证 ErrNum=422 |
+| CL-4-014 | 更新 passive_health_check 合法值 | 正常参数 | 验证 PATCH 后回读与 InnerAPI `CheckConf` 导出一致（issue #172） |
+| CL-4-015 | PATCH 被动健康检查 failnum 负值 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
+| CL-4-016 | PATCH 被动健康检查 statuscode 超范围 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
+| CL-4-017 | PATCH 被动健康检查 uri 非 `/` 开头 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
+| CL-4-018 | PATCH 非法被动健康检查不污染存量配置 | 业务规则（issue #172） | 非法 PATCH 被拒后 GET 回读，存量值保持不变 |
 
 ### 9.4 测试场景详细设计
 

@@ -115,6 +115,9 @@ func (p *UpsertParam) Validate() error {
 	if err := validateStickySessions(p.StickySessions); err != nil {
 		return err
 	}
+	if err := validatePassiveHealthCheck(p.PassiveHealthCheck); err != nil {
+		return err
+	}
 	if p.LLMConfig != nil {
 		return validate.LLMConfig(p.LLMConfig)
 	}
@@ -156,6 +159,30 @@ func validateStickySessions(ss *StickySessionsParam) error {
 			clusterHashStrategyClientIPOnly, clusterHashStrategyClientIDOnly, clusterHashStrategyClientIDPrefered)
 	}
 
+	return nil
+}
+
+// validatePassiveHealthCheck enforces the legality conditions of the
+// passive_health_check contract (clusters.md): failnum/interval >= 0,
+// statuscode 0 or 100-599, uri non-empty and starting with "/". Nil fields
+// are left to normalizePassiveHealthCheck for defaults and are not validated.
+func validatePassiveHealthCheck(phc *PassiveHealthCheckParam) error {
+	if phc == nil {
+		return nil
+	}
+	if phc.Failnum != nil && *phc.Failnum < 0 {
+		return xerror.WrapParamErrorWithMsg("passive_health_check.failnum must be >= 0")
+	}
+	if phc.Interval != nil && *phc.Interval < 0 {
+		return xerror.WrapParamErrorWithMsg("passive_health_check.interval must be >= 0")
+	}
+	if phc.Statuscode != nil && *phc.Statuscode != 0 &&
+		(*phc.Statuscode < 100 || *phc.Statuscode > 599) {
+		return xerror.WrapParamErrorWithMsg("passive_health_check.statuscode must be 0 or in [100, 599]")
+	}
+	if phc.Uri != nil && (*phc.Uri == "" || !strings.HasPrefix(*phc.Uri, "/")) {
+		return xerror.WrapParamErrorWithMsg("passive_health_check.uri must be non-empty and start with '/'")
+	}
 	return nil
 }
 

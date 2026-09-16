@@ -365,6 +365,150 @@ func TestClusters_Update(t *testing.T) {
 		testutil.AssertErrCode(t, resp, 422)
 	})
 
+	t.Run("CL-4-014 更新 passive_health_check 合法值", func(t *testing.T) {
+		clusterPHC := testutil.UniqueClusterName()
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterPHC,
+			"llm_config": map[string]interface{}{
+				"models":   []string{"qwen-turbo"},
+				"provider": providerUpdate,
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		if resp.ErrNum != 200 {
+			t.Fatalf("setup create cluster failed: %d %s", resp.ErrNum, resp.ErrMsg)
+		}
+		defer testutil.DeleteCluster(clusterPHC)
+
+		resp, err = testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterPHC, map[string]interface{}{
+			"passive_health_check": map[string]interface{}{
+				"interval":   2000,
+				"failnum":    5,
+				"statuscode": 200,
+				"uri":        "/healthz",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		resp, err = testutil.GetClient().Get("/open-api/v1/clusters/" + clusterPHC)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal failed: %v", err)
+		}
+		phc, _ := data["passive_health_check"].(map[string]interface{})
+		assert.Equal(t, float64(2000), phc["interval"])
+		assert.Equal(t, float64(5), phc["failnum"])
+		assert.Equal(t, float64(200), phc["statuscode"])
+		assert.Equal(t, "/healthz", phc["uri"])
+
+		resp, err = testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("inner api request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var innerData map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &innerData); err != nil {
+			t.Fatalf("unmarshal inner data failed: %v", err)
+		}
+		clusterConf, _ := innerData["ClusterConf"].(map[string]interface{})
+		config, _ := clusterConf["Config"].(map[string]interface{})
+		cluster, _ := config[clusterPHC].(map[string]interface{})
+		checkConf, _ := cluster["CheckConf"].(map[string]interface{})
+		assert.Equal(t, "/healthz", checkConf["Uri"])
+		assert.Equal(t, float64(200), checkConf["StatusCode"])
+		assert.Equal(t, float64(5), checkConf["FailNum"])
+		assert.Equal(t, float64(2000), checkConf["CheckInterval"])
+	})
+
+	t.Run("CL-4-015 PATCH 被动健康检查 failnum 负值拒绝", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
+			"passive_health_check": map[string]interface{}{"failnum": -1},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+		assert.Contains(t, resp.ErrMsg, "passive_health_check.failnum must be >= 0")
+	})
+
+	t.Run("CL-4-016 PATCH 被动健康检查 statuscode 超范围拒绝", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
+			"passive_health_check": map[string]interface{}{"statuscode": 999},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+		assert.Contains(t, resp.ErrMsg, "passive_health_check.statuscode must be 0 or in [100, 599]")
+	})
+
+	t.Run("CL-4-017 PATCH 被动健康检查 uri 非 / 开头拒绝", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
+			"passive_health_check": map[string]interface{}{"uri": "healthz"},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+		assert.Contains(t, resp.ErrMsg, "passive_health_check.uri must be non-empty and start with '/'")
+	})
+
+	t.Run("CL-4-018 PATCH 非法被动健康检查不污染存量配置", func(t *testing.T) {
+		clusterPHCReject := testutil.UniqueClusterName()
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", map[string]interface{}{
+			"name": clusterPHCReject,
+			"passive_health_check": map[string]interface{}{
+				"interval":   3000,
+				"failnum":    4,
+				"statuscode": 200,
+				"uri":        "/live",
+			},
+			"llm_config": map[string]interface{}{
+				"models":   []string{"qwen-turbo"},
+				"provider": providerUpdate,
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		if resp.ErrNum != 200 {
+			t.Fatalf("setup create cluster failed: %d %s", resp.ErrNum, resp.ErrMsg)
+		}
+		defer testutil.DeleteCluster(clusterPHCReject)
+
+		resp, err = testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterPHCReject, map[string]interface{}{
+			"passive_health_check": map[string]interface{}{"failnum": -1, "uri": "no-slash"},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+
+		resp, err = testutil.GetClient().Get("/open-api/v1/clusters/" + clusterPHCReject)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal failed: %v", err)
+		}
+		phc, _ := data["passive_health_check"].(map[string]interface{})
+		assert.Equal(t, float64(3000), phc["interval"])
+		assert.Equal(t, float64(4), phc["failnum"])
+		assert.Equal(t, float64(200), phc["statuscode"])
+		assert.Equal(t, "/live", phc["uri"])
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteCluster(clusterName)
 		testutil.DeleteProvider(providerUpdate)

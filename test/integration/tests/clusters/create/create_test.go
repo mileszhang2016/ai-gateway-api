@@ -46,6 +46,14 @@ func minClusterBody(name, provider string) map[string]interface{} {
 	}
 }
 
+// clusterBodyWithPHC builds a minimal cluster body carrying the given
+// passive_health_check payload (issue #172 validation cases).
+func clusterBodyWithPHC(name, provider string, phc map[string]interface{}) map[string]interface{} {
+	body := minClusterBody(name, provider)
+	body["passive_health_check"] = phc
+	return body
+}
+
 func assertNoInternalFields(t *testing.T, data map[string]interface{}) {
 	assert.NotContains(t, data, "ready")
 	assert.NotContains(t, data, "sub_clusters")
@@ -96,6 +104,7 @@ func TestClusters_Create(t *testing.T) {
 		name     string
 		body     map[string]interface{}
 		wantCode int
+		wantMsg  string
 		skip     string
 		check    func(t *testing.T, resp *testutil.APIResponse)
 	}{
@@ -527,6 +536,73 @@ func TestClusters_Create(t *testing.T) {
 			},
 			wantCode: 422,
 		},
+		{
+			name:     "CL-1-032 被动健康检查 failnum 负值",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"failnum": -1}),
+			wantCode: 422,
+			wantMsg:  "passive_health_check.failnum must be >= 0",
+		},
+		{
+			name:     "CL-1-033 被动健康检查 interval 负值",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"interval": -1}),
+			wantCode: 422,
+			wantMsg:  "passive_health_check.interval must be >= 0",
+		},
+		{
+			name:     "CL-1-034 被动健康检查 statuscode 超范围",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"statuscode": 999}),
+			wantCode: 422,
+			wantMsg:  "passive_health_check.statuscode must be 0 or in [100, 599]",
+		},
+		{
+			name:     "CL-1-035 被动健康检查 uri 非 / 开头",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"uri": "healthz"}),
+			wantCode: 422,
+			wantMsg:  "passive_health_check.uri must be non-empty and start with '/'",
+		},
+		{
+			name:     "CL-1-036 被动健康检查 uri 显式空串",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"uri": ""}),
+			wantCode: 422,
+			wantMsg:  "passive_health_check.uri must be non-empty and start with '/'",
+		},
+		{
+			name: "CL-1-037 被动健康检查边界合法值",
+			body: clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{
+				"failnum":    0,
+				"interval":   0,
+				"statuscode": 0,
+				"uri":        "/probe",
+			}),
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				phc, ok := data["passive_health_check"].(map[string]interface{})
+				if assert.True(t, ok, "passive_health_check should be an object") {
+					assert.Equal(t, float64(0), phc["failnum"])
+					assert.Equal(t, float64(0), phc["interval"])
+					assert.Equal(t, float64(0), phc["statuscode"])
+					assert.Equal(t, "/probe", phc["uri"])
+				}
+			},
+		},
+		{
+			name:     "CL-1-038 被动健康检查空对象走默认值",
+			body:     clusterBodyWithPHC(testutil.UniqueClusterName(), providerFull, map[string]interface{}{}),
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				phc, ok := data["passive_health_check"].(map[string]interface{})
+				if assert.True(t, ok, "passive_health_check should be an object") {
+					assert.Equal(t, float64(3), phc["failnum"])
+					assert.Equal(t, float64(1000), phc["interval"])
+					assert.Equal(t, float64(0), phc["statuscode"])
+					assert.Equal(t, "/", phc["uri"])
+				}
+			},
+		},
 	}
 
 	// 预先创建重复集群
@@ -545,6 +621,9 @@ func TestClusters_Create(t *testing.T) {
 			}
 			if resp.ErrNum != tt.wantCode {
 				t.Errorf("expected ErrNum=%d, got ErrNum=%d, ErrMsg=%s", tt.wantCode, resp.ErrNum, resp.ErrMsg)
+			}
+			if tt.wantMsg != "" {
+				assert.Contains(t, resp.ErrMsg, tt.wantMsg)
 			}
 			if tt.check != nil && resp.ErrNum == 200 {
 				tt.check(t, resp)
