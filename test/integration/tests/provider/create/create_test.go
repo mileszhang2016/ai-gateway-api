@@ -41,13 +41,14 @@ func minProviderBody(name string) map[string]interface{} {
 		"name": name,
 		"instance_pool": []interface{}{
 			map[string]interface{}{
-				
+
 				"addr":   "10.0.0.1",
 				"weight": 100,
 				"port":   8080,
 			},
 		},
 		"model_protocols": []string{"openai"},
+		"models":          []string{"deepseek-chat"},
 	}
 }
 
@@ -76,7 +77,7 @@ func TestProvider_Create(t *testing.T) {
 				var data map[string]interface{}
 				json.Unmarshal(resp.Data, &data)
 				models, _ := data["models"].([]interface{})
-				assert.Empty(t, models)
+				assert.Equal(t, []interface{}{"deepseek-chat"}, models)
 				keys, _ := data["keys"].([]interface{})
 				assert.Empty(t, keys)
 			},
@@ -144,6 +145,7 @@ func TestProvider_Create(t *testing.T) {
 					},
 				},
 				"model_protocols": []string{"anthropic"},
+				"models":          []string{"claude-3-5-sonnet-20241022"},
 			},
 			wantCode: 200,
 			check: func(t *testing.T, resp *testutil.APIResponse) {
@@ -172,6 +174,7 @@ func TestProvider_Create(t *testing.T) {
 					},
 				},
 				"model_protocols": []string{"gemini"},
+				"models":          []string{"gemini-2.5-pro"},
 			},
 			wantCode: 200,
 			check: func(t *testing.T, resp *testutil.APIResponse) {
@@ -193,6 +196,7 @@ func TestProvider_Create(t *testing.T) {
 					},
 				},
 				"model_protocols": []string{"openai"},
+				"models":          []string{"deepseek-chat"},
 			},
 			wantCode: 200,
 			check: func(t *testing.T, resp *testutil.APIResponse) {
@@ -382,6 +386,7 @@ func TestProvider_Create(t *testing.T) {
 					"openai":    "/compatible-mode/v1",
 					"anthropic": "/apps/anthropic",
 				},
+				"models": []string{"deepseek-chat"},
 			},
 			wantCode: 200,
 			check: func(t *testing.T, resp *testutil.APIResponse) {
@@ -457,6 +462,37 @@ func TestProvider_Create(t *testing.T) {
 				},
 				"model_protocols": []string{"openai"},
 				"protocol_paths":  map[string]interface{}{"openai": "/compatible-mode/"},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "PV-1-019 缺少 models",
+			body: map[string]interface{}{
+				"name": testutil.UniqueProviderName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"model_protocols": []string{"openai"},
+			},
+			wantCode: 422,
+		},
+		{
+			name: "PV-1-020 models 为空数组",
+			body: map[string]interface{}{
+				"name": testutil.UniqueProviderName(),
+				"instance_pool": []interface{}{
+					map[string]interface{}{
+						"addr":   "10.0.0.1",
+						"weight": 100,
+						"port":   8080,
+					},
+				},
+				"model_protocols": []string{"openai"},
+				"models":          []string{},
 			},
 			wantCode: 422,
 		},

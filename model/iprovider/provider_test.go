@@ -79,6 +79,24 @@ func TestProviderManager_CreateProvider(t *testing.T) {
 		_, err := m.CreateProvider(ctx, param)
 		require.Error(t, err)
 	})
+
+	t.Run("missing models rejected", func(t *testing.T) {
+		m := NewProviderManager(&fakeTxn{}, &fakeProviderStorager{})
+		param := validProviderParam()
+		param.Models = nil
+		_, err := m.CreateProvider(ctx, param)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "models is required")
+	})
+
+	t.Run("empty models rejected", func(t *testing.T) {
+		m := NewProviderManager(&fakeTxn{}, &fakeProviderStorager{})
+		param := validProviderParam()
+		param.Models = []string{}
+		_, err := m.CreateProvider(ctx, param)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "at least one element")
+	})
 }
 
 func TestProviderManager_UpdateProvider(t *testing.T) {
@@ -107,6 +125,40 @@ func TestProviderManager_UpdateProvider(t *testing.T) {
 		err := m.UpdateProvider(ctx, "deepseek", validProviderParam())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "provider Record Not Exist")
+	})
+
+	t.Run("empty models rejected", func(t *testing.T) {
+		store := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return &Provider{Name: "deepseek"}, nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+		param := validProviderParam()
+		param.Models = []string{}
+		err := m.UpdateProvider(ctx, "deepseek", param)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "at least one element")
+	})
+
+	t.Run("nil models omitted keeps existing", func(t *testing.T) {
+		updated := false
+		store := &fakeProviderStorager{
+			fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+				return &Provider{Name: "deepseek"}, nil
+			},
+			updateFn: func(ctx context.Context, name string, param *ProviderParam) error {
+				updated = true
+				assert.Nil(t, param.Models)
+				return nil
+			},
+		}
+		m := NewProviderManager(&fakeTxn{}, store)
+		param := validProviderParam()
+		param.Models = nil
+		err := m.UpdateProvider(ctx, "deepseek", param)
+		require.NoError(t, err)
+		assert.True(t, updated)
 	})
 
 	t.Run("sync hook invoked when instance_pool changes", func(t *testing.T) {
@@ -699,6 +751,26 @@ func TestValidateProviderParam(t *testing.T) {
 		require.Error(t, ValidateProviderParam(p))
 	})
 
+	t.Run("nil models kept optional for partial update", func(t *testing.T) {
+		p := validProviderParam()
+		p.Models = nil
+		require.NoError(t, ValidateProviderParam(p))
+	})
+
+	t.Run("empty models rejected", func(t *testing.T) {
+		p := validProviderParam()
+		p.Models = []string{}
+		err := ValidateProviderParam(p)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "at least one element")
+	})
+
+	t.Run("blank model element", func(t *testing.T) {
+		p := validProviderParam()
+		p.Models = []string{"m", " "}
+		require.Error(t, ValidateProviderParam(p))
+	})
+
 	t.Run("duplicate key name", func(t *testing.T) {
 		p := validProviderParam()
 		p.Keys = []ProviderKey{{Name: "k", Key: "a"}, {Name: "k", Key: "b"}}
@@ -1145,6 +1217,36 @@ func TestProviderManager_UpdatePricingTiers_PreservesProtocolPaths(t *testing.T)
 	require.NoError(t, err)
 	require.NotNil(t, updated)
 	assert.Equal(t, existing.ProtocolPaths, updated.ProtocolPaths)
+}
+
+func TestProviderManager_UpdatePricingTiers_LegacyEmptyModels(t *testing.T) {
+	// A legacy provider stored with an empty models list must remain
+	// maintainable: models stays nil so the storager's nil-skip preserves
+	// the stored value.
+	existing := &Provider{
+		Name:   "legacy",
+		Models: []string{},
+	}
+	var updated *ProviderParam
+	storager := &fakeProviderStorager{
+		fetchFn: func(ctx context.Context, filter *ProviderFilter) (*Provider, error) {
+			return existing, nil
+		},
+		updateFn: func(ctx context.Context, name string, param *ProviderParam) error {
+			updated = param
+			return nil
+		},
+	}
+	m := NewProviderManager(&fakeTxn{}, storager)
+	err := m.UpdatePricingTiers(context.Background(), "legacy", &PricingTiersParam{
+		TimeZone: "Asia/Shanghai",
+		Tiers: []PricingTier{
+			{Name: "peak", TimeRanges: []TimeRange{{Start: "09:00", End: "12:00"}}},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Nil(t, updated.Models)
 }
 
 func TestProviderManager_UpdateProvider_EffectiveProtocolPaths(t *testing.T) {
