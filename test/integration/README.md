@@ -35,6 +35,11 @@ integration/
     ├── certificate/
     ├── model_provider/
     ├── model_price/
+    ├── operation_log/
+    ├── report/                    # 报表查询（组 A 离线必跑；组 B 需 REPORT_MYSQL_DSN）
+    │   ├── design.md
+    │   ├── not_assembled/not_assembled_test.go
+    │   └── query/query_test.go
     └── innerapi/
 ```
 

@@ -6,6 +6,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/bfenetworks/go-lib v0.0.4
 	github.com/glebarez/go-sqlite v1.21.2
+	github.com/go-sql-driver/mysql v1.6.0
 	github.com/rainway-ai-gateway/ai-gateway-api v0.0.0
 	github.com/stretchr/testify v1.11.1
 )
@@ -21,7 +22,6 @@ require (
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.9.0 // indirect
-	github.com/go-sql-driver/mysql v1.6.0 // indirect
 	github.com/gomodule/redigo v2.0.0+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
