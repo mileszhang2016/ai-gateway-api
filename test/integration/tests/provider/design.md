@@ -152,7 +152,7 @@ provider/
 
 | 用例编号 | 用例名称 | 预期结果 |
 |----------|----------|----------|
-| PV-1-001 | 最小参数创建 Provider | 200，返回的 `description` 为空字符串，`models`/`keys` 为空数组 |
+| PV-1-001 | 最小参数创建 Provider | 200，返回的 `description` 为空字符串，`models` 为 `["deepseek-chat"]`，`keys` 为空数组 |
 | PV-1-002 | 完整参数创建 Provider | 200，返回的 `models`、`keys`、`instance_pool` 与输入一致 |
 | PV-1-002a | 创建 anthropic 协议 Provider | 200，返回的 `model_protocols` 为 `["anthropic"]` |
 | PV-1-002c | 创建 gemini 协议 Provider | 200，返回的 `model_protocols` 为 `["gemini"]` |
@@ -173,6 +173,8 @@ provider/
 | PV-1-016 | `protocol_paths` 非法协议键（如 `gemini`） | 422 |
 | PV-1-017 | `protocol_paths` 值缺少 `/` 前缀 | 422 |
 | PV-1-018 | `protocol_paths` 值以 `/` 结尾 | 422 |
+| PV-1-019 | 缺少 `models` | 422 |
+| PV-1-020 | `models` 为空数组 | 422 |
 
 ### 6.4 测试场景详细设计
 
@@ -180,7 +182,7 @@ provider/
 
 ##### 设计思路
 
-验证仅传入必填字段时，Provider 能够成功创建，且可选字段使用系统默认值。
+验证仅传入必填字段时，Provider 能够成功创建，且可选字段使用系统默认值。`models` 自 issue #115 起为必填字段（至少 1 个元素），最小参数场景同样携带。
 
 ##### 前提数据准备
 
@@ -188,12 +190,12 @@ provider/
 
 ##### 执行步骤
 
-1. 发送 POST 请求到 `/open-api/v1/providers`，请求体仅包含 `name`、`instance_pool`、`model_protocols`。
+1. 发送 POST 请求到 `/open-api/v1/providers`，请求体仅包含 `name`、`instance_pool`、`model_protocols`、`models`。
 2. 验证响应 `ErrNum = 200`。
 3. 断言返回字段：
    - `name` 等于请求传入值；
    - `description` 为空字符串；
-   - `models` 为空数组；
+   - `models` 与请求传入值一致；
    - `keys` 为空数组；
    - `model_protocols` 为 `["openai"]`。
 
@@ -205,7 +207,8 @@ provider/
   "instance_pool": [
     {"addr": "10.0.0.1", "weight": 100, "port": 8080}
   ],
-  "model_protocols": ["openai"]
+  "model_protocols": ["openai"],
+  "models": ["deepseek-chat"]
 }
 ```
 
@@ -220,7 +223,7 @@ provider/
 |------|--------|---------|
 | name | 与请求一致 | Equals |
 | description | "" | Equals |
-| models | [] | Empty |
+| models | ["deepseek-chat"] | Equals |
 | keys | [] | Empty |
 
 ---
@@ -297,7 +300,7 @@ provider/
 
 ---
 
-#### 6.4.4 PV-1-004 ~ PV-1-018：参数校验异常场景
+#### 6.4.4 PV-1-004 ~ PV-1-020：参数校验异常场景
 
 ##### 设计思路
 
@@ -321,6 +324,8 @@ provider/
 | PV-1-016 | `protocol_paths` 非法协议键 | 键为 `gemini`（BFE 改写公式不支持） |
 | PV-1-017 | `protocol_paths` 值缺少 `/` 前缀 | `"openai": "compatible-mode/v1"` |
 | PV-1-018 | `protocol_paths` 值以 `/` 结尾 | `"openai": "/compatible-mode/"` |
+| PV-1-019 | 缺少 `models`（issue #115，必填） | 不包含 `models` |
+| PV-1-020 | `models` 为空数组（issue #115，至少 1 个元素） | `"models": []` |
 
 ##### 预期返回结果
 
@@ -639,13 +644,14 @@ provider/
 | PV-4-006 | 请求体包含 `name` | 422 |
 | PV-4-007 | 省略字段保留原值（issue #147） | 200，`description` 更新成功，未提供的 `time_zone`/`tiers`/`models`/`keys`/`model_endpoint` 全部保留原值 |
 | PV-4-008 | 只更新 `time_zone` | 200，`time_zone` 更新成功，其余字段（含 `tiers`）保留原值 |
-| PV-4-009 | 显式空数组清空字段 | 200，显式传入的 `models`/`keys`/`tiers` 被清空，未提供的 `time_zone`/`description`/`model_endpoint` 保留原值 |
+| PV-4-009 | 显式空数组清空 `keys`/`tiers` | 200，显式传入的 `keys`/`tiers` 被清空，省略的 `models`/`time_zone`/`description`/`model_endpoint` 保留原值 |
 | PV-4-010 | 非法 `time_zone` | 422，且已存储的 `time_zone` 不被修改 |
 | PV-4-011 | 更新 `protocol_paths`（全量替换） | 200，`protocol_paths` 被替换为新值 |
 | PV-4-012 | 省略 `protocol_paths` 保持原值 | 200，未提供时保留原 `protocol_paths` |
 | PV-4-013 | 显式空对象清空 `protocol_paths` | 200，`protocol_paths` 被清空 |
 | PV-4-014 | 收缩 `model_protocols` 与 `protocol_paths` 同请求给出合法组合 | 200，两者同时生效 |
 | PV-4-015 | 仅收缩 `model_protocols` 使存量 `protocol_paths` 非法 | 422，已存储的 `protocol_paths` 不被修改 |
+| PV-4-016 | 显式空 `models` 数组（issue #115） | 422，且已存储的 `models` 不被修改 |
 
 ### 9.4 测试场景详细设计
 
@@ -760,11 +766,13 @@ provider/
 
 **ErrNum**：422
 
-#### 9.4.5 PV-4-007 ~ PV-4-010：部分更新语义（issue #147）
+#### 9.4.5 PV-4-007 ~ PV-4-010、PV-4-016：部分更新语义（issue #147、#115）
 
 ##### 设计思路
 
 验证 PATCH 为部分更新语义：请求体未提供的字段保留原值，显式提供的字段（含空数组）正常更新。回归 issue #147——修复前省略 `time_zone`/`tiers`/`models`/`keys`/`model_endpoint` 会被静默覆盖为默认值或清空。
+
+自 issue #115 起 `models` 为必填字段（至少 1 个元素）：PATCH 省略 `models` 仍表示保留原值（部分更新语义不变），但显式传 `models=[]` 必须 422 拒绝（PV-4-016）——显式提供即全量替换，清空 models 违反合同且可能使已引用 cluster 失效。
 
 测试前置：创建 Provider 时设置自定义 `time_zone=UTC`、`model_endpoint={http, /custom/models}`、`models=["deepseek-chat","deepseek-coder"]`，并通过 `PUT /providers/{name}/pricing-tiers` 设置 peak 时段模板；`keys` 使用创建时的默认两个 Key。
 
@@ -772,8 +780,9 @@ provider/
 
 1. **PV-4-007**：PATCH 请求体只含 `description`（另附校验必填的 `instance_pool`、`model_protocols`），随后 GET 详情，断言 `time_zone`/`tiers`/`models`/`keys`/`model_endpoint` 与前置值一致。
 2. **PV-4-008**：PATCH 请求体只含 `time_zone=Europe/London`，断言更新成功且 `description`、`tiers`、`keys`、`model_endpoint` 保留。
-3. **PV-4-009**：PATCH 请求体显式传 `models=[]`、`keys=[]`、`tiers=[]`，断言三者被清空，而省略的 `time_zone`/`description`/`model_endpoint` 保留。
+3. **PV-4-009**：PATCH 请求体显式传 `keys=[]`、`tiers=[]`，断言二者被清空，而省略的 `models`/`time_zone`/`description`/`model_endpoint` 保留。
 4. **PV-4-010**：PATCH 请求体传非法 `time_zone=Not/AZone`，断言返回 422，且 GET 详情确认存储值未被修改。
+5. **PV-4-016**：PATCH 请求体显式传 `models=[]`，断言返回 422，且 GET 详情确认存储的 `models` 未被修改。
 
 ##### 预期返回结果
 
@@ -781,8 +790,9 @@ provider/
 |------|------|
 | PV-4-007 | 200，未提供的五项字段全部保留原值 |
 | PV-4-008 | 200，`time_zone` 更新为 `Europe/London`，其余字段保留 |
-| PV-4-009 | 200，显式空数组字段被清空，省略字段保留 |
+| PV-4-009 | 200，显式空数组的 `keys`/`tiers` 被清空，`models` 等省略字段保留 |
 | PV-4-010 | 422，存储的 `time_zone` 不被修改 |
+| PV-4-016 | 422，存储的 `models` 不被修改 |
 
 #### 9.4.4 PV-4-011 ~ PV-4-015：protocol_paths 更新语义
 

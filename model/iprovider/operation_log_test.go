@@ -54,6 +54,7 @@ func TestProviderManager_CreateProvider_MasksKeysInOperationLog(t *testing.T) {
 	_, err := manager.CreateProvider(ctx, &ProviderParam{
 		Name:           &name,
 		ModelProtocols: []string{"openai"},
+		Models:         []string{"m1"},
 		Keys:           []ProviderKey{{Name: "k1", Key: rawKey}},
 		InstancePool:   []ProviderInstance{{Addr: "127.0.0.1", Port: 8080, Weight: 1}},
 	})

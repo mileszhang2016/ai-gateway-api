@@ -168,6 +168,15 @@ func (m *ProviderManager) CreateProvider(ctx context.Context, param *ProviderPar
 		return 0, err
 	}
 
+	// Models is required on creation (providers.md): FillDefaults has already
+	// normalized an omitted models to an empty slice, so both "not provided"
+	// and "explicitly empty" are rejected here.
+	if len(param.Models) == 0 {
+		err := xerror.WrapParamErrorWithMsg("models is required and must have at least one element")
+		m.recordProviderOperation(ctx, string(ioperlog.ActionCreate), *param.Name, nil, providerParamToMap(param), err)
+		return 0, err
+	}
+
 	var id int64
 	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		existing, err := m.storager.FetchProvider(ctx, &ProviderFilter{Name: param.Name})
@@ -303,11 +312,13 @@ func (m *ProviderManager) UpdatePricingTiers(ctx context.Context, name string, p
 		oldProvider = existing
 
 		// Preserve all existing provider fields; only update time_zone and tiers.
+		// Models stays nil so the storager's nil-skip keeps the stored value;
+		// a legacy provider with an empty models list must remain maintainable.
 		updateParam := &ProviderParam{
 			Name:           &existing.Name,
 			Description:    &existing.Description,
 			ModelEndpoint:  existing.ModelEndpoint,
-			Models:         existing.Models,
+			Models:         nil,
 			Keys:           existing.Keys,
 			InstancePool:   existing.InstancePool,
 			ModelProtocols: existing.ModelProtocols,
@@ -494,7 +505,10 @@ func ValidateProviderParam(param *ProviderParam) error {
 		}
 	}
 
-	if len(param.Models) > 0 {
+	if param.Models != nil {
+		if len(param.Models) == 0 {
+			return xerror.WrapParamErrorWithMsg("models must have at least one element")
+		}
 		seenModel := map[string]bool{}
 		for i, m := range param.Models {
 			if strings.TrimSpace(m) == "" {
