@@ -20,11 +20,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func setupConfig(t *testing.T) {
@@ -177,7 +177,6 @@ func TestAuthenticateManager_Authenticate_Password(t *testing.T) {
 	})
 
 }
-
 
 func TestAuthenticateManager_Authenticate_Session(t *testing.T) {
 	ctx := context.Background()

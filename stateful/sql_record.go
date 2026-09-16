@@ -21,9 +21,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 )
 
 type SQLRecord struct {

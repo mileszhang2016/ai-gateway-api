@@ -25,13 +25,13 @@ import (
 const tRateLimitPolicyTableName = "rate_limit_policies"
 
 type TRateLimitPolicy struct {
-	ID            int64     `db:"id"`
-	Enabled       bool      `db:"enabled"`
-	MaxConcurrency int      `db:"max_concurrency"`
-	TpmConfigs    string    `db:"tpm_configs"`
-	RpmConfigs    string    `db:"rpm_configs"`
-	CreatedAt     time.Time `db:"created_at"`
-	UpdatedAt     time.Time `db:"updated_at"`
+	ID             int64     `db:"id"`
+	Enabled        bool      `db:"enabled"`
+	MaxConcurrency int       `db:"max_concurrency"`
+	TpmConfigs     string    `db:"tpm_configs"`
+	RpmConfigs     string    `db:"rpm_configs"`
+	CreatedAt      time.Time `db:"created_at"`
+	UpdatedAt      time.Time `db:"updated_at"`
 }
 
 // TRateLimitPolicyOne Query One
@@ -62,13 +62,13 @@ func TRateLimitPolicyList(dbCtx lib.DBContexter, where *TRateLimitPolicyParam) (
 }
 
 type TRateLimitPolicyParam struct {
-	ID            *int64     `db:"id"`
-	Enabled       *bool      `db:"enabled"`
-	MaxConcurrency *int      `db:"max_concurrency"`
-	TpmConfigs    *string    `db:"tpm_configs"`
-	RpmConfigs    *string    `db:"rpm_configs"`
-	CreatedAt     *time.Time `db:"created_at"`
-	UpdatedAt     *time.Time `db:"updated_at"`
+	ID             *int64     `db:"id"`
+	Enabled        *bool      `db:"enabled"`
+	MaxConcurrency *int       `db:"max_concurrency"`
+	TpmConfigs     *string    `db:"tpm_configs"`
+	RpmConfigs     *string    `db:"rpm_configs"`
+	CreatedAt      *time.Time `db:"created_at"`
+	UpdatedAt      *time.Time `db:"updated_at"`
 
 	OrderBy *string `db:"_orderby"`
 }

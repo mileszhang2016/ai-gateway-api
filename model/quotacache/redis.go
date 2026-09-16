@@ -29,8 +29,8 @@ return 1
 `
 
 type redisQuotaCache struct {
-	client            redis_client.Client
-	setQuotaScript    redis_client.RedisScript
+	client         redis_client.Client
+	setQuotaScript redis_client.RedisScript
 }
 
 // NewRedisQuotaCache creates a QuotaCache backed by Redis.

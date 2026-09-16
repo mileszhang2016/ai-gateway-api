@@ -351,8 +351,8 @@ func TestResetExpiredBalances_WithFakeClock(t *testing.T) {
 	}
 
 	t.Run("weekly resets on next Monday", func(t *testing.T) {
-		lastReset := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)               // Monday
-		clock := &fakeClock{t: time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC)}      // next Monday
+		lastReset := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)          // Monday
+		clock := &fakeClock{t: time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC)} // next Monday
 		planStorager := makePlanStorager("weekly", &lastReset)
 		m := newResetTestManager(planStorager, makeAPIKeyStorager(), makeEntityStorager(), clock)
 
@@ -363,8 +363,8 @@ func TestResetExpiredBalances_WithFakeClock(t *testing.T) {
 	})
 
 	t.Run("weekly does not reset within same week", func(t *testing.T) {
-		lastReset := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)               // Monday
-		clock := &fakeClock{t: time.Date(2026, 7, 29, 9, 0, 0, 0, time.UTC)}     // Wednesday
+		lastReset := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)           // Monday
+		clock := &fakeClock{t: time.Date(2026, 7, 29, 9, 0, 0, 0, time.UTC)} // Wednesday
 		planStorager := makePlanStorager("weekly", &lastReset)
 		m := newResetTestManager(planStorager, makeAPIKeyStorager(), makeEntityStorager(), clock)
 
@@ -373,8 +373,8 @@ func TestResetExpiredBalances_WithFakeClock(t *testing.T) {
 	})
 
 	t.Run("monthly resets on next month first day", func(t *testing.T) {
-		lastReset := time.Date(2026, 7, 31, 10, 0, 0, 0, time.UTC)               // Jul 31
-		clock := &fakeClock{t: time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC)}      // Aug 1
+		lastReset := time.Date(2026, 7, 31, 10, 0, 0, 0, time.UTC)          // Jul 31
+		clock := &fakeClock{t: time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC)} // Aug 1
 		planStorager := makePlanStorager("monthly", &lastReset)
 		m := newResetTestManager(planStorager, makeAPIKeyStorager(), makeEntityStorager(), clock)
 
@@ -385,8 +385,8 @@ func TestResetExpiredBalances_WithFakeClock(t *testing.T) {
 	})
 
 	t.Run("monthly does not reset within same month", func(t *testing.T) {
-		lastReset := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)                // Aug 1
-		clock := &fakeClock{t: time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)}     // Aug 15
+		lastReset := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)            // Aug 1
+		clock := &fakeClock{t: time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)} // Aug 15
 		planStorager := makePlanStorager("monthly", &lastReset)
 		m := newResetTestManager(planStorager, makeAPIKeyStorager(), makeEntityStorager(), clock)
 
@@ -395,8 +395,8 @@ func TestResetExpiredBalances_WithFakeClock(t *testing.T) {
 	})
 
 	t.Run("monthly resets across year boundary", func(t *testing.T) {
-		lastReset := time.Date(2025, 12, 31, 10, 0, 0, 0, time.UTC)              // Dec 31
-		clock := &fakeClock{t: time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)}      // Jan 1
+		lastReset := time.Date(2025, 12, 31, 10, 0, 0, 0, time.UTC)         // Dec 31
+		clock := &fakeClock{t: time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)} // Jan 1
 		planStorager := makePlanStorager("monthly", &lastReset)
 		m := newResetTestManager(planStorager, makeAPIKeyStorager(), makeEntityStorager(), clock)
 

@@ -19,9 +19,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 )
 
 func TestCertificateManager_ExportServerCert(t *testing.T) {

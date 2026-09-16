@@ -937,7 +937,6 @@ func TestAPIKeyRuleManager_ContainsQuotaPlan(t *testing.T) {
 	assert.False(t, containsQuotaPlan(collectedQuotaPlans, "other", "qp-1"))
 }
 
-
 func TestAPIKeyRuleManager_ConfigExport_Performance(t *testing.T) {
 	setupState()
 	ctx := context.Background()
