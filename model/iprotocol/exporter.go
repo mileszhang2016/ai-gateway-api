@@ -18,9 +18,9 @@ import (
 	"context"
 	"strings"
 
+	"github.com/bfenetworks/bfe/bfe_config/bfe_tls_conf/server_cert_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
-	"github.com/bfenetworks/bfe/bfe_config/bfe_tls_conf/server_cert_conf"
 )
 
 const (

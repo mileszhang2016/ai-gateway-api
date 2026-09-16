@@ -238,4 +238,3 @@ func TestEntityStoragerAdapter(t *testing.T) {
 		require.Error(t, err)
 	})
 }
-

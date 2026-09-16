@@ -119,3 +119,26 @@ ConnectTimeout = 10
 ReadTimeout = 5
 WriteTimeout = 5
 MaxIdle = 10
+
+# ---------------------------------
+# Report Query Config (optional)
+# see design-docs/modifications/2026-09-15-report-query-api and
+# db_ddl_report_mysql.sql. When [Report] is absent the report module is
+# not assembled and /open-api/v1/report/* stay 404.
+# [Databases.report_db]
+# Driver = "mysql"
+# DBName = "bfe_report"
+# Addr = "127.0.0.1:3306"
+# User = "report_rw"
+# Passwd = "******"
+# MaxOpenConns = 20
+# MaxIdleConns = 5
+#
+# [Report]
+# Backend = "mysql"             # mysql | doris
+# Datasource = "report_db"      # a [Databases.*] entry (doris: FE 9030)
+# Database = ""                 # schema override for table names (optional)
+# EnableAggregateJob = true     # backend=mysql only
+# AggregateIntervalSec = 60
+# RetentionDays = 7
+# EnablePartitionMgmt = true

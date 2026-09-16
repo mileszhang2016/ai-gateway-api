@@ -52,13 +52,25 @@ type ServerManager struct {
 
 // StartServer 使用项目编译的 ai-gateway-api.exe 作为子进程启动测试服务器
 func StartServer() (*ServerManager, error) {
-	return StartServerWithSharedInfra(nil, "")
+	return startServer(nil, "", "")
+}
+
+// StartServerWithExtraConfig 启动一个测试服务器，并把 extraTOML 追加到临时
+// ai_gateway_api.toml 的末尾（在端口/DB/Redis 补丁之后），用于注入额外配置段
+// （如 [Report]、[Databases.xxx]）。extraTOML 为空串时行为与 StartServer 完全
+// 一致。注意：额外数据源（如 MySQL）需要测试自身保证可用。
+func StartServerWithExtraConfig(extraTOML string) (*ServerManager, error) {
+	return startServer(nil, "", extraTOML)
 }
 
 // StartServerWithSharedInfra 启动一个测试服务器，可复用外部传入的 miniredis 与 SQLite 数据库文件。
 // 当 sharedRedis == nil 时创建新的 miniredis；当 sharedDBPath == "" 时创建新的 SQLite 数据库。
 // 该函数用于多实例部署场景，让多个 ai-gateway-api 实例共享同一 Redis（分布式锁）与同一 DB。
 func StartServerWithSharedInfra(sharedRedis *miniredis.Miniredis, sharedDBPath string) (*ServerManager, error) {
+	return startServer(sharedRedis, sharedDBPath, "")
+}
+
+func startServer(sharedRedis *miniredis.Miniredis, sharedDBPath string, extraTOML string) (*ServerManager, error) {
 	sm := &ServerManager{}
 
 	// 1. 获取 integration 目录和项目根目录
@@ -139,7 +151,7 @@ func StartServerWithSharedInfra(sharedRedis *miniredis.Miniredis, sharedDBPath s
 		return nil, fmt.Errorf("get random port: %w", err)
 	}
 
-	tmpConfDir, err := createTempConfig(confDir, sm.binPath, dbPath, port, redisServer.Addr())
+	tmpConfDir, err := createTempConfig(confDir, sm.binPath, dbPath, port, redisServer.Addr(), extraTOML)
 	if err != nil {
 		return nil, fmt.Errorf("create temp config: %w", err)
 	}
@@ -259,8 +271,9 @@ func getRandomPort() (int, error) {
 	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 
-// createTempConfig 创建临时配置文件（覆盖端口、数据库路径和 Redis 配置）
-func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr string) (string, error) {
+// createTempConfig 创建临时配置文件（覆盖端口、数据库路径和 Redis 配置）。
+// extraTOML 非空时追加到文件末尾，用于注入 [Report] 等额外配置段。
+func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr string, extraTOML string) (string, error) {
 	// 创建临时配置目录
 	tmpDir, err := os.MkdirTemp("", "ai-gateway-test-conf-")
 	if err != nil {
@@ -305,6 +318,11 @@ func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr st
 	// 替换 Redis 配置为指向 miniredis
 	confStr = strings.Replace(confStr, `Bns = "mock"`, `Bns = "test.redis.miniredis"`, 1)
 	confStr = strings.Replace(confStr, `ClusterMode = "mock"`, `ClusterMode = "proxy"`, 1)
+
+	// 追加额外配置段（如 [Report]、[Databases.xxx]），追加在补丁之后、文件末尾。
+	if strings.TrimSpace(extraTOML) != "" {
+		confStr += "\n" + strings.TrimSpace(extraTOML) + "\n"
+	}
 
 	if err := os.WriteFile(confFile, []byte(confStr), 0644); err != nil {
 		os.RemoveAll(tmpDir)

@@ -17,8 +17,8 @@ package domain
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCreateParamValidate(t *testing.T) {

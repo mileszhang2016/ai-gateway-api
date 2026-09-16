@@ -21,11 +21,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeAuthenticateStorager struct {
@@ -156,7 +156,6 @@ func setAuthenticateManager(storager iauth.AuthenticateStorager) func() {
 		container.AuthenticateManager = old
 	}
 }
-
 
 func TestUserProbeAction_NoAuthorization(t *testing.T) {
 	defer setAuthenticateManager(&fakeAuthenticateStorager{})()

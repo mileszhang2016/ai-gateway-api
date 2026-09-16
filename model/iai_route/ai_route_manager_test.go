@@ -19,13 +19,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // fakeAIRouteRuleStorager implements AIRouteRuleStorager
@@ -170,4 +170,3 @@ func TestAIRouteRuleManager_FetchAIRouteRules(t *testing.T) {
 		require.Error(t, err)
 	})
 }
-

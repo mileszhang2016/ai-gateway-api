@@ -39,15 +39,15 @@ import (
 )
 
 type ServerConfig struct {
-	ServerAddr          string `validate:"ip"`              // service bind address, default 0.0.0.0
-	ServerPort          int    `validate:"required,min=1"`  // service port
-	MonitorPort         int                                 // monitor port
-	GracefulTimeOutInMs int    `validate:"required,min=1"`  // time out setting for graceful shutdown
+	ServerAddr          string `validate:"ip"`             // service bind address, default 0.0.0.0
+	ServerPort          int    `validate:"required,min=1"` // service port
+	MonitorPort         int    // monitor port
+	GracefulTimeOutInMs int    `validate:"required,min=1"` // time out setting for graceful shutdown
 }
 
 type RunTimeConfig struct {
-	SessionExpireInDay        int    `validate:"required,min=1"`
-	SkipTokenValidate         bool   // skip user identify, you can open it when debug
+	SessionExpireInDay        int  `validate:"required,min=1"`
+	SkipTokenValidate         bool // skip user identify, you can open it when debug
 	RecordSQL                 bool
 	StaticFilePath            string
 	Debug                     bool
@@ -60,12 +60,38 @@ type RunTimeConfig struct {
 	EPPReconcileIntervalSeconds int    // assignment reconciler period in seconds, default 30
 }
 
+// ReportConfig is the [Report] section. It switches the report query
+// backend (mysql | doris) and tunes the MySQL aggregate/partition jobs;
+// when Backend is empty the report module is not assembled at all and the
+// /report/* routes are not registered (see design-docs
+// modifications/2026-09-15-report-query-api).
+type ReportConfig struct {
+	Backend              string // mysql | doris; empty disables the module
+	Datasource           string // name of a [Databases.*] entry
+	Database             string // optional schema override for table names
+	EnableAggregateJob   bool   // backend=mysql: run the minute aggregate job
+	AggregateIntervalSec int    // aggregate period, default 60
+	RetentionDays        int    // retention window of details, default 7
+	EnablePartitionMgmt  bool   // backend=mysql: run the partition management job
+}
+
+// applyDefaults fills the default calibration values.
+func (c *ReportConfig) applyDefaults() {
+	if c.AggregateIntervalSec <= 0 {
+		c.AggregateIntervalSec = 60
+	}
+	if c.RetentionDays <= 0 {
+		c.RetentionDays = 7
+	}
+}
+
 type Config struct {
 	Server    ServerConfig
 	Loggers   map[string]*LoggerConfig `validate:"dive"`
 	Databases map[string]*DbConfig     `validate:"dive"`
 	Depends   DependsConfig
 	RunTime   RunTimeConfig
+	Report    ReportConfig
 
 	Vars      map[string]string
 	LogDir    string
@@ -102,6 +128,8 @@ func LoadConfig(file string) error {
 	if err := lib.LoadConfAuto(file, config); err != nil {
 		return err
 	}
+
+	config.Report.applyDefaults()
 
 	if err := validator.New().Struct(config); err != nil {
 		return err

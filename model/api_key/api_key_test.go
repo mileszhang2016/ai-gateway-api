@@ -355,7 +355,7 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 				return 20, nil
 			},
 		}
-				m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, nil)
+		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, nil)
 		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
 			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
@@ -556,7 +556,7 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 				return 30, nil
 			},
 		}
-				m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, rateLimitStore, routeRulesStore, &fakeEntityStorager{}, nil)
+		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, rateLimitStore, routeRulesStore, &fakeEntityStorager{}, nil)
 		err := m.CreateAPIKey(ctx, &APIKeyParam{
 			ID:              ptrString("id1"),
 			ProductName:     ptrString("test"),

@@ -20,10 +20,10 @@ import (
 	"testing"
 
 	"github.com/bfenetworks/bfe/bfe_config/bfe_tls_conf/server_cert_conf"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const testCertPEM = `-----BEGIN CERTIFICATE-----

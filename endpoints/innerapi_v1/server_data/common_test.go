@@ -129,9 +129,9 @@ func newTestCluster() *icluster_conf.Cluster {
 			Connection: &icluster_conf.ClusterBasicConnection{
 				MaxIdleConnPerRs: 2,
 			},
-			Retries: &icluster_conf.ClusterBasicRetries{},
+			Retries:  &icluster_conf.ClusterBasicRetries{},
 			Timeouts: &icluster_conf.ClusterBasicTimeouts{},
-			Buffers: &icluster_conf.ClusterBasicBuffers{},
+			Buffers:  &icluster_conf.ClusterBasicBuffers{},
 		},
 		StickySessions: &icluster_conf.ClusterStickySessions{},
 	}
