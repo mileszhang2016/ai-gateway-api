@@ -151,13 +151,20 @@ func logWhere(f *ireport.LogFilter) map[string]interface{} {
 	return where
 }
 
+// epochLiteral is the wall-clock UTC epoch used to turn a stored DATETIME
+// into Unix seconds without any session-timezone interpretation
+// (TIMESTAMPDIFF is pure calendar arithmetic; Doris' UNIX_TIMESTAMP reads
+// the DATETIME in the session zone just like MySQL's). log-reader writes
+// UTC wall clock, so the stored value IS the UTC wall clock.
+const epochLiteral = "'1970-01-01 00:00:00'"
+
 // bucketExpr is the Doris time-bucket expression aligned with the Grafana
 // $__timeGroup rendering. The bucket width is server-controlled (one of
 // 60/300/1800 computed by the manager) and inlined as an integer literal:
 // gendry cannot bind parameters inside SELECT fields.
 func bucketExpr(timeCol string, bucketSec int) string {
 	b := strconv.Itoa(bucketSec)
-	return "CAST(FLOOR(UNIX_TIMESTAMP(" + timeCol + ")/" + b + ")*" + b + " AS BIGINT) AS time"
+	return "CAST(FLOOR(TIMESTAMPDIFF(SECOND, " + epochLiteral + ", " + timeCol + ")/" + b + ")*" + b + " AS BIGINT) AS time"
 }
 
 var overviewMetricFields = []string{
@@ -343,9 +350,11 @@ func buildLogsCountSQL(detailTable string, f *ireport.LogFilter) (string, []inte
 
 // logRowFields is the display projection of the detail row, identical to
 // the MySQL backend (the two tables share column names by design).
+// log_time renders via TIMESTAMPDIFF so the value is session-timezone
+// neutral on both backends.
 var logRowFields = []string{
 	"logid",
-	"UNIX_TIMESTAMP(log_time) AS log_time",
+	"TIMESTAMPDIFF(SECOND, " + epochLiteral + ", log_time) AS log_time",
 	"hostid",
 	"product",
 	"ai_apikey_id",

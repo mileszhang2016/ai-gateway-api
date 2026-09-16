@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -567,17 +568,58 @@ func partitionBoundaries(parts []partitionInfo) []time.Time {
 	return boundaries
 }
 
-var dateInTextRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
+var (
+	dateInTextRe  = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
+	toDaysValueRe = regexp.MustCompile(`^\d+$`)
+)
 
-// parseBoundaryDate extracts the first YYYY-MM-DD date from a RANGE
-// partition description such as "TO_DAYS('2026-09-18')". The result is a
-// civil day (UTC midnight) with no timezone attached.
+// toDaysUnixEpoch is TO_DAYS('1970-01-01'): the offset between MySQL's
+// TO_DAYS numbering and civil days. FROM_DAYS / TO_DAYS use the proleptic
+// Gregorian calendar, the same arithmetic Go's time package uses, so
+// FROM_DAYS(n) is exactly epoch + (n - toDaysUnixEpoch) days.
+const toDaysUnixEpoch = 719528
+
+// toDaysMinSane bounds the accepted TO_DAYS values to dates after ~1916 so
+// a bogus small integer description cannot make the planner try to add a
+// cascade of partitions.
+const toDaysMinSane = 700000
+
+// parseBoundaryDate resolves the exclusive upper-day of a RANGE partition
+// from its PARTITION_DESCRIPTION. MySQL 8.x echoes the evaluated form, so
+// three shapes are accepted:
+//
+//  1. plain integer — the evaluated TO_DAYS('YYYY-MM-DD') value, inverted
+//     with FROM_DAYS arithmetic;
+//  2. literal date text "TO_DAYS('YYYY-MM-DD')" or a bare 'YYYY-MM-DD'
+//     (kept for other shapes/versions that echo text);
+//  3. "MAXVALUE" — unbounded; treated as unparseable, which keeps the
+//     partition out of DROP decisions (conservative, never drops blindly).
+//
+// Anything else is unparseable and skipped by the planners. The result is
+// a civil day (UTC midnight) with no timezone attached.
 func parseBoundaryDate(description string) (time.Time, bool) {
-	text := dateInTextRe.FindString(description)
+	text := strings.TrimSpace(description)
 	if text == "" {
 		return time.Time{}, false
 	}
-	day, err := time.Parse("2006-01-02", text)
+	if strings.EqualFold(text, "MAXVALUE") {
+		return time.Time{}, false
+	}
+
+	unquoted := strings.Trim(text, `'"`)
+	if toDaysValueRe.MatchString(unquoted) {
+		n, err := strconv.Atoi(unquoted)
+		if err != nil || n < toDaysMinSane {
+			return time.Time{}, false
+		}
+		return time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, n-toDaysUnixEpoch), true
+	}
+
+	dateText := dateInTextRe.FindString(text)
+	if dateText == "" {
+		return time.Time{}, false
+	}
+	day, err := time.Parse("2006-01-02", dateText)
 	if err != nil {
 		return time.Time{}, false
 	}

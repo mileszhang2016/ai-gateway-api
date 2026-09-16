@@ -153,9 +153,9 @@ EnablePartitionMgmt = false
 | keyword 超长 | 129 字符 | 422 |
 | page_size 超上限 | page_size=101 | **封顶为 100 并成功**（对齐 operation-logs 分页惯例：超限截断而非报错） |
 
-### 7.6 时区处理
+### 7.6 时区口径
 
-时序桶时间与明细 `log_time` 由 SQL `UNIX_TIMESTAMP` 生成，其值取决于 MySQL 会话时区；测试通过 `SELECT UNIX_TIMESTAMP('<种子时刻>')` 在同一实例上取参照值断言，避免对服务器时区做假设。
+查询侧所有「DATETIME → Unix 秒」的渲染使用 `TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', <col>)`（纯日历算术），不依赖 MySQL 会话时区——`UNIX_TIMESTAMP` 会按会话时区解读墙钟，而 log-reader 以 UTC 墙钟写入，二者混用会产生 8 小时偏移（SC31 实测）。因此断言直接对比 UTC epoch 常量（`epoch("2026-09-15 10:00:00")` 等），无需时区解耦绕法。
 
 ### 7.7 清理方式
 

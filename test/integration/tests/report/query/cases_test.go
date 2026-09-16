@@ -99,11 +99,11 @@ func TestTimeSeries_QPS(t *testing.T) {
 	assert.Equal(t, 60, data.BucketSec)
 	require.Len(t, data.Series, 2)
 
-	assert.Equal(t, unixTS(t, "2026-09-15 10:00:00"), data.Series[0].Time)
+	assert.Equal(t, epoch("2026-09-15 10:00:00"), data.Series[0].Time)
 	require.NotNil(t, data.Series[0].Value)
 	assert.InDelta(t, 10, *data.Series[0].Value, 1e-9) // 600/60
 
-	assert.Equal(t, unixTS(t, "2026-09-15 10:01:00"), data.Series[1].Time)
+	assert.Equal(t, epoch("2026-09-15 10:01:00"), data.Series[1].Time)
 	require.NotNil(t, data.Series[1].Value)
 	assert.InDelta(t, 1, *data.Series[1].Value, 1e-9) // 60/60
 }
@@ -257,7 +257,7 @@ func TestLogs_RowShape(t *testing.T) {
 
 	// log_time 为 Unix 秒（UNIX_TIMESTAMP 语义，与种子时刻一致）。
 	newest := byID[1006]
-	assert.Equal(t, unixTS(t, "2026-09-15 10:02:00"), newest.LogTime)
+	assert.Equal(t, epoch("2026-09-15 10:02:00"), newest.LogTime)
 	require.NotNil(t, newest.Hostid)
 	assert.Equal(t, "gw-01", *newest.Hostid)
 	require.NotNil(t, newest.Product)

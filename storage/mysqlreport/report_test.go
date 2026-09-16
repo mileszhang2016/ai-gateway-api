@@ -131,30 +131,30 @@ func TestBuildTimeSeriesSQL_AllMetrics(t *testing.T) {
 	}{
 		{
 			ireport.MetricQPS, 60,
-			"SELECT CAST(FLOOR(UNIX_TIMESTAMP(ts_min)/60)*60 AS SIGNED) AS time,SUM(request_count) AS total" +
+			"SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/60)*60 AS SIGNED) AS time,SUM(request_count) AS total" +
 				" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time ORDER BY time ASC",
 		},
 		{
 			ireport.MetricTokens, 300,
-			"SELECT CAST(FLOOR(UNIX_TIMESTAMP(ts_min)/300)*300 AS SIGNED) AS time,SUM(input_tokens) AS input," +
+			"SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS SIGNED) AS time,SUM(input_tokens) AS input," +
 				"SUM(output_tokens) AS output,SUM(total_tokens) AS total" +
 				" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time ORDER BY time ASC",
 		},
 		{
 			ireport.MetricLatency, 1800,
-			"SELECT CAST(FLOOR(UNIX_TIMESTAMP(ts_min)/1800)*1800 AS SIGNED) AS time,SUM(all_time_sum) AS all_time_sum," +
+			"SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/1800)*1800 AS SIGNED) AS time,SUM(all_time_sum) AS all_time_sum," +
 				"SUM(request_count) AS request_count,MAX(all_time_sum/request_count) AS latency_max" +
 				" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time ORDER BY time ASC",
 		},
 		{
 			ireport.MetricTTFT, 60,
-			"SELECT CAST(FLOOR(UNIX_TIMESTAMP(ts_min)/60)*60 AS SIGNED) AS time,SUM(ttft_us_sum) AS ttft_us_sum," +
+			"SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/60)*60 AS SIGNED) AS time,SUM(ttft_us_sum) AS ttft_us_sum," +
 				"SUM(tpot_us_sum) AS tpot_us_sum,SUM(CASE WHEN ai_stream=1 THEN request_count ELSE 0 END) AS stream_requests" +
 				" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time ORDER BY time ASC",
 		},
 		{
 			ireport.MetricCost, 60,
-			"SELECT CAST(FLOOR(UNIX_TIMESTAMP(ts_min)/60)*60 AS SIGNED) AS time,ai_cost_currency AS currency," +
+			"SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/60)*60 AS SIGNED) AS time,ai_cost_currency AS currency," +
 				"SUM(ai_cost_value_sum) AS value" +
 				" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time,ai_cost_currency ORDER BY time ASC",
 		},
@@ -287,7 +287,7 @@ func TestBuildLogsSQL_Projection(t *testing.T) {
 	}
 	query, _, err := buildLogsSQL("bfe_ai_request_log", f)
 	require.NoError(t, err)
-	assert.Contains(t, query, "UNIX_TIMESTAMP(log_time) AS log_time")
+	assert.Contains(t, query, "TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', log_time) AS log_time")
 	assert.Contains(t, query, "ai_auth_reject_quota_plans")
 	assert.Contains(t, query, "req_headers")
 	assert.Contains(t, query, "res_headers")
@@ -395,4 +395,26 @@ func TestNullPtrHelpers(t *testing.T) {
 	s := sql.NullString{String: "x", Valid: true}
 	require.NotNil(t, nullStringPtr(s))
 	assert.Equal(t, "x", *nullStringPtr(s))
+}
+
+// TestUnixSecondRendering_TimezoneNeutral 是时区口径问题的说明性测试：
+// 所有「DATETIME → Unix 秒」的渲染必须走 TIMESTAMPDIFF（日历算术，不依赖
+// MySQL 会话时区），不得使用按会话时区解读墙钟的 UNIX_TIMESTAMP。
+// log-reader 以 UTC 墙钟写入 log_time，存储值即 UTC 墙钟。
+func TestUnixSecondRendering_TimezoneNeutral(t *testing.T) {
+	for _, bucket := range []int{60, 300, 1800} {
+		expr := bucketExpr(bucket)
+		assert.Contains(t, expr, "TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)")
+		assert.NotContains(t, expr, "UNIX_TIMESTAMP")
+	}
+	for _, field := range logRowFields {
+		assert.NotContains(t, field, "UNIX_TIMESTAMP", "field: %s", field)
+	}
+	assert.Contains(t, logRowFields[1], "TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', log_time)")
+
+	// 口径自洽性：TIMESTAMPDIFF 对 UTC 墙钟做日历算术，结果即真实 Unix 秒
+	//（该值与任何会话时区无关；UNIX_TIMESTAMP 在 CST 会话下会把同一墙钟
+	// 解读为 1789437600 = 2026-09-15 02:00:00 UTC，正是本修复消除的 8h 偏移）。
+	want := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC).Unix()
+	assert.Equal(t, int64(1789466400), want)
 }

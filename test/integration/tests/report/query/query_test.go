@@ -25,7 +25,6 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 // 本用例组在真实 MySQL 8.x 上验证 /report/* 五个查询端点。
@@ -254,16 +253,6 @@ func findRepoFile(name string) (string, error) {
 		}
 		dir = parent
 	}
-}
-
-// unixTS 查询 MySQL 会话对同一时刻值返回的 Unix 秒（与 api 进程同一
-// UNIX_TIMESTAMP 语义，避免会话时区差异导致断言漂移）。带参数的
-// UNIX_TIMESTAMP 返回 DECIMAL，需 CAST 回整数。
-func unixTS(t *testing.T, datetime string) int64 {
-	t.Helper()
-	var ts int64
-	require.NoError(t, mysqlDB.QueryRow("SELECT CAST(UNIX_TIMESTAMP(?) AS SIGNED)", datetime).Scan(&ts))
-	return ts
 }
 
 func windowQuery() map[string]string {

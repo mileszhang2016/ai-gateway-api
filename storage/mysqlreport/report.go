@@ -157,13 +157,20 @@ func logWhere(f *ireport.LogFilter) map[string]interface{} {
 	return where
 }
 
+// epochLiteral is the wall-clock UTC epoch used to turn a stored DATETIME
+// into Unix seconds without any session-timezone interpretation:
+// TIMESTAMPDIFF is pure calendar arithmetic, unlike UNIX_TIMESTAMP which
+// reads the DATETIME in the session zone (log-reader writes UTC wall
+// clock, so the stored value IS the UTC wall clock).
+const epochLiteral = "'1970-01-01 00:00:00'"
+
 // bucketExpr is the MySQL time-bucket expression. The bucket width is
 // server-controlled (one of 60/300/1800 computed by the manager), so it is
 // inlined as an integer literal: gendry cannot bind parameters inside
 // SELECT fields.
 func bucketExpr(bucketSec int) string {
-	return "CAST(FLOOR(UNIX_TIMESTAMP(ts_min)/" + strconv.Itoa(bucketSec) + ")*" +
-		strconv.Itoa(bucketSec) + " AS SIGNED) AS time"
+	return "CAST(FLOOR(TIMESTAMPDIFF(SECOND, " + epochLiteral + ", ts_min)/" +
+		strconv.Itoa(bucketSec) + ")*" + strconv.Itoa(bucketSec) + " AS SIGNED) AS time"
 }
 
 // overviewMetricFields are the aggregate SUM columns of the overview card.
@@ -312,11 +319,13 @@ func buildLogsCountSQL(detailTable string, f *ireport.LogFilter) (string, []inte
 }
 
 // logRowFields is the display projection of the detail row; JSON columns
-// are returned verbatim. log_time is converted to unix seconds in SQL so
-// the scan does not depend on the driver's ParseTime setting.
+// are returned verbatim. log_time is converted to unix seconds with
+// TIMESTAMPDIFF (calendar arithmetic, session-timezone neutral) so the
+// scan does not depend on the driver's ParseTime setting or the MySQL
+// session zone.
 var logRowFields = []string{
 	"logid",
-	"UNIX_TIMESTAMP(log_time) AS log_time",
+	"TIMESTAMPDIFF(SECOND, " + epochLiteral + ", log_time) AS log_time",
 	"hostid",
 	"product",
 	"ai_apikey_id",

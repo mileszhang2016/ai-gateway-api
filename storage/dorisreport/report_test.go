@@ -97,15 +97,15 @@ func TestBuildTimeSeriesSQL_Dialect(t *testing.T) {
 
 	query, args, err := buildTimeSeriesSQL("bfe_ai_metrics_1m", ireport.MetricQPS, f, 300)
 	require.NoError(t, err)
-	// Grafana-style bucket: CAST(FLOOR(UNIX_TIMESTAMP(ts_min)/300)*300 AS BIGINT)
-	assert.Equal(t, "SELECT CAST(FLOOR(UNIX_TIMESTAMP(ts_min)/300)*300 AS BIGINT) AS time,"+
+	// Session-timezone neutral bucket: CAST(FLOOR(TIMESTAMPDIFF(SECOND, epoch, ts_min)/300)*300 AS BIGINT)
+	assert.Equal(t, "SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS BIGINT) AS time,"+
 		"SUM(request_count) AS total"+
 		" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time ORDER BY time ASC", query)
 	assert.Equal(t, []interface{}{testStart, testEnd}, args)
 
 	query, _, err = buildLatencyPercentileSQL("bfe_ai_request_log", f, 60)
 	require.NoError(t, err)
-	assert.Equal(t, "SELECT CAST(FLOOR(UNIX_TIMESTAMP(log_time)/60)*60 AS BIGINT) AS time,"+
+	assert.Equal(t, "SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', log_time)/60)*60 AS BIGINT) AS time,"+
 		"PERCENTILE_APPROX(all_time, 0.5) AS p50,"+
 		"PERCENTILE_APPROX(all_time, 0.9) AS p90,"+
 		"PERCENTILE_APPROX(all_time, 0.99) AS p99"+

@@ -376,14 +376,77 @@ func TestPlanPartitionDrops(t *testing.T) {
 }
 
 func TestParseBoundaryDate(t *testing.T) {
+	// 字面文本形态（部分形态/版本回显 TO_DAYS('...') 文本）。
 	day, ok := parseBoundaryDate("TO_DAYS('2026-09-18')")
 	require.True(t, ok)
 	assert.Equal(t, "2026-09-18", day.Format("2006-01-02"))
 
+	day, ok = parseBoundaryDate("'2026-09-18'")
+	require.True(t, ok)
+	assert.Equal(t, "2026-09-18", day.Format("2006-01-02"))
+
+	// 求值整数形态：MySQL 8.x 对 VALUES LESS THAN (TO_DAYS('...')) 回显
+	// TO_DAYS 值（如 738886 = 2023-01-01），需 FROM_DAYS 反解。
+	day, ok = parseBoundaryDate("738886")
+	require.True(t, ok)
+	assert.Equal(t, "2023-01-01", day.Format("2006-01-02"))
+
+	day, ok = parseBoundaryDate("740242")
+	require.True(t, ok)
+	assert.Equal(t, "2026-09-18", day.Format("2006-01-02"))
+
+	day, ok = parseBoundaryDate("740243")
+	require.True(t, ok)
+	assert.Equal(t, "2026-09-19", day.Format("2006-01-02"))
+
+	// MAXVALUE：无边界的尾分区，视为不可解析（保守跳过 DROP 决策）。
 	_, ok = parseBoundaryDate("MAXVALUE")
+	assert.False(t, ok)
+
+	// 非法/过小整数/空：不可解析。
+	_, ok = parseBoundaryDate("not_a_number")
+	assert.False(t, ok)
+	_, ok = parseBoundaryDate("5")
 	assert.False(t, ok)
 	_, ok = parseBoundaryDate("")
 	assert.False(t, ok)
+}
+
+// TestPlanPartitionAdds_IntegerDescriptions 回归 SC31 的 Error 1493 噪音：
+// information_schema 对 TO_DAYS 分区回显求值整数，若解析失败 JOB 会把现有
+// 分区当作缺失并重复 ADD PARTITION（Error 1493）。整数反解后规划必须识别
+// 现有分区、不再追加。
+func TestPlanPartitionAdds_IntegerDescriptions(t *testing.T) {
+	now := time.Date(2026, 9, 18, 3, 30, 0, 0, time.UTC)
+
+	//  ahead 窗口 [09-18, 09-21) 需要边界覆盖到 09-21（740245）。分区全部
+	// 以整数形态回显（MySQL 8.x 实测形态）：740242=09-18 … 740245=09-21。
+	// 反解正确 → 规划为空，不再重复 ADD（修复前逐周期 Error 1493）。
+	parts := []partitionInfo{
+		{Name: "p_init", Description: "740242"},
+		{Name: "p20260918", Description: "740243"},
+		{Name: "p20260919", Description: "740244"},
+		{Name: "p20260920", Description: "740245"},
+	}
+	assert.Empty(t, planPartitionAdds(now, 3, partitionBoundaries(parts)),
+		"partitions already cover the ahead window, must not re-add")
+
+	// 混合形态（文本 + 整数 + MAXVALUE 尾分区）同样不误加。
+	mixed := []partitionInfo{
+		{Name: "p20260918", Description: "TO_DAYS('2026-09-19')"},
+		{Name: "p20260919", Description: "740244"},
+		{Name: "p20260920", Description: "740245"},
+		{Name: "pmax", Description: "MAXVALUE"},
+	}
+	assert.Empty(t, planPartitionAdds(now, 3, partitionBoundaries(mixed)))
+
+	// 整数反解后 DROP 决策同样生效：740236 = TO_DAYS('2026-09-12') ≤ 保留
+	// 下限（cutoff 2026-09-12），p_init 被清理；740243(09-19) 保留。
+	dropParts := []partitionInfo{
+		{Name: "p_init", Description: "740236"},
+		{Name: "p20260919", Description: "740243"},
+	}
+	assert.Equal(t, []string{"p_init"}, planPartitionDrops(now, 7, dropParts))
 }
 
 func TestBuildPartitionSQLs(t *testing.T) {
