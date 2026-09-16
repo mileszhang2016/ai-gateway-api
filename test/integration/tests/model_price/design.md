@@ -19,7 +19,7 @@ Model Price 模块负责模型定价数据的管理，支持：
 | MP-2 | 新增单条记录 | POST | `/open-api/v1/model-prices` | 创建单条模型定价 |
 | MP-3 | 分页列表查询 | GET | `/open-api/v1/model-prices` | 支持 provider、mode 过滤 |
 | MP-4 | 按 ID 查询单条 | GET | `/open-api/v1/model-prices/{id}` | - |
-| MP-5 | 按组合键查询（列表过滤） | GET | `/open-api/v1/model-prices` | 需传 provider + model + mode，返回列表 |
+| MP-5 | 按组合键查询单条 | GET | `/open-api/v1/model-prices` | 需传 provider + model + mode，三参齐全返回单条对象（issue #170） |
 | MP-6 | 按 ID 修改单条 | PUT | `/open-api/v1/model-prices/{id}` | 支持部分字段更新 |
 | MP-7 | 按组合键修改单条 | PUT | `/open-api/v1/model-prices` | 需传 provider + model + mode |
 | MP-8 | 按 ID 删除单条 | DELETE | `/open-api/v1/model-prices/{id}` | - |
@@ -707,7 +707,7 @@ models:
 | 接口名称 | 按组合键查询 |
 | 方法 | GET |
 | 路径 | `/open-api/v1/model-prices` |
-| 说明 | 通过 provider + model + mode 过滤查询；由于当前 GET `/model-prices` 为列表接口，返回符合过滤条件的列表（命中时 1 条，未命中时 0 条） |
+| 说明 | 三参齐全时按 §3.6 返回单条 ModelPrice 对象（issue #170 修复后行为）；带 model 但缺参返回 422，不回落列表 |
 
 ### 11.2 接口参数说明
 
@@ -723,9 +723,9 @@ models:
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| MP-5-001 | 查询存在的组合键 | 正常参数 | 返回只包含 1 条记录的列表 |
-| MP-5-002 | 缺少 query 参数 | 边界场景 | 按现有参数进行列表过滤 |
-| MP-5-003 | 查询不存在的组合键 | 异常参数 | 返回空列表 |
+| MP-5-001 | 查询存在的组合键 | 正常参数 | 返回单个 ModelPrice 对象（非列表包装），字段匹配 |
+| MP-5-002 | 缺少 query 参数 | 边界场景 | 带 model 但缺 mode，验证 ErrNum=422 |
+| MP-5-003 | 查询不存在的组合键 | 异常参数 | 验证 ErrNum=404（Record Not Exist） |
 
 ### 11.4 测试场景详细设计
 
@@ -733,7 +733,7 @@ models:
 
 ##### 设计思路
 
-验证通过 provider/model/mode 可唯一定位记录；当前实现走列表接口，返回总条数为 1 的列表。
+验证通过 provider/model/mode 可唯一定位记录；§3.6 单记录契约要求 Data 为单个对象（无 `list`/`pagination` 键），字段直接匹配。
 
 ##### 前提数据准备
 
@@ -742,11 +742,45 @@ models:
 ##### 执行步骤
 
 1. GET `/open-api/v1/model-prices?provider=deepseek&model=deepseek-v3&mode=chat`。
-2. 验证返回 200，`total=1`，`items[0]` 的字段匹配。
+2. 验证返回 200，Data 为单对象：`provider`/`model`/`mode` 字段匹配，且不含 `list`、`pagination` 键。
 
 ##### 预期返回结果
 
 **ErrNum**：200
+
+---
+
+#### MP-5-002：缺少 query 参数（边界场景）
+
+##### 设计思路
+
+带 `model` 但三参不齐时按 §3.6 拒绝：参数错误（422），不回落列表语义（避免"看起来成功"的静默错位）。
+
+##### 执行步骤
+
+1. GET `/open-api/v1/model-prices?provider=deepseek&model=deepseek-v3`（缺少 mode）。
+2. 验证 ErrNum=422。
+
+##### 预期返回结果
+
+**ErrNum**：422
+
+---
+
+#### MP-5-003：查询不存在的组合键（异常参数）
+
+##### 设计思路
+
+三参齐全但组合键不存在时返回 Record Not Exist（404）。
+
+##### 执行步骤
+
+1. GET `/open-api/v1/model-prices?provider=deepseek&model=not-exist&mode=chat`。
+2. 验证 ErrNum=404。
+
+##### 预期返回结果
+
+**ErrNum**：404
 
 ---
 

@@ -129,7 +129,8 @@ func ListAction(req *http.Request) (interface{}, error) {
    - mode 非法（如 `mode=foo`）→ 参数错误；
    - 不带 model：无参 / 仅 provider / 仅 mode / provider+mode → 列表形状与过滤行为不变（§3.4 回归护栏）；
    - 行为分支不依赖注册顺序，直接调 `ListAction` 验证。
-2. **E2E**：SC1301-TC029 在修复部署后走 requeue-real-verification 真验转 PASSED（三记录回读 id/provider/model/mode/价格匹配 + 缺参矩阵拒绝）。
+2. **本地集成测试对齐**（`test/integration/tests/model_price/`，随 issue #172 修复批次执行时发现并修正）：`one/one_test.go` MP-5-001~003 原断言旧列表语义（三参齐全返回列表包装 / 缺参回落列表 / 未命中空列表 200），已改写为新契约——MP-5-001 断言单对象形状（无 `list`/`pagination` 键、字段直配）、MP-5-002 断言 422、MP-5-003 断言 404；`design.md` MP-5 章节（接口说明、场景总览、详细设计）同步改写，MP-3 列表用例（仅 provider/mode/page 过滤）不受影响。
+3. **E2E**：SC1301-TC029 在修复部署后走 requeue-real-verification 真验转 PASSED（三记录回读 id/provider/model/mode/价格匹配 + 缺参矩阵拒绝）。
 
 ## 8. 风险与兼容性
 
