@@ -112,6 +112,9 @@ func (p *UpsertParam) Validate() error {
 	if err := validate.ClusterName(*p.Name); err != nil {
 		return err
 	}
+	if err := validateBasicRanges(p.Basic); err != nil {
+		return err
+	}
 	if err := validateStickySessions(p.StickySessions); err != nil {
 		return err
 	}
@@ -182,6 +185,45 @@ func validatePassiveHealthCheck(phc *PassiveHealthCheckParam) error {
 	}
 	if phc.Uri != nil && (*phc.Uri == "" || !strings.HasPrefix(*phc.Uri, "/")) {
 		return xerror.WrapParamErrorWithMsg("passive_health_check.uri must be non-empty and start with '/'")
+	}
+	return nil
+}
+
+// validateBasicRanges enforces the numeric range conditions of the basic
+// contract (clusters.md): connection/retries >= 0, buffers/timeouts > 0.
+// Nil fields are left to normalizeBasic for defaults and are not validated.
+func validateBasicRanges(basic *BasicParam) error {
+	if basic == nil {
+		return nil
+	}
+	if basic.Connection != nil && basic.Connection.MaxIdleConnPerRs != nil &&
+		*basic.Connection.MaxIdleConnPerRs < 0 {
+		return xerror.WrapParamErrorWithMsg("basic.connection.max_idle_conn_per_rs must be >= 0")
+	}
+	if basic.Retries != nil && basic.Retries.MaxRetryInCluster != nil &&
+		*basic.Retries.MaxRetryInCluster < 0 {
+		return xerror.WrapParamErrorWithMsg("basic.retries.max_retry_in_cluster must be >= 0")
+	}
+	if basic.Buffers != nil && basic.Buffers.ReqWriteBufferSize != nil &&
+		*basic.Buffers.ReqWriteBufferSize <= 0 {
+		return xerror.WrapParamErrorWithMsg("basic.buffers.req_write_buffer_size must be > 0")
+	}
+	if basic.Timeouts != nil {
+		if basic.Timeouts.TimeoutConnServ != nil && *basic.Timeouts.TimeoutConnServ <= 0 {
+			return xerror.WrapParamErrorWithMsg("basic.timeouts.timeout_conn_serv must be > 0")
+		}
+		if basic.Timeouts.TimeoutResponseHeader != nil && *basic.Timeouts.TimeoutResponseHeader <= 0 {
+			return xerror.WrapParamErrorWithMsg("basic.timeouts.timeout_response_header must be > 0")
+		}
+		if basic.Timeouts.TimeoutReadbodyClient != nil && *basic.Timeouts.TimeoutReadbodyClient <= 0 {
+			return xerror.WrapParamErrorWithMsg("basic.timeouts.timeout_readbody_client must be > 0")
+		}
+		if basic.Timeouts.TimeoutReadClientAgain != nil && *basic.Timeouts.TimeoutReadClientAgain <= 0 {
+			return xerror.WrapParamErrorWithMsg("basic.timeouts.timeout_read_client_again must be > 0")
+		}
+		if basic.Timeouts.TimeoutWriteClient != nil && *basic.Timeouts.TimeoutWriteClient <= 0 {
+			return xerror.WrapParamErrorWithMsg("basic.timeouts.timeout_write_client must be > 0")
+		}
 	}
 	return nil
 }

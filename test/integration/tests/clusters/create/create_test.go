@@ -54,6 +54,14 @@ func clusterBodyWithPHC(name, provider string, phc map[string]interface{}) map[s
 	return body
 }
 
+// clusterBodyWithBasic builds a minimal cluster body carrying the given
+// basic payload (issue #173 validation cases).
+func clusterBodyWithBasic(name, provider string, basic map[string]interface{}) map[string]interface{} {
+	body := minClusterBody(name, provider)
+	body["basic"] = basic
+	return body
+}
+
 func assertNoInternalFields(t *testing.T, data map[string]interface{}) {
 	assert.NotContains(t, data, "ready")
 	assert.NotContains(t, data, "sub_clusters")
@@ -600,6 +608,76 @@ func TestClusters_Create(t *testing.T) {
 					assert.Equal(t, float64(1000), phc["interval"])
 					assert.Equal(t, float64(0), phc["statuscode"])
 					assert.Equal(t, "/", phc["uri"])
+				}
+			},
+		},
+		{
+			name:     "CL-1-039 basic.connection.max_idle_conn_per_rs 负值",
+			body:     clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"connection": map[string]interface{}{"max_idle_conn_per_rs": -1}}),
+			wantCode: 422,
+			wantMsg:  "basic.connection.max_idle_conn_per_rs must be >= 0",
+		},
+		{
+			name:     "CL-1-040 basic.retries.max_retry_in_cluster 负值",
+			body:     clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"retries": map[string]interface{}{"max_retry_in_cluster": -1}}),
+			wantCode: 422,
+			wantMsg:  "basic.retries.max_retry_in_cluster must be >= 0",
+		},
+		{
+			name:     "CL-1-041 basic.buffers.req_write_buffer_size 零值",
+			body:     clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"buffers": map[string]interface{}{"req_write_buffer_size": 0}}),
+			wantCode: 422,
+			wantMsg:  "basic.buffers.req_write_buffer_size must be > 0",
+		},
+		{
+			name:     "CL-1-042 basic.timeouts.timeout_conn_serv 零值",
+			body:     clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{"timeouts": map[string]interface{}{"timeout_conn_serv": 0}}),
+			wantCode: 422,
+			wantMsg:  "basic.timeouts.timeout_conn_serv must be > 0",
+		},
+		{
+			name: "CL-1-043 basic 边界合法值",
+			body: clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{
+				"connection": map[string]interface{}{"max_idle_conn_per_rs": 0},
+				"retries":    map[string]interface{}{"max_retry_in_cluster": 0},
+				"buffers":    map[string]interface{}{"req_write_buffer_size": 1},
+				"timeouts":   map[string]interface{}{"timeout_conn_serv": 1},
+			}),
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				basic, ok := data["basic"].(map[string]interface{})
+				if assert.True(t, ok, "basic should be an object") {
+					conn, _ := basic["connection"].(map[string]interface{})
+					assert.Equal(t, float64(0), conn["max_idle_conn_per_rs"])
+					retries, _ := basic["retries"].(map[string]interface{})
+					assert.Equal(t, float64(0), retries["max_retry_in_cluster"])
+					buffers, _ := basic["buffers"].(map[string]interface{})
+					assert.Equal(t, float64(1), buffers["req_write_buffer_size"])
+					timeouts, _ := basic["timeouts"].(map[string]interface{})
+					assert.Equal(t, float64(1), timeouts["timeout_conn_serv"])
+				}
+			},
+		},
+		{
+			name:     "CL-1-044 basic 空对象走默认值",
+			body:     clusterBodyWithBasic(testutil.UniqueClusterName(), providerFull, map[string]interface{}{}),
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				json.Unmarshal(resp.Data, &data)
+				basic, ok := data["basic"].(map[string]interface{})
+				if assert.True(t, ok, "basic should be an object") {
+					conn, _ := basic["connection"].(map[string]interface{})
+					assert.Equal(t, float64(0), conn["max_idle_conn_per_rs"])
+					retries, _ := basic["retries"].(map[string]interface{})
+					assert.Equal(t, float64(2), retries["max_retry_in_cluster"])
+					buffers, _ := basic["buffers"].(map[string]interface{})
+					assert.Equal(t, float64(512), buffers["req_write_buffer_size"])
+					timeouts, _ := basic["timeouts"].(map[string]interface{})
+					assert.Equal(t, float64(50000), timeouts["timeout_conn_serv"])
+					assert.Equal(t, float64(60000), timeouts["timeout_write_client"])
 				}
 			},
 		},

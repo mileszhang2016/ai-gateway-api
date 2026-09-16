@@ -188,6 +188,12 @@ clusters/
 | CL-1-036 | 被动健康检查 uri 显式空串 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
 | CL-1-037 | 被动健康检查边界合法值 | 正常参数 | failnum=0/interval=0/statuscode=0 创建成功且回显正确 |
 | CL-1-038 | 被动健康检查空对象 | 正常参数 | 验证默认值填充（3/1000/0/`/`） |
+| CL-1-039 | basic.connection.max_idle_conn_per_rs 负值 | 合法性条件（issue #173） | 验证 ErrNum=422 且错误可归因 |
+| CL-1-040 | basic.retries.max_retry_in_cluster 负值 | 合法性条件（issue #173） | 验证 ErrNum=422 且错误可归因 |
+| CL-1-041 | basic.buffers.req_write_buffer_size 零值 | 合法性条件（issue #173） | 验证 ErrNum=422 且错误可归因 |
+| CL-1-042 | basic.timeouts.timeout_conn_serv 零值 | 合法性条件（issue #173） | 验证 ErrNum=422 且错误可归因 |
+| CL-1-043 | basic 边界合法值 | 正常参数 | max_idle=0/max_retry=0/buffer=1/timeout=1 创建成功且回显正确 |
+| CL-1-044 | basic 空对象 | 正常参数 | 验证默认值填充（0/2/512/50000 等） |
 
 ### 6.4 测试场景详细设计
 
@@ -1837,6 +1843,11 @@ URI：`c`
 | CL-4-016 | PATCH 被动健康检查 statuscode 超范围 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
 | CL-4-017 | PATCH 被动健康检查 uri 非 `/` 开头 | 合法性条件（issue #172） | 验证 ErrNum=422 且错误可归因 |
 | CL-4-018 | PATCH 非法被动健康检查不污染存量配置 | 业务规则（issue #172） | 非法 PATCH 被拒后 GET 回读，存量值保持不变 |
+| CL-4-019 | PATCH basic.connection.max_idle_conn_per_rs 负值 | 合法性条件（issue #173） | 验证 ErrNum=422 且错误可归因 |
+| CL-4-020 | PATCH basic.retries.max_retry_in_cluster 负值 | 合法性条件（issue #173） | 验证 ErrNum=422 且错误可归因 |
+| CL-4-021 | PATCH basic.buffers.req_write_buffer_size 零值 | 合法性条件（issue #173） | 验证 ErrNum=422 且错误可归因 |
+| CL-4-022 | PATCH basic.timeouts.timeout_conn_serv 零值 | 合法性条件（issue #173） | 验证 ErrNum=422 且错误可归因 |
+| CL-4-023 | PATCH 非法 basic 不污染存量配置 | 业务规则（issue #173） | 非法 PATCH 被拒后 GET 回读，存量 basic 配置保持不变 |
 
 ### 9.4 测试场景详细设计
 

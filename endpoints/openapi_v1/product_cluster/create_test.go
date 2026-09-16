@@ -364,3 +364,142 @@ func TestUpsertParamValidate_PassiveHealthCheck(t *testing.T) {
 		assert.NoError(t, p.Validate())
 	})
 }
+
+// TestValidateBasicRanges verifies the numeric range conditions of the basic
+// contract (issue #173): connection/retries >= 0, buffers/timeouts > 0.
+func TestValidateBasicRanges(t *testing.T) {
+	t.Run("nil basic is allowed", func(t *testing.T) {
+		assert.NoError(t, validateBasicRanges(nil))
+	})
+
+	t.Run("empty basic object is allowed", func(t *testing.T) {
+		assert.NoError(t, validateBasicRanges(&BasicParam{}))
+	})
+
+	t.Run("negative max_idle_conn_per_rs", func(t *testing.T) {
+		err := validateBasicRanges(&BasicParam{
+			Connection: &ConnectionParam{MaxIdleConnPerRs: lib.PInt16(-1)},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "basic.connection.max_idle_conn_per_rs must be >= 0")
+	})
+
+	t.Run("negative max_retry_in_cluster", func(t *testing.T) {
+		err := validateBasicRanges(&BasicParam{
+			Retries: &RetriesParam{MaxRetryInCluster: lib.PInt8(-1)},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "basic.retries.max_retry_in_cluster must be >= 0")
+	})
+
+	t.Run("zero req_write_buffer_size", func(t *testing.T) {
+		err := validateBasicRanges(&BasicParam{
+			Buffers: &BuffersParam{ReqWriteBufferSize: lib.PInt32(0)},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "basic.buffers.req_write_buffer_size must be > 0")
+	})
+
+	t.Run("all five timeouts must be > 0", func(t *testing.T) {
+		cases := []struct {
+			name  string
+			build func() *BasicParam
+			msg   string
+		}{
+			{"timeout_conn_serv", func() *BasicParam {
+				return &BasicParam{Timeouts: &TimeoutsParam{TimeoutConnServ: lib.PInt32(0)}}
+			}, "basic.timeouts.timeout_conn_serv must be > 0"},
+			{"timeout_response_header", func() *BasicParam {
+				return &BasicParam{Timeouts: &TimeoutsParam{TimeoutResponseHeader: lib.PInt32(0)}}
+			}, "basic.timeouts.timeout_response_header must be > 0"},
+			{"timeout_readbody_client", func() *BasicParam {
+				return &BasicParam{Timeouts: &TimeoutsParam{TimeoutReadbodyClient: lib.PInt32(0)}}
+			}, "basic.timeouts.timeout_readbody_client must be > 0"},
+			{"timeout_read_client_again", func() *BasicParam {
+				return &BasicParam{Timeouts: &TimeoutsParam{TimeoutReadClientAgain: lib.PInt32(0)}}
+			}, "basic.timeouts.timeout_read_client_again must be > 0"},
+			{"timeout_write_client", func() *BasicParam {
+				return &BasicParam{Timeouts: &TimeoutsParam{TimeoutWriteClient: lib.PInt32(0)}}
+			}, "basic.timeouts.timeout_write_client must be > 0"},
+		}
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				err := validateBasicRanges(c.build())
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), c.msg)
+			})
+		}
+	})
+
+	t.Run("boundary values are allowed", func(t *testing.T) {
+		assert.NoError(t, validateBasicRanges(&BasicParam{
+			Connection: &ConnectionParam{MaxIdleConnPerRs: lib.PInt16(0)},
+			Retries:    &RetriesParam{MaxRetryInCluster: lib.PInt8(0)},
+			Buffers:    &BuffersParam{ReqWriteBufferSize: lib.PInt32(1)},
+			Timeouts: &TimeoutsParam{
+				TimeoutConnServ:        lib.PInt32(1),
+				TimeoutResponseHeader:  lib.PInt32(1),
+				TimeoutReadbodyClient:  lib.PInt32(1),
+				TimeoutReadClientAgain: lib.PInt32(1),
+				TimeoutWriteClient:     lib.PInt32(1),
+			},
+		}))
+	})
+}
+
+// TestUpsertParamValidate_BasicRanges verifies that UpsertParam.Validate (the
+// single hook shared by POST /clusters and PATCH /clusters/{name}) rejects
+// out-of-range basic values (issue #173).
+func TestUpsertParamValidate_BasicRanges(t *testing.T) {
+	base := func() *UpsertParam {
+		return &UpsertParam{
+			Name: lib.PString("test-cluster"),
+			LLMConfig: &icluster_conf.LLMConfig{
+				Provider: lib.PString("openai"),
+				Models:   []string{"gpt-4"},
+			},
+		}
+	}
+
+	t.Run("nil basic is allowed", func(t *testing.T) {
+		assert.NoError(t, base().Validate())
+	})
+
+	t.Run("max_idle_conn_per_rs=-1 fails", func(t *testing.T) {
+		p := base()
+		p.Basic = &BasicParam{Connection: &ConnectionParam{MaxIdleConnPerRs: lib.PInt16(-1)}}
+		require.Error(t, p.Validate())
+	})
+
+	t.Run("max_retry_in_cluster=-1 fails", func(t *testing.T) {
+		p := base()
+		p.Basic = &BasicParam{Retries: &RetriesParam{MaxRetryInCluster: lib.PInt8(-1)}}
+		require.Error(t, p.Validate())
+	})
+
+	t.Run("req_write_buffer_size=0 fails", func(t *testing.T) {
+		p := base()
+		p.Basic = &BasicParam{Buffers: &BuffersParam{ReqWriteBufferSize: lib.PInt32(0)}}
+		require.Error(t, p.Validate())
+	})
+
+	t.Run("timeout_write_client=0 fails", func(t *testing.T) {
+		p := base()
+		p.Basic = &BasicParam{Timeouts: &TimeoutsParam{TimeoutWriteClient: lib.PInt32(0)}}
+		require.Error(t, p.Validate())
+	})
+
+	t.Run("boundary legal values pass", func(t *testing.T) {
+		p := base()
+		p.Basic = &BasicParam{
+			Connection: &ConnectionParam{MaxIdleConnPerRs: lib.PInt16(0)},
+			Retries:    &RetriesParam{MaxRetryInCluster: lib.PInt8(0)},
+			Buffers:    &BuffersParam{ReqWriteBufferSize: lib.PInt32(1)},
+			Timeouts: &TimeoutsParam{
+				TimeoutConnServ:       lib.PInt32(50000),
+				TimeoutResponseHeader: lib.PInt32(50000),
+			},
+		}
+		assert.NoError(t, p.Validate())
+	})
+}
