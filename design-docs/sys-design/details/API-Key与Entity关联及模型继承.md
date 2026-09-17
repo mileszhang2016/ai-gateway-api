@@ -56,6 +56,15 @@ API-Key 通过 `api_keys.entity_id` 字段与 Entity 关联；Entity 通过 `ent
 
 即：层级只能从高级别指向低级别，不能同级或反向。
 
+### 3.4 不可变字段
+
+`type` 在 Entity 创建后固定，更新接口（PUT/PATCH）不得改写：
+
+- 请求体携带的 `type` 与库中值**不同** → 拒绝（422 PARAM），库中值保持不变；
+- 省略或与原值相同 → 放行（PATCH 省略保持原值；PUT 回传原值是正常回环场景）。
+
+守卫分两层：接口层 fail-fast（`endpoints/openapi_v1/entity/validator.go`），模型层权威校验并在拒绝时记录操作日志（`model/entity/entity_manager.go` `UpdateEntity`，issue #178）。`type` 决定层级语义（Entity-Type 的 `level`），允许改写会破坏 §3.3 的层级不变量。
+
 ---
 
 ## 4. API-Key 与 Entity 的关联

@@ -175,3 +175,35 @@ func TestValidateEntityParam(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateTypeImmutable(t *testing.T) {
+	childType := "dept_child"
+	rootType := "dept_root"
+	emptyType := ""
+
+	cases := []struct {
+		name         string
+		paramType    *string
+		existingType *string
+		wantErr      bool
+	}{
+		{name: "nil param type allowed", paramType: nil, existingType: &childType, wantErr: false},
+		{name: "nil existing allowed", paramType: &childType, existingType: nil, wantErr: false},
+		{name: "both nil allowed", paramType: nil, existingType: nil, wantErr: false},
+		{name: "same type allowed", paramType: &childType, existingType: &childType, wantErr: false},
+		{name: "different type rejected", paramType: &rootType, existingType: &childType, wantErr: true},
+		{name: "set type on empty stored rejected", paramType: &rootType, existingType: &emptyType, wantErr: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateTypeImmutable(tc.paramType, tc.existingType)
+			if tc.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "type is immutable")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

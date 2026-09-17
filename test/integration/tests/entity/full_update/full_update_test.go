@@ -281,6 +281,63 @@ func TestEntity_FullUpdate(t *testing.T) {
 		}
 	})
 
+	t.Run("E-4-007 全量更新修改 type 为不同值被拒绝（issue #178 回归）", func(t *testing.T) {
+		otherTypeName := testutil.UniqueEntityTypeName()
+		if _, err := testutil.CreateEntityType(otherTypeName, 1); err != nil {
+			t.Fatalf("setup entity type failed: %v", err)
+		}
+		defer testutil.DeleteEntityType(otherTypeName)
+
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         testutil.UniqueEntityName(),
+			"type":         otherTypeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+
+		// GET 回读：type 必须保持创建时的值
+		detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + entityID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, detail)
+		testutil.AssertDataFieldEquals(t, detail, "type", typeName)
+	})
+
+	t.Run("E-4-008 全量更新携带相同 type 放行（issue #178 回归）", func(t *testing.T) {
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         testutil.UniqueEntityName(),
+			"type":         typeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "type", typeName)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteEntity(entityID)
 		testutil.DeleteEntityType(typeName)
