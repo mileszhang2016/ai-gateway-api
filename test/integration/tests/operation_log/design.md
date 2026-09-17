@@ -21,7 +21,8 @@
 | 失败日志资源身份 | 1 |
 | 嵌套资源审计归属（issue #161） | 9 |
 | change_summary 敏感字段脱敏（issue #162） | 5 |
-| **合计** | **38** |
+| unlimited reset 失败语义（issue #183） | 2 |
+| **合计** | **40** |
 
 ## 4. 认证方式
 
@@ -36,8 +37,10 @@ operation_log/
 │   └── list_test.go
 ├── masking/
 │   └── masking_test.go
-└── nested_audit/
-    └── nested_audit_test.go
+├── nested_audit/
+│   └── nested_audit_test.go
+└── unlimited_reset/
+    └── unlimited_reset_test.go
 ```
 
 ## 6. 多域 API 操作日志生成

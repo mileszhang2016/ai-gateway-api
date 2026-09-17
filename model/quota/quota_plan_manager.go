@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
@@ -159,9 +160,9 @@ func (m *QuotaPlanManager) ResetBalance(ctx context.Context, planID int64, newQu
 		}
 		oldPlan = plan
 
-		// 2. 如果是无限配额，返回错误
+		// 2. 如果是无限配额，返回错误（PARAM 语义错误 → 422 Param Illegal，issue #183）
 		if plan.Unlimited != nil && *plan.Unlimited {
-			return fmt.Errorf("cannot reset balance for unlimited quota")
+			return xerror.WrapParamErrorWithMsg("cannot reset balance for unlimited quota")
 		}
 
 		// 3. 确定重置后的配额总量
