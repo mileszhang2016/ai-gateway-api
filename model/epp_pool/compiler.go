@@ -33,7 +33,7 @@ import (
 //	    {"name": "kv-scorer", "type": "kv-cache-utilization-scorer", "parameters": {}},
 //	    {"name": "queue-scorer", "type": "queue-scorer", "parameters": {}},
 //	    {"name": "prefix-scorer", "type": "prefix-cache-scorer", "parameters": {}},
-//	    {"name": "session-scorer", "type": "session-affinity-scorer", "parameters": {"sessionIdConfig": {"sources": [{"header": "x-session-id"}]}}},
+//	    {"name": "session-scorer", "type": "session-affinity-scorer", "parameters": {"strategy": "session_id", "sessionIdConfig": {"sources": [{"header": "x-session-id"}]}}},
 //	    {"name": "max-score", "type": "max-score-picker", "parameters": {}},
 //	    {"name": "openai-parser", "type": "openai-parser", "parameters": {}}
 //	  ],
@@ -146,6 +146,11 @@ const (
 	pluginTypeOpenAIParser   = "openai-parser"
 )
 
+// sessionAffinityStrategySessionID must match llm-d-router's
+// sessionaffinity.StrategySessionID: the plugin only reads sessionIdConfig
+// when strategy is "session_id".
+const sessionAffinityStrategySessionID = "session_id"
+
 const metricKVCacheUtilization = "kv-cache-utilization"
 
 const featureGateFlowControl = "flowControl"
@@ -222,6 +227,7 @@ func CompileEppConfig(clusterName string, conf *EppConfigSimplified) *EndpointPi
 			Name: pluginNameSessionScorer,
 			Type: pluginTypeSessionScorer,
 			Parameters: map[string]interface{}{
+				"strategy": sessionAffinityStrategySessionID,
 				"sessionIdConfig": map[string]interface{}{
 					"sources": []map[string]interface{}{
 						{"header": *conf.SessionAffinityHeader},

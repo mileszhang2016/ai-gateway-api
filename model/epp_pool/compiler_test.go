@@ -127,6 +127,7 @@ func TestCompileEppConfig_SessionAffinity(t *testing.T) {
 	plugin := findPlugin(t, conf, pluginNameSessionScorer)
 	require.NotNil(t, plugin)
 	assert.Equal(t, pluginTypeSessionScorer, plugin.Type)
+	assert.Equal(t, "session_id", plugin.Parameters["strategy"])
 	sessionIDConfig, ok := plugin.Parameters["sessionIdConfig"].(map[string]interface{})
 	require.True(t, ok)
 	sources, ok := sessionIDConfig["sources"].([]map[string]interface{})
