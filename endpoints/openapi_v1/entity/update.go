@@ -60,6 +60,10 @@ func EntityUpdateAction(req *http.Request) (interface{}, error) {
 		return nil, err
 	}
 
+	if err := validateTypeImmutable(param.Type, existing.Type); err != nil {
+		return nil, err
+	}
+
 	if _, err := container.EntityManager.UpdateEntity(req.Context(), &entity.EntityFilter{
 		EntityID: updateReq.EntityID,
 	}, param); err != nil {

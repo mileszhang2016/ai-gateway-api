@@ -253,6 +253,41 @@ func TestEntity_PartialUpdate(t *testing.T) {
 		testutil.AssertDataFieldEquals(t, detail, "allow_models", []interface{}{"model-a", "model-b"})
 	})
 
+	t.Run("E-5-008 部分更新修改 type 为不同值被拒绝（issue #178 回归）", func(t *testing.T) {
+		otherTypeName := testutil.UniqueEntityTypeName()
+		if _, err := testutil.CreateEntityType(otherTypeName, 1); err != nil {
+			t.Fatalf("setup entity type failed: %v", err)
+		}
+		defer testutil.DeleteEntityType(otherTypeName)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"type": otherTypeName,
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+
+		// GET 回读：type 必须保持创建时的值
+		detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + entityID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, detail)
+		testutil.AssertDataFieldEquals(t, detail, "type", typeName)
+	})
+
+	t.Run("E-5-009 部分更新省略 type 保持原值（issue #178 回归）", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"allow_models": []string{"gpt-4"},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "type", typeName)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteEntity(entityID)
 		testutil.DeleteEntityType(typeName)

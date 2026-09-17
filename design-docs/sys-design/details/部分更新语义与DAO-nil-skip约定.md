@@ -47,3 +47,13 @@ OpenAPI 的 PATCH 接口（`/api-keys/{id}`、`/entities/{id}`、`/providers/{pr
 - 单元测试：`storage/rdb/api_key/api_key_test.go`、`storage/rdb/entity/entity_test.go`（sqlite 内存库，覆盖省略保留 / 显式写入 / Create 默认三种路径）；
 - 集成测试：`test/integration/tests/api_key/partial_update`（AK-5-006/007）、`test/integration/tests/entity/partial_update`（E-5-006/007）；
 - E2E：SC1101-TC019（API-Key）、SC1203-TC028（Entity）。
+
+## 6. 与"不可变字段拒绝改写"的关系（issue #178）
+
+本文所述 nil-skip 机制解决的是"**省略**字段保留原值"；另一类更新期约束是"**不可变**字段拒绝改写"，两者机制不同、互补：
+
+- Entity 的 `type` 创建后固定：PUT/PATCH 携带与库中**不同**的值时直接拒绝（422 PARAM），而不是保留原值后静默成功；
+- 守卫在接口层（`endpoints/openapi_v1/entity/validator.go` fail-fast）与模型层（`model/entity/entity_manager.go` `UpdateEntity`，拒绝时记录操作日志），属比对拒绝，**不依赖** storager 层 nil-skip；
+- 省略 `type` 仍走 nil-skip 保持原值。
+
+变更记录：[modifications/2026-09-17-issue-178-entity-immutable-type](../../modifications/2026-09-17-issue-178-entity-immutable-type/change-summary.md)。

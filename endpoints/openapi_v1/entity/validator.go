@@ -58,3 +58,13 @@ func validateEntityParam(param *entity.EntityParam, requireNameType bool) error 
 
 	return nil
 }
+
+// validateTypeImmutable 执行 Entity type 不可变约束（api-define entities.md §2.4/§2.5）：
+// type 创建后固定，全量/部分更新携带与库中不同的值时拒绝。
+// 携带与库中相同的值放行（GET→修改→PUT 回环必须可用）；paramType 为 nil（未携带）不触发。
+func validateTypeImmutable(paramType, existingType *string) error {
+	if paramType != nil && existingType != nil && *paramType != *existingType {
+		return xerror.WrapParamErrorWithMsg("type is immutable, cannot be modified after creation")
+	}
+	return nil
+}

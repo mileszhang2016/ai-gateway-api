@@ -270,6 +270,17 @@ func (m *EntityManager) UpdateEntity(ctx context.Context, filter *EntityFilter, 
 		}
 	}
 
+	// type 不可变守卫（issue #178，api-define entities.md §2.4/§2.5）：
+	// 请求携带与库中不同的 type 直接拒绝，先于 level 校验执行，
+	// 避免用新 type 跑 level 校验产生误导性错误；拒绝按 checkEntityLevel
+	// 前置失败分支同模式记录审计。
+	if param.Type != nil && oldEntity != nil && oldEntity.Type != nil && *param.Type != *oldEntity.Type {
+		err := xerror.WrapParamErrorWithMsg("type is immutable, cannot be modified from %s to %s", *oldEntity.Type, *param.Type)
+		entityID, entityName, parentID := resolveEntityIdentifiers(filter, param, oldEntity)
+		m.recordEntityOperation(ctx, string(ioperlog.ActionUpdate), entityID, entityName, parentID, entityParamToMap(oldEntity), entityParamToMap(param), err)
+		return 0, err
+	}
+
 	if param.ParentID != nil && *param.ParentID != "" && param.Type != nil && m.entityTypeStorager != nil {
 		if err := m.checkEntityLevel(ctx, *param.Type, *param.ParentID); err != nil {
 			entityID, entityName, parentID := resolveEntityIdentifiers(filter, param, oldEntity)

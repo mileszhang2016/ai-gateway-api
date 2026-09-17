@@ -573,6 +573,85 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "entity type level (1) must be higher than parent entity type level (1)")
 	})
+
+	t.Run("type change rejected", func(t *testing.T) {
+		entityID := "ent-1"
+		innerID := int64(100)
+		childType := "dept_child"
+		rootType := "dept_root"
+
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				return []*EntityParam{{
+					InnerID:  &innerID,
+					EntityID: &entityID,
+					Name:     lib.PString("ent-one"),
+					Type:     &childType,
+				}}, nil
+			},
+			updateFn: func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+
+		_, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{Type: &rootType})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "type is immutable")
+		assert.Empty(t, entityStore.updated)
+	})
+
+	t.Run("same type allowed", func(t *testing.T) {
+		entityID := "ent-1"
+		innerID := int64(100)
+		childType := "dept_child"
+
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				return []*EntityParam{{
+					InnerID:  &innerID,
+					EntityID: &entityID,
+					Name:     lib.PString("ent-one"),
+					Type:     &childType,
+				}}, nil
+			},
+			updateFn: func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+
+		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{Type: &childType})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), affected)
+		require.Len(t, entityStore.updated, 1)
+	})
+
+	t.Run("nil type allowed", func(t *testing.T) {
+		entityID := "ent-1"
+		innerID := int64(100)
+		childType := "dept_child"
+
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				return []*EntityParam{{
+					InnerID:  &innerID,
+					EntityID: &entityID,
+					Name:     lib.PString("ent-one"),
+					Type:     &childType,
+				}}, nil
+			},
+			updateFn: func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+
+		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{Name: lib.PString("ent-renamed")})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), affected)
+		require.Len(t, entityStore.updated, 1)
+	})
 }
 
 func TestEntityManager_FetchEntityList(t *testing.T) {
