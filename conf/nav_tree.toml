@@ -31,6 +31,11 @@ children = [
 ]
 
 [[children]]
+id = "report.list"
+text = "ReportManage"
+allowed_roles = ["admin"]
+
+[[children]]
 id = "user.list"
 text = "UserManage"
 allowed_roles = ["admin"]
