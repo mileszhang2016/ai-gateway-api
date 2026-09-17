@@ -119,4 +119,34 @@ func TestQuotaPlanManager_OwnerPropagation(t *testing.T) {
 		assert.Equal(t, "1", entry.ResourceID)
 		assert.Equal(t, "entity-940", entry.ResourceParentID)
 	})
+
+	// issue #183 / SC2101-TC047 断言 3：unlimited reset 必须失败并产生
+	// status=2、error_msg 非空、owner 关联的审计日志，且不改变配额（无 update 调用）。
+	t.Run("ResetBalance unlimited failure records failed audit", func(t *testing.T) {
+		recorder := &fakeOperationLogRecorder{}
+		planStore := &fakeQuotaPlanStorager{
+			fetchFn: func(ctx context.Context, filter *QuotaPlanFilter) (*QuotaPlanParam, error) {
+				return &QuotaPlanParam{ID: lib.PInt64(1), Unlimited: lib.PBool(true)}, nil
+			},
+			updateFn: func(ctx context.Context, filter *QuotaPlanFilter, param *QuotaPlanParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		m := NewQuotaPlanManager(&fakeTxn{}, planStore, nil, nil, nil)
+		m.SetOperationLogManager(recorder)
+
+		err := m.ResetBalance(ctx, 1, nil, false, owner)
+		require.Error(t, err)
+
+		assert.Empty(t, planStore.updated, "unlimited reset must not modify the plan")
+		require.Len(t, recorder.entries, 1)
+		entry := recorder.entries[0]
+		assert.Equal(t, string(ioperlog.ActionReset), entry.Action)
+		assert.Equal(t, string(ioperlog.ResourceTypeQuotaPlan), entry.ResourceType)
+		assert.Equal(t, "1", entry.ResourceID)
+		assert.Equal(t, "entity-940", entry.ResourceParentID)
+		assert.Equal(t, ioperlog.StatusFailed, entry.Status)
+		assert.NotEmpty(t, entry.ErrorMsg)
+		assert.Contains(t, entry.ErrorMsg, "cannot reset balance for unlimited quota")
+	})
 }

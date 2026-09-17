@@ -17,9 +17,11 @@ package quota
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
@@ -54,6 +56,12 @@ func TestQuotaPlanManager_ResetBalance(t *testing.T) {
 		err := m.ResetBalance(ctx, 1, nil, true, shared.ResourceOwner{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot reset balance for unlimited quota")
+
+		// issue #183：语义错误必须定型为 PARAM → 422 Param Illegal，不得兜底 500。
+		rr := xerror.Resolve(err)
+		assert.Equal(t, 422, rr.ErrNo)
+		assert.Equal(t, "Param Illegal", rr.Type)
+		assert.Equal(t, "cannot reset balance for unlimited quota", fmt.Sprintf("%v", xerror.Cause(err)))
 	})
 
 	t.Run("reset updates last_reset_at", func(t *testing.T) {
