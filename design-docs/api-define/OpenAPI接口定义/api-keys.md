@@ -344,7 +344,8 @@
 **约束**
 
 - `quota_plan`、`rate_limit_policy`、`route_rules` 的字段及合法性条件分别见 [QuotaPlan](./00-common.md#公共参数类型)、[RateLimitPolicy](./00-common.md#公共参数类型)、[RouteRules](./00-common.md#公共参数类型) 公共类型定义。
-- 若将 `entity_id` 修改为非空（挂载到新Entity），且 `unlimited_quota` 为 `false` 且 `quota_plan.unlimited` 为 `false`，则要求新Entity或其祖先链上至少存在一个有效的Quota Plan。
+- 若将 `entity_id` 修改为非空（挂载到新Entity），该Entity必须存在。
+- 注：配额扣减遵循 [workflows.md](./workflows.md) §5——当 `unlimited_quota=false` 且 `quota_plan.unlimited=false` 时，Key 自身的 QuotaPlan 已计入扣减列表并扣减其自身 QuotaBalance，因此不要求新Entity或其祖先链上存在有效的Quota Plan。若 Key 自身余额不足，请求按 §5 step 6/8 拒绝（429002），与挂载目标的配额类型无关。
 
 **执行逻辑**
 
@@ -396,7 +397,7 @@
 **约束**
 
 - `quota_plan`、`rate_limit_policy`、`route_rules` 的字段及合法性条件分别见 [QuotaPlan](./00-common.md#公共参数类型)、[RateLimitPolicy](./00-common.md#公共参数类型)、[RouteRules](./00-common.md#公共参数类型) 公共类型定义。
-- 若将 `entity_id` 修改为非空（挂载到新Entity），且 `unlimited_quota` 为 `false` 且 `quota_plan.unlimited` 为 `false`，则要求新Entity或其祖先链上至少存在一个有效的Quota Plan。
+- 若将 `entity_id` 修改为非空（挂载到新Entity），该Entity必须存在。不要求新Entity或其祖先链上存在有效的Quota Plan（依据 [workflows.md](./workflows.md) §5，Key 自身的 QuotaPlan 始终计入扣减列表）。
 - 修改 `quota_plan.quota`（单位不变）时，保留 `balance.used`，按 `新quota - used` 重新计算 `balance.remaining`；修改 `quota_plan.unit` 或 `quota_plan.unlimited` 时，会重置 `balance.used = 0`；仅修改 `quota_plan` 其他字段不会调整 balance。
 - 若修改 `route_rules`，视为全量替换该路由规则配置。
 

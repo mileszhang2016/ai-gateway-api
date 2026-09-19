@@ -84,3 +84,17 @@ func maskSlice(items []interface{}) []interface{} {
 	}
 	return items
 }
+
+// MaskErrorMessage redacts known sensitive values (e.g. API-Key values) from a
+// free-text error message by replacing each occurrence with the masked token
+// form (first 4 + "****" + last 4, "******" for short values), mirroring the
+// change_summary masking contract. Empty values are skipped.
+func MaskErrorMessage(msg string, values ...string) string {
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		msg = strings.ReplaceAll(msg, v, MaskAPIKeyToken(v))
+	}
+	return msg
+}

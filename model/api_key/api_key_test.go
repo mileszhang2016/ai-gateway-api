@@ -19,6 +19,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
@@ -499,10 +500,11 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 	})
 
 	t.Run("duplicate key value", func(t *testing.T) {
+		rawKey := "testproduct-abcdef012345"
 		store := &fakeAPIKeyStorager{
 			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
 				if filter.Key != nil {
-					return []*APIKeyParam{{Key: ptrString("key1")}}, nil
+					return []*APIKeyParam{{Key: ptrString(rawKey)}}, nil
 				}
 				return nil, nil
 			},
@@ -514,10 +516,33 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 		err := m.CreateAPIKey(ctx, &APIKeyParam{
 			ID:          ptrString("id1"),
 			ProductName: ptrString("test"),
-			Key:         ptrString("key1"),
+			Key:         ptrString(rawKey),
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "already exists")
+		assert.NotContains(t, err.Error(), rawKey)
+		assert.Contains(t, err.Error(), ioperlog.MaskAPIKeyToken(rawKey))
+	})
+
+	t.Run("duplicate key token dirty data masks key", func(t *testing.T) {
+		rawKey := "testproduct-abcdef012345"
+		store := &fakeAPIKeyStorager{
+			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
+				return nil, nil
+			},
+			fetchAPIKeyTokenListFn: func(ctx context.Context, filter *APIKeyTokenFilter) ([]*APIKeyTokenParam, error) {
+				return []*APIKeyTokenParam{{Key: ptrString(rawKey)}, {Key: ptrString(rawKey)}}, nil
+			},
+		}
+		m := newAPIKeyManager(store)
+		err := m.CreateAPIKey(ctx, &APIKeyParam{
+			ID:          ptrString("id1"),
+			ProductName: ptrString("test"),
+			Key:         ptrString(rawKey),
+		})
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), rawKey)
+		assert.Contains(t, err.Error(), ioperlog.MaskAPIKeyToken(rawKey))
 	})
 
 	t.Run("create quota plan and route rules", func(t *testing.T) {
