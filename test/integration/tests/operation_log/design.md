@@ -21,8 +21,9 @@
 | 失败日志资源身份 | 1 |
 | 嵌套资源审计归属（issue #161） | 9 |
 | change_summary 敏感字段脱敏（issue #162） | 5 |
+| error_msg 敏感值脱敏（issue #185） | 2 |
 | unlimited reset 失败语义（issue #183） | 2 |
-| **合计** | **40** |
+| **合计** | **42** |
 
 ## 4. 认证方式
 
@@ -36,7 +37,8 @@ operation_log/
 ├── list/
 │   └── list_test.go
 ├── masking/
-│   └── masking_test.go
+│   ├── masking_test.go
+│   └── error_msg_masking_test.go
 ├── nested_audit/
 │   └── nested_audit_test.go
 └── unlimited_reset/
@@ -476,7 +478,33 @@ Entity / API Key 生命周期中嵌套创建、更新、删除配额计划（及
 
 ---
 
-## 13. 工具辅助函数
+## 13. error_msg 敏感值脱敏（issue #185）
+
+### 13.1 设计思路
+
+issue #162 收口了 `change_summary` 的脱敏，但 `error_msg` 是自由文本，`MaskSensitiveFields` 的键名清单范式不覆盖它：重复创建相同 Key 值的 API-Key 时，模型层把裸 Key 拼进错误消息（`API-Key value <裸Key> already exists`），经 `TruncateErrorMessageDefault`（仅截断、不脱敏）落库，且同一 err 扇出到嵌套 quota_plan / rate_limit_policy 失败审计——一次重复创建最多污染 3 条审计记录。本场景以真实 API 调用复现 issue 步骤，断言失败审计的 `error_msg` 不含裸 Key，作为 SC2101-TC046 的集成层回归锚点。
+
+### 13.2 覆盖场景
+
+| 编号 | 场景 | 触发 API | 校验重点 |
+|------|------|----------|----------|
+| OL-MASK-006 | 重复创建失败 error_msg 脱敏 | `POST /open-api/v1/api-keys`（提交与现存 Key 相同的 `key`） | 422 响应 `msg` 为部分掩码形态（`AI_p****xxxx`）；失败审计 `error_msg` 不含裸 Key、含掩码形态；整条记录 JSON 序列化后不含裸 Key |
+| OL-MASK-007 | 嵌套失败审计 error_msg 脱敏（泄漏扇出） | 同上，body 携带 `quota_plan` / `rate_limit_policy` | `quota_plan` 与 `rate_limit_policy` 两类失败审计的 `error_msg` 同样不含裸 Key、含掩码形态；整条记录序列化后不含裸 Key |
+
+### 13.3 校验点
+
+- 掩码形态与 `change_summary` 对 `key` 的契约一致：`MaskAPIKeyToken`（首 4 + `****` + 尾 4）。
+- "不含明文"断言作用于整条记录（`error_msg` + 已脱敏 `change_summary`）的序列化结果，对齐 SC2101-TC046 的 `sc2101AuditAssertSecretAbsent` 断言。
+- **锚定方式**：失败创建的资源 ID 由服务端内部生成、不在 422 响应中返回，其嵌套条目的 `resource_parent_id` 无法从外部预知；以 `error_msg` 中的掩码 Key 作为唯一锚点（每把 Key 唯一），局部辅助 `waitNestedFailureAuditByMaskedKey` 按 `resource_type`+`action=create`+`status=2` 轮询并在结果中匹配掩码 Key。OL-MASK-006 可用 `resource_name`（重复请求的 description）锚定。
+- 额外断言 422 响应 `msg` 为掩码形态：修复同步收敛了 HTTP 响应回显（调用方即提交者本人，无可见性损失）。
+
+### 13.4 依赖与清理
+
+用例资源完全独立（唯一 description、服务端生成唯一 Key 值）；清理为 `DELETE /open-api/v1/api-keys/{id}`（defer）。修复前 OL-MASK-006/007 均为 FAIL（`error_msg` 含裸 Key）。
+
+---
+
+## 14. 工具辅助函数
 
 集成测试在 `testutil` 中新增/使用以下辅助函数：
 
@@ -484,11 +512,12 @@ Entity / API Key 生命周期中嵌套创建、更新、删除配额计划（及
 - `WaitForOperationLog(filter map[string]string, timeout time.Duration) (*OperationLogEntry, error)`：轮询等待匹配的操作日志出现，默认最长 10 秒，避免固定 sleep 导致的不稳定。
 - `OperationLogEntry.ResourceParentID`：查询返回条目已包含 `resource_parent_id` 字段（testutil，issue #161 随本场景补充）。
 - `nested_audit` 包内局部辅助 `waitNestedAudit(t, resourceType, action, parentID)`：以 `resource_type`+`action`+`resource_parent_id` 三元组轮询并断言归属与成功状态，仅服务于第 9 章场景。
+- `masking` 包内局部辅助 `waitNestedFailureAuditByMaskedKey(t, resourceType, maskedKey)`：按 `resource_type`+`action=create`+`status=2` 轮询，在结果中匹配 `error_msg` 含掩码 Key 的失败审计条目，仅服务于第 13 章场景（issue #185）。
 - `ResetGlobalRouteRules() error`：清空 Global 路由表。
 - `SetGlobalRouteRules(rules []interface{}) error`：设置 Global 路由表。
 - `SimpleRouteRule(name, clusterName string) map[string]interface{}`：构造一条最简单的 Global 路由规则。
 
-## 14. 注意事项
+## 15. 注意事项
 
 1. 操作日志为异步批量落库，默认 5 秒 flush 一次；测试使用轮询而非固定 sleep 等待日志出现。
 2. 不同测试用例共享同一 SQLite 数据库，但每个用例使用唯一资源 ID / 名称，避免相互干扰。

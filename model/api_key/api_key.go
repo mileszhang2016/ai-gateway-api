@@ -675,7 +675,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 				return err
 			}
 			if len(tokens) > 1 {
-				return xerror.WrapDirtyDataErrorWithMsg("%s", fmt.Sprintf("API-Key-Token:%s", *param.Key))
+				return xerror.WrapDirtyDataErrorWithMsg("%s", fmt.Sprintf("API-Key-Token:%s", ioperlog.MaskAPIKeyToken(*param.Key)))
 			}
 
 			existingKeys, err := rppm.storager.FetchAPIKeyList(ctx, &APIKeyFilter{Key: param.Key})
@@ -683,7 +683,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 				return err
 			}
 			if len(existingKeys) > 0 {
-				return xerror.WrapParamErrorWithMsg("API-Key value %s already exists", *param.Key)
+				return xerror.WrapParamErrorWithMsg("API-Key value %s already exists", ioperlog.MaskAPIKeyToken(*param.Key))
 			}
 
 			// Set updated time based on existing token if reused

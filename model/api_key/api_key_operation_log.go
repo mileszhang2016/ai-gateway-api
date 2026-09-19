@@ -48,6 +48,9 @@ func (rppm *APIKeyManager) recordAPIKeyOperation(ctx context.Context, action str
 	if err != nil {
 		status = ioperlog.StatusFailed
 		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
+		if apiKey.Key != nil && *apiKey.Key != "" {
+			errorMsg = ioperlog.MaskErrorMessage(errorMsg, *apiKey.Key)
+		}
 	}
 
 	entry := &ioperlog.OperationLogEntry{

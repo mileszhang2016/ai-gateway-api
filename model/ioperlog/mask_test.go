@@ -104,3 +104,26 @@ func TestMaskSensitiveFields_Arrays(t *testing.T) {
 	assert.NotContains(t, string(serialized), "abcdefghijkl")
 	assert.NotContains(t, string(serialized), "deep-array-token")
 }
+
+func TestMaskErrorMessage(t *testing.T) {
+	// long value: partial mask, mirroring the change_summary key contract
+	got := MaskErrorMessage("API-Key value abcdefghijkl already exists", "abcdefghijkl")
+	assert.Equal(t, "API-Key value abcd****ijkl already exists", got)
+	assert.NotContains(t, got, "abcdefghijkl")
+
+	// short value (<=8 chars): full mask placeholder
+	got = MaskErrorMessage("API-Key value shorty already exists", "shorty")
+	assert.Equal(t, "API-Key value ****** already exists", got)
+	assert.NotContains(t, got, "shorty")
+
+	// empty value: skipped, message untouched
+	assert.Equal(t, "unchanged", MaskErrorMessage("unchanged", ""))
+
+	// multiple values: each occurrence replaced
+	got = MaskErrorMessage("k1=abcdefghijkl k2=mnopqrstuvwx", "abcdefghijkl", "mnopqrstuvwx")
+	assert.Equal(t, "k1=abcd****ijkl k2=mnop****uvwx", got)
+
+	// no hit / no values: message untouched
+	assert.Equal(t, "plain error", MaskErrorMessage("plain error", "abcdefghijkl"))
+	assert.Equal(t, "plain error", MaskErrorMessage("plain error"))
+}
