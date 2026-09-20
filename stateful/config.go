@@ -52,7 +52,6 @@ type RunTimeConfig struct {
 	StaticFilePath            string
 	Debug                     bool
 	AIRouteInnerProductName   string // AI inner product name,default AI_product
-	DefaultAIInstancePoolName string // default AI instance pool name, e.g. "BFE.aipool"
 	DefaultAIClusterName      string // default AI cluster name, e.g. "BFE-AI_product.szyf"
 
 	// EPP scheduling integration (see model/epp_pool).

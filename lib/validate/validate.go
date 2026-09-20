@@ -744,7 +744,7 @@ const (
 	MaxInstanceNameLength = 128
 )
 
-// Instance validates a single instance (used by cluster/alb-pool).
+// Instance validates a single instance (used by cluster instance pools).
 func Instance(inst icluster_conf.Instance) error {
 	if inst.Name != "" {
 		if len(inst.Name) < 1 || len(inst.Name) > MaxInstanceNameLength {

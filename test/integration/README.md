@@ -30,7 +30,6 @@ integration/
     ├── auth/
     ├── entity/
     ├── entity_type/
-    ├── alb_pool/
     ├── clusters/
     ├── certificate/
     ├── model_provider/
