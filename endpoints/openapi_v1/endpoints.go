@@ -21,7 +21,6 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/auth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_cluster"
-	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_pool"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/certificate"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/domain"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/entity"
@@ -60,7 +59,6 @@ func endpoints() []*xreq.Endpoint {
 		certificate.Endpoints,
 		product_pool.Endpoints,
 		subcluster.Endpoints,
-		bfe_pool.Endpoints,
 		epp_pool.Endpoints,
 		epp_assignments.Endpoints,
 		auth.Endpoints,

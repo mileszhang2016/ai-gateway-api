@@ -9,6 +9,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Removed
+- Remove the `/alb-pool` OpenAPI (GET detail + PATCH full-replace of the built-in BFE instance pool `BFE.aipool`): the pool data had no data-plane consumer; also remove the `RunTime.DefaultAIInstancePoolName` config item and the `alb_pool` integration tests. The dashboard AIInstancePool page loses its backend and will be cleaned up separately (breaking change).
+
 ## [0.0.9] - 2026-09-13
 
 ### Added

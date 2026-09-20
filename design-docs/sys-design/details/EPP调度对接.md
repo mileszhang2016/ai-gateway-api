@@ -7,7 +7,7 @@ EPP（Endpoint Picker，基于 llm-d 的 LLM 推理调度器）接入后，ai-ga
 本组件覆盖四块能力：
 
 - **cluster 均衡模式与调度配置**（`/clusters` 新增 `balance_mode` + `epp_config`）；
-- **EPP 实例池管理**（`/epp-pool`，对齐 `/alb-pool` 的单例池 + 全量替换模式）；
+- **EPP 实例池管理**（`/epp-pool`，单例池 + 全量替换模式：`GET` 详情 + `PATCH` 全量替换）；
 - **cluster→实例组分配**（分配器自动生成 + `/epp-assignments` 查询视图与手工覆写）；
 - **双向下发**：server_data_conf 向 BFE 导出 `BalanceMode`/`EPPAddr`；epp_data（新 topic）向 EPP 实例统一下发编译后的调度配置 + assignment 全量视图。
 
@@ -77,7 +77,7 @@ api 导出时把简化配置**确定性编译**为完整 `EndpointPickerConfig`�
 
 ### 4.1 实例池：静态配置替代自注册
 
-- **单例池**，池名由配置项 `RunTime.DefaultEPPInstancePoolName` 提供（默认 `EPP.pool`）；`GET` 详情 + `PATCH` 全量替换（对齐 `/alb-pool`）。
+- **单例池**，池名由配置项 `RunTime.DefaultEPPInstancePoolName` 提供（默认 `EPP.pool`）；`GET` 详情 + `PATCH` 全量替换。
 - 实例列表是**部署事实**：部署流程在扩缩容/换机后 reconcile PATCH，天然幂等；api 侧无心跳续约、失联阈值等存活管理负担。
 - 组规模校验：每组 1~2 实例（1=仅主，2=主+备），拒绝空组与 3 个及以上实例的组。
 

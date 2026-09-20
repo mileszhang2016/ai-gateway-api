@@ -99,9 +99,6 @@ Debug = false
 # support AI product name
 AIRouteInnerProductName = "AI_product"
 
-# default AI instance pool name
-DefaultAIInstancePoolName = "BFE.aipool"
-
 # default AI cluster name
 DefaultAIClusterName = "BFE-AI_product.szyf"
 
