@@ -56,7 +56,7 @@
 | `keys` | []ProviderKey | 该 provider 可用的 API Key 明文 | - | 非必填；默认空数组 `[]`；元素须满足 表：ProviderKey 结构 |
 | `instance_pool` | []Instance | Provider 对应的后端实例池 | 系统自动据此创建实例池和子集群 | 必填；至少 1 个元素；同一 provider 内 `(addr, port)` 组合不能重复；至少有一个实例 `weight > 0` |
 | `model_protocols` | []string | 支持的模型访问协议 | 枚举：`openai`、`anthropic`、`gemini` | 必填；至少 1 个元素；元素不可重复；枚举值见下方 |
-| `protocol_paths` | map[string]string | 按协议的上游路径前缀（该协议 SDK `base_url` 的 path 部分）；BFE 转发时将标准入口 `/v1/...` 改写到该前缀 | 键：`openai`、`anthropic` | 非必填；缺省 = 不改写（请求路径原样转发）；键必须是 `model_protocols` 已声明协议的子集；值须以 `/` 开头、不以 `/` 结尾、不含 `..`/`?`/`#`、长度 ≤ 128；语义与参考值见下方 |
+| `protocol_paths` | map[string]string | 按协议的上游 API 基路径（该协议 SDK `base_url` 的 path 部分）；BFE 转发时将命中的标准端点改写到该基路径（openai 兼容带/不带 `/v1` 的客户端入口） | 键：`openai`、`anthropic` | 非必填；缺省 = 不改写（请求路径原样转发）；键必须是 `model_protocols` 已声明协议的子集；值须以 `/` 开头、不以 `/` 结尾、不含 `..`/`?`/`#`、长度 ≤ 128；语义与参考值见下方 |
 | `time_zone` | string | 计算时段所使用的时区 | 用于 tier 价格匹配 | 非必填；默认 `Asia/Shanghai`；须为合法 IANA 时区名 |
 | `tiers` | []PricingTier | 时段 tier 定义列表 | 描述该 provider 在什么时段属于哪个 tier | 非必填；元素须满足 表：PricingTier 结构；**初期 `name` 只支持 `peak`** |
 | `create_time` | int64 | 创建时间 | - | 系统生成 |
@@ -119,8 +119,8 @@
 **`protocol_paths` 语义与常见 provider 参考值**
 
 - 配置值 = 该协议官方 SDK `base_url` 的 path 部分：`openai` 含 `/v1` 尾（OpenAI SDK 向 base_url 拼 `/chat/completions` 等）；`anthropic` 不含 `/v1`（Anthropic SDK 自行拼接 `/v1/messages`）。
-- 仅对标准入口路径生效：anthropic 请求 `/v1/messages` 被改写为 `{anthropic}/v1/messages`；openai 请求 `/v1/chat/completions` 被改写为 `{openai}/chat/completions`。
-- 未配置（或对应协议无条目）时请求路径原样转发；非标准入口路径（provider 原生路径、`/v10/xxx`、`/v1beta/...`）永不改写——客户端以 provider 原生路径访问的透传模式不受影响。`gemini` 协议不支持路径改写（其原生路径即标准路径，透传已可用）。
+- 改写规则：anthropic 请求 `/v1/messages`（及子路径）被改写为 `{anthropic}/v1/messages`；openai 请求命中标准端点（`/chat/completions`、`/completions`、`/embeddings`、`/models`、`/responses` 等）时，先剥离可选的 `/v1` 前缀再拼接到 base——`/v1/chat/completions` 与 `/chat/completions` 均改写为 `{openai}/chat/completions`，即客户端入口带不带 `/v1` 不影响最终上游路径（兼容 Trae 等直连 base_url 的 OpenAI 兼容客户端）。
+- 未配置（或对应协议无条目）时请求路径原样转发；未命中 openai 标准端点的路径（provider 原生路径、自定义路径、`/v10/xxx`、`/v1beta/...`）永不改写——客户端以 provider 原生路径访问的透传模式不受影响。`gemini` 协议不支持路径改写（其原生路径即标准路径，透传已可用）。
 
 | provider | `protocol_paths` 参考值 |
 |----------|-------------------------|
