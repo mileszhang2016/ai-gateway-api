@@ -4,10 +4,11 @@
 
 报表查询模块为 `ai-gateway-api` 提供统一的报表查询 API（`/open-api/v1/report/*`），查询后端通过 `[Report].Backend` 配置切换 MySQL（轻量形态，log-reader `mod_log_mysql` 插件落库）或 Doris（标准形态）。时序/排行/分布读分钟聚合表 `bfe_ai_metrics_1m`，明细查询读明细表 `bfe_ai_request_log`；MySQL 形态下聚合表由 api 进程内的分钟聚合 JOB 生成（本测试关闭 JOB，直接向两张表灌确定性种子数据验证查询端点）。
 
-集成测试分两个用例组：
+集成测试分三个用例组：
 
 - **组 A（not_assembled，离线必跑）**：`[Report]` 缺省时模块不装配，五个端点整体不注册，请求返回 404。
 - **组 B（query，环境变量门控）**：真实 MySQL 8.x 上建专用库、套用项目 DDL、灌确定性种子，验证五端点的口径、分页、过滤与参数校验。
+- **组 C（partition，环境变量门控）**：真实 MySQL 8.x 上验证分区维护 JOB 的自动建分区行为（issue #191 回归：配置 `[Report].Database` 后分区查询不匹配 information_schema、JOB 静默降级 DELETE 兜底、log-reader 写入 Error 1526）。
 
 ## 2. 接口列表
 
@@ -30,7 +31,10 @@
 | distribution（status/protocol+unknown） | B | 2 |
 | logs（分页/过滤/行形状/requested_models/page_size 封顶） | B | 5 |
 | 参数校验（422） | B | 8（子用例） |
-| **合计** | | **22** |
+| 启动即建分区（两表同验） | C | 1 |
+| 覆盖期内写入成功 | C | 1 |
+| 边界外写入拒绝（Error 1526） | C | 1 |
+| **合计** | | **25** |
 
 ## 4. 认证方式
 
@@ -43,10 +47,13 @@ report/
 ├── design.md
 ├── not_assembled/
 │   └── not_assembled_test.go   # 组 A：[Report] 缺省 → 五端点 404
-└── query/
-    ├── query_test.go           # TestMain：MySQL 环境准备、DDL、服务装配
-    ├── seed_test.go            # 组 B 种子数据（聚合表 5 行 + 明细表 6 行）
-    └── cases_test.go           # 组 B 用例断言
+├── query/
+│   ├── query_test.go           # TestMain：MySQL 环境准备、DDL、服务装配
+│   ├── seed_test.go            # 组 B 种子数据（聚合表 5 行 + 明细表 6 行）
+│   └── cases_test.go           # 组 B 用例断言
+└── partition/
+    ├── partition_test.go       # TestMain：MySQL 环境准备、DDL（INIT_DATE=昨天）、服务装配
+    └── cases_test.go           # 组 C 用例断言（C-1 建分区 / C-2 覆盖期写入 / C-3 边界外拒绝）
 ```
 
 ## 6. 组 A：未装配 404（not_assembled）
@@ -163,7 +170,57 @@ EnablePartitionMgmt = false
 - 启动失败路径同样执行 DROP，防御半初始化残留。
 - 数据库名含纳秒时间戳，多进程并发互不干扰。
 
-## 8. testutil 钩子
+## 8. 组 C：分区自动维护（partition）
+
+### 8.1 设计思路
+
+MySQL 形态下 `bfe_ai_request_log` / `bfe_ai_metrics_1m` 按天 RANGE 分区（`TO_DAYS(log_time)` / `TO_DAYS(ts_min)`），分区由 api 进程内分区管理 JOB 滚动维护（每 6h 巡检、向前建 3 天、DROP 超保留期分区）。issue #191：配置 `[Report].Database` 后表名带 schema 限定，而 `information_schema.PARTITIONS` 的 `TABLE_NAME` 只存裸表名，分区查询恒返回 0 行，JOB 误判表未分区、静默降级为 DELETE 兜底，从不 ADD PARTITION；日志时间越过 `p_init` 边界后 log-reader 写入 Error 1526 丢行。
+
+组 C 按 issue 生产同型装配（`Database` 非空 + `EnablePartitionMgmt=true`），断言 JOB 启动后即建好前瞻窗口分区，并验证"覆盖期内可写入、边界外拒绝"的分区契约。修复前 C-1 恒超时失败，构成 red→green 回归证据。
+
+### 8.2 环境门控与数据源
+
+- 与组 B 共用 `REPORT_MYSQL_DSN`（`user:pass@tcp(host:port)/`）；未设置时 TestMain 打印说明后以 0 退出，离线 CI 默认 Skip。
+- 账号需具备 `CREATE/DROP DATABASE`（建清理专用库）与 `ALTER`（JOB 建/删分区）权限。
+- api 子进程运行项目根 `ai-gateway-api.exe`：运行前须先 `make build`，确保二进制包含待验证代码。
+
+```bash
+REPORT_MYSQL_DSN="root:****@tcp(127.0.0.1:3306)/" go test -v -count=1 ./tests/report/partition/
+```
+
+### 8.3 数据构造
+
+1. 创建专用随机名数据库 `report_it_<ns>`（先 `DROP DATABASE IF EXISTS` 防御残留）。
+2. 套用项目根 `db_ddl_report_mysql.sql`，**`${INIT_DATE}` 替换为昨天**——与组 B 的"今天+3"相反：p_init 边界 < 今天，待建窗口 [今天, 今天+3) 非空，JOB 必须有 ADD 动作；若按组 B 方式建表，p_init 已覆盖前瞻窗口，修复前后用例都通过，失去回归意义。
+3. 不灌种子数据；用例自行向两张表插行验证写入路径。
+
+### 8.4 服务装配
+
+```toml
+[Report]
+Backend = "mysql"
+Datasource = "report_db"
+Database = "report_it_<ns>"     # 关键：非空，issue #191 的触发条件（schema 限定名路径）
+EnableAggregateJob = false      # 聚焦分区行为；聚合 JOB 由 storage/mysqlreport 单测覆盖
+EnablePartitionMgmt = true
+RetentionDays = 7
+```
+
+### 8.5 用例与校验点
+
+| 用例 | 断言 |
+|------|------|
+| C-1 启动即建分区 | 轮询 information_schema（30s 超时/200ms 步长）：两表均出现 `p<今天>`、`p<今天+1>`、`p<今天+2>`，边界分别为 TO_DAYS(今天+1/+2/+3)（8.x 回显求值整数形态；文本形态取内嵌日期再求 TO_DAYS）；`p_init`（边界 TO_DAYS(昨天)，即建表 INIT_DATE）保留 |
+| C-2 覆盖期内写入成功 | 两表插入 `log_time`/`ts_min = 今天`、`今天+2 23:59:59` 成功（模拟 log-reader 写入路径，锁定 Error 1526 消除） |
+| C-3 边界外写入拒绝 | 两表插入 `今天+3` 失败且为 Error 1526（`*mysql.MySQLError.Number=1526`），固定"只保有 3 天前瞻"的契约 |
+
+### 8.6 时序与时区口径
+
+- JOB 在 `Start()` 时立即跑一轮周期，但服务器就绪（TCP 可拨号）与周期完成之间无时序保证，故用例轮询 information_schema 而非定长 sleep；已就绪即返回。
+- "今天"取测试进程本地民用日（`time.Now().Date()`），JOB 在子进程内使用同一继承时区；断言秒级完成，跨自然日漂移风险可忽略。
+- DATETIME 一律以 `YYYY-MM-DD HH:MM:SS` 字符串插入，不依赖驱动/会话时区。
+
+## 9. testutil 钩子
 
 `testutil/server.go` 新增：
 
@@ -176,9 +233,9 @@ func StartServerWithExtraConfig(extraTOML string) (*ServerManager, error)
 - `extraTOML == ""` 时与 `StartServer()` 行为完全一致（既有测试零影响）；
 - 非共享模式下照常 `SetServerURL`，全局客户端语义不变。
 
-## 9. 注意事项
+## 10. 注意事项
 
-1. 组 B 需要真实 MySQL 8.x（≥5.7.8，JSON 列），离线 CI 默认 Skip；组 A 离线必跑。
+1. 组 B/组 C 需要真实 MySQL 8.x（≥5.7.8，JSON 列），离线 CI 默认 Skip；组 A 离线必跑。
 2. 聚合表种子只 INSERT 查询涉及的列，其余维度列走 `NOT NULL DEFAULT ''`、指标列走 `DEFAULT NULL`（SUM 口径不受影响）。
-3. `${INIT_DATE}` 必须替换为今天+3 天，否则建表后历史数据写入会因无匹配分区失败（Error 1526）。
-4. 测试不启动聚合/分区 JOB（`Enable* = false`），JOB 行为由 `storage/mysqlreport` 单元测试覆盖。
+3. 组 B `${INIT_DATE}` 必须替换为今天+3 天，否则建表后历史数据写入会因无匹配分区失败（Error 1526）；组 C 相反，必须替换为昨天（见 §8.3）。
+4. 组 B 不启动聚合/分区 JOB（`Enable* = false`）；组 C 启动分区 JOB、关闭聚合 JOB——分区行为在集成层验证（issue #191 后补），聚合行为仍由 `storage/mysqlreport` 单测覆盖。

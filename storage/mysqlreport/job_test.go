@@ -282,6 +282,45 @@ func TestRunPartitionMgmtOnce_NonPartitionedPurgesInBatches(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// TestRunPartitionMgmtOnce_QualifiedDatabase 回归 issue #191：配置
+// [Report].Database 后 j.table() 生成 schema 限定名，而 information_schema
+// 的 TABLE_NAME 只存裸表名，分区查询恒返回 0 行，JOB 误判表未分区、静默
+// 走 DELETE 兜底，永不 ADD PARTITION（log-reader 写入 Error 1526）。
+// 该用例锁定：元数据查询以 (schema, 裸表名) 过滤、DDL 使用限定名、且
+// 不出现 DELETE 兜底语句。
+func TestRunPartitionMgmtOnce_QualifiedDatabase(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	defer db.Close()
+
+	now := time.Date(2026, 9, 21, 3, 30, 0, 0, time.UTC)
+	const schema = "open_bfe_222"
+
+	mock.ExpectQuery(selectGetLock).WithArgs(partitionLockName).
+		WillReturnRows(sqlmock.NewRows([]string{"lock"}).AddRow(1))
+	for _, table := range []string{"bfe_ai_request_log", "bfe_ai_metrics_1m"} {
+		// information_schema 过滤参数为 (schema, 裸表名)；p_init 边界
+		// 740244 = TO_DAYS('2026-09-20')，前瞻窗口 09-21..09-23 缺失。
+		mock.ExpectQuery(listPartitionsInSchemaSQL).WithArgs(schema, table).WillReturnRows(partitionRows(
+			[]interface{}{"p_init", "740244"},
+		))
+		mock.ExpectExec("ALTER TABLE " + schema + "." + table + " ADD PARTITION (PARTITION p20260921 VALUES LESS THAN (TO_DAYS('2026-09-22')))").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("ALTER TABLE " + schema + "." + table + " ADD PARTITION (PARTITION p20260922 VALUES LESS THAN (TO_DAYS('2026-09-23')))").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("ALTER TABLE " + schema + "." + table + " ADD PARTITION (PARTITION p20260923 VALUES LESS THAN (TO_DAYS('2026-09-24')))").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		// retention 7：cutoff 09-15，p_init（边界 09-20）保留。
+	}
+	mock.ExpectExec("SELECT RELEASE_LOCK(?)").WithArgs(partitionLockName).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	job := NewJob(db, schema, time.Minute, 7, WithNowFunc(func() time.Time { return now }))
+	require.NoError(t, job.RunPartitionMgmtOnce(context.Background()))
+	// 无 DELETE 兜底：上述期望是穷尽的。
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestRunPartitionMgmtOnce_LockNotAcquired(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)
