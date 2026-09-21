@@ -352,10 +352,11 @@
 可修改字段含义同创建接口，但**输入参数不包括 `name`，即不能修改 provider 的 name**（名称由 URI 中的 `provider_name` 指定）。若请求体中仍包含 `name`，返回 422。若传入 `instance_pool` 字段，系统会自动同步更新被引用该 provider 的所有 cluster 所生成的实例池。
 
 > **注意**：本接口为**部分更新**语义——请求体中未提供的字段（`description`、`model_endpoint`、`models`、`keys`、`time_zone`、`tiers` 等）保持原值不变。
+> - 通用约定：对可选的 map / 数组字段（`keys`、`tiers`、`protocol_paths` 等），省略与传 `null` 等价，均保留原值；显式传入空集合（`[]` / `{}`）按全量替换处理，即清空该字段（仍须通过对应字段校验）。
 > - `keys` 作为数组，**显式提供时按全量替换**处理，即调用方需传入完整的最新 Key 列表；省略时保留原值。Key 的 `name` 删除/重命名会校验无 cluster 仍引用旧 name；若被引用，返回 `409 Conflict`。
 > - `models` 作为数组，**显式提供时按全量替换**处理；省略时保留原值。删除 model 会校验无 cluster 仍引用该 model；若被引用，返回 `409 Conflict`。
 > - `tiers`、`time_zone`、`model_endpoint`：提供即更新，省略保留原值。`time_zone` 取值须为合法时区名（如 `Asia/Shanghai`、`UTC`）。
-> - `protocol_paths`：提供即全量替换，省略保留原值；键必须是**更新后** `model_protocols` 已声明协议的子集——同时调整 `model_protocols` 与 `protocol_paths` 时，须在同一个请求中给出合法组合。
+> - `protocol_paths`：提供即全量替换，**省略或传 `null` 保留原值；清空（禁用路径改写）须显式传入 `"protocol_paths": {}`**。键必须是**更新后** `model_protocols` 已声明协议的子集——同时调整 `model_protocols` 与 `protocol_paths` 时，须在同一个请求中给出合法组合。
 
 **HTTP BODY 参数示例**
 
@@ -375,6 +376,16 @@
     "protocol_paths": {"openai": "/v1"}
 }
 ```
+
+清空 `protocol_paths`（禁用路径改写，恢复为请求路径原样转发）的请求体示例——注意须显式传空对象 `{}`，省略该字段或传 `null` 均保留原值、不清空：
+
+```json
+{
+    "protocol_paths": {}
+}
+```
+
+> 提示：部分客户端/序列化库会把空 map 归一化为 `null`，导致"传了空对象却没清空"且接口返回 200 无报错；如遇此情况，请先抓取实际请求体确认发出的是 `{}` 而非 `null`。
 
 **返回数据（Data内容）**
 
@@ -608,7 +619,7 @@ tiers:
    - 每个元素 `name` 必填，长度 1-128，同一 provider 内唯一；
    - 每个元素 `key` 必填且非空，长度 1-512。
 8. `model_protocols` 必填，至少 1 个元素，元素不可重复，取值须为枚举值：`openai`、`anthropic`、`gemini`。
-9. `protocol_paths` 非必填，缺省 = 不改写（请求路径原样转发）；若传入：
+9. `protocol_paths` 非必填，缺省 = 不改写（请求路径原样转发）；传入 `{}` 清空（恢复为原样转发），传 `null` 与省略等价、均保留原值；若传入非空对象：
    - 键必须是 `model_protocols` 已声明协议的子集，取值仅支持 `openai`、`anthropic`（`gemini` 不支持路径改写）；
    - 值须以 `/` 开头、不以 `/` 结尾、不含 `..`/`?`/`#`、长度 ≤ 128；
    - PATCH 更新时键还须是**更新后** `model_protocols` 的子集（与 `model_protocols` 同时调整须在同一个请求中给出合法组合）。
