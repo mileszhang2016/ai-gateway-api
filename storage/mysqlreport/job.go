@@ -281,12 +281,17 @@ func (j *Job) RunPartitionMgmtOnce(ctx context.Context) error {
 	defer j.unlockForPartition()
 
 	now := j.nowFunc()
+	// Metadata queries take the BARE table name: information_schema stores
+	// schema and table name in separate columns, so a schema-qualified name
+	// would never match and the table would silently degrade to the DELETE
+	// purge (issue #191). DDL statements qualify via j.table() so they keep
+	// working when j.database overrides the connection schema.
 	for _, target := range []struct {
 		table   string
 		timeCol string
 	}{
-		{j.table(tableDetail), "log_time"},
-		{j.table(tableMetrics), "ts_min"},
+		{tableDetail, "log_time"},
+		{tableMetrics, "ts_min"},
 	} {
 		if err := j.manageTablePartitions(ctx, j.partitionConn, target.table, target.timeCol, now); err != nil {
 			return err
@@ -318,7 +323,9 @@ func (j *Job) unlockForPartition() {
 }
 
 // manageTablePartitions reconciles one table: create-ahead, drop-expired,
-// or purge in batches when the table has no partitions.
+// or purge in batches when the table has no partitions. table is the BARE
+// table name; DDL statements are qualified with j.table() so they target
+// j.database even when it differs from the connection schema.
 func (j *Job) manageTablePartitions(ctx context.Context, conn *sql.Conn, table, timeCol string, now time.Time) error {
 	parts, err := j.listPartitions(ctx, conn, table)
 	if err != nil {
@@ -327,22 +334,25 @@ func (j *Job) manageTablePartitions(ctx context.Context, conn *sql.Conn, table, 
 
 	if len(parts) == 0 {
 		// Non-partitioned shape (some RDS offerings): degrade to batched
-		// DELETE. Skip when retention is disabled.
+		// DELETE. Skip when retention is disabled. Warn loudly: reaching
+		// this branch means either a genuinely unpartitioned table or a
+		// metadata mismatch, and both used to be silent (issue #191).
 		if j.retentionDays <= 0 {
 			return nil
 		}
-		return j.purgeBatches(ctx, conn, table, timeCol, retentionCutoff(now, j.retentionDays))
+		jobWarnf("report partition job: table %s has no partitions, fallback to batched DELETE purge", j.table(table))
+		return j.purgeBatches(ctx, conn, j.table(table), timeCol, retentionCutoff(now, j.retentionDays))
 	}
 
 	for _, day := range planPartitionAdds(now, j.partitionAheadDays, partitionBoundaries(parts)) {
-		if _, err := conn.ExecContext(ctx, buildAddPartitionSQL(table, day)); err != nil {
+		if _, err := conn.ExecContext(ctx, buildAddPartitionSQL(j.table(table), day)); err != nil {
 			return err
 		}
 	}
 
 	if j.retentionDays > 0 {
 		for _, name := range planPartitionDrops(now, j.retentionDays, parts) {
-			if _, err := conn.ExecContext(ctx, buildDropPartitionSQL(table, name)); err != nil {
+			if _, err := conn.ExecContext(ctx, buildDropPartitionSQL(j.table(table), name)); err != nil {
 				return err
 			}
 		}
@@ -361,8 +371,26 @@ var listPartitionsSQL = "SELECT PARTITION_NAME, PARTITION_DESCRIPTION" +
 	" WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND PARTITION_NAME IS NOT NULL" +
 	" ORDER BY PARTITION_ORDINAL_POSITION"
 
+// listPartitionsInSchemaSQL pins TABLE_SCHEMA to j.database. It is a
+// separate query (rather than routing DATABASE() through COALESCE) so both
+// shapes stay plain, index-friendly equality predicates.
+var listPartitionsInSchemaSQL = "SELECT PARTITION_NAME, PARTITION_DESCRIPTION" +
+	" FROM information_schema.PARTITIONS" +
+	" WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND PARTITION_NAME IS NOT NULL" +
+	" ORDER BY PARTITION_ORDINAL_POSITION"
+
+// listPartitions reads the RANGE partitions of one table; table must be the
+// BARE table name — information_schema.PARTITIONS never carries schema
+// qualifiers in TABLE_NAME, so a qualified name returns zero rows and the
+// caller would mistake a partitioned table for an unpartitioned one
+// (issue #191). The schema filter is j.database, falling back to the
+// connection's current database when empty.
 func (j *Job) listPartitions(ctx context.Context, conn *sql.Conn, table string) ([]partitionInfo, error) {
-	rows, err := conn.QueryContext(ctx, listPartitionsSQL, table)
+	query, args := listPartitionsSQL, []interface{}{table}
+	if j.database != "" {
+		query, args = listPartitionsInSchemaSQL, []interface{}{j.database, table}
+	}
+	rows, err := conn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
