@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Add optional `description` field (0-255 chars, no control characters) to the `/entities` API: supported on create, query, full update (omitting it clears the description) and partial update (omitted keeps original, explicit `""` clears); add the `description` column to the `entities` table (existing deployments: `ALTER TABLE entities ADD COLUMN description VARCHAR(255) NOT NULL DEFAULT ''`).
+
 ### Removed
 - Remove the `/alb-pool` OpenAPI (GET detail + PATCH full-replace of the built-in BFE instance pool `BFE.aipool`): the pool data had no data-plane consumer; also remove the `RunTime.DefaultAIInstancePoolName` config item and the `alb_pool` integration tests. The dashboard AIInstancePool page loses its backend and will be cleaned up separately (breaking change).
 

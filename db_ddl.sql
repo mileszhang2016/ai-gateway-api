@@ -390,6 +390,7 @@ CREATE TABLE `entities` (
   `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
   `entity_id` VARCHAR(64) NOT NULL COMMENT 'Entity唯一标识（业务ID）',
   `name` VARCHAR(128) NOT NULL COMMENT 'Entity名称',
+  `description` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Entity描述',
   `type` VARCHAR(32) NOT NULL COMMENT 'Entity类型（关联entity_types.type_name）',
   `parent_id` VARCHAR(64) DEFAULT NULL COMMENT '父Entity ID',
   `allow_models` TEXT COMMENT '允许访问的模型白名单（JSON数组）',

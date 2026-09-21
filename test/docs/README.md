@@ -676,7 +676,7 @@ integration/tests/{module}/
 | AUTH 认证 | 13 | 29 |
 | AK API-Key | 8 | 22 |
 | ET Entity-Type | 5 | 15 |
-| E Entity | 8 | 25 |
+| E Entity | 8 | 36 |
 | GRR Global Route Rules | 2 | 9 |
 | RT Route Tables | 1 | 10 |
 | CL 集群 | 5 | 36 |
@@ -686,7 +686,7 @@ integration/tests/{module}/
 | TOOL 工具 | 1 | 6 |
 | EV 表达式校验 | 1 | 8 |
 | InnerAPI | 9 | 14 |
-| **总计** | **69** | **218** |
+| **总计** | **69** | **229** |
 
 ---
 

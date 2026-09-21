@@ -22,6 +22,7 @@ OpenAPI 的 PATCH 接口（`/api-keys/{id}`、`/entities/{id}`、`/providers/{pr
 |------|--------------------|---------|
 | API-Key | `models`、`subnet` | `storage/rdb/api_key/api_key.go` `UpdateAPIKey`（仅 `len > 0` 时 marshal 赋值，否则保持 nil；issue #151） |
 | Entity | `allow_models`、`block_models` | `storage/rdb/entity/entity.go` `entityDataToParamForUpdate`（Update 专用转换，省略保持 nil；Create 仍走 `entityDataToParam` 默认 `"[]"`；issue #151 同批修复） |
+| Entity | `description` | 同 `entityDataToParamForUpdate` 透传（`entityBaseDataToParam` 不做默认回填，nil 保持 nil）；字符串指针天然区分"省略（nil，跳过保留）"与"显式 `""`（非 nil，写入清空）"，无 allow_models 的"显式空数组无法区分"限制 |
 | Provider | `model_endpoint`、`models`、`keys`、`time_zone`、`tiers` | `storage/rdb/provider/provider.go` `toDAOParamForUpdate`（Update 独立路径不调用 `FillDefaults`；issue #147） |
 | API-Key / Entity | `quota_plan`、`rate_limit_policy`、`route_rules` | Manager 层 `if param.X != nil` 守卫（`model/api_key/api_key.go:518/534/556`），省略即不下发子资源更新 |
 
@@ -57,3 +58,22 @@ OpenAPI 的 PATCH 接口（`/api-keys/{id}`、`/entities/{id}`、`/providers/{pr
 - 省略 `type` 仍走 nil-skip 保持原值。
 
 变更记录：[modifications/2026-09-17-issue-178-entity-immutable-type](../../modifications/2026-09-17-issue-178-entity-immutable-type/change-summary.md)。
+
+---
+
+## 7. PUT 全量更新的显式默认值（Entity `description`）
+
+Entity 新增 `description` 字段（api-define entities.md §2.1-§2.5，变更记录：[modifications/2026-09-21-add-entity-description](../../modifications/2026-09-21-add-entity-description/change-summary.md)）引入了本文机制的一个新场景：**同一字段在 PUT（全量）与 PATCH（部分更新）下对"省略"的语义不同**。
+
+| 接口 | 省略 `description` | 显式 `""` |
+|------|--------------------|-----------|
+| `POST /entities` | 默认空字符串（DB 列默认值） | 写入空字符串 |
+| `PUT /entities/{id}`（全量） | **清空**已有描述 | 写入空字符串（即清空） |
+| `PATCH /entities/{id}`（部分更新） | **保留原值**（nil-skip） | 写入空字符串（即清空） |
+
+实现上两者共用同一条 Manager/DAO nil-skip 链路，差异在接口层：
+
+- PATCH 不做事前处理，省略字段保持 nil 指针，DAO nil-skip 保留原值（本文 §1 机制）；
+- PUT 在绑参、校验之后，由 `endpoints/openapi_v1/entity/full_update.go` 将 nil 显式置为空字符串（`lib.PString("")`）再下发——"省略清空"通过**主动构造非 nil 空值**实现，不修改 storager 与 DAO 层语义。
+
+`description` 是字符串指针字段，天然区分"省略（nil）"与"显式空（非 nil）"，因此 PATCH 下支持"显式 `""` 清空"，不受 §4"显式空数组无法与省略区分"限制的约束。

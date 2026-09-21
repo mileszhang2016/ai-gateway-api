@@ -50,10 +50,11 @@ const (
 	MaxTokenNameLength      = 64
 	MaxClusterNameLength    = 64
 	MaxCertNameLength       = 64
-	MaxEntityTypeNameLength = 32
-	MaxEntityNameLength     = 64
-	MaxDescriptionLength    = 256
-	MaxAPIDescriptionLength = 512
+	MaxEntityTypeNameLength    = 32
+	MaxEntityNameLength        = 64
+	MaxDescriptionLength       = 256
+	MaxEntityDescriptionLength = 255
+	MaxAPIDescriptionLength    = 512
 	MaxLLMKeyLength         = 512
 	MaxRateLimitNameLength  = 128
 )

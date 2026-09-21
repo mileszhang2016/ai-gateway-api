@@ -186,6 +186,7 @@ func entityBaseDataToParam(param *entity.EntityParam) *dao.TEntityParam {
 	return &dao.TEntityParam{
 		EntityID:          param.EntityID,
 		Name:              param.Name,
+		Description:       param.Description,
 		Type:              param.Type,
 		ParentID:          param.ParentID,
 		QuotaPlanID:       param.QuotaPlanID,
@@ -199,6 +200,7 @@ func entityParamToData(one *dao.TEntity) *entity.EntityParam {
 		InnerID:           &one.ID,
 		EntityID:          &one.EntityID,
 		Name:              &one.Name,
+		Description:       &one.Description,
 		Type:              &one.Type,
 		ParentID:          one.ParentID,
 		QuotaPlanID:       one.QuotaPlanID,

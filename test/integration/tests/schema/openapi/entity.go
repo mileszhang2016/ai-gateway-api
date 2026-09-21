@@ -20,7 +20,7 @@ import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 // parent_id 对根节点为 null，因此设为可选。
 var EntitySchema = &testutil.ObjectSchema{
 	Required: []string{
-		"id", "name", "type",
+		"id", "name", "description", "type",
 		"allow_models", "block_models",
 		"quota_plan", "rate_limit_policy", "route_rules",
 		"create_time", "update_time",
@@ -29,6 +29,7 @@ var EntitySchema = &testutil.ObjectSchema{
 	Fields: map[string]testutil.FieldSpec{
 		"id":                {Type: testutil.TypeString},
 		"name":              {Type: testutil.TypeString},
+		"description":       {Type: testutil.TypeString},
 		"type":              {Type: testutil.TypeString},
 		"parent_id":         {Type: testutil.TypeString},
 		"allow_models":      {Type: testutil.TypeArray},

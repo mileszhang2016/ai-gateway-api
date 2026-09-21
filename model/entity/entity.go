@@ -25,6 +25,7 @@ type EntityParam struct {
 	InnerID           *int64   `json:"-"`
 	EntityID          *string  `json:"id"`
 	Name              *string  `json:"name"`
+	Description       *string  `json:"description"`
 	Type              *string  `json:"type"`
 	ParentID          *string  `json:"parent_id"`
 	AllowModels       []string `json:"allow_models"`

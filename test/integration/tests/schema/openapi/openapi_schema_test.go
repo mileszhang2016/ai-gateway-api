@@ -97,8 +97,9 @@ func testEntitySchema(t *testing.T) {
 
 	entityName := testutil.UniqueEntityName()
 	createResp, err := testutil.GetClient().Post("/open-api/v1/entities", map[string]interface{}{
-		"name": entityName,
-		"type": typeName,
+		"name":        entityName,
+		"type":        typeName,
+		"description": "schema test entity",
 		"quota_plan": map[string]interface{}{
 			"unlimited":    false,
 			"quota":        1000000,
@@ -133,6 +134,7 @@ func testEntitySchema(t *testing.T) {
 	testutil.AssertSchema(t, putResp, EntitySchema)
 
 	patchResp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+entityID, map[string]interface{}{
+		"description":  "schema test updated",
 		"allow_models": []string{"*"},
 	})
 	require.NoError(t, err)

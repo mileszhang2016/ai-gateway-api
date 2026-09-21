@@ -114,6 +114,9 @@ func entityParamToMap(param *EntityParam) map[string]interface{} {
 	if param.Name != nil {
 		m["name"] = *param.Name
 	}
+	if param.Description != nil {
+		m["description"] = *param.Description
+	}
 	if param.Type != nil {
 		m["type"] = *param.Type
 	}

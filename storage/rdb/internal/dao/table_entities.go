@@ -28,6 +28,7 @@ type TEntity struct {
 	ID                int64     `db:"id"`
 	EntityID          string    `db:"entity_id"`
 	Name              string    `db:"name"`
+	Description       string    `db:"description"`
 	Type              string    `db:"type"`
 	ParentID          *string   `db:"parent_id"`
 	AllowModels       string    `db:"allow_models"`
@@ -70,6 +71,7 @@ type TEntityParam struct {
 	ID                *int64     `db:"id"`
 	EntityID          *string    `db:"entity_id"`
 	Name              *string    `db:"name"`
+	Description       *string    `db:"description"`
 	Type              *string    `db:"type"`
 	ParentID          *string    `db:"parent_id"`
 	AllowModels       *string    `db:"allow_models"`

@@ -38,6 +38,12 @@ func validateEntityParam(param *entity.EntityParam, requireNameType bool) error 
 		}
 	}
 
+	if param.Description != nil {
+		if err := validate.Description(*param.Description, validate.MaxEntityDescriptionLength, "description"); err != nil {
+			return err
+		}
+	}
+
 	if param.Type != nil {
 		if err := validate.EntityTypeName(*param.Type); err != nil {
 			return err
