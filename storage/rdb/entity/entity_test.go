@@ -43,6 +43,7 @@ CREATE TABLE entities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   entity_id TEXT NOT NULL,
   name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   type TEXT NOT NULL,
   parent_id TEXT DEFAULT NULL,
   allow_models TEXT,
@@ -147,4 +148,55 @@ func TestCreateEntity_OmittedModelsDefaultToEmpty(t *testing.T) {
 	one := fetchOne(t, storager, id)
 	assert.Empty(t, one.AllowModels)
 	assert.Empty(t, one.BlockModels)
+}
+
+func TestEntityDescription_RoundTrip(t *testing.T) {
+	storager := setupTestStorager(t)
+	ctx := context.Background()
+
+	newEntity := func(id, name string) {
+		typ := "tenant"
+		_, err := storager.CreateEntity(ctx, &entity.EntityParam{
+			EntityID: &id,
+			Name:     &name,
+			Type:     &typ,
+		})
+		require.NoError(t, err)
+	}
+
+	// Create 省略 description → 读回为空字符串（DB 列默认值）。
+	newEntity("entity-1", "entity-one")
+	one := fetchOne(t, storager, "entity-1")
+	require.NotNil(t, one.Description)
+	assert.Equal(t, "", *one.Description)
+
+	// Create 显式携带 description → 正确写入。
+	id2, name2, desc2 := "entity-2", "entity-two", "运营部"
+	typ := "tenant"
+	_, err := storager.CreateEntity(ctx, &entity.EntityParam{
+		EntityID:    &id2,
+		Name:        &name2,
+		Type:        &typ,
+		Description: &desc2,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, desc2, *fetchOne(t, storager, id2).Description)
+
+	// Update 省略 description → nil-skip 保留原值。
+	newName := "entity-two-renamed"
+	affected, err := storager.UpdateEntity(ctx,
+		&entity.EntityFilter{EntityID: &id2},
+		&entity.EntityParam{Name: &newName})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), affected)
+	assert.Equal(t, desc2, *fetchOne(t, storager, id2).Description)
+
+	// Update 显式置空 → 写入空字符串（清空）。
+	empty := ""
+	affected, err = storager.UpdateEntity(ctx,
+		&entity.EntityFilter{EntityID: &id2},
+		&entity.EntityParam{Description: &empty})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), affected)
+	assert.Equal(t, "", *fetchOne(t, storager, id2).Description)
 }

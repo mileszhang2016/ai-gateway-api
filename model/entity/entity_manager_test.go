@@ -982,3 +982,74 @@ func TestFillUnlimitedQuotaBalance(t *testing.T) {
 	assert.Equal(t, float64(0), *quotaPlan.Balance.Used)
 	assert.Equal(t, float64(100000000), *quotaPlan.Balance.Remaining)
 }
+
+func TestEntityManager_EntityDescriptionFlow(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("create passes description to storager and audit map", func(t *testing.T) {
+		entityID := "ent-1"
+		entityName := "entity-one"
+		entityType := "tenant"
+		desc := "运营部"
+
+		entityTypeStore := &fakeEntityTypeStorager{
+			fetchFn: func(ctx context.Context, filter *EntityTypeFilter) (*EntityTypeParam, error) {
+				return &EntityTypeParam{TypeName: lib.PString(entityType), Level: lib.PInt(1)}, nil
+			},
+		}
+		entityStore := &fakeEntityStorager{
+			fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+				return nil, nil // no duplicate
+			},
+			createFn: func(ctx context.Context, param *EntityParam) (int64, error) {
+				return 100, nil
+			},
+		}
+		m := NewEntityManager(&fakeTxn{}, entityStore, entityTypeStore, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+
+		id, err := m.CreateEntity(ctx, &EntityParam{
+			EntityID:    &entityID,
+			Name:        &entityName,
+			Type:        &entityType,
+			Description: &desc,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, int64(100), id)
+
+		require.Len(t, entityStore.created, 1)
+		require.NotNil(t, entityStore.created[0].Description)
+		assert.Equal(t, desc, *entityStore.created[0].Description)
+
+		// 操作日志快照包含 description
+		assert.Equal(t, desc, entityParamToMap(&EntityParam{Description: &desc})["description"])
+	})
+
+	t.Run("update passes description to storager", func(t *testing.T) {
+		entityID := "ent-1"
+		innerID := int64(100)
+		desc := "新描述"
+
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				return []*EntityParam{{
+					InnerID:  &innerID,
+					EntityID: &entityID,
+				}}, nil
+			},
+			updateFn: func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+
+		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{
+			Description: &desc,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), affected)
+
+		require.Len(t, entityStore.updated, 1)
+		require.NotNil(t, entityStore.updated[0].param.Description)
+		assert.Equal(t, desc, *entityStore.updated[0].param.Description)
+	})
+}

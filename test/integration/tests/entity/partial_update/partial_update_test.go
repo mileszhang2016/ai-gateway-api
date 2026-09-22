@@ -17,6 +17,7 @@ package entity_test
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
@@ -286,6 +287,95 @@ func TestEntity_PartialUpdate(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 		testutil.AssertDataFieldEquals(t, resp, "type", typeName)
+	})
+
+	createWithDescription := func(t *testing.T, desc string) string {
+		createResp, err := testutil.GetClient().Post("/open-api/v1/entities", map[string]interface{}{
+			"name":        testutil.UniqueEntityName(),
+			"type":        typeName,
+			"description": desc,
+		})
+		if err != nil {
+			t.Fatalf("create entity failed: %v", err)
+		}
+		testutil.AssertSuccess(t, createResp)
+		id, err := testutil.GetDataField(createResp, "id")
+		if err != nil {
+			t.Fatalf("get id: %v", err)
+		}
+		return id.(string)
+	}
+
+	t.Run("E-5-010 部分更新修改 description 生效并回读一致", func(t *testing.T) {
+		patchID := createWithDescription(t, "初始描述")
+		defer testutil.DeleteEntity(patchID)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+patchID, map[string]interface{}{
+			"description": "更新后的描述",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "description", "更新后的描述")
+
+		detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + patchID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, detail)
+		testutil.AssertDataFieldEquals(t, detail, "description", "更新后的描述")
+	})
+
+	t.Run("E-5-011 部分更新省略 description 保持原值", func(t *testing.T) {
+		patchID := createWithDescription(t, "保持我")
+		defer testutil.DeleteEntity(patchID)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+patchID, map[string]interface{}{
+			"name": testutil.UniqueEntityName(),
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + patchID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, detail)
+		testutil.AssertDataFieldEquals(t, detail, "description", "保持我")
+	})
+
+	t.Run("E-5-012 部分更新显式空字符串清空 description", func(t *testing.T) {
+		patchID := createWithDescription(t, "清空我")
+		defer testutil.DeleteEntity(patchID)
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+patchID, map[string]interface{}{
+			"description": "",
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "description", "")
+
+		detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + patchID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, detail)
+		testutil.AssertDataFieldEquals(t, detail, "description", "")
+	})
+
+	t.Run("E-5-013 部分更新 description 长度 256 拒绝", func(t *testing.T) {
+		resp, err := testutil.GetClient().Patch("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"description": strings.Repeat("a", 256),
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
 	})
 
 	t.Cleanup(func() {

@@ -403,6 +403,7 @@ CREATE TABLE entities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   entity_id TEXT NOT NULL,
   name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   type TEXT NOT NULL,
   parent_id TEXT DEFAULT NULL,
   allow_models TEXT,

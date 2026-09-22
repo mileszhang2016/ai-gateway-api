@@ -15,6 +15,7 @@
 package entity
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
@@ -201,6 +202,41 @@ func TestValidateTypeImmutable(t *testing.T) {
 			if tc.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), "type is immutable")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidateEntityParamDescription(t *testing.T) {
+	desc255 := strings.Repeat("a", 255)
+	desc256 := strings.Repeat("a", 256)
+	descWithNull := "abc\x00def"
+	descWithTab := "abc\tdef"
+	empty := ""
+	normal := "运营部，负责线上业务"
+
+	cases := []struct {
+		name    string
+		desc    *string
+		wantErr bool
+	}{
+		{name: "nil omitted allowed", desc: nil, wantErr: false},
+		{name: "empty string allowed", desc: &empty, wantErr: false},
+		{name: "normal text allowed", desc: &normal, wantErr: false},
+		{name: "boundary 255 allowed", desc: &desc255, wantErr: false},
+		{name: "over 255 rejected", desc: &desc256, wantErr: true},
+		{name: "null control char rejected", desc: &descWithNull, wantErr: true},
+		{name: "tab control char rejected", desc: &descWithTab, wantErr: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			param := &entity.EntityParam{Description: tc.desc}
+			err := validateEntityParam(param, false)
+			if tc.wantErr {
+				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
 			}
