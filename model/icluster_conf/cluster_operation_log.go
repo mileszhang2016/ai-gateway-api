@@ -16,7 +16,6 @@ package icluster_conf
 
 import (
 	"context"
-	"encoding/json"
 	"strconv"
 	"time"
 
@@ -51,37 +50,9 @@ func (cm *ClusterManager) recordClusterOperation(ctx context.Context, action str
 }
 
 func clusterParamToMap(param *ClusterParam) map[string]interface{} {
-	if param == nil {
-		return nil
-	}
-
-	data, err := json.Marshal(param)
-	if err != nil {
-		return nil
-	}
-
-	var m map[string]interface{}
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil
-	}
-
-	return m
+	return ioperlog.ParamToMap(param)
 }
 
 func clusterToMap(cluster *Cluster) map[string]interface{} {
-	if cluster == nil {
-		return nil
-	}
-
-	data, err := json.Marshal(cluster)
-	if err != nil {
-		return nil
-	}
-
-	var m map[string]interface{}
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil
-	}
-
-	return m
+	return ioperlog.ParamToMap(cluster)
 }

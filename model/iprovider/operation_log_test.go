@@ -140,3 +140,28 @@ func maskedKeys(t *testing.T, summary map[string]interface{}, side string) []int
 	require.True(t, ok)
 	return keys
 }
+
+// TestProviderParamToMap_DropsOmittedFields guards the issue #201 family
+// fix: ProviderParam pointer fields without omitempty (e.g. name) must not
+// materialize as null entries when omitted from a partial update, which
+// would produce phantom diff_keys.
+func TestProviderParamToMap_DropsOmittedFields(t *testing.T) {
+	m := providerParamToMap(&ProviderParam{ModelProtocols: []string{"openai"}})
+	require.NotNil(t, m)
+	assert.NotContains(t, m, "name")
+	assert.Equal(t, []interface{}{"openai"}, m["model_protocols"])
+
+	name := "p1"
+	m2 := providerParamToMap(&ProviderParam{Name: &name, ModelProtocols: []string{"openai"}})
+	require.NotNil(t, m2)
+	assert.Equal(t, "p1", m2["name"])
+
+	// Provider (before snapshot) has the same nil-materialization shape.
+	p := providerToMap(&Provider{Name: "p1"})
+	require.NotNil(t, p)
+	assert.NotContains(t, p, "model_endpoint")
+	assert.Equal(t, "p1", p["name"])
+
+	assert.Nil(t, providerParamToMap(nil))
+	assert.Nil(t, providerToMap(nil))
+}

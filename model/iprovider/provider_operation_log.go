@@ -16,7 +16,6 @@ package iprovider
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
@@ -50,37 +49,9 @@ func (m *ProviderManager) recordProviderOperation(ctx context.Context, action, n
 }
 
 func providerParamToMap(param *ProviderParam) map[string]interface{} {
-	if param == nil {
-		return nil
-	}
-
-	data, err := json.Marshal(param)
-	if err != nil {
-		return nil
-	}
-
-	var m map[string]interface{}
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil
-	}
-
-	return m
+	return ioperlog.ParamToMap(param)
 }
 
 func providerToMap(provider *Provider) map[string]interface{} {
-	if provider == nil {
-		return nil
-	}
-
-	data, err := json.Marshal(provider)
-	if err != nil {
-		return nil
-	}
-
-	var m map[string]interface{}
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil
-	}
-
-	return m
+	return ioperlog.ParamToMap(provider)
 }

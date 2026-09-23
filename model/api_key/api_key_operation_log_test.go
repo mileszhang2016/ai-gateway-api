@@ -129,3 +129,97 @@ func TestAPIKeyManager_UpdateFailureAuditMasksKey(t *testing.T) {
 	assert.NotContains(t, entry.ErrorMsg, rawKey)
 	assert.Contains(t, entry.ErrorMsg, ioperlog.MaskAPIKeyToken(rawKey))
 }
+
+// TestAPIKeyParamToMap_DropsOmittedFields guards issue #201 at map
+// construction: fields omitted from a partial update (nil pointers without
+// omitempty, e.g. id/enabled/key) must not materialize as null entries.
+func TestAPIKeyParamToMap_DropsOmittedFields(t *testing.T) {
+	m := apiKeyParamToMap(&APIKeyParam{Description: ptrString("only-desc")})
+	require.NotNil(t, m)
+	assert.Equal(t, map[string]interface{}{"description": "only-desc"}, m)
+
+	assert.Nil(t, apiKeyParamToMap(nil))
+}
+
+// TestAPIKeyManager_UpdateSuccessAuditDiffKeys verifies the issue #201 oracle
+// assertion path: a successful PATCH submitting only "description" must
+// produce diff_keys == ["description"], and change_summary.after must not
+// carry the unsubmitted id/enabled/key fields. An explicit enabled=false is
+// a real change and must stay in diff_keys; the failure path applies the
+// same after construction.
+func TestAPIKeyManager_UpdateSuccessAuditDiffKeys(t *testing.T) {
+	ctx := context.Background()
+
+	newStorager := func(updateFn func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error)) *fakeAPIKeyStorager {
+		return &fakeAPIKeyStorager{
+			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
+				return []*APIKeyParam{{
+					ID:          ptrString("id1"),
+					Key:         ptrString("testproduct-abcdef012345"),
+					Enable:      ptrBool(true),
+					Description: ptrString("old desc"),
+				}}, nil
+			},
+			updateAPIKeyFn: updateFn,
+		}
+	}
+	okUpdate := func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error) {
+		return 1, nil
+	}
+
+	recorder := &fakeOperationLogRecorder{}
+	m := newAPIKeyManager(newStorager(okUpdate))
+	m.SetOperationLogManager(recorder)
+
+	// 1. Partial update: only description submitted.
+	err := m.UpdateAPIKey(ctx, &APIKeyFilter{ID: ptrString("id1")},
+		&APIKeyParam{Description: ptrString("new desc")})
+	require.NoError(t, err)
+
+	require.Len(t, recorder.entries, 1)
+	entry := recorder.entries[0]
+	assert.Equal(t, string(ioperlog.ActionUpdate), entry.Action)
+	assert.Equal(t, ioperlog.StatusSuccess, entry.Status)
+	assert.Equal(t, []string{"description"}, entry.ChangeSummary["diff_keys"])
+
+	after, ok := entry.ChangeSummary["after"].(map[string]interface{})
+	require.True(t, ok, "after should be a map")
+	assert.NotContains(t, after, "id")
+	assert.NotContains(t, after, "enabled")
+	assert.NotContains(t, after, "key")
+
+	before, ok := entry.ChangeSummary["before"].(map[string]interface{})
+	require.True(t, ok, "before should be a map")
+	assert.Contains(t, before, "id")
+	assert.Contains(t, before, "enabled")
+	assert.Contains(t, before, "key")
+
+	// 2. Explicit zero value: enabled=false is a submitted change.
+	err = m.UpdateAPIKey(ctx, &APIKeyFilter{ID: ptrString("id1")},
+		&APIKeyParam{Description: ptrString("new desc 2"), Enable: ptrBool(false)})
+	require.NoError(t, err)
+
+	require.Len(t, recorder.entries, 2)
+	entry2 := recorder.entries[1]
+	assert.Equal(t, []string{"description", "enabled"}, entry2.ChangeSummary["diff_keys"])
+	after2, ok := entry2.ChangeSummary["after"].(map[string]interface{})
+	require.True(t, ok, "after should be a map")
+	assert.Equal(t, false, after2["enabled"])
+
+	// 3. Failure path: same after construction, no phantom diff keys.
+	failingRecorder := &fakeOperationLogRecorder{}
+	failing := newAPIKeyManager(newStorager(
+		func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error) {
+			return 0, fmt.Errorf("dao unavailable")
+		}))
+	failing.SetOperationLogManager(failingRecorder)
+
+	err = failing.UpdateAPIKey(ctx, &APIKeyFilter{ID: ptrString("id1")},
+		&APIKeyParam{Description: ptrString("new desc")})
+	require.Error(t, err)
+
+	require.Len(t, failingRecorder.entries, 1)
+	entry3 := failingRecorder.entries[0]
+	assert.Equal(t, ioperlog.StatusFailed, entry3.Status)
+	assert.Equal(t, []string{"description"}, entry3.ChangeSummary["diff_keys"])
+}
