@@ -263,6 +263,8 @@
 
 更新（PATCH/PUT）语义：`rate_limit_policy` 为整对象替换，**不提供单独"改名"操作**。提交的规则 `name` 与既有规则全部不一致时，视为"删除旧规则 + 新增新规则"——被删规则的限流计数不保留，其 Redis Key 由控制面清理；仅调整既有规则的 `model`/`window_*`/`max_*` 参数（`name` 不变）时计数连续。
 
+> **适用模型匹配语义与版本切换提示**：`tpm_configs[].model` / `rpm_configs[].model` 的匹配对象是**转发后的目标模型名**——即路由目标「指定模型」覆盖、集群「裁剪前缀」（StripPrefix）、集群「模型重定向」（ModelMapping）全部应用后的最终模型名，与后端实际收到的模型一致，而非客户端请求体原始模型名。存量配置中按客户端请求模型名填写的内容，仅在「无路由目标 Model 覆盖 + 无 StripPrefix + 无 ModelMapping」时与旧版本行为等价；启用上述任一机制后，须改填转发后的目标模型名。
+
 示例：
 
 ```json
@@ -287,7 +289,7 @@ Token 每分钟限制配置。
 | 字段 | 类型 | 必填 | 说明 | 合法性条件 |
 |------|------|------|------|------------|
 | `name` | string | Y | 规则名称 | 必填、非空；长度 1-128 字符；字符集限制为 `[a-zA-Z0-9_-]`；同一 `RateLimitPolicy` 内不能重复；更新语义见 [RateLimitPolicy](#9-限流规则配置ratelimitpolicy) |
-| `model` | string | N | 适用模型 | 默认 `"*"`；类型为 [AIModel](#5-ai-模型名称aimodel) |
+| `model` | string | N | 适用模型（转发后目标模型名） | 默认 `"*"`；类型为 [AIModel](#5-ai-模型名称aimodel)，匹配语义见 [RateLimitPolicy](#9-限流规则配置ratelimitpolicy) 一节的说明 |
 | `window_minutes` | int | Y | 统计时间窗口（分钟） | 取值范围 1-360 |
 | `max_tokens` | int | Y | 最大 Token 数 | 非负整数（>=0） |
 | `step_minutes` | int | Y | 滑动步长（分钟） | 取值范围 1-360，且必须 <= `window_minutes` |
@@ -311,7 +313,7 @@ Token 每分钟限制配置。
 | 字段 | 类型 | 必填 | 说明 | 合法性条件 |
 |------|------|------|------|------------|
 | `name` | string | Y | 规则名称 | 必填、非空；长度 1-128 字符；字符集限制为 `[a-zA-Z0-9_-]`；同一 `RateLimitPolicy` 内不能重复；更新语义见 [RateLimitPolicy](#9-限流规则配置ratelimitpolicy) |
-| `model` | string | N | 适用模型 | 默认 `"*"`；类型为 [AIModel](#5-ai-模型名称aimodel) |
+| `model` | string | N | 适用模型（转发后目标模型名） | 默认 `"*"`；类型为 [AIModel](#5-ai-模型名称aimodel)，匹配语义见 [RateLimitPolicy](#9-限流规则配置ratelimitpolicy) 一节的说明 |
 | `window_minutes` | int | Y | 统计时间窗口（分钟） | 取值范围 1-360 |
 | `max_requests` | int | Y | 最大请求数 | 非负整数（>=0） |
 
