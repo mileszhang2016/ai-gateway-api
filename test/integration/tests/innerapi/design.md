@@ -23,6 +23,7 @@ v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、
 | IN-7 | 导出请求体处理配置 | GET | `/inner-api/v1/configs/mod-body-process` | version 可选 |
 | IN-8 | 导出限流策略配置 | GET | `/inner-api/v1/configs/rate-limit-policy` | version 可选 |
 | IN-9 | 导出 AI 路由配置 | GET | `/inner-api/v1/configs/ai-route` | version 可选 |
+| IN-10 | 导出 EPP 配置 | GET | `/inner-api/v1/configs/epp_data/config` | version 可选 |
 
 ## 3. 测试用例统计
 
@@ -37,7 +38,8 @@ v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、
 | 导出请求体处理配置 | 1 |
 | 导出限流策略配置 | 1 |
 | 导出 AI 路由配置 | 2 |
-| **合计** | **18** |
+| 导出 EPP 配置 | 5 |
+| **合计** | **23** |
 
 ## 4. 认证方式
 
@@ -65,8 +67,10 @@ innerapi/
 │   └── mod_body_process_test.go
 ├── rate_limit_policy/
 │   └── rate_limit_policy_test.go
-└── ai_route/
-    └── ai_route_test.go
+├── ai_route/
+│   └── ai_route_test.go
+└── epp_data/
+    └── epp_data_test.go
 ```
 
 ## 6. 导出 TLS/Server 配置
@@ -1101,13 +1105,64 @@ version=XXX
 
 ---
 
-## 15. 依赖与数据准备
+## 15. 导出 EPP 配置
+
+### 15.1 接口信息
+
+| 项目 | 值 |
+|-----|-----|
+| 模块 | InnerAPI |
+| 接口名称 | 导出 EPP 配置 |
+| 方法 | GET |
+| 路径 | `/inner-api/v1/configs/epp_data/config` |
+| 说明 | 导出 EPP 调度配置（编译后 `epp_config` 段 + `assignment` 分配段），支持 version 增量同步 |
+
+### 15.2 接口参数说明
+
+#### 15.2.1 请求参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| version | string | N | 上次返回的版本号 |
+
+#### 15.2.2 返回数据字段
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| Data.Version | string | 配置版本号 |
+| Data.Config.epp_config | object | `map[cluster名]EndpointPickerConfig`，由 OpenAPI 写入的简化 `epp_config` 确定性编译而来 |
+| Data.Config.assignment | object | `map[cluster名]{primary, standby}`，EPP 实例分配（未分配 cluster 不出现在段内） |
+| WorkMode | string | 控制台工作模式 |
+
+### 15.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| IN-EPP-001 | 空池创建 EPP 集群进入未分配态并降级导出 | 降级语义 | 空池上创建 EPP cluster 进入未分配态；`server_data_conf` 导出降级为 WRR、无 EPPAddr |
+| IN-EPP-002 | 恢复容量后 reconciler 自动分配并回到 EPP | 自动分配 | PATCH `/epp-pool` 注入实例后 reconciler 自动选主；导出 BalanceMode=EPP 且 EPPAddr=[primary, standby] |
+| IN-EPP-003 | epp_data 导出含编译后 epp_config 与 assignment 两段 | 返回数据 | 创建带完整 `epp_config`（含 `flow_control`）的 cluster，校验导出编译产物：flowControl 段各字段、**`priorityBands` 显式下发 band 0**（fixes #198）、插件链、profile 权重、assignment 与分配视图一致 |
+| IN-EPP-004 | epp_data 增量拉取同版本返回 Data null | 增量同步 | 携带当前 version 再拉取返回 `Data=null` |
+| IN-EPP-005 | 手工覆写后版本推进且 assignment 更新 | 版本推进 | PUT `/epp-assignments/{cluster}` 覆写 primary 后版本 bump、assignment 更新 |
+
+IN-EPP-003 中 `flow_control` 写入 `{"max_requests": 200, "queue_ttl": 45, "no_endpoint_queue_ttl": 120, "enable_eviction": true}`，导出 `flowControl` 段校验要点：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| maxRequests | "200" | Equals |
+| defaultRequestTTL | "45s" | Equals |
+| noEndpointRequestTTL | "2m0s" | Equals |
+| enableEviction | true | Equals |
+| priorityBands | 长度 1，元素 `{"priority":0,"maxRequests":"200","maxBytes":"5Gi"}` | Len=1 / Equals（band0 与全局一致，锁"不静默截断"契约） |
+
+---
+
+## 16. 依赖与数据准备
 
 1. 需要预先通过 OpenAPI 创建 API-Key、Entity、Cluster、证书、Global Route 等数据，才能验证导出内容非空；验证模型定价表时需先导入 model prices 并创建对应 provider 的 Cluster；验证分时段定价时需先设置 provider 的 `time_zone`/`tiers` 并导入含 `tier_prices` 的 model prices。
 2. `/configs/gslb_data/gslb` 依赖正确的 `bfe_cluster` 参数，通常为 `BFE-AI_product.szyf`。
 3. InnerAPI 鉴权为 `McUserProbe`，测试环境需配置为可跳过或使用 Support Token。
 
-## 16. 注意事项
+## 17. 注意事项
 
 1. InnerAPI 返回值仍包含 `WorkMode`（与 OpenAPI v0.3.0 不同，InnerAPI 未移除该字段）。
 2. 配置未变化时 `Data=null`，不要断言为空对象 `{}`。

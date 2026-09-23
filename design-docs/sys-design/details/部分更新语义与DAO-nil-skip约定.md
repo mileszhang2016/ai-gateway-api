@@ -21,7 +21,7 @@ OpenAPI 的 PATCH 接口（`/api-keys/{id}`、`/entities/{id}`、`/providers/{pr
 | 资源 | 省略即保留原值的字段 | 实现位置 |
 |------|--------------------|---------|
 | API-Key | `models`、`subnet` | `storage/rdb/api_key/api_key.go` `UpdateAPIKey`（仅 `len > 0` 时 marshal 赋值，否则保持 nil；issue #151） |
-| Entity | `allow_models`、`block_models` | `storage/rdb/entity/entity.go` `entityDataToParamForUpdate`（Update 专用转换，省略保持 nil；Create 仍走 `entityDataToParam` 默认 `"[]"`；issue #151 同批修复） |
+| Entity | `allow_models`、`block_models` | `storage/rdb/entity/entity.go` `entityDataToParamForUpdate`（Update 专用转换，省略保持 nil；Create 仍走 `entityDataToParam`，`allow_models` 默认 `["*"]`、`block_models` 默认 `"[]"`；issue #151 同批拆分，issue #202 纠正 allow_models 默认值） |
 | Entity | `description` | 同 `entityDataToParamForUpdate` 透传（`entityBaseDataToParam` 不做默认回填，nil 保持 nil）；字符串指针天然区分"省略（nil，跳过保留）"与"显式 `""`（非 nil，写入清空）"，无 allow_models 的"显式空数组无法区分"限制 |
 | Provider | `model_endpoint`、`models`、`keys`、`time_zone`、`tiers` | `storage/rdb/provider/provider.go` `toDAOParamForUpdate`（Update 独立路径不调用 `FillDefaults`；issue #147） |
 | API-Key / Entity | `quota_plan`、`rate_limit_policy`、`route_rules` | Manager 层 `if param.X != nil` 守卫（`model/api_key/api_key.go:518/534/556`），省略即不下发子资源更新 |
@@ -31,11 +31,14 @@ OpenAPI 的 PATCH 接口（`/api-keys/{id}`、`/entities/{id}`、`/providers/{pr
 | 资源 | 字段 | Create 省略（文档行为） | PATCH 省略（修复后行为） |
 |------|------|----------------------|------------------------|
 | API-Key | `models` / `subnet` | 默认 `["*"]`（不限制） | 保留原值 |
-| Entity | `allow_models` / `block_models` | 默认 `[]` | 保留原值 |
+| Entity | `allow_models` | 默认 `["*"]`（api-define entities.md §1/§2.1，issue #202；修复前误实现为 `[]`，读路径对存量 `"[]"`/NULL 行归一化为 `["*"]`） | 保留原值 |
+| Entity | `block_models` | 默认 `[]` | 保留原值 |
 | Provider | `time_zone` | 默认 `Asia/Shanghai` | 保留原值 |
 | Provider | `models` / `keys` | 默认 `[]` | 保留原值 |
 
 因此 storager 必须为 Update 提供**独立的 param→DAO 转换路径**，不得复用创建路径的默认值回填逻辑。
+
+Entity `allow_models` 的创建默认值自 issue #202 起与 API-Key `models` 完全对齐（storager 创建转换 `len==0` 时回填 `["*"]`，读路径空值归一化，两处均对称 `storage/rdb/api_key/api_key.go` 的既有实现）。§4"显式空数组无法与省略区分"的限制对创建路径同样适用：创建时显式传 `"allow_models": []` 与省略同处置（落库 `["*"]`），契约未定义"显式全拒"语义。
 
 ## 4. 已知限制
 

@@ -16,7 +16,6 @@ package api_key
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
@@ -70,21 +69,7 @@ func (rppm *APIKeyManager) recordAPIKeyOperation(ctx context.Context, action str
 }
 
 func apiKeyParamToMap(param *APIKeyParam) map[string]interface{} {
-	if param == nil {
-		return nil
-	}
-
-	data, err := json.Marshal(param)
-	if err != nil {
-		return nil
-	}
-
-	var m map[string]interface{}
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil
-	}
-
-	return m
+	return ioperlog.ParamToMap(param)
 }
 
 // apiKeyResourceOwner builds the ResourceOwner for nested-resource audit

@@ -548,6 +548,17 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		// key is immutable through update endpoints
 		param.Key = nil
 
+		// Check if entity_id exists
+		if param.EntityID != nil && *param.EntityID != "" && rppm.entityStorager != nil {
+			entity, err := rppm.entityStorager.FetchEntity(ctx, &shared.EntityFilter{EntityID: param.EntityID})
+			if err != nil {
+				return err
+			}
+			if entity == nil {
+				return xerror.WrapParamErrorWithMsg("%s", fmt.Sprintf("Entity not found: %s", *param.EntityID))
+			}
+		}
+
 		if param.QuotaPlan != nil && rppm.quotaPlanStorager != nil {
 			if one.QuotaPlanID != nil {
 				if plan, planErr := rppm.quotaPlanStorager.FetchQuotaPlan(ctx, *one.QuotaPlanID); planErr == nil {

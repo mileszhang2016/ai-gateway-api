@@ -295,6 +295,53 @@ func TestEntity_Create(t *testing.T) {
 			},
 			wantCode: 422,
 		},
+		{
+			name: "E-1-027 创建 Entity 省略 allow_models 默认 [\"*\"]（issue #202）",
+			body: map[string]interface{}{
+				"name": testutil.UniqueEntityName(),
+				"type": typeName,
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				if err := json.Unmarshal(resp.Data, &data); err != nil {
+					t.Fatalf("unmarshal data: %v", err)
+				}
+				assert.Equal(t, []interface{}{"*"}, data["allow_models"])
+				assert.Equal(t, []interface{}{}, data["block_models"])
+				id, _ := data["id"].(string)
+				detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + id)
+				if err != nil {
+					t.Fatalf("query entity failed: %v", err)
+				}
+				testutil.AssertSuccess(t, detail)
+				testutil.AssertDataFieldEquals(t, detail, "allow_models", []interface{}{"*"})
+				testutil.AssertDataFieldEquals(t, detail, "block_models", []interface{}{})
+			},
+		},
+		{
+			name: "E-1-028 创建 Entity 显式指定 allow_models 原样回读（issue #202）",
+			body: map[string]interface{}{
+				"name":         testutil.UniqueEntityName(),
+				"type":         typeName,
+				"allow_models": []string{"gpt-4"},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				if err := json.Unmarshal(resp.Data, &data); err != nil {
+					t.Fatalf("unmarshal data: %v", err)
+				}
+				assert.Equal(t, []interface{}{"gpt-4"}, data["allow_models"])
+				id, _ := data["id"].(string)
+				detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + id)
+				if err != nil {
+					t.Fatalf("query entity failed: %v", err)
+				}
+				testutil.AssertSuccess(t, detail)
+				testutil.AssertDataFieldEquals(t, detail, "allow_models", []interface{}{"gpt-4"})
+			},
+		},
 	}
 
 	for _, tt := range tests {

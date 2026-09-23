@@ -24,7 +24,7 @@ Entity ID 生成机制（issue #132）：未显式指定 `id` 时，系统从数
 
 | 接口 | 测试用例数 |
 |------|-----------|
-| 创建 Entity | 24 |
+| 创建 Entity | 30 |
 | 查询 Entity 列表 | 3 |
 | 查询单个 Entity | 2 |
 | 全量更新 Entity | 6 |
@@ -33,7 +33,7 @@ Entity ID 生成机制（issue #132）：未显式指定 `id` 时，系统从数
 | 查询配额计划 | 2 |
 | 重置配额余额 | 3 |
 | 更新配额计划（余额差异化调整） | 6 |
-| **合计** | **52** |
+| **合计** | **58** |
 
 ## 4. 认证方式
 
@@ -128,6 +128,8 @@ entity/
 | E-1-020 | Entity name 以 `@` 开头 | 合法性条件 | 验证 ErrNum=422 |
 | E-1-021 | Entity name 以 `@` 结尾 | 合法性条件 | 验证 ErrNum=422 |
 | E-1-022 | Entity name 含 `@` 以外的特殊字符 | 合法性条件 | 验证 ErrNum=422 |
+| E-1-027 | 创建 Entity 省略 allow_models 默认 `["*"]` | 契约钉死 | 创建响应与 GET 回读 allow_models 均为 `["*"]`、block_models 为 `[]`（issue #202） |
+| E-1-028 | 创建 Entity 显式指定 allow_models 原样回读 | 正常参数 | 显式 `["gpt-4"]` 创建响应与 GET 回读一致，防默认回填误伤（issue #202） |
 | E-1-101 | 自动生成 ID 格式为 entity-N | 返回数据 | 未传 id 时返回 `entity-{正整数}` 格式 ID |
 | E-1-102 | 连续创建 Entity ID 单调递增 | 业务规则 | 串行创建 5 个，ID 序号严格递增 |
 
@@ -601,6 +603,78 @@ entity/
 **ErrNum**：200（5 次均成功）
 
 **断言**：5 个 ID 序号 `seq_i` 满足 `seq_1 < seq_2 < ... < seq_5`（GreaterThan 逐次比较）。
+
+#### 6.4.14 E-1-027：创建 Entity 省略 allow_models 默认 `["*"]`（契约钉死）
+
+##### 设计思路
+
+钉死 api-define `entities.md` §2.1 的默认值契约：创建请求省略 `allow_models` 时，创建响应与 GET 回读的 `allow_models` 均必须为 `["*"]`（允许访问所有模型），`block_models` 默认为 `[]`。修复前实现两通道均返回 `[]`（issue #202，`FAILED_PRODUCT: default allow_models=[] want [*]`）；本用例对修复具备回归效力——仅回滚 `storage/rdb/entity/entity.go` 的默认值修复而保留本用例，必失败。
+
+##### 前提数据准备
+
+已创建 Entity-Type `department`。
+
+##### 执行步骤
+
+1. POST `/open-api/v1/entities`，body 仅含 `name`、`type`（省略 `allow_models`）。
+2. 断言创建响应 `allow_models == ["*"]`、`block_models == []`。
+3. GET `/open-api/v1/entities/{id}` 回读，断言与创建响应一致。
+
+##### 请求参数
+
+```json
+{
+    "name": "ent_default_models",
+    "type": "department"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| allow_models | `["*"]` | Equals（创建响应与 GET 回读双通道） |
+| block_models | `[]` | Equals |
+
+#### 6.4.15 E-1-028：创建 Entity 显式指定 allow_models 原样回读（正常参数）
+
+##### 设计思路
+
+防默认回填误伤：显式传入非空 `allow_models` 时必须原样持久化与回读，不得被默认值逻辑覆盖。
+
+##### 前提数据准备
+
+已创建 Entity-Type `department`。
+
+##### 执行步骤
+
+1. POST `/open-api/v1/entities`，body 显式携带 `allow_models: ["gpt-4"]`。
+2. 断言创建响应 `allow_models == ["gpt-4"]`。
+3. GET `/open-api/v1/entities/{id}` 回读，断言一致。
+
+##### 请求参数
+
+```json
+{
+    "name": "ent_explicit_models",
+    "type": "department",
+    "allow_models": ["gpt-4"]
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| allow_models | `["gpt-4"]` | Equals（创建响应与 GET 回读双通道） |
 
 ---
 
