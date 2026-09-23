@@ -54,7 +54,10 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/epp_data/config?version
                           ] }
                     ],
                     "dataLayer": { "discovery": { "endpoints": { "pluginRef": "ep-discover" } } },
-                    "flowControl": { "defaultRequestTTL": "30s", "noEndpointRequestTTL": "10m" }
+                    "flowControl": {
+                        "defaultRequestTTL": "30s", "noEndpointRequestTTL": "10m",
+                        "priorityBands": [ { "priority": 0, "maxRequests": "1000", "maxBytes": "5Gi" } ]
+                    }
                 }
             },
             "assignment": {
