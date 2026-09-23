@@ -146,12 +146,13 @@ func entityFilterToParam(filter *entity.EntityFilter) *dao.TEntityParam {
 func entityDataToParam(param *entity.EntityParam) *dao.TEntityParam {
 	data := entityBaseDataToParam(param)
 
-	// 转换 AllowModels 为 JSON 字符串（创建省略时默认空数组）
+	// 转换 AllowModels 为 JSON 字符串（创建省略时默认 ["*]，即允许访问所有模型，api-define entities.md §2.1，issue #202）
 	if len(param.AllowModels) > 0 {
 		allowModelsJSON, _ := json.Marshal(param.AllowModels)
 		data.AllowModels = lib.PString(string(allowModelsJSON))
 	} else {
-		data.AllowModels = lib.PString("[]")
+		defaultAllowModelsJSON, _ := json.Marshal([]string{"*"})
+		data.AllowModels = lib.PString(string(defaultAllowModelsJSON))
 	}
 
 	// 转换 BlockModels 为 JSON 字符串（创建省略时默认空数组）
@@ -213,9 +214,12 @@ func entityParamToData(one *dao.TEntity) *entity.EntityParam {
 	updateTime := one.UpdatedAt.Unix()
 	param.UpdateTime = &updateTime
 
-	// 解析 AllowModels
+	// 解析 AllowModels（存量 "[]" 行按契约归一化为 ["*]，与 api_key 读路径同构，issue #202）
 	if one.AllowModels != "" {
 		json.Unmarshal([]byte(one.AllowModels), &param.AllowModels)
+	}
+	if len(param.AllowModels) == 0 {
+		param.AllowModels = []string{"*"}
 	}
 
 	// 解析 BlockModels
