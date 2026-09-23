@@ -307,6 +307,59 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 		assert.True(t, updated)
 	})
 
+	t.Run("entity not found", func(t *testing.T) {
+		updated := false
+		store := &fakeAPIKeyStorager{
+			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
+				return []*APIKeyParam{{
+					Key:     ptrString("k1"),
+					InnerID: ptrInt64(1),
+				}}, nil
+			},
+			updateAPIKeyFn: func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error) {
+				updated = true
+				return 1, nil
+			},
+		}
+		entityStore := &fakeEntityStorager{
+			fetchEntityFn: func(ctx context.Context, filter *shared.EntityFilter) (*shared.EntitySummary, error) {
+				assert.Equal(t, "e1", *filter.EntityID)
+				return nil, nil
+			},
+		}
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, entityStore, nil)
+		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{EntityID: ptrString("e1")})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Entity not found: e1")
+		assert.False(t, updated)
+	})
+
+	t.Run("empty entity id skips existence check", func(t *testing.T) {
+		updated := false
+		store := &fakeAPIKeyStorager{
+			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
+				return []*APIKeyParam{{
+					Key:     ptrString("k1"),
+					InnerID: ptrInt64(1),
+				}}, nil
+			},
+			updateAPIKeyFn: func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error) {
+				updated = true
+				return 1, nil
+			},
+		}
+		entityStore := &fakeEntityStorager{
+			fetchEntityFn: func(ctx context.Context, filter *shared.EntityFilter) (*shared.EntitySummary, error) {
+				t.Fatal("FetchEntity must not be called for empty entity_id")
+				return nil, nil
+			},
+		}
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, entityStore, nil)
+		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{EntityID: ptrString("")})
+		require.NoError(t, err)
+		assert.True(t, updated)
+	})
+
 	t.Run("update quota plan", func(t *testing.T) {
 		updated := false
 		store := &fakeAPIKeyStorager{

@@ -183,6 +183,85 @@ func TestAPIKey_FullUpdate(t *testing.T) {
 		assert.InDelta(t, float64(0), balance["used"], 0.00001)
 	})
 
+	t.Run("AK-4-006 全量更新不存在的 entity_id 拒绝且原绑定不变（issue #199 回归）", func(t *testing.T) {
+		typeName := testutil.UniqueEntityTypeName()
+		if _, err := testutil.CreateEntityType(typeName, 1); err != nil {
+			t.Fatalf("setup entity type failed: %v", err)
+		}
+		defer testutil.DeleteEntityType(typeName)
+
+		entityID, err := testutil.CreateEntity(testutil.UniqueEntityName(), typeName, "")
+		if err != nil {
+			t.Fatalf("setup entity failed: %v", err)
+		}
+		defer testutil.DeleteEntity(entityID)
+
+		id, err := testutil.CreateAPIKey("issue199-put-missing-entity-key", entityID)
+		if err != nil {
+			t.Fatalf("setup api-key failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(id)
+
+		missingEntityID := testutil.UniqueName("issue199-missing-entity")
+		resp, err := testutil.GetClient().Put("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"description":       "issue199-put-missing-entity",
+			"entity_id":         missingEntityID,
+			"quota_plan":        map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{"enabled": false, "rules": map[string]interface{}{}},
+			"route_rules":       map[string]interface{}{"enabled": false, "rules": []interface{}{}},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+
+		detail, err := testutil.GetClient().Get("/open-api/v1/api-keys/" + id)
+		if err != nil {
+			t.Fatalf("readback failed: %v", err)
+		}
+		testutil.AssertSuccess(t, detail)
+		testutil.AssertDataFieldEquals(t, detail, "entity_id", entityID)
+	})
+
+	t.Run("AK-4-007 全量更新 entity_id 置空解绑成功（issue #199 解绑路径防误伤）", func(t *testing.T) {
+		typeName := testutil.UniqueEntityTypeName()
+		if _, err := testutil.CreateEntityType(typeName, 1); err != nil {
+			t.Fatalf("setup entity type failed: %v", err)
+		}
+		defer testutil.DeleteEntityType(typeName)
+
+		entityID, err := testutil.CreateEntity(testutil.UniqueEntityName(), typeName, "")
+		if err != nil {
+			t.Fatalf("setup entity failed: %v", err)
+		}
+		defer testutil.DeleteEntity(entityID)
+
+		id, err := testutil.CreateAPIKey("issue199-put-unbind-key", entityID)
+		if err != nil {
+			t.Fatalf("setup api-key failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(id)
+
+		resp, err := testutil.GetClient().Put("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"description":       "issue199-put-unbind",
+			"entity_id":         "",
+			"quota_plan":        map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{"enabled": false, "rules": map[string]interface{}{}},
+			"route_rules":       map[string]interface{}{"enabled": false, "rules": []interface{}{}},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		detail, err := testutil.GetClient().Get("/open-api/v1/api-keys/" + id)
+		if err != nil {
+			t.Fatalf("readback failed: %v", err)
+		}
+		testutil.AssertSuccess(t, detail)
+		testutil.AssertDataFieldEquals(t, detail, "entity_id", "")
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteAPIKey(apiKeyID)
 	})

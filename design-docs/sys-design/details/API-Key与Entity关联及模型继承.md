@@ -82,6 +82,8 @@ if param.EntityID != nil && *param.EntityID != "" {
 }
 ```
 
+存在性守卫分两层：接口层 fail-fast（create / PUT / PATCH 均在写库前校验，`endpoints/openapi_v1/api_key/`），模型层权威校验（`CreateAPIKey` / `UpdateAPIKey`，issue #199）。`entity_id` 为空字符串表示解绑，不触发校验。
+
 ### 4.2 关联后的效果
 
 挂载后，该 API-Key 在导出到 BFE 时会：
