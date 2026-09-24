@@ -30,11 +30,20 @@ integration/
     ├── auth/
     ├── entity/
     ├── entity_type/
-    ├── alb_pool/
     ├── clusters/
     ├── certificate/
     ├── model_provider/
     ├── model_price/
+    ├── operation_log/
+    ├── report/                    # 报表查询（组 A 离线必跑；组 B/C 需 REPORT_MYSQL_DSN）
+    │   ├── design.md
+    │   ├── not_assembled/not_assembled_test.go
+    │   ├── partition/partition_test.go
+    │   └── query/query_test.go
+    ├── schema/                    # 接口契约 schema 校验（report 组需 REPORT_MYSQL_DSN）
+    │   ├── openapi/
+    │   ├── innerapi/
+    │   └── report/
     └── innerapi/
 ```
 
@@ -82,6 +91,20 @@ go test -v -count=1 -timeout 120s ./tests/api_key/create/
 # 运行单个用例
 go test -v -run TestCreate_Normal_MinimalParams ./tests/api_key/create/
 ```
+
+### MySQL 并发用例（build tag 隔离）
+
+并发正确性（ID 生成竞态、行锁超时，issue #80/#99/#132）在 SQLite 单连接串行
+环境下无法暴露，相关用例以 `//go:build mysql` 隔离，需真实 MySQL：
+
+```bash
+# admin DSN 不带库名；测试自动建库 ai_gateway_it_*、执行 db_ddl.sql、用毕删库
+AIAPI_MYSQL_DSN="root:pass@tcp(127.0.0.1:3306)/" \
+  go test -tags mysql -count=1 -timeout 600s \
+  ./tests/api_key/create/ ./tests/entity/create/ -run Concurrent
+```
+
+未设置 `AIAPI_MYSQL_DSN` 时上述用例自动 Skip；不带 `-tags mysql` 时不编译。
 
 ### 4. 清理运行时数据
 
@@ -298,6 +321,9 @@ go test -v -count=1 -timeout 300s ./tests/schema/openapi/...
 
 # 仅 InnerAPI schema 测试
 go test -v -count=1 -timeout 300s ./tests/schema/innerapi/...
+
+# Report schema 测试（需 REPORT_MYSQL_DSN，未设置时自动 Skip）
+REPORT_MYSQL_DSN="root:****@tcp(127.0.0.1:3306)/" go test -v -count=1 -timeout 300s ./tests/schema/report/...
 ```
 
 ### 目录说明
@@ -318,8 +344,11 @@ tests/schema/
 │   ├── tools.go
 │   └── openapi_schema_test.go
 └── innerapi/                # InnerAPI v1 schema 定义与测试
-    ├── schema.go            # 各导出配置顶层 schema
-    └── innerapi_schema_test.go
+│   ├── schema.go            # 各导出配置顶层 schema
+│   └── innerapi_schema_test.go
+└── report/                  # /report/* schema 定义与测试（REPORT_MYSQL_DSN 门控）
+    ├── schema.go            # OverviewResult / CostItem / CostMetricPoint / LogRow schema
+    └── report_schema_test.go
 ```
 
 ### 校验框架

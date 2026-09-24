@@ -16,5 +16,4 @@ package product
 
 import "github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 
-var Routers = []*xreq.Endpoint{
-}
+var Routers = []*xreq.Endpoint{}

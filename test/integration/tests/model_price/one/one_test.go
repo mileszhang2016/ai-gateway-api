@@ -37,17 +37,6 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-type pagination struct {
-	Page     int   `json:"page"`
-	PageSize int   `json:"page_size"`
-	Total    int64 `json:"total"`
-}
-
-type listResponse struct {
-	List       []map[string]interface{} `json:"list"`
-	Pagination pagination               `json:"pagination"`
-}
-
 func TestModelPrice_One(t *testing.T) {
 	provider := testutil.UniqueName("provider")
 	model := "deepseek-v3"
@@ -96,15 +85,17 @@ func TestModelPrice_One(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 
-		var list listResponse
-		if err := json.Unmarshal(resp.Data, &list); err != nil {
+		// §3.6 单记录契约：Data 为单个 ModelPrice 对象而非列表包装（issue #170）
+		var one map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &one); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		assert.Equal(t, int64(1), list.Pagination.Total)
-		assert.Len(t, list.List, 1)
-		assert.Equal(t, provider, list.List[0]["provider"])
-		assert.Equal(t, model, list.List[0]["model"])
-		assert.Equal(t, "chat", list.List[0]["mode"])
+		assert.NotContains(t, one, "list")
+		assert.NotContains(t, one, "pagination")
+		assert.Equal(t, float64(id), one["id"])
+		assert.Equal(t, provider, one["provider"])
+		assert.Equal(t, model, one["model"])
+		assert.Equal(t, "chat", one["mode"])
 	})
 
 	t.Run("MP-5-002 按组合键查询缺少参数", func(t *testing.T) {
@@ -115,10 +106,8 @@ func TestModelPrice_One(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
 		}
-		// 缺少 mode 时按列表接口处理，返回列表而不是 422
-		if resp.ErrNum != 200 {
-			t.Errorf("expected ErrNum=200 (list fallback), got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
-		}
+		// 带 model 但三参不齐：参数错误拒绝，不回落列表（issue #170）
+		testutil.AssertErrCode(t, resp, 422)
 	})
 
 	t.Run("MP-5-003 按组合键查询不存在的记录", func(t *testing.T) {
@@ -130,13 +119,6 @@ func TestModelPrice_One(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
 		}
-		testutil.AssertSuccess(t, resp)
-
-		var list listResponse
-		if err := json.Unmarshal(resp.Data, &list); err != nil {
-			t.Fatalf("unmarshal: %v", err)
-		}
-		assert.Equal(t, int64(0), list.Pagination.Total)
-		assert.Empty(t, list.List)
+		testutil.AssertErrCode(t, resp, 404)
 	})
 }

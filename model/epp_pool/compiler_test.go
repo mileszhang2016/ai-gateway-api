@@ -127,6 +127,7 @@ func TestCompileEppConfig_SessionAffinity(t *testing.T) {
 	plugin := findPlugin(t, conf, pluginNameSessionScorer)
 	require.NotNil(t, plugin)
 	assert.Equal(t, pluginTypeSessionScorer, plugin.Type)
+	assert.Equal(t, "session_id", plugin.Parameters["strategy"])
 	sessionIDConfig, ok := plugin.Parameters["sessionIdConfig"].(map[string]interface{})
 	require.True(t, ok)
 	sources, ok := sessionIDConfig["sources"].([]map[string]interface{})
@@ -200,20 +201,33 @@ func TestCompileEppConfig_FlowControl(t *testing.T) {
 	assert.Equal(t, "10m0s", conf.FlowControl.NoEndpointRequestTTL)
 	assert.True(t, conf.FlowControl.EnableEviction)
 	assert.Equal(t, []string{featureGateFlowControl}, conf.FeatureGates)
+
+	// band 0 mirrors the global limit (no silent truncation by the llm-d
+	// hidden band default of 5000).
+	require.Len(t, conf.FlowControl.PriorityBands, 1)
+	band := conf.FlowControl.PriorityBands[0]
+	assert.Equal(t, 0, band.Priority)
+	assert.Equal(t, "1000", band.MaxRequests)
+	assert.Equal(t, defaultPriorityBandMaxBytes, band.MaxBytes)
 }
 
 func TestCompileEppConfig_FlowControlMaxRequestsOmitted(t *testing.T) {
-	// Unset: omitted.
+	// Unset: global omitted, band 0 carries the explicit default.
 	conf := CompileEppConfig("cluster-a", &EppConfigSimplified{
 		FlowControl: &FlowControlSimplified{QueueTTL: lib.PInt(30)},
 	})
 	assert.Empty(t, conf.FlowControl.MaxRequests)
+	require.Len(t, conf.FlowControl.PriorityBands, 1)
+	assert.Equal(t, defaultPriorityBandMaxRequests, conf.FlowControl.PriorityBands[0].MaxRequests)
+	assert.Equal(t, 0, conf.FlowControl.PriorityBands[0].Priority)
 
-	// Explicit -1 (unlimited): omitted.
+	// Explicit -1 (unlimited): global omitted, band 0 still bounded.
 	conf = CompileEppConfig("cluster-a", &EppConfigSimplified{
 		FlowControl: &FlowControlSimplified{MaxRequests: lib.PInt(-1)},
 	})
 	assert.Empty(t, conf.FlowControl.MaxRequests)
+	require.Len(t, conf.FlowControl.PriorityBands, 1)
+	assert.Equal(t, defaultPriorityBandMaxRequests, conf.FlowControl.PriorityBands[0].MaxRequests)
 }
 
 func TestCompileEppConfig_FlowControlZeroTTL(t *testing.T) {
@@ -235,7 +249,11 @@ func TestCompileEppConfig_FlowControlJSONShape(t *testing.T) {
 	})
 	bs, err := json.Marshal(conf.FlowControl)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"maxRequests":"1000","defaultRequestTTL":"30s"}`, string(bs))
+	assert.JSONEq(t, `{
+		"maxRequests": "1000",
+		"defaultRequestTTL": "30s",
+		"priorityBands": [{"priority": 0, "maxRequests": "1000", "maxBytes": "5Gi"}]
+	}`, string(bs))
 	assert.NotContains(t, string(bs), "enableEviction")
 	assert.NotContains(t, string(bs), "noEndpointRequestTTL")
 
@@ -245,6 +263,34 @@ func TestCompileEppConfig_FlowControlJSONShape(t *testing.T) {
 	bs, err = json.Marshal(conf.FlowControl)
 	require.NoError(t, err)
 	assert.Contains(t, string(bs), `"enableEviction":true`)
+}
+
+func TestCompileEppConfig_PriorityBand0(t *testing.T) {
+	tests := []struct {
+		name        string
+		maxRequests *int
+		wantGlobal  string // empty means the global limit is omitted
+		wantBand    string
+	}{
+		{"全局设置：band0 与全局一致", lib.PInt(2000), "2000", "2000"},
+		{"未设置：全局不限，band0 用显式默认", nil, "", defaultPriorityBandMaxRequests},
+		{"显式 -1 不限：band0 仍受限", lib.PInt(FlowControlUnlimited), "", defaultPriorityBandMaxRequests},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conf := CompileEppConfig("cluster-a", &EppConfigSimplified{
+				FlowControl: &FlowControlSimplified{MaxRequests: tt.maxRequests},
+			})
+			assert.Equal(t, tt.wantGlobal, conf.FlowControl.MaxRequests)
+
+			require.Len(t, conf.FlowControl.PriorityBands, 1)
+			band := conf.FlowControl.PriorityBands[0]
+			assert.Equal(t, 0, band.Priority)
+			assert.Equal(t, tt.wantBand, band.MaxRequests)
+			assert.Equal(t, defaultPriorityBandMaxBytes, band.MaxBytes)
+		})
+	}
 }
 
 func TestCompileEppConfig_WeightTagParity(t *testing.T) {

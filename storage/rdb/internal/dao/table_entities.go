@@ -25,18 +25,19 @@ import (
 const tEntityTableName = "entities"
 
 type TEntity struct {
-	ID               int64     `db:"id"`
-	EntityID         string    `db:"entity_id"`
-	Name             string    `db:"name"`
-	Type             string    `db:"type"`
-	ParentID         *string   `db:"parent_id"`
-	AllowModels      string    `db:"allow_models"`
-	BlockModels      string    `db:"block_models"`
+	ID                int64     `db:"id"`
+	EntityID          string    `db:"entity_id"`
+	Name              string    `db:"name"`
+	Description       string    `db:"description"`
+	Type              string    `db:"type"`
+	ParentID          *string   `db:"parent_id"`
+	AllowModels       string    `db:"allow_models"`
+	BlockModels       string    `db:"block_models"`
 	QuotaPlanID       *int64    `db:"quota_plan_id"`
 	RateLimitPolicyID *int64    `db:"rate_limit_policy_id"`
 	RouteRulesID      *int64    `db:"route_rules_id"`
 	CreatedAt         time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
+	UpdatedAt         time.Time `db:"updated_at"`
 }
 
 // TEntityOne Query One
@@ -67,18 +68,19 @@ func TEntityList(dbCtx lib.DBContexter, where *TEntityParam) ([]*TEntity, error)
 }
 
 type TEntityParam struct {
-	ID               *int64     `db:"id"`
-	EntityID         *string    `db:"entity_id"`
-	Name             *string    `db:"name"`
-	Type             *string    `db:"type"`
-	ParentID         *string    `db:"parent_id"`
-	AllowModels      *string    `db:"allow_models"`
-	BlockModels      *string    `db:"block_models"`
+	ID                *int64     `db:"id"`
+	EntityID          *string    `db:"entity_id"`
+	Name              *string    `db:"name"`
+	Description       *string    `db:"description"`
+	Type              *string    `db:"type"`
+	ParentID          *string    `db:"parent_id"`
+	AllowModels       *string    `db:"allow_models"`
+	BlockModels       *string    `db:"block_models"`
 	QuotaPlanID       *int64     `db:"quota_plan_id"`
 	RateLimitPolicyID *int64     `db:"rate_limit_policy_id"`
 	RouteRulesID      *int64     `db:"route_rules_id"`
 	CreatedAt         *time.Time `db:"created_at"`
-	UpdatedAt        *time.Time `db:"updated_at"`
+	UpdatedAt         *time.Time `db:"updated_at"`
 
 	OrderBy *string `db:"_orderby"`
 	Limit   []uint  `db:"_limit"`

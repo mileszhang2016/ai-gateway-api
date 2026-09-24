@@ -28,10 +28,10 @@ func (f *fakeTxn) AtomExecute(ctx context.Context, do func(context.Context) erro
 }
 
 type fakeCertificateStorager struct {
-	fetchCertificatesFn  func(ctx context.Context, filter *CertificateFilter) ([]*Certificate, error)
-	deleteCertificateFn  func(ctx context.Context, cert *Certificate) error
-	createCertificateFn  func(ctx context.Context, param *CertificateParam) error
-	updateCertificateFn  func(ctx context.Context, cert *Certificate, param *CertificateParam) error
+	fetchCertificatesFn func(ctx context.Context, filter *CertificateFilter) ([]*Certificate, error)
+	deleteCertificateFn func(ctx context.Context, cert *Certificate) error
+	createCertificateFn func(ctx context.Context, param *CertificateParam) error
+	updateCertificateFn func(ctx context.Context, cert *Certificate, param *CertificateParam) error
 }
 
 func (f *fakeCertificateStorager) FetchCertificates(ctx context.Context, filter *CertificateFilter) ([]*Certificate, error) {

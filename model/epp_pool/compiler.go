@@ -33,7 +33,7 @@ import (
 //	    {"name": "kv-scorer", "type": "kv-cache-utilization-scorer", "parameters": {}},
 //	    {"name": "queue-scorer", "type": "queue-scorer", "parameters": {}},
 //	    {"name": "prefix-scorer", "type": "prefix-cache-scorer", "parameters": {}},
-//	    {"name": "session-scorer", "type": "session-affinity-scorer", "parameters": {"sessionIdConfig": {"sources": [{"header": "x-session-id"}]}}},
+//	    {"name": "session-scorer", "type": "session-affinity-scorer", "parameters": {"strategy": "session_id", "sessionIdConfig": {"sources": [{"header": "x-session-id"}]}}},
 //	    {"name": "max-score", "type": "max-score-picker", "parameters": {}},
 //	    {"name": "openai-parser", "type": "openai-parser", "parameters": {}}
 //	  ],
@@ -48,7 +48,8 @@ import (
 //	    ]}
 //	  ],
 //	  "dataLayer": {"discovery": {"endpoints": {"pluginRef": "ep-discover"}}},
-//	  "flowControl": {"maxRequests": "1000", "defaultRequestTTL": "30s", "noEndpointRequestTTL": "10m0s"},
+//	  "flowControl": {"maxRequests": "1000", "defaultRequestTTL": "30s", "noEndpointRequestTTL": "10m0s",
+//	    "priorityBands": [{"priority": 0, "maxRequests": "1000", "maxBytes": "5Gi"}]},
 //	  "requestHandler": {"parsers": [{"pluginRef": "openai-parser"}]}
 //	}
 //
@@ -111,10 +112,21 @@ type PluginRefConfig struct {
 // string because the apix FlowControlConfig types it as resource.Quantity,
 // whose canonical JSON form is a string ("1000").
 type FlowControlConfig struct {
-	MaxRequests          string `json:"maxRequests,omitempty"`
-	DefaultRequestTTL    string `json:"defaultRequestTTL,omitempty"`
-	NoEndpointRequestTTL string `json:"noEndpointRequestTTL,omitempty"`
-	EnableEviction       bool   `json:"enableEviction,omitempty"`
+	MaxRequests          string               `json:"maxRequests,omitempty"`
+	DefaultRequestTTL    string               `json:"defaultRequestTTL,omitempty"`
+	NoEndpointRequestTTL string               `json:"noEndpointRequestTTL,omitempty"`
+	EnableEviction       bool                 `json:"enableEviction,omitempty"`
+	PriorityBands        []PriorityBandConfig `json:"priorityBands,omitempty"`
+}
+
+// PriorityBandConfig mirrors apix PriorityBandConfig (only the subset we
+// emit). MaxRequests/MaxBytes are strings because apix types them as
+// resource.Quantity, whose canonical JSON form is a string ("2000", "4Gi").
+// Priority carries no omitempty in apix, so it is always emitted.
+type PriorityBandConfig struct {
+	Priority    int    `json:"priority"`
+	MaxRequests string `json:"maxRequests,omitempty"`
+	MaxBytes    string `json:"maxBytes,omitempty"`
 }
 
 // RequestHandlerConfig declares request parsers.
@@ -146,9 +158,31 @@ const (
 	pluginTypeOpenAIParser   = "openai-parser"
 )
 
+// sessionAffinityStrategySessionID must match llm-d-router's
+// sessionaffinity.StrategySessionID: the plugin only reads sessionIdConfig
+// when strategy is "session_id".
+const sessionAffinityStrategySessionID = "session_id"
+
 const metricKVCacheUtilization = "kv-cache-utilization"
 
 const featureGateFlowControl = "flowControl"
+
+// Band-level capacity defaults emitted for the always-explicit priority 0
+// band. ai-gateway-epp has no InferenceObjective reconciler, so every request
+// runs in band 0 and its config defines the entire flow-control capacity.
+// Per-band limits always exist (apix semantics: omitted or "0" falls back to
+// the llm-d hidden defaults of 5000 requests / 1GB); we emit explicit values
+// instead so the capacity is deterministic and auditable.
+const (
+	// defaultPriorityBandMaxRequests bounds band 0 when the global
+	// max_requests is unlimited (-1 or unset). Larger than the llm-d hidden
+	// default (5000); with the default 60s request TTL it only binds above
+	// ~166 req/s sustained dispatch halt.
+	defaultPriorityBandMaxRequests = "10000"
+	// defaultPriorityBandMaxBytes covers long-prompt / multimodal bodies
+	// (larger than the llm-d hidden default of 1GB).
+	defaultPriorityBandMaxBytes = "5Gi"
+)
 
 // scorerWeights maps scheduling profiles / cache affinities to (kv, queue) weights.
 var scorerWeights = map[string][2]float64{
@@ -222,6 +256,7 @@ func CompileEppConfig(clusterName string, conf *EppConfigSimplified) *EndpointPi
 			Name: pluginNameSessionScorer,
 			Type: pluginTypeSessionScorer,
 			Parameters: map[string]interface{}{
+				"strategy": sessionAffinityStrategySessionID,
 				"sessionIdConfig": map[string]interface{}{
 					"sources": []map[string]interface{}{
 						{"header": *conf.SessionAffinityHeader},
@@ -296,11 +331,22 @@ func compileScorerWeights(conf *EppConfigSimplified) (float64, float64) {
 
 // compileFlowControl expands the simplified flow_control section. Durations
 // are converted from seconds to Go duration strings (30 -> "30s", 600 -> "10m0s").
+// A priority 0 band is always emitted: ai-gateway-epp assigns every request
+// priority 0, and an unconfigured band would silently fall back to the llm-d
+// hidden defaults (5000 requests / 1GB), truncating any global max_requests
+// above 5000 (hasCapacity enforces global and band limits independently).
 func compileFlowControl(fc *FlowControlSimplified) *FlowControlConfig {
 	compiled := &FlowControlConfig{}
+	band := PriorityBandConfig{Priority: 0, MaxBytes: defaultPriorityBandMaxBytes}
 
 	if fc.MaxRequests != nil && *fc.MaxRequests > 0 {
-		compiled.MaxRequests = strconv.Itoa(*fc.MaxRequests)
+		q := strconv.Itoa(*fc.MaxRequests)
+		compiled.MaxRequests = q
+		band.MaxRequests = q // band 0 mirrors the global limit
+	} else {
+		// max_requests == -1 (FlowControlUnlimited) or unset: the global limit
+		// stays omitted, but the per-band limit must be explicit.
+		band.MaxRequests = defaultPriorityBandMaxRequests
 	}
 
 	if fc.QueueTTL != nil {
@@ -315,6 +361,7 @@ func compileFlowControl(fc *FlowControlSimplified) *FlowControlConfig {
 		compiled.EnableEviction = *fc.EnableEviction
 	}
 
+	compiled.PriorityBands = []PriorityBandConfig{band}
 	return compiled
 }
 

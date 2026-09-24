@@ -245,6 +245,103 @@ func TestEntity_Create(t *testing.T) {
 			body:     map[string]interface{}{"name": "bad#name", "type": typeName},
 			wantCode: 422,
 		},
+		{
+			name: "E-1-023 创建 Entity 携带 description（回读一致）",
+			body: map[string]interface{}{
+				"name":        testutil.UniqueEntityName(),
+				"type":        typeName,
+				"description": "运营部，负责线上业务",
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				if err := json.Unmarshal(resp.Data, &data); err != nil {
+					t.Fatalf("unmarshal data: %v", err)
+				}
+				assert.Equal(t, "运营部，负责线上业务", data["description"])
+				id, _ := data["id"].(string)
+				detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + id)
+				if err != nil {
+					t.Fatalf("query entity failed: %v", err)
+				}
+				testutil.AssertSuccess(t, detail)
+				testutil.AssertDataFieldEquals(t, detail, "description", "运营部，负责线上业务")
+			},
+		},
+		{
+			name: "E-1-024 创建 Entity description 长度为 255",
+			body: map[string]interface{}{
+				"name":        testutil.UniqueEntityName(),
+				"type":        typeName,
+				"description": strings.Repeat("a", 255),
+			},
+			wantCode: 200,
+		},
+		{
+			name: "E-1-025 创建 Entity description 长度为 256",
+			body: map[string]interface{}{
+				"name":        testutil.UniqueEntityName(),
+				"type":        typeName,
+				"description": strings.Repeat("a", 256),
+			},
+			wantCode: 422,
+		},
+		{
+			name: "E-1-026 创建 Entity description 含控制字符",
+			body: map[string]interface{}{
+				"name":        testutil.UniqueEntityName(),
+				"type":        typeName,
+				"description": "abc\tdef",
+			},
+			wantCode: 422,
+		},
+		{
+			name: "E-1-027 创建 Entity 省略 allow_models 默认 [\"*\"]（issue #202）",
+			body: map[string]interface{}{
+				"name": testutil.UniqueEntityName(),
+				"type": typeName,
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				if err := json.Unmarshal(resp.Data, &data); err != nil {
+					t.Fatalf("unmarshal data: %v", err)
+				}
+				assert.Equal(t, []interface{}{"*"}, data["allow_models"])
+				assert.Equal(t, []interface{}{}, data["block_models"])
+				id, _ := data["id"].(string)
+				detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + id)
+				if err != nil {
+					t.Fatalf("query entity failed: %v", err)
+				}
+				testutil.AssertSuccess(t, detail)
+				testutil.AssertDataFieldEquals(t, detail, "allow_models", []interface{}{"*"})
+				testutil.AssertDataFieldEquals(t, detail, "block_models", []interface{}{})
+			},
+		},
+		{
+			name: "E-1-028 创建 Entity 显式指定 allow_models 原样回读（issue #202）",
+			body: map[string]interface{}{
+				"name":         testutil.UniqueEntityName(),
+				"type":         typeName,
+				"allow_models": []string{"gpt-4"},
+			},
+			wantCode: 200,
+			check: func(t *testing.T, resp *testutil.APIResponse) {
+				var data map[string]interface{}
+				if err := json.Unmarshal(resp.Data, &data); err != nil {
+					t.Fatalf("unmarshal data: %v", err)
+				}
+				assert.Equal(t, []interface{}{"gpt-4"}, data["allow_models"])
+				id, _ := data["id"].(string)
+				detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + id)
+				if err != nil {
+					t.Fatalf("query entity failed: %v", err)
+				}
+				testutil.AssertSuccess(t, detail)
+				testutil.AssertDataFieldEquals(t, detail, "allow_models", []interface{}{"gpt-4"})
+			},
+		},
 	}
 
 	for _, tt := range tests {

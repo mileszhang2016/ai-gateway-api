@@ -40,6 +40,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprotocol"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ireport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
@@ -115,6 +116,10 @@ var (
 	// Operation logs
 	OperationLogStorager ioperlog.OperationLogStorager
 	OperationLogManager  ioperlog.OperationLogManagerInterface
+
+	// Report query module (see design-docs modifications/2026-09-15-report-query-api);
+	// nil when [Report].Backend is not configured.
+	ReportManager ireport.ReportManagerInterface
 
 	// EPP scheduling integration (see model/epp_pool and design-docs
 	// modifications/2026-09-08-epp-scheduling-integration).

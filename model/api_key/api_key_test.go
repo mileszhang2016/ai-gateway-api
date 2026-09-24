@@ -19,6 +19,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
@@ -306,6 +307,59 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 		assert.True(t, updated)
 	})
 
+	t.Run("entity not found", func(t *testing.T) {
+		updated := false
+		store := &fakeAPIKeyStorager{
+			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
+				return []*APIKeyParam{{
+					Key:     ptrString("k1"),
+					InnerID: ptrInt64(1),
+				}}, nil
+			},
+			updateAPIKeyFn: func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error) {
+				updated = true
+				return 1, nil
+			},
+		}
+		entityStore := &fakeEntityStorager{
+			fetchEntityFn: func(ctx context.Context, filter *shared.EntityFilter) (*shared.EntitySummary, error) {
+				assert.Equal(t, "e1", *filter.EntityID)
+				return nil, nil
+			},
+		}
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, entityStore, nil)
+		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{EntityID: ptrString("e1")})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Entity not found: e1")
+		assert.False(t, updated)
+	})
+
+	t.Run("empty entity id skips existence check", func(t *testing.T) {
+		updated := false
+		store := &fakeAPIKeyStorager{
+			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
+				return []*APIKeyParam{{
+					Key:     ptrString("k1"),
+					InnerID: ptrInt64(1),
+				}}, nil
+			},
+			updateAPIKeyFn: func(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) (int64, error) {
+				updated = true
+				return 1, nil
+			},
+		}
+		entityStore := &fakeEntityStorager{
+			fetchEntityFn: func(ctx context.Context, filter *shared.EntityFilter) (*shared.EntitySummary, error) {
+				t.Fatal("FetchEntity must not be called for empty entity_id")
+				return nil, nil
+			},
+		}
+		m := NewAPIKeyManager(&fakeTxn{}, store, &fakeQuotaPlanStorager{}, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, entityStore, nil)
+		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{EntityID: ptrString("")})
+		require.NoError(t, err)
+		assert.True(t, updated)
+	})
+
 	t.Run("update quota plan", func(t *testing.T) {
 		updated := false
 		store := &fakeAPIKeyStorager{
@@ -355,7 +409,7 @@ func TestAPIKeyManager_UpdateAPIKey(t *testing.T) {
 				return 20, nil
 			},
 		}
-				m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, nil)
+		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, &fakeRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, &fakeEntityStorager{}, nil)
 		err := m.UpdateAPIKey(ctx, &APIKeyFilter{}, &APIKeyParam{
 			QuotaPlan: &shared.QuotaPlanParam{Quota: ptrFloat64(100)},
 		})
@@ -499,10 +553,11 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 	})
 
 	t.Run("duplicate key value", func(t *testing.T) {
+		rawKey := "testproduct-abcdef012345"
 		store := &fakeAPIKeyStorager{
 			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
 				if filter.Key != nil {
-					return []*APIKeyParam{{Key: ptrString("key1")}}, nil
+					return []*APIKeyParam{{Key: ptrString(rawKey)}}, nil
 				}
 				return nil, nil
 			},
@@ -514,10 +569,33 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 		err := m.CreateAPIKey(ctx, &APIKeyParam{
 			ID:          ptrString("id1"),
 			ProductName: ptrString("test"),
-			Key:         ptrString("key1"),
+			Key:         ptrString(rawKey),
 		})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "already exists")
+		assert.NotContains(t, err.Error(), rawKey)
+		assert.Contains(t, err.Error(), ioperlog.MaskAPIKeyToken(rawKey))
+	})
+
+	t.Run("duplicate key token dirty data masks key", func(t *testing.T) {
+		rawKey := "testproduct-abcdef012345"
+		store := &fakeAPIKeyStorager{
+			fetchAPIKeyListFn: func(ctx context.Context, filter *APIKeyFilter) ([]*APIKeyParam, error) {
+				return nil, nil
+			},
+			fetchAPIKeyTokenListFn: func(ctx context.Context, filter *APIKeyTokenFilter) ([]*APIKeyTokenParam, error) {
+				return []*APIKeyTokenParam{{Key: ptrString(rawKey)}, {Key: ptrString(rawKey)}}, nil
+			},
+		}
+		m := newAPIKeyManager(store)
+		err := m.CreateAPIKey(ctx, &APIKeyParam{
+			ID:          ptrString("id1"),
+			ProductName: ptrString("test"),
+			Key:         ptrString(rawKey),
+		})
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), rawKey)
+		assert.Contains(t, err.Error(), ioperlog.MaskAPIKeyToken(rawKey))
 	})
 
 	t.Run("create quota plan and route rules", func(t *testing.T) {
@@ -556,7 +634,7 @@ func TestAPIKeyManager_CreateAPIKey(t *testing.T) {
 				return 30, nil
 			},
 		}
-				m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, rateLimitStore, routeRulesStore, &fakeEntityStorager{}, nil)
+		m := NewAPIKeyManager(&fakeTxn{}, store, quotaPlanStore, rateLimitStore, routeRulesStore, &fakeEntityStorager{}, nil)
 		err := m.CreateAPIKey(ctx, &APIKeyParam{
 			ID:              ptrString("id1"),
 			ProductName:     ptrString("test"),

@@ -36,10 +36,10 @@ func TestAllocateCluster_Deterministic(t *testing.T) {
 		&InstanceGroup{Name: "g2", Instances: []*InstanceParam{inst("epp-c", "g2", "10.0.0.3", 9002), inst("epp-d", "g2", "10.0.0.4", 9002)}},
 	)
 
-	first, err := allocateCluster(pool, nil, "cluster-a", ValidationModeProduction)
+	first, err := allocateCluster(pool, nil, "cluster-a")
 	require.NoError(t, err)
 	for i := 0; i < 5; i++ {
-		got, err := allocateCluster(pool, nil, "cluster-a", ValidationModeProduction)
+		got, err := allocateCluster(pool, nil, "cluster-a")
 		require.NoError(t, err)
 		assert.Equal(t, first, got)
 	}
@@ -59,7 +59,7 @@ func TestAllocateCluster_GroupLoadBalancing(t *testing.T) {
 		{Cluster: "cluster-x", GroupName: "g1", PrimaryInstanceID: "epp-a"},
 		{Cluster: "cluster-y", GroupName: "g1", PrimaryInstanceID: "epp-b"},
 	}
-	got, err := allocateCluster(pool, assignments, "cluster-z", ValidationModeProduction)
+	got, err := allocateCluster(pool, assignments, "cluster-z")
 	require.NoError(t, err)
 	assert.Equal(t, "g2", got.GroupName)
 
@@ -67,7 +67,7 @@ func TestAllocateCluster_GroupLoadBalancing(t *testing.T) {
 	assignments = []*AssignmentParam{
 		{Cluster: "cluster-x", GroupName: "g2", PrimaryInstanceID: "epp-c"},
 	}
-	got, err = allocateCluster(pool, assignments, "cluster-z", ValidationModeProduction)
+	got, err = allocateCluster(pool, assignments, "cluster-z")
 	require.NoError(t, err)
 	// g1 load = 0, g2 load = 1 -> g1.
 	assert.Equal(t, "g1", got.GroupName)
@@ -82,33 +82,27 @@ func TestAllocateCluster_PrimaryLoadBalancing(t *testing.T) {
 	assignments := []*AssignmentParam{
 		{Cluster: "cluster-x", GroupName: "g2", PrimaryInstanceID: "epp-a"},
 	}
-	got, err := allocateCluster(pool, assignments, "cluster-z", ValidationModeProduction)
+	got, err := allocateCluster(pool, assignments, "cluster-z")
 	require.NoError(t, err)
 	assert.Equal(t, "g1", got.GroupName)
 	assert.Equal(t, "epp-b", got.PrimaryInstanceID)
 }
 
-func TestAllocateCluster_CandidateFilter(t *testing.T) {
+func TestAllocateCluster_AllGroupsAreCandidates(t *testing.T) {
 	pool := makePool(
-		// Undersized for production mode.
+		// Single instance group: smallest name, valid candidate.
 		&InstanceGroup{Name: "g1", Instances: []*InstanceParam{inst("epp-a", "g1", "10.0.0.1", 9002)}},
-		// Valid production group.
 		&InstanceGroup{Name: "g2", Instances: []*InstanceParam{inst("epp-c", "g2", "10.0.0.3", 9002), inst("epp-d", "g2", "10.0.0.4", 9002)}},
 	)
 
-	got, err := allocateCluster(pool, nil, "cluster-a", ValidationModeProduction)
-	require.NoError(t, err)
-	assert.Equal(t, "g2", got.GroupName)
-
-	// Test mode accepts single instance groups (smallest name first).
-	got, err = allocateCluster(pool, nil, "cluster-a", ValidationModeTest)
+	got, err := allocateCluster(pool, nil, "cluster-a")
 	require.NoError(t, err)
 	assert.Equal(t, "g1", got.GroupName)
 	assert.Equal(t, "epp-a", got.PrimaryInstanceID)
+}
 
-	// No candidates at all.
-	empty := makePool(&InstanceGroup{Name: "g1", Instances: []*InstanceParam{inst("epp-a", "g1", "10.0.0.1", 9002)}})
-	_, err = allocateCluster(empty, nil, "cluster-a", ValidationModeProduction)
+func TestAllocateCluster_NoCandidates(t *testing.T) {
+	_, err := allocateCluster(makePool(), nil, "cluster-a")
 	require.Error(t, err)
 }
 
@@ -120,13 +114,13 @@ func TestRepairOne(t *testing.T) {
 
 	t.Run("valid assignment kept", func(t *testing.T) {
 		assignment := &AssignmentParam{Cluster: "c1", GroupName: "g1", PrimaryInstanceID: "epp-a"}
-		_, action := repairOne(pool, []*AssignmentParam{assignment}, assignment, ValidationModeProduction)
+		_, action := repairOne(pool, []*AssignmentParam{assignment}, assignment)
 		assert.Equal(t, repairKeep, action)
 	})
 
 	t.Run("same group reselect when primary removed", func(t *testing.T) {
 		assignment := &AssignmentParam{Cluster: "c1", GroupName: "g1", PrimaryInstanceID: "epp-x"}
-		repaired, action := repairOne(pool, []*AssignmentParam{assignment}, assignment, ValidationModeProduction)
+		repaired, action := repairOne(pool, []*AssignmentParam{assignment}, assignment)
 		require.Equal(t, repairReselectSameGroup, action)
 		assert.Equal(t, "g1", repaired.GroupName)
 		assert.Equal(t, "epp-a", repaired.PrimaryInstanceID)
@@ -134,28 +128,26 @@ func TestRepairOne(t *testing.T) {
 
 	t.Run("cross group reallocate when group gone", func(t *testing.T) {
 		assignment := &AssignmentParam{Cluster: "c1", GroupName: "g9", PrimaryInstanceID: "epp-x"}
-		repaired, action := repairOne(pool, []*AssignmentParam{assignment}, assignment, ValidationModeProduction)
+		repaired, action := repairOne(pool, []*AssignmentParam{assignment}, assignment)
 		require.Equal(t, repairReallocate, action)
 		assert.Equal(t, "g1", repaired.GroupName)
 		assert.Equal(t, "epp-a", repaired.PrimaryInstanceID)
 	})
 
 	t.Run("clear when no candidate groups", func(t *testing.T) {
-		empty := makePool(&InstanceGroup{Name: "g1", Instances: []*InstanceParam{inst("epp-a", "g1", "10.0.0.1", 9002)}})
 		assignment := &AssignmentParam{Cluster: "c1", GroupName: "g9", PrimaryInstanceID: "epp-x"}
-		_, action := repairOne(empty, []*AssignmentParam{assignment}, assignment, ValidationModeProduction)
+		_, action := repairOne(makePool(), []*AssignmentParam{assignment}, assignment)
 		assert.Equal(t, repairClear, action)
 	})
 
-	t.Run("cross group when group undersized", func(t *testing.T) {
+	t.Run("single instance group keeps assignment", func(t *testing.T) {
 		poolUnder := makePool(
 			&InstanceGroup{Name: "g1", Instances: []*InstanceParam{inst("epp-a", "g1", "10.0.0.1", 9002)}},
 			&InstanceGroup{Name: "g2", Instances: []*InstanceParam{inst("epp-c", "g2", "10.0.0.3", 9002), inst("epp-d", "g2", "10.0.0.4", 9002)}},
 		)
 		assignment := &AssignmentParam{Cluster: "c1", GroupName: "g1", PrimaryInstanceID: "epp-a"}
-		repaired, action := repairOne(poolUnder, []*AssignmentParam{assignment}, assignment, ValidationModeProduction)
-		require.Equal(t, repairReallocate, action)
-		assert.Equal(t, "g2", repaired.GroupName)
+		_, action := repairOne(poolUnder, []*AssignmentParam{assignment}, assignment)
+		assert.Equal(t, repairKeep, action)
 	})
 }
 
@@ -223,7 +215,7 @@ func TestEppPoolManager_GetAssignmentEndpoints(t *testing.T) {
 	ctx := context.Background()
 
 	newManager := func(store *memoryEppPoolStorager) *EppPoolManager {
-		return NewEppPoolManager(&fakeTxn{}, store, nil, nil, &ManagerOptions{ValidationMode: ValidationModeTest})
+		return NewEppPoolManager(&fakeTxn{}, store, nil, nil, &ManagerOptions{})
 	}
 
 	t.Run("ordered primary standby joined by net.JoinHostPort", func(t *testing.T) {

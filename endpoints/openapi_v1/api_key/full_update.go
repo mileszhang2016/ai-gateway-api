@@ -16,12 +16,14 @@ package api_key
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
@@ -68,6 +70,17 @@ func APIKeyFullUpdateProcess(ctx context.Context, param *api_key.APIKeyParam, pr
 	}
 	if existing == nil {
 		return nil, xerror.WrapRecordNotExist("API-Key")
+	}
+
+	// 检查 entity_id 是否存在（如果传入的话）
+	if param.EntityID != nil && *param.EntityID != "" {
+		entity, err := container.EntityManager.FetchEntity(ctx, &entity.EntityFilter{EntityID: param.EntityID})
+		if err != nil {
+			return nil, err
+		}
+		if entity == nil {
+			return nil, xerror.WrapParamErrorWithMsg("%s", fmt.Sprintf("Entity not found: %s", *param.EntityID))
+		}
 	}
 
 	err = container.APIKeyManager.UpdateAPIKey(ctx, &api_key.APIKeyFilter{

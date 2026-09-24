@@ -27,7 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupTestStorager(t *testing.T) *EntityStorager {
+func setupTestStoragerWithDB(t *testing.T) (*EntityStorager, *sql.DB) {
 	// The DAO layer consults stateful.DefaultConfig when recording SQL.
 	if stateful.DefaultConfig == nil {
 		stateful.DefaultConfig = &stateful.Config{}
@@ -43,6 +43,7 @@ CREATE TABLE entities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   entity_id TEXT NOT NULL,
   name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
   type TEXT NOT NULL,
   parent_id TEXT DEFAULT NULL,
   allow_models TEXT,
@@ -61,7 +62,12 @@ CREATE TABLE entities (
 		return lib.NewDBContext(ctx, db), nil
 	})
 
-	return NewEntityStorager(factory)
+	return NewEntityStorager(factory), db
+}
+
+func setupTestStorager(t *testing.T) *EntityStorager {
+	storager, _ := setupTestStoragerWithDB(t)
+	return storager
 }
 
 func fetchOne(t *testing.T, storager *EntityStorager, entityID string) *entity.EntityParam {
@@ -130,7 +136,7 @@ func TestUpdateEntity_ProvidedModelsAreWritten(t *testing.T) {
 	assert.Equal(t, []string{"model-y"}, one.BlockModels)
 }
 
-func TestCreateEntity_OmittedModelsDefaultToEmpty(t *testing.T) {
+func TestCreateEntity_OmittedModelsDefaultToStar(t *testing.T) {
 	storager := setupTestStorager(t)
 	ctx := context.Background()
 
@@ -145,6 +151,107 @@ func TestCreateEntity_OmittedModelsDefaultToEmpty(t *testing.T) {
 	require.NoError(t, err)
 
 	one := fetchOne(t, storager, id)
-	assert.Empty(t, one.AllowModels)
+	// 省略 allow_models 默认 ["*]（api-define entities.md §2.1，issue #202）；
+	// block_models 默认 [] 不变。
+	assert.Equal(t, []string{"*"}, one.AllowModels)
 	assert.Empty(t, one.BlockModels)
+
+	// 显式非空 allow_models/block_models 原样往返，防默认回填误伤。
+	id2, name2 := "entity-2", "entity-two"
+	_, err = storager.CreateEntity(ctx, &entity.EntityParam{
+		EntityID:    &id2,
+		Name:        &name2,
+		Type:        &typ,
+		AllowModels: []string{"gpt-4"},
+		BlockModels: []string{"gpt-3"},
+	})
+	require.NoError(t, err)
+
+	two := fetchOne(t, storager, id2)
+	assert.Equal(t, []string{"gpt-4"}, two.AllowModels)
+	assert.Equal(t, []string{"gpt-3"}, two.BlockModels)
+}
+
+// TestFetchEntity_LegacyEmptyAllowModelsNormalizedToStar 验证 issue #202 读回归一化：
+// 修复前创建的存量行（持久化 "[]" 或 NULL）回读时按契约归一化为 ["*]。
+func TestFetchEntity_LegacyEmptyAllowModelsNormalizedToStar(t *testing.T) {
+	storager, db := setupTestStoragerWithDB(t)
+	ctx := context.Background()
+
+	typ := "tenant"
+	newLegacyEntity := func(id, name, allowModelsSQL string) {
+		nameVal := name
+		_, err := storager.CreateEntity(ctx, &entity.EntityParam{
+			EntityID: &id,
+			Name:     &nameVal,
+			Type:     &typ,
+		})
+		require.NoError(t, err)
+		// 模拟修复前存量数据：绕过 storager 创建转换，把列改回遗留值。
+		_, err = db.Exec("UPDATE entities SET allow_models = "+allowModelsSQL+" WHERE entity_id = ?", id)
+		require.NoError(t, err)
+	}
+
+	// 存量 "[]" 行 → 回读 ["*]。
+	newLegacyEntity("entity-1", "entity-one", "'[]'")
+	assert.Equal(t, []string{"*"}, fetchOne(t, storager, "entity-1").AllowModels)
+
+	// 存量 NULL 行 → 回读 ["*]。
+	newLegacyEntity("entity-2", "entity-two", "NULL")
+	assert.Equal(t, []string{"*"}, fetchOne(t, storager, "entity-2").AllowModels)
+
+	// 存量非空行不受影响。
+	newLegacyEntity("entity-3", "entity-three", "'[\"model-a\"]'")
+	assert.Equal(t, []string{"model-a"}, fetchOne(t, storager, "entity-3").AllowModels)
+}
+
+func TestEntityDescription_RoundTrip(t *testing.T) {
+	storager := setupTestStorager(t)
+	ctx := context.Background()
+
+	newEntity := func(id, name string) {
+		typ := "tenant"
+		_, err := storager.CreateEntity(ctx, &entity.EntityParam{
+			EntityID: &id,
+			Name:     &name,
+			Type:     &typ,
+		})
+		require.NoError(t, err)
+	}
+
+	// Create 省略 description → 读回为空字符串（DB 列默认值）。
+	newEntity("entity-1", "entity-one")
+	one := fetchOne(t, storager, "entity-1")
+	require.NotNil(t, one.Description)
+	assert.Equal(t, "", *one.Description)
+
+	// Create 显式携带 description → 正确写入。
+	id2, name2, desc2 := "entity-2", "entity-two", "运营部"
+	typ := "tenant"
+	_, err := storager.CreateEntity(ctx, &entity.EntityParam{
+		EntityID:    &id2,
+		Name:        &name2,
+		Type:        &typ,
+		Description: &desc2,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, desc2, *fetchOne(t, storager, id2).Description)
+
+	// Update 省略 description → nil-skip 保留原值。
+	newName := "entity-two-renamed"
+	affected, err := storager.UpdateEntity(ctx,
+		&entity.EntityFilter{EntityID: &id2},
+		&entity.EntityParam{Name: &newName})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), affected)
+	assert.Equal(t, desc2, *fetchOne(t, storager, id2).Description)
+
+	// Update 显式置空 → 写入空字符串（清空）。
+	empty := ""
+	affected, err = storager.UpdateEntity(ctx,
+		&entity.EntityFilter{EntityID: &id2},
+		&entity.EntityParam{Description: &empty})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), affected)
+	assert.Equal(t, "", *fetchOne(t, storager, id2).Description)
 }

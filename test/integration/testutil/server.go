@@ -48,17 +48,69 @@ type ServerManager struct {
 	Redis       *miniredis.Miniredis
 	sharedRedis bool // Redis 是否由外部共享，Shutdown 时不关闭
 	sharedDB    bool // DB 是否由外部共享，Shutdown 时不删除
+	// mysqlAdminDSN/mysqlDBName 非空表示 MySQL 后端（并发用例专用），
+	// Shutdown 时 DROP DATABASE 清理。
+	mysqlAdminDSN string
+	mysqlDBName   string
+}
+
+// dbPatch 以非 SQLite 后端启动时的数据库配置覆盖项（仅 MySQL 并发用例使用）。
+// section 为完整的 [Databases.bfe_db] TOML 段，用于整体替换模板中的
+// SQLite 段（TOML 不允许同名表重复，无法靠追加覆盖）。
+type dbPatch struct {
+	driver  string // 如 "mysql"
+	section string
+}
+
+// replaceDBSection 将 confText 中的 [Databases.bfe_db] 段整体替换为
+// section（段首尾按行定位：从 "[Databases.bfe_db]" 行到下一个 "[" 开头的行之前）。
+func replaceDBSection(confText, section string) string {
+	lines := strings.Split(confText, "\n")
+	start, end := -1, -1
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "[Databases.bfe_db]" {
+			start = i
+			continue
+		}
+		if start != -1 && strings.HasPrefix(trimmed, "[") {
+			end = i
+			break
+		}
+	}
+	if start == -1 {
+		return confText
+	}
+	if end == -1 {
+		end = len(lines)
+	}
+	out := append([]string{}, lines[:start]...)
+	out = append(out, section)
+	out = append(out, lines[end:]...)
+	return strings.Join(out, "\n")
 }
 
 // StartServer 使用项目编译的 ai-gateway-api.exe 作为子进程启动测试服务器
 func StartServer() (*ServerManager, error) {
-	return StartServerWithSharedInfra(nil, "")
+	return startServer(nil, "", "", nil)
+}
+
+// StartServerWithExtraConfig 启动一个测试服务器，并把 extraTOML 追加到临时
+// ai_gateway_api.toml 的末尾（在端口/DB/Redis 补丁之后），用于注入额外配置段
+// （如 [Report]、[Databases.xxx]）。extraTOML 为空串时行为与 StartServer 完全
+// 一致。注意：额外数据源（如 MySQL）需要测试自身保证可用。
+func StartServerWithExtraConfig(extraTOML string) (*ServerManager, error) {
+	return startServer(nil, "", extraTOML, nil)
 }
 
 // StartServerWithSharedInfra 启动一个测试服务器，可复用外部传入的 miniredis 与 SQLite 数据库文件。
 // 当 sharedRedis == nil 时创建新的 miniredis；当 sharedDBPath == "" 时创建新的 SQLite 数据库。
 // 该函数用于多实例部署场景，让多个 ai-gateway-api 实例共享同一 Redis（分布式锁）与同一 DB。
 func StartServerWithSharedInfra(sharedRedis *miniredis.Miniredis, sharedDBPath string) (*ServerManager, error) {
+	return startServer(sharedRedis, sharedDBPath, "", nil)
+}
+
+func startServer(sharedRedis *miniredis.Miniredis, sharedDBPath string, extraTOML string, dbPatchCfg *dbPatch) (*ServerManager, error) {
 	sm := &ServerManager{}
 
 	// 1. 获取 integration 目录和项目根目录
@@ -85,10 +137,14 @@ func StartServerWithSharedInfra(sharedRedis *miniredis.Miniredis, sharedDBPath s
 
 	// 2. 数据库文件
 	var dbPath string
-	if sharedDBPath != "" {
+	switch {
+	case dbPatchCfg != nil:
+		// 非 SQLite 后端（当前仅 MySQL 并发用例）：建库/DDL/种子由调用方
+		// （StartServerWithMySQL）完成，此处仅注入连接配置，不落本地文件。
+	case sharedDBPath != "":
 		dbPath = sharedDBPath
 		sm.sharedDB = true
-	} else {
+	default:
 		dbPath = filepath.Join(dataDir, fmt.Sprintf("test_ai_gateway_%d.db", os.Getpid()))
 
 		// 3. 初始化 SQLite 数据库（执行 DDL）
@@ -139,7 +195,7 @@ func StartServerWithSharedInfra(sharedRedis *miniredis.Miniredis, sharedDBPath s
 		return nil, fmt.Errorf("get random port: %w", err)
 	}
 
-	tmpConfDir, err := createTempConfig(confDir, sm.binPath, dbPath, port, redisServer.Addr())
+	tmpConfDir, err := createTempConfig(confDir, sm.binPath, dbPath, port, redisServer.Addr(), extraTOML, dbPatchCfg)
 	if err != nil {
 		return nil, fmt.Errorf("create temp config: %w", err)
 	}
@@ -194,8 +250,8 @@ func StartServerWithSharedInfra(sharedRedis *miniredis.Miniredis, sharedDBPath s
 		return nil, fmt.Errorf("server ready: %s", errMsg)
 	}
 
-	// 设置全局客户端（仅当非共享模式时，避免覆盖其他实例的 URL）
-	if sharedRedis == nil && sharedDBPath == "" {
+	// 设置全局客户端（仅当非共享模式且非外部 DB 覆盖时，避免覆盖其他实例的 URL）
+	if sharedRedis == nil && sharedDBPath == "" && dbPatchCfg == nil {
 		SetServerURL(sm.ServerURL)
 	}
 
@@ -233,6 +289,14 @@ func (sm *ServerManager) Shutdown() {
 	if sm.Redis != nil && !sm.sharedRedis {
 		sm.Redis.Close()
 	}
+
+	// MySQL 后端：删除本次用例创建的库（须先于全局 client 无关逻辑、在进程终止后执行）
+	if sm.mysqlAdminDSN != "" && sm.mysqlDBName != "" {
+		if db, err := sql.Open("mysql", sm.mysqlAdminDSN); err == nil {
+			db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", sm.mysqlDBName))
+			db.Close()
+		}
+	}
 }
 
 // waitForReady 等待服务器就绪
@@ -259,8 +323,10 @@ func getRandomPort() (int, error) {
 	return listener.Addr().(*net.TCPAddr).Port, nil
 }
 
-// createTempConfig 创建临时配置文件（覆盖端口、数据库路径和 Redis 配置）
-func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr string) (string, error) {
+// createTempConfig 创建临时配置文件（覆盖端口、数据库路径和 Redis 配置）。
+// extraTOML 非空时追加到文件末尾，用于注入 [Report] 等额外配置段。
+// dbPatchCfg 非空时用其 driver/dbName 覆盖默认 SQLite 连接（MySQL 并发用例）。
+func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr string, extraTOML string, dbPatchCfg *dbPatch) (string, error) {
 	// 创建临时配置目录
 	tmpDir, err := os.MkdirTemp("", "ai-gateway-test-conf-")
 	if err != nil {
@@ -299,12 +365,22 @@ func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr st
 	confStr := string(content)
 	// 替换端口
 	confStr = strings.Replace(confStr, "ServerPort = 8199", fmt.Sprintf("ServerPort = %d", port), 1)
-	// 替换数据库路径（使用正斜杠避免 TOML 转义问题）
-	dbPathForTOML := strings.ReplaceAll(dbPath, "\\", "/")
-	confStr = strings.Replace(confStr, `DBName  = "./data/test_ai_gateway.db"`, fmt.Sprintf(`DBName  = "%s"`, dbPathForTOML), 1)
+	if dbPatchCfg != nil {
+		// 外部 DB 覆盖（MySQL）：整体替换 [Databases.bfe_db] 段
+		confStr = replaceDBSection(confStr, dbPatchCfg.section)
+	} else {
+		// 替换数据库路径（使用正斜杠避免 TOML 转义问题）
+		dbPathForTOML := strings.ReplaceAll(dbPath, "\\", "/")
+		confStr = strings.Replace(confStr, `DBName  = "./data/test_ai_gateway.db"`, fmt.Sprintf(`DBName  = "%s"`, dbPathForTOML), 1)
+	}
 	// 替换 Redis 配置为指向 miniredis
 	confStr = strings.Replace(confStr, `Bns = "mock"`, `Bns = "test.redis.miniredis"`, 1)
 	confStr = strings.Replace(confStr, `ClusterMode = "mock"`, `ClusterMode = "proxy"`, 1)
+
+	// 追加额外配置段（如 [Report]、[Databases.xxx]），追加在补丁之后、文件末尾。
+	if strings.TrimSpace(extraTOML) != "" {
+		confStr += "\n" + strings.TrimSpace(extraTOML) + "\n"
+	}
 
 	if err := os.WriteFile(confFile, []byte(confStr), 0644); err != nil {
 		os.RemoveAll(tmpDir)

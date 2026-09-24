@@ -275,6 +275,16 @@ func TestInnerAPI_EppData(t *testing.T) {
 		assert.Equal(t, "2m0s", flowControl["noEndpointRequestTTL"])
 		assert.Equal(t, true, flowControl["enableEviction"])
 
+		// band 0 显式下发：ai-gateway-epp 所有请求均为 priority 0，
+		// 不显式下发会静默落入 llm-d 隐藏默认（5000/1GB）截断全局配置。
+		bands, ok := flowControl["priorityBands"].([]interface{})
+		require.True(t, ok, "flowControl must explicitly emit priorityBands (band 0)")
+		require.Len(t, bands, 1)
+		band := bands[0].(map[string]interface{})
+		assert.Equal(t, float64(0), band["priority"])
+		assert.Equal(t, "200", band["maxRequests"], "band0 mirrors global, no silent truncation")
+		assert.Equal(t, "5Gi", band["maxBytes"])
+
 		plugins := compiled["plugins"].([]interface{})
 		pluginTypes := map[string]bool{}
 		for _, p := range plugins {
@@ -290,6 +300,9 @@ func TestInnerAPI_EppData(t *testing.T) {
 			plugin := p.(map[string]interface{})
 			if plugin["name"] == "session-scorer" {
 				params := plugin["parameters"].(map[string]interface{})
+				// strategy 必须显式下发 session_id：缺失时落到 llm-d 插件默认值
+				// （无状态 header 亲和），会话亲和静默失效（issue #181 回归锚点）。
+				assert.Equal(t, "session_id", params["strategy"], "session-scorer strategy must be session_id")
 				sessionCfg := params["sessionIdConfig"].(map[string]interface{})
 				sources := sessionCfg["sources"].([]interface{})
 				source := sources[0].(map[string]interface{})

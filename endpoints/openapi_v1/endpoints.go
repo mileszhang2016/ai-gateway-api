@@ -21,7 +21,6 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/auth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_cluster"
-	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_pool"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/certificate"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/domain"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/entity"
@@ -35,11 +34,13 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product_cluster"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/product_pool"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/provider"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/report"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route_tables"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/subcluster"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/traffic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
 func RegisterEndpoints(router *mux.Router) *mux.Router {
@@ -52,13 +53,12 @@ func RegisterEndpoints(router *mux.Router) *mux.Router {
 }
 
 func endpoints() []*xreq.Endpoint {
-	return merge(
+	rs := merge(
 		product.Routers,
 		product_cluster.Endpoints,
 		certificate.Endpoints,
 		product_pool.Endpoints,
 		subcluster.Endpoints,
-		bfe_pool.Endpoints,
 		epp_pool.Endpoints,
 		epp_assignments.Endpoints,
 		auth.Endpoints,
@@ -75,6 +75,14 @@ func endpoints() []*xreq.Endpoint {
 		operation_log.Endpoints,
 		provider.Endpoints,
 	)
+
+	// The report module only registers when it is assembled
+	// ([Report].Backend configured); otherwise /report/* stay 404.
+	if container.ReportManager != nil {
+		rs = append(rs, report.Endpoints...)
+	}
+
+	return rs
 }
 
 func merge(rss ...[]*xreq.Endpoint) (rs []*xreq.Endpoint) {

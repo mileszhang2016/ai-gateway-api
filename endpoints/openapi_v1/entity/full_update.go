@@ -17,6 +17,7 @@ package entity
 import (
 	"net/http"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
@@ -57,6 +58,16 @@ func EntityFullUpdateAction(req *http.Request) (interface{}, error) {
 	}
 
 	if err := validateEntityParam(param, false); err != nil {
+		return nil, err
+	}
+
+	// 全量更新语义（api-define entities.md §2.4）：description 省略时重置为空字符串，
+	// 即清空已有描述；nil-skip 链路本身不变，由接口层显式构造非 nil 空值实现。
+	if param.Description == nil {
+		param.Description = lib.PString("")
+	}
+
+	if err := validateTypeImmutable(param.Type, existing.Type); err != nil {
 		return nil, err
 	}
 

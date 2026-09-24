@@ -440,19 +440,20 @@ func FieldExists(resp *APIResponse, field string) (bool, error) {
 
 // OperationLogEntry 是查询操作日志返回的单个条目结构（仅包含测试常用字段）。
 type OperationLogEntry struct {
-	ID            float64                `json:"id"`
-	Action        string                 `json:"action"`
-	ResourceType  string                 `json:"resource_type"`
-	ResourceID    string                 `json:"resource_id"`
-	ResourceName  string                 `json:"resource_name"`
-	Status        float64                `json:"status"`
-	ErrorMsg      string                 `json:"error_msg"`
-	ClientIP      string                 `json:"client_ip"`
-	UserAgent     string                 `json:"user_agent"`
-	RequestPath   string                 `json:"request_path"`
-	RequestMethod string                 `json:"request_method"`
-	CreatedAt     float64                `json:"created_at"`
-	ChangeSummary map[string]interface{} `json:"change_summary"`
+	ID               float64                `json:"id"`
+	Action           string                 `json:"action"`
+	ResourceType     string                 `json:"resource_type"`
+	ResourceID       string                 `json:"resource_id"`
+	ResourceName     string                 `json:"resource_name"`
+	ResourceParentID string                 `json:"resource_parent_id"`
+	Status           float64                `json:"status"`
+	ErrorMsg         string                 `json:"error_msg"`
+	ClientIP         string                 `json:"client_ip"`
+	UserAgent        string                 `json:"user_agent"`
+	RequestPath      string                 `json:"request_path"`
+	RequestMethod    string                 `json:"request_method"`
+	CreatedAt        float64                `json:"created_at"`
+	ChangeSummary    map[string]interface{} `json:"change_summary"`
 }
 
 // OperationLogListResult 是 GET /operation-logs 的分页结果。

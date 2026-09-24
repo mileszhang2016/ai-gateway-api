@@ -137,9 +137,8 @@ func TestProvider_PartialUpdate(t *testing.T) {
 		assert.Equal(t, "/custom/models", endpoint["uri"])
 	})
 
-	t.Run("PV-4-009 显式空数组清空字段", func(t *testing.T) {
+	t.Run("PV-4-009 显式空数组清空 keys/tiers", func(t *testing.T) {
 		body := requiredPatchBody()
-		body["models"] = []string{}
 		body["keys"] = []interface{}{}
 		body["tiers"] = []interface{}{}
 		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, body)
@@ -147,8 +146,10 @@ func TestProvider_PartialUpdate(t *testing.T) {
 		testutil.AssertSuccess(t, resp)
 
 		data := fetchProviderData(t, providerName)
+		// models is required (issue #115): an explicit empty models array is
+		// rejected (see PV-4-016), so the stored list is preserved here.
 		models, _ := data["models"].([]interface{})
-		assert.Empty(t, models)
+		assert.Equal(t, []interface{}{"deepseek-chat", "deepseek-coder"}, models)
 		keys, _ := data["keys"].([]interface{})
 		assert.Empty(t, keys)
 		tiers, _ := data["tiers"].([]interface{})
@@ -170,5 +171,18 @@ func TestProvider_PartialUpdate(t *testing.T) {
 		// The rejected update must not have changed the stored value.
 		data := fetchProviderData(t, providerName)
 		assert.Equal(t, "Europe/London", data["time_zone"])
+	})
+
+	t.Run("PV-4-016 显式空 models 数组拒绝", func(t *testing.T) {
+		body := requiredPatchBody()
+		body["models"] = []string{}
+		resp, err := testutil.GetClient().Patch("/open-api/v1/providers/"+providerName, body)
+		require.NoError(t, err)
+		testutil.AssertErrCode(t, resp, 422)
+
+		// The rejected update must not have changed the stored value.
+		data := fetchProviderData(t, providerName)
+		models, _ := data["models"].([]interface{})
+		assert.Equal(t, []interface{}{"deepseek-chat", "deepseek-coder"}, models)
 	})
 }

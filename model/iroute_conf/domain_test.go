@@ -19,10 +19,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewHostTableConf(t *testing.T) {
@@ -172,7 +172,7 @@ func TestDomainManager_DeleteDomain(t *testing.T) {
 
 func TestDomainBeUsedInfo_String_Dependent(t *testing.T) {
 	dbui := &DomainBeUsedInfo{
-		domain:  &Domain{Name: "a.example.com"},
+		domain:   &Domain{Name: "a.example.com"},
 		RoutRule: &HostUsedInfo{Type: "BasicConditionExpression", Detail: "a.example.com"},
 	}
 	assert.Equal(t, "Domain a.example.com Be Used By BasicConditionExpression Rule a.example.com", dbui.String())

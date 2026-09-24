@@ -129,6 +129,9 @@ const (
 
 	// operation logs
 	FeatureOperationLog Feature = "OperationLog"
+
+	// report query
+	FeatureReport Feature = "Report"
 )
 
 var (
@@ -178,6 +181,8 @@ var scope2permission = map[string]map[Feature]Action{
 		FeatureModelPrice:   actionAll,
 		FeatureProvider:     actionAll,
 		FeatureOperationLog: actionAll,
+
+		FeatureReport: actionAll,
 	},
 	ScopeProduct: {
 		FeatureUser:       ActionReadAll,
@@ -204,6 +209,10 @@ var scope2permission = map[string]map[Feature]Action{
 		FeatureNLBCluster: actionProductNormal,
 		FeatureAIRoute:    actionProductNormal,
 		FeatureAPIKey:     actionProductNormal,
+
+		// Report stays read-only for the product scope; it is reserved for
+		// the tenant self-service usage report.
+		FeatureReport: ActionRead,
 	},
 	ScopeSupport: {
 		FeatureProxyPool:         ActionExport,

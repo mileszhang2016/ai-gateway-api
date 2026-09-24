@@ -219,7 +219,7 @@
 | `no_endpoint_queue_ttl` | int | 否 | 跟随 `queue_ttl` | 池**无端点**（冷启动扩容）时的排队预算（**单位：秒**），regime 切换时重新起算 | 同 `queue_ttl` |
 | `enable_eviction` | bool | 否 | `false` | 需求驱动驱逐：高优先级被饱和阻塞时终止负优先级在飞请求回收容量 | bool |
 
-**流控实现说明**（llm-d flow controller，`flowcontrol/`）：全部由 EPP 进程内实现、状态为本地内存，无外部存储——请求先进入 per-pool（≈per cluster）**优先级队列**（并发安全 heap，按优先级带排序，超 TTL 后台 sweep 拒绝），单 goroutine processor 每周期检查在飞计数是否达 `max_requests` ceiling，有空位才调度到后端，响应完成归还额度；`enable_eviction` 开启后 HoL 阻塞时可经 ext_proc ImmediateResponse 驱逐负优先级在飞请求。failover 切换后队列与在飞计数不保留、新 primary 从零开始（排队中请求由 BFE 侧断连/重试处理），与亲和状态冷启动同理。各优先级带另有 band 级限额，本期不暴露、用系统默认。
+**流控实现说明**（llm-d flow controller，`flowcontrol/`）：全部由 EPP 进程内实现、状态为本地内存，无外部存储——请求先进入 per-pool（≈per cluster）**优先级队列**（并发安全 heap，按优先级带排序，超 TTL 后台 sweep 拒绝），单 goroutine processor 每周期检查在飞计数是否达 `max_requests` ceiling，有空位才调度到后端，响应完成归还额度；`enable_eviction` 开启后 HoL 阻塞时可经 ext_proc ImmediateResponse 驱逐负优先级在飞请求。failover 切换后队列与在飞计数不保留、新 primary 从零开始（排队中请求由 BFE 侧断连/重试处理），与亲和状态冷启动同理。各优先级带另有 band 级限额：ai-gateway-epp 无 InferenceObjective reconciler、所有请求恒为 priority 0，故 band 0 即全部容量语义——导出时**始终显式下发 priority 0 band**（fixes #198，`maxRequests` 联动全局、`maxBytes` 默认 `"5Gi"`；不显式下发会落入 llm-d 隐藏默认 5000/1GB 截断全局配置）。
 
 **缺省语义与存储约定**：`cache_affinity` 缺省值为 `medium`，语义为"跟随 `scheduling_profile`、不覆盖其权重"；仅当用户在请求中**显式设置** `low` / `medium` / `high` 时才作为覆盖项生效（显式 `medium` = 覆盖为 (0.6, 0.6)，与缺省行为不同）。为区分这两种状态，存储保留用户原始 JSON——未显式携带的字段不落盘、GET 回读与写入一致；默认值只体现在导出编译时。
 
@@ -246,7 +246,7 @@
 **亲和状态存放**：prefix 亲和索引是 EPP 实例**本地内存**中的 per-endpoint LRU（approx-prefix-cache producer 自学习写入，scorer 从 endpoint attribute 读取），**无需 Redis 等外部存储**。一个 cluster 同一时刻仅 primary EPP 做调度决策，本地索引即完备；failover/重启后新 primary 冷启动，经少量请求重新收敛（ai-gateway-epp SC11 已验证），与软亲和语义一致。会话亲和 binding 状态同为 EPP 本地内存。
 
 **运行时指标来源**：kv/queue scorer 消费的利用率与队列指标由 EPP **周期性 HTTP 抓取各推理后端 `/metrics`（Prometheus 格式）**获得（`RefreshMetricsInterval` 刷新、本地内存缓存），ai-gateway-epp `injectDefaults` 默认自动注入指标 source/extractor，**同样无需外部存储**。某后端指标不可用时相应得分中性化（kv 得分视为 1.0、filter 不生效），调度正常退化。EPP 全链路的对外依赖仅两类无状态拉取：控制面配置（epp_data / cluster_table）与数据面指标（后端 /metrics）。
-| `flow_control` 存在时 | 生成 `flowControl` 段：`max_requests`→`maxRequests`、`queue_ttl`→`defaultRequestTTL`、`no_endpoint_queue_ttl`→`noEndpointRequestTTL`、`enable_eviction`→`enableEviction`；`featureGates` 追加 `flowControl`。秒数由 api 在编译时转为 Go duration 下发（如 `30` → `30s`、`600` → `10m0s`）。特例：`max_requests` 缺省或为 `-1`（不限）时**不生成** `maxRequests` 字段（llm-d 缺省即不限） |
+| `flow_control` 存在时 | 生成 `flowControl` 段：`max_requests`→`maxRequests`、`queue_ttl`→`defaultRequestTTL`、`no_endpoint_queue_ttl`→`noEndpointRequestTTL`、`enable_eviction`→`enableEviction`；`featureGates` 追加 `flowControl`。秒数由 api 在编译时转为 Go duration 下发（如 `30` → `30s`、`600` → `10m0s`）。特例：`max_requests` 缺省或为 `-1`（不限）时**不生成** `maxRequests` 字段（llm-d 缺省即不限）。另**始终生成** `priorityBands: [{"priority":0,"maxRequests":<max_requests 或缺省值"10000">,"maxBytes":"5Gi"}]`——llm-d 带级上限恒存在（缺省/"0" 回落隐藏默认 5000/1GB 并静默截断全局配置），显式下发使容量语义确定、可审计（fixes #198） |
 
 **校验分工**：
 

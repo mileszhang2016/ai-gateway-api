@@ -8,7 +8,9 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
 
@@ -98,7 +100,13 @@ func ResetQuotaAction(req *http.Request) (interface{}, error) {
 	}
 
 	// 重置配额余额（不更新 last_reset_at，避免影响定期重置调度；Redis 同步由 Manager 在事务外完成）
-	err = container.QuotaPlanManager.ResetBalance(req.Context(), *apiKey.QuotaPlanID, resetReq.Quota, false)
+	// owner 透传 URI 中的 API Key ID，修复 reset 审计日志 resource_parent_id 为空（issue #161）。
+	ownerID := ""
+	if oneReq.ID != nil {
+		ownerID = *oneReq.ID
+	}
+	owner := shared.ResourceOwner{Type: string(ioperlog.ResourceTypeAPIKey), ID: ownerID}
+	err = container.QuotaPlanManager.ResetBalance(req.Context(), *apiKey.QuotaPlanID, resetReq.Quota, false, owner)
 	if err != nil {
 		return nil, err
 	}

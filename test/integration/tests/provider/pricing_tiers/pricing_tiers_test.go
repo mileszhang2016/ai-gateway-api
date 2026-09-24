@@ -341,4 +341,54 @@ tiers:
 		}
 		assert.Len(t, tiers, 1)
 	})
+
+	t.Run("PT-1-011 设置 pricing tiers 后 protocol_paths 保留", func(t *testing.T) {
+		providerName := testutil.UniqueProviderName()
+		_, err := testutil.CreateProvider(providerName, map[string]interface{}{
+			"model_protocols": []string{"openai", "anthropic"},
+			"protocol_paths": map[string]interface{}{
+				"openai":    "/compatible-mode/v1",
+				"anthropic": "/apps/anthropic",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup provider failed: %v", err)
+		}
+		defer testutil.DeleteProvider(providerName)
+
+		_, err = testutil.UpdatePricingTiers(providerName, map[string]interface{}{
+			"time_zone": "Asia/Shanghai",
+			"tiers": []interface{}{
+				map[string]interface{}{
+					"name": "peak",
+					"time_ranges": []interface{}{
+						map[string]interface{}{
+							"weekdays": []int{1, 2, 3, 4, 5},
+							"start":    "09:00",
+							"end":      "12:00",
+						},
+					},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup pricing tiers failed: %v", err)
+		}
+
+		resp, err := testutil.GetClient().Get("/open-api/v1/providers/" + providerName)
+		if err != nil {
+			t.Fatalf("get provider failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("unmarshal data: %v", err)
+		}
+		paths, ok := data["protocol_paths"].(map[string]interface{})
+		if !assert.True(t, ok, "protocol_paths should be preserved") {
+			return
+		}
+		assert.Equal(t, "/compatible-mode/v1", paths["openai"])
+		assert.Equal(t, "/apps/anthropic", paths["anthropic"])
+	})
 }

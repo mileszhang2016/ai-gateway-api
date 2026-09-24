@@ -17,6 +17,7 @@ package model_price
 import (
 	"net/http"
 
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
@@ -42,9 +43,30 @@ type listResponse struct {
 	Pagination *pagination                `json:"pagination"`
 }
 
-// ListAction handles GET /model-prices.
+// ListAction handles GET /model-prices. The route carries two contract shapes:
+// with provider, model and mode all present it returns a single record
+// (§3.6); any other combination returns the paginated list (§3.4).
 func ListAction(req *http.Request) (interface{}, error) {
 	filter := queryFilter(req)
+
+	if filter.Provider != nil && filter.Model != nil && filter.Mode != nil {
+		if !imodel_price.ValidModes[*filter.Mode] {
+			return nil, xerror.WrapParamErrorWithMsg("invalid mode: %s", *filter.Mode)
+		}
+		one, err := container.ModelPriceManager.FetchModelPrice(req.Context(), filter)
+		if err != nil {
+			return nil, err
+		}
+		if one == nil {
+			return nil, xerror.WrapRecordNotExist("ModelPrice")
+		}
+		return one, nil
+	}
+	if filter.Model != nil {
+		return nil, xerror.WrapParamErrorWithMsg(
+			"provider, model and mode are required for single-record query")
+	}
+
 	page, pageSize := pageFilter(req)
 	filter.Page = &page
 	filter.PageSize = &pageSize

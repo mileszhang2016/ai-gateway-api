@@ -118,6 +118,8 @@ type APIKeyManager struct {
 	entityStorager          shared.EntityStorager
 	quotaCache              quotacache.QuotaCache
 	operationLogManager     ioperlog.OperationLogRecorder
+	quotaPlanAuditor        shared.QuotaPlanAuditor
+	rateLimitPolicyAuditor  shared.RateLimitPolicyAuditor
 }
 
 // QuotaPlanStorager interface defines storage operations for quota plans
@@ -155,6 +157,18 @@ func NewAPIKeyManager(txn itxn.TxnStorager, storager APIKeyStorager,
 // SetOperationLogManager injects the operation log recorder.
 func (rppm *APIKeyManager) SetOperationLogManager(manager ioperlog.OperationLogRecorder) {
 	rppm.operationLogManager = manager
+}
+
+// SetQuotaPlanAuditor injects the auditor that records nested quota-plan
+// operation logs (issue #161). Nil disables the nested audit entries.
+func (rppm *APIKeyManager) SetQuotaPlanAuditor(auditor shared.QuotaPlanAuditor) {
+	rppm.quotaPlanAuditor = auditor
+}
+
+// SetRateLimitPolicyAuditor injects the auditor that records nested
+// rate-limit-policy operation logs (issue #161). Nil disables the entries.
+func (rppm *APIKeyManager) SetRateLimitPolicyAuditor(auditor shared.RateLimitPolicyAuditor) {
+	rppm.rateLimitPolicyAuditor = auditor
 }
 
 // GetRemainingQuota calculates the remaining quota for an API key.
@@ -408,9 +422,11 @@ func (rppm *APIKeyManager) populateQuotaBalances(ctx context.Context, list []*AP
 // DeleteAPIKey deletes an API key based on filter criteria
 func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilter) error {
 	var (
-		quotaKey      string
-		rateLimitKeys []string
-		oldAPIKey     *APIKeyParam
+		quotaKey           string
+		rateLimitKeys      []string
+		oldAPIKey          *APIKeyParam
+		oldQuotaPlan       *shared.QuotaPlanParam
+		oldRateLimitPolicy *shared.RateLimitPolicyParam
 	)
 
 	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
@@ -434,8 +450,17 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 			if err != nil {
 				return err
 			}
+			oldRateLimitPolicy = policy
 			if policy != nil && policy.Rules != nil {
 				rateLimitKeys = shared.BuildRateLimitRedisKeys(*one.RateLimitPolicyID, policy.Rules)
+			}
+		}
+
+		// Soft-fetch the quota plan for the nested audit before-snapshot
+		// (a fetch failure only leaves the before map empty).
+		if one.QuotaPlanID != nil && rppm.quotaPlanStorager != nil {
+			if plan, planErr := rppm.quotaPlanStorager.FetchQuotaPlan(ctx, *one.QuotaPlanID); planErr == nil {
+				oldQuotaPlan = plan
 			}
 		}
 
@@ -461,6 +486,8 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 	})
 	if err != nil {
 		rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionDelete), oldAPIKey, nil, apiKeyParamToMap(oldAPIKey), err)
+		rppm.auditNestedQuotaPlanDelete(ctx, oldAPIKey, oldQuotaPlan, err)
+		rppm.auditNestedRateLimitPolicyDelete(ctx, oldAPIKey, oldRateLimitPolicy, err)
 		return err
 	}
 
@@ -468,6 +495,8 @@ func (rppm *APIKeyManager) DeleteAPIKey(ctx context.Context, filter *APIKeyFilte
 	rppm.cleanupRedisKeys(ctx, quotaKey, rateLimitKeys)
 
 	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionDelete), oldAPIKey, nil, apiKeyParamToMap(oldAPIKey), nil)
+	rppm.auditNestedQuotaPlanDelete(ctx, oldAPIKey, oldQuotaPlan, nil)
+	rppm.auditNestedRateLimitPolicyDelete(ctx, oldAPIKey, oldRateLimitPolicy, nil)
 	return nil
 }
 
@@ -496,8 +525,12 @@ func (rppm *APIKeyManager) cleanupRedisKeys(ctx context.Context, quotaKey string
 // UpdateAPIKey updates an existing API key
 func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilter, param *APIKeyParam) error {
 	var (
-		rateLimitKeysToDelete []string
-		oldAPIKey             *APIKeyParam
+		rateLimitKeysToDelete  []string
+		oldAPIKey              *APIKeyParam
+		createdQuotaPlanID     int64
+		createdRateLimitPolicy int64
+		oldQuotaPlan           *shared.QuotaPlanParam
+		oldRateLimitPolicy     *shared.RateLimitPolicyParam
 	)
 
 	err := rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
@@ -515,18 +548,32 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 		// key is immutable through update endpoints
 		param.Key = nil
 
+		// Check if entity_id exists
+		if param.EntityID != nil && *param.EntityID != "" && rppm.entityStorager != nil {
+			entity, err := rppm.entityStorager.FetchEntity(ctx, &shared.EntityFilter{EntityID: param.EntityID})
+			if err != nil {
+				return err
+			}
+			if entity == nil {
+				return xerror.WrapParamErrorWithMsg("%s", fmt.Sprintf("Entity not found: %s", *param.EntityID))
+			}
+		}
+
 		if param.QuotaPlan != nil && rppm.quotaPlanStorager != nil {
 			if one.QuotaPlanID != nil {
+				if plan, planErr := rppm.quotaPlanStorager.FetchQuotaPlan(ctx, *one.QuotaPlanID); planErr == nil {
+					oldQuotaPlan = plan
+				}
 				_, err = rppm.quotaPlanStorager.UpdateQuotaPlan(ctx, *one.QuotaPlanID, param.QuotaPlan)
 				if err != nil {
 					return err
 				}
 			} else {
-				quotaPlanID, err := rppm.quotaPlanStorager.CreateQuotaPlan(ctx, param.QuotaPlan)
+				createdQuotaPlanID, err = rppm.quotaPlanStorager.CreateQuotaPlan(ctx, param.QuotaPlan)
 				if err != nil {
 					return err
 				}
-				param.QuotaPlanID = &quotaPlanID
+				param.QuotaPlanID = &createdQuotaPlanID
 
 			}
 		}
@@ -537,6 +584,7 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 				if err != nil {
 					return err
 				}
+				oldRateLimitPolicy = oldPolicy
 				_, err = rppm.rateLimitPolicyStorager.UpdateRateLimitPolicy(ctx, *one.RateLimitPolicyID, param.RateLimitPolicy)
 				if err != nil {
 					return err
@@ -545,11 +593,11 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 					rateLimitKeysToDelete = shared.DiffRateLimitRedisKeys(*one.RateLimitPolicyID, oldPolicy.Rules, param.RateLimitPolicy.Rules)
 				}
 			} else {
-				rateLimitPolicyID, err := rppm.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
+				createdRateLimitPolicy, err = rppm.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
 				if err != nil {
 					return err
 				}
-				param.RateLimitPolicyID = &rateLimitPolicyID
+				param.RateLimitPolicyID = &createdRateLimitPolicy
 			}
 		}
 
@@ -575,6 +623,8 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 	})
 	if err != nil {
 		rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionUpdate), oldAPIKey, apiKeyParamToMap(oldAPIKey), apiKeyParamToMap(param), err)
+		rppm.auditNestedQuotaPlanChange(ctx, oldAPIKey, param, 0, oldQuotaPlan, err)
+		rppm.auditNestedRateLimitPolicyChange(ctx, oldAPIKey, param, 0, oldRateLimitPolicy, err)
 		return err
 	}
 
@@ -583,12 +633,18 @@ func (rppm *APIKeyManager) UpdateAPIKey(ctx context.Context, filter *APIKeyFilte
 	}
 
 	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionUpdate), oldAPIKey, apiKeyParamToMap(oldAPIKey), apiKeyParamToMap(param), nil)
+	rppm.auditNestedQuotaPlanChange(ctx, oldAPIKey, param, createdQuotaPlanID, oldQuotaPlan, nil)
+	rppm.auditNestedRateLimitPolicyChange(ctx, oldAPIKey, param, createdRateLimitPolicy, oldRateLimitPolicy, nil)
 	return nil
 }
 
 // CreateAPIKey creates a new API key
 func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 	param *APIKeyParam) (err error) {
+	var (
+		quotaPlanID       int64
+		rateLimitPolicyID int64
+	)
 	err = rppm.txn.AtomExecute(ctx, func(ctx context.Context) error {
 		// Generate ID if not provided
 		if param.ID == nil || *param.ID == "" {
@@ -630,7 +686,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 				return err
 			}
 			if len(tokens) > 1 {
-				return xerror.WrapDirtyDataErrorWithMsg("%s", fmt.Sprintf("API-Key-Token:%s", *param.Key))
+				return xerror.WrapDirtyDataErrorWithMsg("%s", fmt.Sprintf("API-Key-Token:%s", ioperlog.MaskAPIKeyToken(*param.Key)))
 			}
 
 			existingKeys, err := rppm.storager.FetchAPIKeyList(ctx, &APIKeyFilter{Key: param.Key})
@@ -638,7 +694,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 				return err
 			}
 			if len(existingKeys) > 0 {
-				return xerror.WrapParamErrorWithMsg("API-Key value %s already exists", *param.Key)
+				return xerror.WrapParamErrorWithMsg("API-Key value %s already exists", ioperlog.MaskAPIKeyToken(*param.Key))
 			}
 
 			// Set updated time based on existing token if reused
@@ -650,7 +706,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 
 		// Create QuotaPlan if provided
 		if param.QuotaPlan != nil && rppm.quotaPlanStorager != nil {
-			quotaPlanID, err := rppm.quotaPlanStorager.CreateQuotaPlan(ctx, param.QuotaPlan)
+			quotaPlanID, err = rppm.quotaPlanStorager.CreateQuotaPlan(ctx, param.QuotaPlan)
 			if err != nil {
 				return err
 			}
@@ -660,7 +716,7 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 
 		// Create RateLimitPolicy if provided
 		if param.RateLimitPolicy != nil && rppm.rateLimitPolicyStorager != nil {
-			rateLimitPolicyID, err := rppm.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
+			rateLimitPolicyID, err = rppm.rateLimitPolicyStorager.CreateRateLimitPolicy(ctx, param.RateLimitPolicy)
 			if err != nil {
 				return err
 			}
@@ -681,6 +737,8 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 	})
 	if err != nil {
 		rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionCreate), param, nil, apiKeyParamToMap(param), err)
+		rppm.auditNestedQuotaPlanCreate(ctx, param, 0, err)
+		rppm.auditNestedRateLimitPolicyCreate(ctx, param, 0, err)
 		return err
 	}
 
@@ -694,6 +752,8 @@ func (rppm *APIKeyManager) CreateAPIKey(ctx context.Context,
 	}
 
 	rppm.recordAPIKeyOperation(ctx, string(ioperlog.ActionCreate), param, nil, apiKeyParamToMap(param), nil)
+	rppm.auditNestedQuotaPlanCreate(ctx, param, quotaPlanID, nil)
+	rppm.auditNestedRateLimitPolicyCreate(ctx, param, rateLimitPolicyID, nil)
 	return nil
 }
 

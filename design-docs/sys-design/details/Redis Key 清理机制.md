@@ -228,7 +228,7 @@ RedisKey: fmt.Sprintf("RL_TPM_rlp-%d_%s", policyID, rule.Name)
 - 必填、非空、长度 1-128 字符（已有）；
 - 同一 `RateLimitPolicy` 内唯一（已有）；
 - 字符集限制为 `[a-zA-Z0-9_-]`（新增）；
-- 创建后不可修改（新增）。
+- 不提供单独改名语义：更新时按 `name` 匹配新旧规则，请求体中不一致的 `name` 视为删除旧规则 + 新增新规则（issue #169 决策，2026-09-15）。
 
 #### 6.3.3 更新时规则匹配
 
@@ -246,7 +246,7 @@ RedisKey: fmt.Sprintf("RL_TPM_rlp-%d_%s", policyID, rule.Name)
 | `model/entity/entity_manager.go` | 删除/更新时清理 Quota Key 与 Rate-Limit Key |
 | `model/rate_limit_policy/rate_limit_policy.go` | `ExportTPMConfig` / `ExportRPMConfig` 保持 `RedisKey` 字段；生成逻辑改为按 `name` |
 | `model/rate_limit_policy/rate_limit_policy_manager.go` | 导出时按 `name` 生成 `RedisKey`；提供规则 diff 辅助方法 |
-| `lib/validate/validate.go` | 收紧 `name` 字符集；更新时校验 `name` 不可修改 |
+| `lib/validate/validate.go` | 收紧 `name` 字符集为 `[a-zA-Z0-9_-]`（"更新时校验 `name` 不可修改"经 issue #169 决策不再实施，改名按删旧规则 + 增新规则处理）|
 
 ---
 

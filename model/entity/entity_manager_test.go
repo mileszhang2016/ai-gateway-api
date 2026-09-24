@@ -62,7 +62,7 @@ func TestEntityManager_CreateEntity(t *testing.T) {
 				return 400, nil
 			},
 		}
-				m := NewEntityManager(&fakeTxn{}, entityStore, entityTypeStore, quotaPlanStore, rateLimitStore, routeRulesStore, nil)
+		m := NewEntityManager(&fakeTxn{}, entityStore, entityTypeStore, quotaPlanStore, rateLimitStore, routeRulesStore, nil)
 
 		id, err := m.CreateEntity(ctx, &EntityParam{
 			EntityID: &entityID,
@@ -252,7 +252,7 @@ func TestEntityManager_DeleteEntity(t *testing.T) {
 		quotaPlanStore := &fakeSharedQuotaPlanStorager{}
 		rateLimitStore := &fakeSharedRateLimitPolicyStorager{}
 		routeRulesStore := &fakeRouteRulesStorager{}
-				m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore, rateLimitStore, routeRulesStore, nil)
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore, rateLimitStore, routeRulesStore, nil)
 
 		require.NoError(t, m.DeleteEntity(ctx, &EntityFilter{EntityID: &entityID}))
 		assert.Len(t, quotaPlanStore.deleted, 1)
@@ -406,7 +406,7 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 				return 200, nil
 			},
 		}
-				m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
 
 		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{
 			QuotaPlan: &shared.QuotaPlanParam{Quota: lib.PFloat64(1000)},
@@ -416,7 +416,6 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 
 		require.Len(t, quotaPlanStore.created, 1)
 		assert.Equal(t, float64(1000), *quotaPlanStore.created[0].Quota)
-
 
 		require.Len(t, entityStore.updated, 1)
 		assert.Equal(t, int64(200), *entityStore.updated[0].param.QuotaPlanID)
@@ -574,6 +573,85 @@ func TestEntityManager_UpdateEntity(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "entity type level (1) must be higher than parent entity type level (1)")
 	})
+
+	t.Run("type change rejected", func(t *testing.T) {
+		entityID := "ent-1"
+		innerID := int64(100)
+		childType := "dept_child"
+		rootType := "dept_root"
+
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				return []*EntityParam{{
+					InnerID:  &innerID,
+					EntityID: &entityID,
+					Name:     lib.PString("ent-one"),
+					Type:     &childType,
+				}}, nil
+			},
+			updateFn: func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+
+		_, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{Type: &rootType})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "type is immutable")
+		assert.Empty(t, entityStore.updated)
+	})
+
+	t.Run("same type allowed", func(t *testing.T) {
+		entityID := "ent-1"
+		innerID := int64(100)
+		childType := "dept_child"
+
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				return []*EntityParam{{
+					InnerID:  &innerID,
+					EntityID: &entityID,
+					Name:     lib.PString("ent-one"),
+					Type:     &childType,
+				}}, nil
+			},
+			updateFn: func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+
+		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{Type: &childType})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), affected)
+		require.Len(t, entityStore.updated, 1)
+	})
+
+	t.Run("nil type allowed", func(t *testing.T) {
+		entityID := "ent-1"
+		innerID := int64(100)
+		childType := "dept_child"
+
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				return []*EntityParam{{
+					InnerID:  &innerID,
+					EntityID: &entityID,
+					Name:     lib.PString("ent-one"),
+					Type:     &childType,
+				}}, nil
+			},
+			updateFn: func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+
+		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{Name: lib.PString("ent-renamed")})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), affected)
+		require.Len(t, entityStore.updated, 1)
+	})
 }
 
 func TestEntityManager_FetchEntityList(t *testing.T) {
@@ -595,7 +673,7 @@ func TestEntityManager_FetchEntityList(t *testing.T) {
 			return &shared.QuotaPlanParam{Quota: lib.PFloat64(100)}, nil
 		},
 	}
-		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+	m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
 
 	list, err := m.FetchEntityList(ctx, &EntityFilter{})
 	require.NoError(t, err)
@@ -888,7 +966,7 @@ func TestEntityManager_populateAssociatedData_MoreBranches(t *testing.T) {
 				return &shared.QuotaPlanParam{Quota: lib.PFloat64(100)}, nil
 			},
 		}
-				m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, quotaPlanStore, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
 
 		entity, err := m.FetchEntity(ctx, &EntityFilter{EntityID: &entityID})
 		require.NoError(t, err)
@@ -903,4 +981,75 @@ func TestFillUnlimitedQuotaBalance(t *testing.T) {
 	require.NotNil(t, quotaPlan.Balance)
 	assert.Equal(t, float64(0), *quotaPlan.Balance.Used)
 	assert.Equal(t, float64(100000000), *quotaPlan.Balance.Remaining)
+}
+
+func TestEntityManager_EntityDescriptionFlow(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("create passes description to storager and audit map", func(t *testing.T) {
+		entityID := "ent-1"
+		entityName := "entity-one"
+		entityType := "tenant"
+		desc := "运营部"
+
+		entityTypeStore := &fakeEntityTypeStorager{
+			fetchFn: func(ctx context.Context, filter *EntityTypeFilter) (*EntityTypeParam, error) {
+				return &EntityTypeParam{TypeName: lib.PString(entityType), Level: lib.PInt(1)}, nil
+			},
+		}
+		entityStore := &fakeEntityStorager{
+			fetchFn: func(ctx context.Context, filter *EntityFilter) (*EntityParam, error) {
+				return nil, nil // no duplicate
+			},
+			createFn: func(ctx context.Context, param *EntityParam) (int64, error) {
+				return 100, nil
+			},
+		}
+		m := NewEntityManager(&fakeTxn{}, entityStore, entityTypeStore, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+
+		id, err := m.CreateEntity(ctx, &EntityParam{
+			EntityID:    &entityID,
+			Name:        &entityName,
+			Type:        &entityType,
+			Description: &desc,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, int64(100), id)
+
+		require.Len(t, entityStore.created, 1)
+		require.NotNil(t, entityStore.created[0].Description)
+		assert.Equal(t, desc, *entityStore.created[0].Description)
+
+		// 操作日志快照包含 description
+		assert.Equal(t, desc, entityParamToMap(&EntityParam{Description: &desc})["description"])
+	})
+
+	t.Run("update passes description to storager", func(t *testing.T) {
+		entityID := "ent-1"
+		innerID := int64(100)
+		desc := "新描述"
+
+		entityStore := &fakeEntityStorager{
+			listFn: func(ctx context.Context, filter *EntityFilter) ([]*EntityParam, error) {
+				return []*EntityParam{{
+					InnerID:  &innerID,
+					EntityID: &entityID,
+				}}, nil
+			},
+			updateFn: func(ctx context.Context, filter *EntityFilter, param *EntityParam) (int64, error) {
+				return 1, nil
+			},
+		}
+		m := NewEntityManager(&fakeTxn{}, entityStore, &fakeEntityTypeStorager{}, &fakeSharedQuotaPlanStorager{}, &fakeSharedRateLimitPolicyStorager{}, &fakeRouteRulesStorager{}, nil)
+
+		affected, err := m.UpdateEntity(ctx, &EntityFilter{EntityID: &entityID}, &EntityParam{
+			Description: &desc,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), affected)
+
+		require.Len(t, entityStore.updated, 1)
+		require.NotNil(t, entityStore.updated[0].param.Description)
+		assert.Equal(t, desc, *entityStore.updated[0].param.Description)
+	})
 }

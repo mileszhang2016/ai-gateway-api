@@ -29,9 +29,9 @@ func (f *fakeTxn) AtomExecute(ctx context.Context, do func(context.Context) erro
 }
 
 type fakeDomainStorager struct {
-	fetchDomainsFn  func(ctx context.Context, param *DomainFilter) ([]*Domain, error)
-	createDomainFn  func(ctx context.Context, product *ibasic.Product, param *DomainParam) error
-	deleteDomainFn  func(ctx context.Context, product *ibasic.Product, domain *Domain) error
+	fetchDomainsFn func(ctx context.Context, param *DomainFilter) ([]*Domain, error)
+	createDomainFn func(ctx context.Context, product *ibasic.Product, param *DomainParam) error
+	deleteDomainFn func(ctx context.Context, product *ibasic.Product, domain *Domain) error
 }
 
 func (f *fakeDomainStorager) FetchDomains(ctx context.Context, param *DomainFilter) ([]*Domain, error) {
@@ -83,12 +83,12 @@ func (f *fakeRouteRuleStorager) FetchRoutRules(ctx context.Context, products []*
 }
 
 type fakeClusterStorager struct {
-	fetchClusterFn     func(ctx context.Context, param *icluster_conf.ClusterFilter) (*icluster_conf.Cluster, error)
-	fetchClusterListFn func(ctx context.Context, param *icluster_conf.ClusterFilter) ([]*icluster_conf.Cluster, error)
-	clusterUpdateFn    func(ctx context.Context, product *ibasic.Product, old *icluster_conf.Cluster, param *icluster_conf.ClusterParam) error
-	clusterCreateFn    func(ctx context.Context, product *ibasic.Product, param *icluster_conf.ClusterParam, subClusters []*icluster_conf.SubCluster) (int64, error)
-	clusterDeleteFn    func(ctx context.Context, product *ibasic.Product, cluster *icluster_conf.Cluster) error
-	bindSubClusterFn   func(ctx context.Context, cluster *icluster_conf.Cluster, appendSubClusters, unbindSubClusters []*icluster_conf.SubCluster) error
+	fetchClusterFn      func(ctx context.Context, param *icluster_conf.ClusterFilter) (*icluster_conf.Cluster, error)
+	fetchClusterListFn  func(ctx context.Context, param *icluster_conf.ClusterFilter) ([]*icluster_conf.Cluster, error)
+	clusterUpdateFn     func(ctx context.Context, product *ibasic.Product, old *icluster_conf.Cluster, param *icluster_conf.ClusterParam) error
+	clusterCreateFn     func(ctx context.Context, product *ibasic.Product, param *icluster_conf.ClusterParam, subClusters []*icluster_conf.SubCluster) (int64, error)
+	clusterDeleteFn     func(ctx context.Context, product *ibasic.Product, cluster *icluster_conf.Cluster) error
+	bindSubClusterFn    func(ctx context.Context, cluster *icluster_conf.Cluster, appendSubClusters, unbindSubClusters []*icluster_conf.SubCluster) error
 	fetchLBMatrixListFn func(ctx context.Context) (map[int64]map[string]map[string]int, error)
 }
 

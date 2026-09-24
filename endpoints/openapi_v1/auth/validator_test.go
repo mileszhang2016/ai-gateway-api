@@ -17,8 +17,8 @@ package auth
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTokenCreateParamValidate(t *testing.T) {

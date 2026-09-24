@@ -19,7 +19,7 @@ Model Price 模块负责模型定价数据的管理，支持：
 | MP-2 | 新增单条记录 | POST | `/open-api/v1/model-prices` | 创建单条模型定价 |
 | MP-3 | 分页列表查询 | GET | `/open-api/v1/model-prices` | 支持 provider、mode 过滤 |
 | MP-4 | 按 ID 查询单条 | GET | `/open-api/v1/model-prices/{id}` | - |
-| MP-5 | 按组合键查询（列表过滤） | GET | `/open-api/v1/model-prices` | 需传 provider + model + mode，返回列表 |
+| MP-5 | 按组合键查询单条 | GET | `/open-api/v1/model-prices` | 需传 provider + model + mode，三参齐全返回单条对象（issue #170） |
 | MP-6 | 按 ID 修改单条 | PUT | `/open-api/v1/model-prices/{id}` | 支持部分字段更新 |
 | MP-7 | 按组合键修改单条 | PUT | `/open-api/v1/model-prices` | 需传 provider + model + mode |
 | MP-8 | 按 ID 删除单条 | DELETE | `/open-api/v1/model-prices/{id}` | - |
@@ -707,7 +707,7 @@ models:
 | 接口名称 | 按组合键查询 |
 | 方法 | GET |
 | 路径 | `/open-api/v1/model-prices` |
-| 说明 | 通过 provider + model + mode 过滤查询；由于当前 GET `/model-prices` 为列表接口，返回符合过滤条件的列表（命中时 1 条，未命中时 0 条） |
+| 说明 | 三参齐全时按 §3.6 返回单条 ModelPrice 对象（issue #170 修复后行为）；带 model 但缺参返回 422，不回落列表 |
 
 ### 11.2 接口参数说明
 
@@ -723,9 +723,10 @@ models:
 
 | 编号 | 场景 | 测试类型 | 简要说明 |
 |------|------|---------|---------|
-| MP-5-001 | 查询存在的组合键 | 正常参数 | 返回只包含 1 条记录的列表 |
-| MP-5-002 | 缺少 query 参数 | 边界场景 | 按现有参数进行列表过滤 |
-| MP-5-003 | 查询不存在的组合键 | 异常参数 | 返回空列表 |
+| MP-5-001 | 查询存在的组合键 | 正常参数 | 返回单个 ModelPrice 对象（非列表包装），字段匹配 |
+| MP-5-002 | 缺少 query 参数 | 边界场景 | 带 model 但缺 mode，验证 ErrNum=422 |
+| MP-5-003 | 查询不存在的组合键 | 异常参数 | 验证 ErrNum=404（Record Not Exist） |
+| MP-5-004 | 8 位小数价格双链路数值无损 | 精度语义 | OpenAPI 组合键查询 + InnerAPI 导出 ModelTable 的 prices 值精确等于写入值（fixes #102；现行合同允许十进制或科学计数法文本形态，故锁定"数值往返无损 + 报文 token 可无损解析"） |
 
 ### 11.4 测试场景详细设计
 
@@ -733,7 +734,7 @@ models:
 
 ##### 设计思路
 
-验证通过 provider/model/mode 可唯一定位记录；当前实现走列表接口，返回总条数为 1 的列表。
+验证通过 provider/model/mode 可唯一定位记录；§3.6 单记录契约要求 Data 为单个对象（无 `list`/`pagination` 键），字段直接匹配。
 
 ##### 前提数据准备
 
@@ -742,11 +743,63 @@ models:
 ##### 执行步骤
 
 1. GET `/open-api/v1/model-prices?provider=deepseek&model=deepseek-v3&mode=chat`。
-2. 验证返回 200，`total=1`，`items[0]` 的字段匹配。
+2. 验证返回 200，Data 为单对象：`provider`/`model`/`mode` 字段匹配，且不含 `list`、`pagination` 键。
 
 ##### 预期返回结果
 
 **ErrNum**：200
+
+---
+
+#### MP-5-002：缺少 query 参数（边界场景）
+
+##### 设计思路
+
+带 `model` 但三参不齐时按 §3.6 拒绝：参数错误（422），不回落列表语义（避免"看起来成功"的静默错位）。
+
+##### 执行步骤
+
+1. GET `/open-api/v1/model-prices?provider=deepseek&model=deepseek-v3`（缺少 mode）。
+2. 验证 ErrNum=422。
+
+##### 预期返回结果
+
+**ErrNum**：422
+
+---
+
+#### MP-5-003：查询不存在的组合键（异常参数）
+
+##### 设计思路
+
+三参齐全但组合键不存在时返回 Record Not Exist（404）。
+
+##### 执行步骤
+
+1. GET `/open-api/v1/model-prices?provider=deepseek&model=not-exist&mode=chat`。
+2. 验证 ErrNum=404。
+
+##### 预期返回结果
+
+**ErrNum**：404
+
+---
+
+#### MP-5-004：8 位小数价格双链路数值无损（精度语义）
+
+##### 设计思路
+
+写入 `input_cost_per_token=0.0000015`、`output_cost_per_token=0.00000025`（Go 默认 `%g` 序列化形态为 `1.5e-06` / `2.5e-07`）。现行合同（MP-1-009）明确十进制与科学计数法均为合法输出形态，因此本用例锁定**数值无损**而非文本形态：反序列化值精确等于写入值（InDelta 1e-18），且原始报文中价格 token 可被 `strconv.ParseFloat` 无损解析（防中间环节文本截断——issue #102 的实际危害面）。覆盖 OpenAPI 组合键查询与 InnerAPI `server_data_conf` 导出 `AIConf.ModelTable` 两条链路。
+
+> 注意：导出 cluster 要求 llm 模型为 provider models 子集，需显式创建 provider
+> （`models=[被测模型]`）后再创建 cluster，否则 cluster 会从导出中缺席。
+
+##### 执行步骤
+
+1. 创建 provider（models 含被测模型）+ 创建 model price（8 位小数 prices）+ 创建 cluster 引用该 provider 与模型。
+2. GET 组合键查询：断言 `prices.*` 反序列化值精确；断言原始报文 token 无损解析。
+3. GET `/inner-api/v1/configs/tls_conf/server_data_conf`：定位 `ClusterConf.Config.{cluster}.AIConf.ModelTable.Models[]` 中该模型条目，断言 `Prices` 值精确；断言原始导出报文 token 无损解析。
+4. 清理：删除 cluster / model price / provider。
 
 ---
 

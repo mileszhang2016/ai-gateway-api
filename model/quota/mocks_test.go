@@ -20,8 +20,8 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
-	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/rate_limit_policy"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 )
@@ -347,16 +347,16 @@ var _ api_key.APIKeyStorager = (*fakeAPIKeyStorager)(nil)
 
 // fakeQuotaCache 实现 quotacache.QuotaCache，用于单元测试记录调用。
 type fakeQuotaCache struct {
-	setRemainingCalls      []quotaCacheSetRemainingCall
-	resetToQuotaCalls      []quotaCacheResetToQuotaCall
+	setRemainingCalls       []quotaCacheSetRemainingCall
+	resetToQuotaCalls       []quotaCacheResetToQuotaCall
 	resetToQuotaAtomicCalls []quotaCacheResetToQuotaCall
-	deleteKeysCalls        [][]string
-	getRemainingFn         func(ctx context.Context, key string, unit *string) (float64, error)
-	batchGetRemainingFn    func(ctx context.Context, keys []string, unit *string) (map[string]float64, error)
-	setRemainingFn         func(ctx context.Context, key string, quota *float64, unit *string) error
-	resetToQuotaFn         func(ctx context.Context, key string, quota *float64, unit *string) error
-	resetToQuotaAtomicFn   func(ctx context.Context, key string, quota *float64, unit *string) error
-	deleteKeysFn           func(ctx context.Context, keys []string) error
+	deleteKeysCalls         [][]string
+	getRemainingFn          func(ctx context.Context, key string, unit *string) (float64, error)
+	batchGetRemainingFn     func(ctx context.Context, keys []string, unit *string) (map[string]float64, error)
+	setRemainingFn          func(ctx context.Context, key string, quota *float64, unit *string) error
+	resetToQuotaFn          func(ctx context.Context, key string, quota *float64, unit *string) error
+	resetToQuotaAtomicFn    func(ctx context.Context, key string, quota *float64, unit *string) error
+	deleteKeysFn            func(ctx context.Context, keys []string) error
 }
 
 type quotaCacheSetRemainingCall struct {

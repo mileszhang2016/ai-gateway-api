@@ -6,7 +6,6 @@ id = "resource.admin.list"
 text = "ResourceManage"
 allowed_roles = ["admin"]
 children = [
-    { id = "AIGatewayInstancePool.list", text = "AIGatewayInstancePoolManage", allowed_roles = ["admin"] },
     { id = "AICluster.list", text = "AIClusterManage", allowed_roles = ["admin"] },
     { id = "ModelPrice.list", text = "ModelPriceManage", allowed_roles = ["admin"] },
     { id = "Provider.list", text = "ProviderManage", allowed_roles = ["admin"] },
@@ -29,6 +28,11 @@ children = [
     { id = "APIKey.list", text = "APIKeyManage", allowed_roles = ["admin"] },
     { id = "Entity.list", text = "EntityManage", allowed_roles = ["admin"] }
 ]
+
+[[children]]
+id = "report.list"
+text = "ReportManage"
+allowed_roles = ["admin"]
 
 [[children]]
 id = "user.list"

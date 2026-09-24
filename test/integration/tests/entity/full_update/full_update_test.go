@@ -17,6 +17,7 @@ package entity_test
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
@@ -279,6 +280,166 @@ func TestEntity_FullUpdate(t *testing.T) {
 		if resp.ErrNum != 422 {
 			t.Errorf("expected ErrNum=422, got ErrNum=%d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
 		}
+	})
+
+	t.Run("E-4-007 全量更新修改 type 为不同值被拒绝（issue #178 回归）", func(t *testing.T) {
+		otherTypeName := testutil.UniqueEntityTypeName()
+		if _, err := testutil.CreateEntityType(otherTypeName, 1); err != nil {
+			t.Fatalf("setup entity type failed: %v", err)
+		}
+		defer testutil.DeleteEntityType(otherTypeName)
+
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         testutil.UniqueEntityName(),
+			"type":         otherTypeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
+
+		// GET 回读：type 必须保持创建时的值
+		detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + entityID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, detail)
+		testutil.AssertDataFieldEquals(t, detail, "type", typeName)
+	})
+
+	t.Run("E-4-008 全量更新携带相同 type 放行（issue #178 回归）", func(t *testing.T) {
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         testutil.UniqueEntityName(),
+			"type":         typeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "type", typeName)
+	})
+
+	t.Run("E-4-009 全量更新携带 description 写入并回读一致", func(t *testing.T) {
+		id, err := testutil.CreateEntity(testutil.UniqueEntityName(), typeName, "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteEntity(id)
+
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+id, map[string]interface{}{
+			"name":         testutil.UniqueEntityName(),
+			"type":         typeName,
+			"description":  "全量更新后的描述",
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "description", "全量更新后的描述")
+
+		detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + id)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, detail)
+		testutil.AssertDataFieldEquals(t, detail, "description", "全量更新后的描述")
+	})
+
+	t.Run("E-4-010 全量更新省略 description 清空已有描述（api-define §2.4 全量语义）", func(t *testing.T) {
+		createResp, err := testutil.GetClient().Post("/open-api/v1/entities", map[string]interface{}{
+			"name":        testutil.UniqueEntityName(),
+			"type":        typeName,
+			"description": "待清空的描述",
+		})
+		if err != nil {
+			t.Fatalf("create entity failed: %v", err)
+		}
+		testutil.AssertSuccess(t, createResp)
+		id, err := testutil.GetDataField(createResp, "id")
+		if err != nil {
+			t.Fatalf("get id: %v", err)
+		}
+		descEntityID := id.(string)
+		defer testutil.DeleteEntity(descEntityID)
+
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+descEntityID, map[string]interface{}{
+			"name":         testutil.UniqueEntityName(),
+			"type":         typeName,
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		testutil.AssertDataFieldEquals(t, resp, "description", "")
+
+		detail, err := testutil.GetClient().Get("/open-api/v1/entities/" + descEntityID)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, detail)
+		testutil.AssertDataFieldEquals(t, detail, "description", "")
+	})
+
+	t.Run("E-4-011 全量更新 description 长度 256 拒绝", func(t *testing.T) {
+		resp, err := testutil.GetClient().Put("/open-api/v1/entities/"+entityID, map[string]interface{}{
+			"name":         testutil.UniqueEntityName(),
+			"type":         typeName,
+			"description":  strings.Repeat("a", 256),
+			"allow_models": []string{"*"},
+			"block_models": []string{},
+			"quota_plan":   map[string]interface{}{"unlimited": true},
+			"rate_limit_policy": map[string]interface{}{
+				"enabled": false,
+			},
+			"route_rules": map[string]interface{}{
+				"enabled": false,
+				"rules":   []interface{}{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertErrCode(t, resp, 422)
 	})
 
 	t.Cleanup(func() {

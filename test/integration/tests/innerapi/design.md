@@ -23,6 +23,7 @@ v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、
 | IN-7 | 导出请求体处理配置 | GET | `/inner-api/v1/configs/mod-body-process` | version 可选 |
 | IN-8 | 导出限流策略配置 | GET | `/inner-api/v1/configs/rate-limit-policy` | version 可选 |
 | IN-9 | 导出 AI 路由配置 | GET | `/inner-api/v1/configs/ai-route` | version 可选 |
+| IN-10 | 导出 EPP 配置 | GET | `/inner-api/v1/configs/epp_data/config` | version 可选 |
 
 ## 3. 测试用例统计
 
@@ -37,7 +38,8 @@ v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、
 | 导出请求体处理配置 | 1 |
 | 导出限流策略配置 | 1 |
 | 导出 AI 路由配置 | 2 |
-| **合计** | **18** |
+| 导出 EPP 配置 | 5 |
+| **合计** | **23** |
 
 ## 4. 认证方式
 
@@ -65,8 +67,10 @@ innerapi/
 │   └── mod_body_process_test.go
 ├── rate_limit_policy/
 │   └── rate_limit_policy_test.go
-└── ai_route/
-    └── ai_route_test.go
+├── ai_route/
+│   └── ai_route_test.go
+└── epp_data/
+    └── epp_data_test.go
 ```
 
 ## 6. 导出 TLS/Server 配置
@@ -110,6 +114,7 @@ innerapi/
 | IN-1-002 | 导出 ClusterConf 含多 Key AIConf | 返回数据 | 验证 ClusterConf.AIConf.Keys/KeyPolicy 与 OpenAPI 写入一致 |
 | IN-1-003 | 导出 ClusterConf 含模型定价表 | 返回数据 | 验证 ClusterConf.AIConf.ModelTable 与导入的 model prices 一致 |
 | IN-1-004 | 导出 ClusterConf 含 ModelProtocols（对应 IN-TLS-1-007） | 返回数据 | 验证 ClusterConf.AIConf.ModelProtocols 与 OpenAPI 写入一致 |
+| IN-TLS-1-009 | 同秒连续变更导出版本严格递增 | 并发语义 | create→export→delete→export 连续 6 轮，版本串严格递增；携带旧版本拉取返回新内容（fixes #142，版本楔死回归锚点） |
 | IN-TIER-1-001 | 导出 ClusterConf 含分时段定价 | 返回数据 | 验证 ModelTable 携带 TimeZone/Tiers 与 ModelPrice 的 TierPrices |
 | IN-TIER-1-002 | 未配置时段规则时导出固定价格 | 返回数据 | 验证 ModelTable.Tiers 为空，仍按默认 Prices 导出 |
 
@@ -280,6 +285,19 @@ innerapi/
 |------|--------|---------|
 | Data.ClusterConf.Config.cluster_inner_model_protocols.AIConf.ModelProtocols | 长度为 1 | Len=1 |
 | Data.ClusterConf.Config.cluster_inner_model_protocols.AIConf.ModelProtocols[0] | "anthropic" | Equals |
+
+---
+
+### 6.4.5 IN-TLS-1-009：同秒连续变更导出版本严格递增（并发语义）
+
+##### 设计思路
+
+导出版本号为 14 位定宽时间串（`yyyyMMddHHmmss`）。预修复实现下，同一墙钟秒内两次"内容已变"的导出计算出相同版本串，叠加 sign 短路后版本推进被楔死，按版本轮询收敛的数据面消费者无限挂起（issue #142，SC2101-TC018 六连失败的根因）。用例以 create→export→delete→export 连续 6 轮覆盖"同秒"窗口（亚秒级连发必然同秒），每轮断言第二次导出版本**严格大于**第一次；末尾追加收敛语义断言：携带旧版本号拉取，内容已变更时必须返回新内容而非 `Data=null`。
+
+##### 执行步骤
+
+1. 循环 6 轮：创建 cluster（unique 名）→ 导出取版本 v1 → 删除该 cluster → 导出取版本 v2 → 断言 `v2 > v1`（字符串比较）。
+2. 再创建一个 cluster，携带 v2 作为 version 参数拉取导出，断言返回 `Data != null` 且 `Version > v2`。
 
 ---
 
@@ -1101,13 +1119,64 @@ version=XXX
 
 ---
 
-## 15. 依赖与数据准备
+## 15. 导出 EPP 配置
+
+### 15.1 接口信息
+
+| 项目 | 值 |
+|-----|-----|
+| 模块 | InnerAPI |
+| 接口名称 | 导出 EPP 配置 |
+| 方法 | GET |
+| 路径 | `/inner-api/v1/configs/epp_data/config` |
+| 说明 | 导出 EPP 调度配置（编译后 `epp_config` 段 + `assignment` 分配段），支持 version 增量同步 |
+
+### 15.2 接口参数说明
+
+#### 15.2.1 请求参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| version | string | N | 上次返回的版本号 |
+
+#### 15.2.2 返回数据字段
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| Data.Version | string | 配置版本号 |
+| Data.Config.epp_config | object | `map[cluster名]EndpointPickerConfig`，由 OpenAPI 写入的简化 `epp_config` 确定性编译而来 |
+| Data.Config.assignment | object | `map[cluster名]{primary, standby}`，EPP 实例分配（未分配 cluster 不出现在段内） |
+| WorkMode | string | 控制台工作模式 |
+
+### 15.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| IN-EPP-001 | 空池创建 EPP 集群进入未分配态并降级导出 | 降级语义 | 空池上创建 EPP cluster 进入未分配态；`server_data_conf` 导出降级为 WRR、无 EPPAddr |
+| IN-EPP-002 | 恢复容量后 reconciler 自动分配并回到 EPP | 自动分配 | PATCH `/epp-pool` 注入实例后 reconciler 自动选主；导出 BalanceMode=EPP 且 EPPAddr=[primary, standby] |
+| IN-EPP-003 | epp_data 导出含编译后 epp_config 与 assignment 两段 | 返回数据 | 创建带完整 `epp_config`（含 `flow_control`）的 cluster，校验导出编译产物：flowControl 段各字段、**`priorityBands` 显式下发 band 0**（fixes #198）、插件链、**session-scorer `strategy=session_id` 显式下发**（fixes #181）、profile 权重、assignment 与分配视图一致 |
+| IN-EPP-004 | epp_data 增量拉取同版本返回 Data null | 增量同步 | 携带当前 version 再拉取返回 `Data=null` |
+| IN-EPP-005 | 手工覆写后版本推进且 assignment 更新 | 版本推进 | PUT `/epp-assignments/{cluster}` 覆写 primary 后版本 bump、assignment 更新 |
+
+IN-EPP-003 中 `flow_control` 写入 `{"max_requests": 200, "queue_ttl": 45, "no_endpoint_queue_ttl": 120, "enable_eviction": true}`，导出 `flowControl` 段校验要点：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| maxRequests | "200" | Equals |
+| defaultRequestTTL | "45s" | Equals |
+| noEndpointRequestTTL | "2m0s" | Equals |
+| enableEviction | true | Equals |
+| priorityBands | 长度 1，元素 `{"priority":0,"maxRequests":"200","maxBytes":"5Gi"}` | Len=1 / Equals（band0 与全局一致，锁"不静默截断"契约） |
+
+---
+
+## 16. 依赖与数据准备
 
 1. 需要预先通过 OpenAPI 创建 API-Key、Entity、Cluster、证书、Global Route 等数据，才能验证导出内容非空；验证模型定价表时需先导入 model prices 并创建对应 provider 的 Cluster；验证分时段定价时需先设置 provider 的 `time_zone`/`tiers` 并导入含 `tier_prices` 的 model prices。
 2. `/configs/gslb_data/gslb` 依赖正确的 `bfe_cluster` 参数，通常为 `BFE-AI_product.szyf`。
 3. InnerAPI 鉴权为 `McUserProbe`，测试环境需配置为可跳过或使用 Support Token。
 
-## 16. 注意事项
+## 17. 注意事项
 
 1. InnerAPI 返回值仍包含 `WorkMode`（与 OpenAPI v0.3.0 不同，InnerAPI 未移除该字段）。
 2. 配置未变化时 `Data=null`，不要断言为空对象 `{}`。

@@ -374,7 +374,8 @@ func TestOperationLog_UpdateEntityTypeHasDiffKeys(t *testing.T) {
 
 	diffKeys, ok := entry.ChangeSummary["diff_keys"].([]interface{})
 	require.True(t, ok, "diff_keys should be an array")
-	assert.Contains(t, diffKeys, "description")
+	// 精确匹配：未提交却出现在 diff_keys 的幻影字段必须导致失败（issue #201）。
+	assert.ElementsMatch(t, []interface{}{"description"}, diffKeys)
 
 	// 清理
 	_ = testutil.DeleteEntityType(typeName)
@@ -532,4 +533,100 @@ func TestOperationLog_RecordsUserAgentAndClientIP(t *testing.T) {
 
 	// 清理。
 	_ = testutil.DeleteEntityType(typeName)
+}
+
+// TestOperationLog_UpdateAPIKeyDiffKeysNoPhantom 验证 api_key 部分更新成功审计的
+// diff_keys 仅含实际提交的字段、after 不含未提交字段（issue #201 幻影 diff 回归），
+// 且显式置零（enabled=false）仍被记为真实变更。
+func TestOperationLog_UpdateAPIKeyDiffKeysNoPhantom(t *testing.T) {
+	client := testutil.GetClient()
+
+	// 0. 创建 api key（不带 entity，减少无关依赖）。
+	apiKeyID, err := testutil.CreateAPIKey(testutil.UniqueAPIKeyDesc(), "")
+	require.NoError(t, err, "create api key failed")
+	defer func() { _ = testutil.DeleteAPIKey(apiKeyID) }()
+
+	filter := map[string]string{
+		"resource_type": "api_key",
+		"action":        "update",
+		"resource_id":   apiKeyID,
+		"status":        "1",
+	}
+	watermark := maxOperationLogID(t, filter)
+
+	// 1. PATCH 仅提交 description。
+	resp, err := client.Patch("/open-api/v1/api-keys/"+apiKeyID, map[string]interface{}{
+		"description": "issue-201 phantom-diff regression",
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, resp)
+
+	entry := waitOperationLogAfterID(t, filter, watermark)
+	assert.ElementsMatch(t, []string{"description"}, diffKeysOf(t, entry),
+		"diff_keys must contain exactly the submitted field (issue #201)")
+
+	after, ok := entry.ChangeSummary["after"].(map[string]interface{})
+	require.True(t, ok, "after should be an object")
+	assert.NotContains(t, after, "id")
+	assert.NotContains(t, after, "enabled")
+	assert.NotContains(t, after, "key")
+
+	// 2. PATCH 显式 enabled=false：置零是真实变更，不得被当作省略。
+	resp, err = client.Patch("/open-api/v1/api-keys/"+apiKeyID, map[string]interface{}{
+		"enabled": false,
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, resp)
+
+	entry2 := waitOperationLogAfterID(t, filter, entry.ID)
+	assert.ElementsMatch(t, []string{"enabled"}, diffKeysOf(t, entry2),
+		"explicit enabled=false must remain a real diff")
+}
+
+// maxOperationLogID 返回当前 filter 匹配日志的最大 ID，作为后续「下一条新日志」的水位线。
+func maxOperationLogID(t *testing.T, filter map[string]string) float64 {
+	t.Helper()
+	result, _, err := testutil.QueryOperationLogs(filter)
+	require.NoError(t, err)
+	var maxID float64
+	for _, item := range result.List {
+		if item.ID > maxID {
+			maxID = item.ID
+		}
+	}
+	return maxID
+}
+
+// waitOperationLogAfterID 轮询等待 filter 匹配且 ID 大于 afterID 的新日志，
+// 避免同资源多条日志时取到旧记录。写操作后审计可见性存在数秒延迟，
+// 超时取 30 秒（长于 WaitForOperationLog 的默认 10 秒）以降低偶发超时。
+func waitOperationLogAfterID(t *testing.T, filter map[string]string, afterID float64) *testutil.OperationLogEntry {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		result, _, err := testutil.QueryOperationLogs(filter)
+		require.NoError(t, err)
+		for i := range result.List {
+			if result.List[i].ID > afterID {
+				return &result.List[i]
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatalf("operation log with id > %v not found, filter=%v", afterID, filter)
+	return nil
+}
+
+// diffKeysOf 提取 change_summary.diff_keys 为字符串切片。
+func diffKeysOf(t *testing.T, entry *testutil.OperationLogEntry) []string {
+	t.Helper()
+	raw, ok := entry.ChangeSummary["diff_keys"].([]interface{})
+	require.True(t, ok, "diff_keys should be an array")
+	keys := make([]string, 0, len(raw))
+	for _, k := range raw {
+		s, ok := k.(string)
+		require.True(t, ok, "diff_keys entries should be strings")
+		keys = append(keys, s)
+	}
+	return keys
 }

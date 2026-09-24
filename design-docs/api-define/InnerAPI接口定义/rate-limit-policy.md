@@ -149,7 +149,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
 | 字段 | 类型 | 说明 | 约束 |
 |------|------|------|------|
 | name | string | 规则名称 | 同一策略内不能重复 |
-| models | []string | 目标模型列表 | 为空或 `["*"]` 表示不限制模型；非空时仅对匹配模型执行限流，多个 model 共用同一限流器 |
+| models | []string | 目标模型列表 | 为空或 `["*"]` 表示不限制模型；非空时仅对匹配模型执行限流，多个 model 共用同一限流器；models 按**转发后的目标模型名**匹配（与 API-Key 允许/禁止模型判定一致），导出格式不变 |
 | window_minutes | int | 统计时间窗口（分钟） | 取值范围 1-360 |
 | max_tokens | int | 最大 Token 数 | >0: 有限制；0: 封禁；<0: 不限制 |
 | step_minutes | int | 滑动步长（分钟） | 取值范围 1-360，必须 <= window_minutes |
@@ -160,7 +160,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/rate-limit-policy?versi
 | 字段 | 类型 | 说明 | 约束 |
 |------|------|------|------|
 | name | string | 规则名称 | 同一策略内不能重复 |
-| models | []string | 目标模型列表 | 为空或 `["*"]` 表示不限制模型；非空时仅对匹配模型执行限流，多个 model 共用同一限流器 |
+| models | []string | 目标模型列表 | 为空或 `["*"]` 表示不限制模型；非空时仅对匹配模型执行限流，多个 model 共用同一限流器；models 按**转发后的目标模型名**匹配（与 API-Key 允许/禁止模型判定一致），导出格式不变 |
 | window_minutes | int | 统计时间窗口（分钟） | 取值范围 1-360，默认 1 |
 | max_requests | int | 最大请求数 | >=1: 有限制；0: 封禁；<0: 不限制 |
 | burst | int | 突发请求数 | 最小值 1，默认 1 |

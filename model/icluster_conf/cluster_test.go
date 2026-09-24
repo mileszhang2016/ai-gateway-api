@@ -1100,7 +1100,7 @@ func TestAppendAdvancedRuleCluster(t *testing.T) {
 
 func TestNewBfeClusterConf(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterBase()}, nil, nil, nil, nil, nil)
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterBase()}, nil, nil, nil, nil, nil, nil)
 		require.NotNil(t, conf)
 		require.NotNil(t, conf.Config)
 		assert.Equal(t, "v1", *conf.Version)
@@ -1116,7 +1116,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{
 			newTestClusterBase(),
 			{ID: RouteAdvancedModeClusterID, Name: RouteAdvancedModeClusterName},
-		}, nil, nil, nil, nil, nil)
+		}, nil, nil, nil, nil, nil, nil)
 		require.Len(t, *conf.Config, 1)
 	})
 
@@ -1126,7 +1126,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 				return []string{"10.0.0.1:9002", "10.0.0.2:9002"}, true, nil
 			},
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, resolver)
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, resolver)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic.EPPAddr)
 		assert.Equal(t, []string{"10.0.0.1:9002", "10.0.0.2:9002"}, *cConf.GslbBasic.EPPAddr)
@@ -1140,7 +1140,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 				return nil, false, nil
 			},
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, resolver)
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, resolver)
 		cConf := (*conf.Config)["c1"]
 		assert.Nil(t, cConf.GslbBasic.EPPAddr)
 		require.NotNil(t, cConf.GslbBasic.BalanceMode)
@@ -1153,7 +1153,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 				return nil, false, errors.New("db down")
 			},
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, resolver)
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, resolver)
 		cConf := (*conf.Config)["c1"]
 		assert.Nil(t, cConf.GslbBasic.EPPAddr)
 		require.NotNil(t, cConf.GslbBasic.BalanceMode)
@@ -1161,7 +1161,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 	})
 
 	t.Run("EPP without resolver degrades to WRR", func(t *testing.T) {
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil)
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		assert.Nil(t, cConf.GslbBasic.EPPAddr)
 		require.NotNil(t, cConf.GslbBasic.BalanceMode)
@@ -1174,7 +1174,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 				return []string{"10.0.0.1:9002"}, true, nil
 			},
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterBase()}, nil, nil, nil, nil, resolver)
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterBase()}, nil, nil, nil, nil, nil, resolver)
 		cConf := (*conf.Config)["c1"]
 		assert.Nil(t, cConf.GslbBasic.EPPAddr)
 		require.NotNil(t, cConf.GslbBasic.BalanceMode)
@@ -1182,14 +1182,14 @@ func TestNewBfeClusterConf(t *testing.T) {
 	})
 
 	t.Run("https conf", func(t *testing.T) {
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterHTTPS()}, nil, nil, nil, nil, nil)
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterHTTPS()}, nil, nil, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.HTTPSConf)
 		assert.True(t, *cConf.HTTPSConf.RSInsecureSkipVerify)
 	})
 
 	t.Run("domain pool disable checks", func(t *testing.T) {
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterDomain()}, nil, nil, nil, nil, nil)
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterDomain()}, nil, nil, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		assert.True(t, *cConf.ClusterBasic.DisableHealthCheck)
 		assert.True(t, *cConf.ClusterBasic.DisableHostHeader)
@@ -1205,7 +1205,10 @@ func TestNewBfeClusterConf(t *testing.T) {
 		providerProtocolTable := map[string][]string{
 			"openai": {"openai"},
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterLLM()}, nil, providerKeyTable, providerProtocolTable, nil, nil)
+		providerProtocolPathsTable := map[string]map[string]string{
+			"openai": {"openai": "/compatible-mode/v1"},
+		}
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterLLM()}, nil, providerKeyTable, providerProtocolTable, providerProtocolPathsTable, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.AIConf)
 		require.Len(t, cConf.AIConf.Keys, 2)
@@ -1229,6 +1232,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 		assert.Equal(t, "openrouter/", cConf.AIConf.MatchPrefix)
 		assert.True(t, cConf.AIConf.StripPrefix)
 		assert.Equal(t, []string{"openai"}, cConf.AIConf.ModelProtocols)
+		assert.Equal(t, map[string]string{"openai": "/compatible-mode/v1"}, cConf.AIConf.ProtocolPaths)
 	})
 
 	t.Run("LLM config with tiered pricing", func(t *testing.T) {
@@ -1272,7 +1276,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 		}
 		c := newTestClusterLLM()
 		c.LLMConfig.Provider = lib.PString("deepseek")
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{c}, providerModelTable, nil, nil, providerPricingTable, nil)
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{c}, providerModelTable, nil, nil, nil, providerPricingTable, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.AIConf)
 		require.NotNil(t, cConf.AIConf.ModelTable)
@@ -1296,7 +1300,7 @@ func TestNewBfeClusterConf(t *testing.T) {
 			HashStrategy:  ClusterHashStrategyClientIDOnlyI,
 			HashHeader:    "",
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{c}, nil, nil, nil, nil, nil)
+		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{c}, nil, nil, nil, nil, nil, nil)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic)
 		require.NotNil(t, cConf.GslbBasic.HashConf)

@@ -38,14 +38,6 @@ const (
 	DefaultReconcileInterval = 30 * time.Second
 )
 
-// Validation modes controlling the instance group size check.
-const (
-	// ValidationModeProduction requires every group to hold exactly 2 instances.
-	ValidationModeProduction = "production"
-	// ValidationModeTest allows single instance groups (primary only, no standby).
-	ValidationModeTest = "test"
-)
-
 // InstanceParam describes one EPP instance of the pool.
 type InstanceParam struct {
 	ID   string `json:"id"`
@@ -121,8 +113,6 @@ type EppPoolStorager interface {
 type ManagerOptions struct {
 	// PoolName is the singleton pool name, default DefaultEPPInstancePoolName.
 	PoolName string
-	// ValidationMode is ValidationModeProduction (default) or ValidationModeTest.
-	ValidationMode string
 	// ReconcileInterval is the period of the assignment reconciler,
 	// default DefaultReconcileInterval.
 	ReconcileInterval time.Duration
@@ -131,9 +121,6 @@ type ManagerOptions struct {
 func (o *ManagerOptions) withDefaults() {
 	if o.PoolName == "" {
 		o.PoolName = DefaultEPPInstancePoolName
-	}
-	if o.ValidationMode == "" {
-		o.ValidationMode = ValidationModeProduction
 	}
 	if o.ReconcileInterval <= 0 {
 		o.ReconcileInterval = DefaultReconcileInterval
@@ -149,7 +136,6 @@ type EppPoolManager struct {
 	versionControlManager *iversion_control.VersionControlManager
 
 	poolName          string
-	validationMode    string
 	reconcileInterval time.Duration
 
 	reconciler *EppReconciler
@@ -177,7 +163,6 @@ func NewEppPoolManager(
 		clusterSource:         clusterSource,
 		versionControlManager: versionControlManager,
 		poolName:              opts.PoolName,
-		validationMode:        opts.ValidationMode,
 		reconcileInterval:     opts.ReconcileInterval,
 	}
 	m.reconciler = NewEppReconciler(m.reconcileInterval, m.Reconcile)
@@ -315,20 +300,11 @@ func (m *EppPoolManager) validateGroups(groups []*InstanceGroup) ([]*InstancePar
 	return flat, nil
 }
 
-// validateGroupSize enforces the per-group instance count of the deployment shape.
+// validateGroupSize enforces the per-group instance count: 1 (primary only)
+// or 2 (primary + standby); empty groups and groups with 3+ instances are rejected.
 func (m *EppPoolManager) validateGroupSize(group *InstanceGroup) error {
-	switch m.validationMode {
-	case ValidationModeTest:
-		if len(group.Instances) < 1 {
-			return xerror.WrapParamErrorWithMsg("epp pool group %q requires at least one instance", group.Name)
-		}
-	case ValidationModeProduction:
-		fallthrough
-	default:
-		if len(group.Instances) != 2 {
-			return xerror.WrapParamErrorWithMsg("epp pool group %q requires exactly 2 instances in %s mode, got %d",
-				group.Name, m.validationMode, len(group.Instances))
-		}
+	if n := len(group.Instances); n < 1 || n > 2 {
+		return xerror.WrapParamErrorWithMsg("epp pool group %q requires 1 or 2 instances, got %d", group.Name, n)
 	}
 	return nil
 }

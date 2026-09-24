@@ -30,6 +30,7 @@ package rdb
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
@@ -44,6 +45,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprotocol"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ireport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
@@ -52,12 +54,15 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/route_rules"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/dorisreport"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/mysqlreport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
 	apiKeyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/auth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/basic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
 	entityStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/entity"
+	eppPoolStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/epp_pool"
 	operationLogStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/model_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/protocol"
@@ -66,7 +71,6 @@ import (
 	rateLimitPolicyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/rate_limit_policy"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
 	routeRulesStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_rules"
-	eppPoolStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/epp_pool"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/txn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/version_control"
 
@@ -79,6 +83,14 @@ func Init() error {
 	container.OperationLogStorager = operationLogStorage.NewOperationLogStorager(stateful.NewBFEDBContext)
 	container.OperationLogManager = ioperlog.NewOperationLogManager(container.OperationLogStorager, 0)
 	container.OperationLogManager.SetContextExtractor(operationLogContextExtractor)
+
+	// Report query module (see design-docs
+	// modifications/2026-09-15-report-query-api). Assembled only when
+	// [Report].Backend is configured; otherwise ReportManager stays nil
+	// and the /report/* routes are not registered.
+	if err := initReport(); err != nil {
+		return err
+	}
 
 	container.RouteRuleStoragerSingleton = route_conf.NewRouteRuleStorager(
 		stateful.NewBFEDBContext,
@@ -204,7 +216,6 @@ func Init() error {
 		container.VersionControlManager,
 		&epp_pool.ManagerOptions{
 			PoolName:          stateful.DefaultConfig.RunTime.DefaultEPPInstancePoolName,
-			ValidationMode:    stateful.DefaultConfig.RunTime.EPPValidationMode,
 			ReconcileInterval: time.Duration(stateful.DefaultConfig.RunTime.EPPReconcileIntervalSeconds) * time.Second,
 		})
 	container.ClusterManager.SetEppPoolManager(container.EppPoolManager)
@@ -298,6 +309,12 @@ func Init() error {
 		container.VersionControlManager)
 	container.RateLimitPolicyManager.SetOperationLogManager(container.OperationLogManager)
 
+	// Wire nested-resource auditors so Entity/API Key nested quota-plan and
+	// rate-limit-policy writes emit operation logs with resource_parent_id
+	// filled (issue #161).
+	container.EntityManager.SetQuotaPlanAuditor(container.QuotaPlanManager)
+	container.EntityManager.SetRateLimitPolicyAuditor(container.RateLimitPolicyManager)
+
 	container.AIRouteExporter = imods.NewAIRouteExporter(
 		container.APIKeyStorager,
 		container.EntityStorager,
@@ -314,6 +331,8 @@ func Init() error {
 		container.QuotaCacheSingleton,
 	)
 	container.APIKeyManager.SetOperationLogManager(container.OperationLogManager)
+	container.APIKeyManager.SetQuotaPlanAuditor(container.QuotaPlanManager)
+	container.APIKeyManager.SetRateLimitPolicyAuditor(container.RateLimitPolicyManager)
 
 	// Initialize quota reset scheduler
 	container.BalanceSyncManager = quota.NewBalanceSyncManager(
@@ -336,6 +355,44 @@ func Init() error {
 		return err
 	}
 
+	return nil
+}
+
+func initReport() error {
+	cfg := stateful.DefaultConfig.Report
+	if cfg.Backend == "" {
+		// Pure-incremental default: no report assembly, /report/* stay 404.
+		return nil
+	}
+
+	db, err := stateful.DbGet(cfg.Datasource)
+	if err != nil {
+		return err
+	}
+
+	switch cfg.Backend {
+	case "mysql":
+		container.ReportManager = ireport.NewReportManager(mysqlreport.New(db, cfg.Database))
+		if cfg.EnableAggregateJob || cfg.EnablePartitionMgmt {
+			interval := time.Duration(cfg.AggregateIntervalSec) * time.Second
+			if !cfg.EnableAggregateJob {
+				interval = 0
+			}
+			retentionDays := cfg.RetentionDays
+			if !cfg.EnablePartitionMgmt {
+				retentionDays = 0
+			}
+			job := mysqlreport.NewJob(db, cfg.Database, interval, retentionDays)
+			job.Start()
+		}
+	case "doris":
+		// Doris aggregation is maintained by the existing Doris insert job;
+		// the api only queries.
+		container.ReportManager = ireport.NewReportManager(dorisreport.New(db, cfg.Database))
+	default:
+		container.ReportManager = nil
+		return fmt.Errorf("unsupported [Report].Backend: %s", cfg.Backend)
+	}
 	return nil
 }
 

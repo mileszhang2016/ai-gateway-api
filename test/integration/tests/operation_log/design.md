@@ -19,7 +19,11 @@
 | update diff_keys 验证 | 2 |
 | 溯源字段记录 | 1 |
 | 失败日志资源身份 | 1 |
-| **合计** | **24** |
+| 嵌套资源审计归属（issue #161） | 9 |
+| change_summary 敏感字段脱敏（issue #162） | 5 |
+| error_msg 敏感值脱敏（issue #185） | 2 |
+| unlimited reset 失败语义（issue #183） | 2 |
+| **合计** | **42** |
 
 ## 4. 认证方式
 
@@ -30,8 +34,15 @@
 ```
 operation_log/
 ├── design.md
-└── list/
-    └── list_test.go
+├── list/
+│   └── list_test.go
+├── masking/
+│   ├── masking_test.go
+│   └── error_msg_masking_test.go
+├── nested_audit/
+│   └── nested_audit_test.go
+└── unlimited_reset/
+    └── unlimited_reset_test.go
 ```
 
 ## 6. 多域 API 操作日志生成
@@ -106,6 +117,7 @@ operation_log/
 | `action` | string | 否 | 操作动作，如 `create` / `update` / `delete` |
 | `resource_type` | string | 否 | 资源类型 |
 | `resource_id` | string | 否 | 资源业务 ID |
+| `resource_parent_id` | string | 否 | 资源父级业务 ID（如嵌套配额计划所属 Entity/API Key ID，issue #161） |
 | `resource_name` | string | 否 | 资源名称 |
 | `status` | int | 否 | `1` 成功，`2` 失败 |
 | `start_time` | int64 | 否 | 起始时间戳（秒） |
@@ -133,6 +145,7 @@ operation_log/
 | `action` | string | 操作动作 |
 | `resource_type` | string | 资源类型 |
 | `resource_id` | string | 资源业务 ID |
+| `resource_parent_id` | string | 资源父级业务 ID（嵌套资源归属） |
 | `resource_name` | string | 资源名称 |
 | `status` | int8 | `1` 成功，`2` 失败 |
 | `change_summary` | object | 变更前后摘要 |
@@ -360,24 +373,56 @@ Entity 更新在事务前置校验失败时（如极简 body 只带 `parent_id` 
 
 ---
 
-## 9. update diff_keys 验证
+## 9. 嵌套资源审计归属（issue #161）
 
 ### 9.1 设计思路
 
-针对 `update` 动作的操作日志，除校验基本字段外，进一步验证 `change_summary` 中包含 `before`、`after` 以及 `diff_keys`，确保变更差异可被前端正确展示。
+Entity / API Key 生命周期中嵌套创建、更新、删除配额计划（及限流策略）时，必须产生 `resource_type=quota_plan` / `rate_limit_policy` 的操作日志，且 `resource_parent_id` 填所属 Entity / API Key 的业务 ID；手动 reset（唯一走审计层的路径）同样填充归属。本场景覆盖 issue #161 的两层缺陷——缺陷①：嵌套配额 CRUD 完全无审计日志；缺陷②：reset 日志 `resource_parent_id` 恒为空串。同时为 `rate_limit_policy` 同族缺口（修复前无 TC 把守）补充 create/delete 归属断言。SC2101-TC047 的 API 层回归锚点。
 
 ### 9.2 覆盖场景
+
+| 编号 | 场景 | 触发 API | 校验重点 |
+|------|------|----------|----------|
+| OL-N-001 | Entity 嵌套创建配额计划 | `POST /open-api/v1/entities`（body 含 `quota_plan`） | `quota_plan/create`，`resource_parent_id` == 新 Entity ID |
+| OL-N-002 | Entity 嵌套更新配额计划 | `PATCH /open-api/v1/entities/{id}`（body 含 `quota_plan`） | `quota_plan/update`，parent == Entity ID |
+| OL-N-003 | Entity 手动重置配额 | `POST /open-api/v1/entities/{id}/quota-plan/reset` | `quota_plan/reset`，parent == Entity ID（缺陷②） |
+| OL-N-004 | Entity 嵌套创建限流策略 | `PATCH /open-api/v1/entities/{id}`（body 含 `rate_limit_policy`） | `rate_limit_policy/create`，parent == Entity ID（同族把守） |
+| OL-N-005 | API-Key 嵌套创建配额计划 | `POST /open-api/v1/api-keys`（body 含 `quota_plan`） | `quota_plan/create`，parent == API Key ID |
+| OL-N-006 | API-Key 手动重置配额 | `POST /open-api/v1/api-keys/{id}/quota-plan/reset` | `quota_plan/reset`，parent == API Key ID（缺陷②） |
+| OL-N-007 | API-Key 删除级联删除配额计划 | `DELETE /open-api/v1/api-keys/{id}` | `quota_plan/delete`，parent == API Key ID |
+| OL-N-008 | Entity 删除级联删除配额计划 | `DELETE /open-api/v1/entities/{id}` | `quota_plan/delete`，parent == Entity ID |
+| OL-N-009 | Entity 删除级联删除限流策略 | `DELETE /open-api/v1/entities/{id}` | `rate_limit_policy/delete`，parent == Entity ID（同族把守） |
+
+### 9.3 校验点
+
+- 以 `resource_type` + `action` + `resource_parent_id` 三元组过滤轮询（`resource_parent_id` 查询参数随 issue #161 修复一并提供），直接锚定归属，不依赖历史日志比对。
+- `status` 为 `1`（成功）；`resource_id` 非空（为配额计划/限流策略的内部 ID 字符串）。
+- `resource_parent_id` 为 owner 业务 ID（Entity ID / API Key ID），非内部数值 ID——与 `api_key` 类型日志的 parent 语义（`api_key.EntityID`）区分。
+
+### 9.4 依赖与清理
+
+依赖链：`entity-type` → `entity`（嵌套 `quota_plan`）→ PATCH 更新 → reset → PATCH 嵌套 `rate_limit_policy` → `api-key`（嵌套 `quota_plan`，挂在 entity 下）→ reset → 删除 `api-key` → 删除 `entity`。清理顺序与依赖相反（defer 注册）。本目录用例在独立测试进程中运行（自带 `TestMain` 启动专属服务器实例），不与其他目录共享数据库状态。
+
+---
+
+## 10. update diff_keys 验证
+
+### 10.1 设计思路
+
+针对 `update` 动作的操作日志，除校验基本字段外，进一步验证 `change_summary` 中包含 `before`、`after` 以及 `diff_keys`，确保变更差异可被前端正确展示。
+
+### 10.2 覆盖场景
 
 | 编号 | 资源类型 | 操作 | 触发 API | 校验重点 |
 |------|----------|------|----------|----------|
 | OL-DIFF-001 | `entity_type` | `update` | `PATCH /open-api/v1/entity-types/{type_name}` | `diff_keys` 包含变更的字段 |
 | OL-DIFF-002 | `route` | `update` | `PUT /open-api/v1/global-route-rules` | `diff_keys` 包含 `rules`；`before` 与 `after` 分别对应清空与写入后的 Global 路由表 |
 
-### 9.3 数据准备
+### 10.3 数据准备
 
 - `OL-DIFF-002` 需要先创建 `provider` 与 `cluster`，再使用 `ResetGlobalRouteRules` 将 Global 路由表置空作为 `before` 状态，最后调用 `SetGlobalRouteRules` 写入一条规则作为 `after` 状态。
 
-### 9.4 校验点
+### 10.4 校验点
 
 - `change_summary` 非空且包含 `before`、`after`、`diff_keys`。
 - `diff_keys` 数组中包含预期变更的字段名。
@@ -385,37 +430,94 @@ Entity 更新在事务前置校验失败时（如极简 body 只带 `parent_id` 
 
 ---
 
-## 10. 溯源字段记录（issue #127）
+## 11. 溯源字段记录（issue #127）
 
-### 10.1 设计思路
+### 11.1 设计思路
 
 验证操作日志正确记录 `user_agent` 与 `client_ip` 溯源字段，满足审计合规要求（能回答"谁、从哪发起"）。
 
-### 10.2 覆盖场景
+### 11.2 覆盖场景
 
 | 编号 | 场景 | 触发 API | 校验重点 |
 |------|------|----------|----------|
 | OL-TRACE-001 | 记录 User-Agent | `POST /open-api/v1/entity-types` | `user_agent` 非空，与请求 `User-Agent` 头一致 |
 | OL-TRACE-001 | 记录真实来源 IP | `POST /open-api/v1/entity-types` | `client_ip` 非空，回退自 `RemoteAddr`/`X-Forwarded-For` |
 
-### 10.3 校验点
+### 11.3 校验点
 
 - `user_agent` 应记录请求的 `User-Agent` 头（修复前恒为空）。
 - `client_ip` 优先取自定义 `ClientIp` 头（兼容既有调用方），否则回退 `X-Forwarded-For` 首段，最后回退 `RemoteAddr` 去端口。
 
 ---
 
-## 11. 工具辅助函数
+## 12. change_summary 敏感字段脱敏（issue #162）
+
+### 12.1 设计思路
+
+审计日志的 `change_summary` 承诺敏感字段脱敏（api-define operation-logs.md），但 issue #162 实证 Token 创建/删除日志以明文记录凭证原文（经审计通道可提权），同族排查另发现 Provider 上游凭证 `keys[].key` 经数组结构绕过脱敏。本场景以真实 API 调用触发审计写入，断言 change_summary 序列化后不含任何凭证明文，作为 SC2101-TC049 的集成层回归锚点。
+
+### 12.2 覆盖场景
+
+| 编号 | 场景 | 触发 API | 校验重点 |
+|------|------|----------|----------|
+| OL-MASK-001 | Token 创建日志脱敏 | `POST /open-api/v1/auth/tokens` | `after.token` == `******`；after 键集合 [id,name,scope,token] 不变；序列化结果不含响应明文 |
+| OL-MASK-002 | Token 删除日志脱敏 | `DELETE /open-api/v1/auth/tokens/{name}` | `before.token` == `******`；序列化结果不含明文（删除资源不能止损已落库明文） |
+| OL-MASK-003 | Provider 创建日志 keys 脱敏 | `POST /open-api/v1/providers` | `after.keys[].key` 部分掩码（首4+`****`+尾4），`name` 保留；不含 `sk-aaaa…`/`sk-bbbb…` 明文 |
+| OL-MASK-004 | Provider 更新日志 before/after 双侧 keys 脱敏 | `PATCH /open-api/v1/providers/{name}`（全量替换 keys） | `before.keys[].key`（库快照）与 `after.keys[].key`（请求参数）均部分掩码；双侧均不含明文 |
+| OL-MASK-005 | 用户创建日志 password 路径不回退 | `POST /open-api/v1/auth/users` | `after.password` == `******`；序列化结果不含明文 |
+
+### 12.3 校验点
+
+- 掩码值精确断言：`token`/`password` 为 `******`；provider key 为 `MaskAPIKeyToken` 形态（如 `sk-aaaaaaaaaaaa` → `sk-a****aaaa`）。
+- "不含明文"断言作用于 `change_summary` 整体序列化结果，而非仅目标字段——防止明文经其他键/嵌套结构二次泄漏。
+- 通过 `resource_type`+`action`+`resource_name`/`resource_id` 三元组过滤轮询锚定日志；token/user 按 `resource_name`、provider 按 `resource_id`（provider 名称）查询。
+
+### 12.4 依赖与清理
+
+各用例资源完全独立（唯一名称），无前置依赖；清理顺序：token 删除、provider 删除、user 删除。修复前 OL-MASK-001/002/003/004 均为 FAIL（明文落库），OL-MASK-005 恒 PASS（密码路径本已干净，作回归保护）。
+
+---
+
+## 13. error_msg 敏感值脱敏（issue #185）
+
+### 13.1 设计思路
+
+issue #162 收口了 `change_summary` 的脱敏，但 `error_msg` 是自由文本，`MaskSensitiveFields` 的键名清单范式不覆盖它：重复创建相同 Key 值的 API-Key 时，模型层把裸 Key 拼进错误消息（`API-Key value <裸Key> already exists`），经 `TruncateErrorMessageDefault`（仅截断、不脱敏）落库，且同一 err 扇出到嵌套 quota_plan / rate_limit_policy 失败审计——一次重复创建最多污染 3 条审计记录。本场景以真实 API 调用复现 issue 步骤，断言失败审计的 `error_msg` 不含裸 Key，作为 SC2101-TC046 的集成层回归锚点。
+
+### 13.2 覆盖场景
+
+| 编号 | 场景 | 触发 API | 校验重点 |
+|------|------|----------|----------|
+| OL-MASK-006 | 重复创建失败 error_msg 脱敏 | `POST /open-api/v1/api-keys`（提交与现存 Key 相同的 `key`） | 422 响应 `msg` 为部分掩码形态（`AI_p****xxxx`）；失败审计 `error_msg` 不含裸 Key、含掩码形态；整条记录 JSON 序列化后不含裸 Key |
+| OL-MASK-007 | 嵌套失败审计 error_msg 脱敏（泄漏扇出） | 同上，body 携带 `quota_plan` / `rate_limit_policy` | `quota_plan` 与 `rate_limit_policy` 两类失败审计的 `error_msg` 同样不含裸 Key、含掩码形态；整条记录序列化后不含裸 Key |
+
+### 13.3 校验点
+
+- 掩码形态与 `change_summary` 对 `key` 的契约一致：`MaskAPIKeyToken`（首 4 + `****` + 尾 4）。
+- "不含明文"断言作用于整条记录（`error_msg` + 已脱敏 `change_summary`）的序列化结果，对齐 SC2101-TC046 的 `sc2101AuditAssertSecretAbsent` 断言。
+- **锚定方式**：失败创建的资源 ID 由服务端内部生成、不在 422 响应中返回，其嵌套条目的 `resource_parent_id` 无法从外部预知；以 `error_msg` 中的掩码 Key 作为唯一锚点（每把 Key 唯一），局部辅助 `waitNestedFailureAuditByMaskedKey` 按 `resource_type`+`action=create`+`status=2` 轮询并在结果中匹配掩码 Key。OL-MASK-006 可用 `resource_name`（重复请求的 description）锚定。
+- 额外断言 422 响应 `msg` 为掩码形态：修复同步收敛了 HTTP 响应回显（调用方即提交者本人，无可见性损失）。
+
+### 13.4 依赖与清理
+
+用例资源完全独立（唯一 description、服务端生成唯一 Key 值）；清理为 `DELETE /open-api/v1/api-keys/{id}`（defer）。修复前 OL-MASK-006/007 均为 FAIL（`error_msg` 含裸 Key）。
+
+---
+
+## 14. 工具辅助函数
 
 集成测试在 `testutil` 中新增/使用以下辅助函数：
 
 - `QueryOperationLogs(query map[string]string) (*OperationLogListResult, *APIResponse, error)`：查询操作日志。
 - `WaitForOperationLog(filter map[string]string, timeout time.Duration) (*OperationLogEntry, error)`：轮询等待匹配的操作日志出现，默认最长 10 秒，避免固定 sleep 导致的不稳定。
+- `OperationLogEntry.ResourceParentID`：查询返回条目已包含 `resource_parent_id` 字段（testutil，issue #161 随本场景补充）。
+- `nested_audit` 包内局部辅助 `waitNestedAudit(t, resourceType, action, parentID)`：以 `resource_type`+`action`+`resource_parent_id` 三元组轮询并断言归属与成功状态，仅服务于第 9 章场景。
+- `masking` 包内局部辅助 `waitNestedFailureAuditByMaskedKey(t, resourceType, maskedKey)`：按 `resource_type`+`action=create`+`status=2` 轮询，在结果中匹配 `error_msg` 含掩码 Key 的失败审计条目，仅服务于第 13 章场景（issue #185）。
 - `ResetGlobalRouteRules() error`：清空 Global 路由表。
 - `SetGlobalRouteRules(rules []interface{}) error`：设置 Global 路由表。
 - `SimpleRouteRule(name, clusterName string) map[string]interface{}`：构造一条最简单的 Global 路由规则。
 
-## 12. 注意事项
+## 15. 注意事项
 
 1. 操作日志为异步批量落库，默认 5 秒 flush 一次；测试使用轮询而非固定 sleep 等待日志出现。
 2. 不同测试用例共享同一 SQLite 数据库，但每个用例使用唯一资源 ID / 名称，避免相互干扰。

@@ -27,7 +27,6 @@
 | OpenAPI - Entity | `/open-api/v1/entities` | 实体管理 |
 | OpenAPI - Global Route Rules | `/open-api/v1/global-route-rules` | 全局路由规则 |
 | OpenAPI - Route Tables | `/open-api/v1/route-tables` | 路由表 |
-| OpenAPI - ALB Pool | `/open-api/v1/alb-pool` | 实例池管理 |
 | OpenAPI - Clusters | `/open-api/v1/clusters` | 集群管理 |
 | OpenAPI - Certificate | `/open-api/v1/certificates` | 证书管理 |
 | OpenAPI - Providers | `/open-api/v1/providers` | 模型提供商管理 |
@@ -220,7 +219,6 @@ SessionExpireInDay = 10
 StaticFilePath = "./data"
 Debug = false
 AIRouteInnerProductName = "AI_product"
-DefaultAIInstancePoolName = "BFE.aipool"
 DefaultAIClusterName = "BFE-AI_product.szyf"
 ```
 
@@ -533,7 +531,6 @@ func GenerateCert() (string, string)   // 生成自签名证书（用于测试�
 - `E` - Entity 模块
 - `GRR` - Global Route Rules 模块
 - `RT` - Route Tables 模块
-- `BP` - 实例池模块
 - `CL` - 集群模块
 - `CERT` - 证书模块
 - `MPT` - 模型提供商类型模块
@@ -679,10 +676,9 @@ integration/tests/{module}/
 | AUTH 认证 | 13 | 29 |
 | AK API-Key | 8 | 22 |
 | ET Entity-Type | 5 | 15 |
-| E Entity | 8 | 25 |
+| E Entity | 8 | 36 |
 | GRR Global Route Rules | 2 | 9 |
 | RT Route Tables | 1 | 10 |
-| BP 实例池 | 2 | 8 |
 | CL 集群 | 5 | 36 |
 | CERT 证书 | 6 | 11 |
 | MPT 模型提供商类型 | 1 | 3 |
@@ -690,7 +686,7 @@ integration/tests/{module}/
 | TOOL 工具 | 1 | 6 |
 | EV 表达式校验 | 1 | 8 |
 | InnerAPI | 9 | 14 |
-| **总计** | **71** | **226** |
+| **总计** | **69** | **229** |
 
 ---
 

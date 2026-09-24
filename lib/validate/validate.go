@@ -50,10 +50,11 @@ const (
 	MaxTokenNameLength      = 64
 	MaxClusterNameLength    = 64
 	MaxCertNameLength       = 64
-	MaxEntityTypeNameLength = 32
-	MaxEntityNameLength     = 64
-	MaxDescriptionLength    = 256
-	MaxAPIDescriptionLength = 512
+	MaxEntityTypeNameLength    = 32
+	MaxEntityNameLength        = 64
+	MaxDescriptionLength       = 256
+	MaxEntityDescriptionLength = 255
+	MaxAPIDescriptionLength    = 512
 	MaxLLMKeyLength         = 512
 	MaxRateLimitNameLength  = 128
 )
@@ -744,7 +745,7 @@ const (
 	MaxInstanceNameLength = 128
 )
 
-// Instance validates a single instance (used by cluster/alb-pool).
+// Instance validates a single instance (used by cluster instance pools).
 func Instance(inst icluster_conf.Instance) error {
 	if inst.Name != "" {
 		if len(inst.Name) < 1 || len(inst.Name) > MaxInstanceNameLength {
