@@ -9,13 +9,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.0.10] - 2026-09-24
 
 ### Added
+- Add report query API (`/open-api/v1/report/*`) with MySQL/Doris backends: cost/token report queries by model/provider/entity dimensions, plus optional aggregate job and partition management; add the report menu. The module assembles only with the optional `[Report]` + `[Databases.report_db]` config (endpoints stay 404 otherwise); backend tables see `db_ddl_report_mysql.sql`.
 - Add optional `description` field (0-255 chars, no control characters) to the `/entities` API: supported on create, query, full update (omitting it clears the description) and partial update (omitted keeps original, explicit `""` clears); add the `description` column to the `entities` table (existing deployments: `ALTER TABLE entities ADD COLUMN description VARCHAR(255) NOT NULL DEFAULT ''`).
+- Add per-protocol upstream base path config `protocol_paths` for providers (existing deployments: `ALTER TABLE providers ADD COLUMN protocol_paths JSON`).
+
+### Changed
+- Upgrade data-plane dependency `github.com/bfenetworks/bfe` to v1.8.8.
+- Make `models` required for providers (at least one element) and remove the obsolete discover-models auto-fill description.
+- Unify EPP pool group-size validation to 1~2 instances per group; remove the `EPPValidationMode` config item.
+- Rate-limit rule rename now means delete old + add new; drop the name-immutable contract.
 
 ### Removed
 - Remove the `/alb-pool` OpenAPI (GET detail + PATCH full-replace of the built-in BFE instance pool `BFE.aipool`): the pool data had no data-plane consumer; also remove the `RunTime.DefaultAIInstancePoolName` config item and the `alb_pool` integration tests. The dashboard AIInstancePool page loses its backend and will be cleaned up separately (breaking change).
+
+### Fixed
+- Mask API-Key plaintext in operation-log `error_msg` (mask at the source plus value-level redaction at the sink).
+- Complete operation-log sensitive-field masking for token/provider credentials; fix nested quota-plan/rate-limit-policy audit completion and attribution.
+- Build cluster audit `change_summary` in API vocabulary: lowercase keys at all nesting levels, API-aligned values (string `sticky_sessions.hash_strategy` enum, decoded `epp_config` object, `balance_mode` empty-value normalization) and trimmed internal bookkeeping fields (`id`/`ready`/`product_id`/`scheduler`/`sub_clusters`).
+- Partial-update audits no longer materialize omitted fields as null, so `diff_keys` contains only actually-submitted fields (api_key/provider/cluster).
+- Entity: reject PUT/PATCH carrying a different `type` (immutable after creation); create defaults omitted `allow_models` to `["*"]` and normalizes legacy `"[]"` rows on read.
+- Model-prices: `GET /model-prices` with all three composite-key parameters returns the single record.
+- Validate cluster `basic` numeric subfield ranges and `passive_health_check` value ranges and formats.
+- EPP: compiled session-affinity configs pin `strategy=session_id`; `CompileEppConfig` explicitly distributes priority band 0 so a global `max_requests` is no longer silently truncated by hidden band defaults (5000/1GB).
+- Report: normalize cost fields to amount (fixed-point ÷1e8) at the export boundary, fixing frontend display inflated by 1e8; timezone-neutral unix epoch rendering and partition boundary parsing; partition maintenance job queries `information_schema` by (schema, bare table name) so partitions are created when `[Report].Database` is configured.
+- Quota: resetting an unlimited quota plan returns 422 Param Illegal instead of 500 Unknown Exception.
+- API-Key: PUT full update validates `entity_id` existence, removing the asymmetry with PATCH.
 
 ## [0.0.9] - 2026-09-13
 
