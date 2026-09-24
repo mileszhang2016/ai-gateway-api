@@ -438,9 +438,11 @@ func (s *ReportStorager) queryCost(ctx context.Context, query string, args []int
 	items := make([]*ireport.CostItem, 0, 4)
 	for rows.Next() {
 		item := &ireport.CostItem{}
-		if err := rows.Scan(&item.Currency, &item.Value); err != nil {
+		var raw int64
+		if err := rows.Scan(&item.Currency, &raw); err != nil {
 			return nil, xerror.WrapDaoError(err)
 		}
+		item.Value = ireport.CostFixedPointToAmount(raw)
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -621,7 +623,7 @@ func rowToMetricPoint(metric string, bucket int64, bucketSec int, v metricRowVal
 	case ireport.MetricTPOT:
 		point.Value = float64Ptr(avgLatencyMs(v.tpotUsSum, v.streamRequests))
 	case ireport.MetricCost:
-		point.Value = float64Ptr(float64(v.value) / float64(bucketSec))
+		point.Value = float64Ptr(float64(v.value) / float64(bucketSec) / ireport.CostFixedPointScale)
 		point.Currency = v.currency
 	}
 	return point
@@ -774,6 +776,16 @@ func nullStringPtr(n sql.NullString) *string {
 	return &v
 }
 
+// nullCostAmountPtr converts a nullable fixed-point cost column into the
+// currency amount carried by ireport.LogRow; NULL stays nil.
+func nullCostAmountPtr(n sql.NullInt64) *float64 {
+	if !n.Valid {
+		return nil
+	}
+	v := ireport.CostFixedPointToAmount(n.Int64)
+	return &v
+}
+
 // scanLogRow scans one detail projection row. All nullable columns use the
 // sql.Null types; JSON columns are returned verbatim as strings.
 func scanLogRow(scanner metricRowScanner) (*ireport.LogRow, error) {
@@ -885,7 +897,7 @@ func scanLogRow(scanner metricRowScanner) (*ireport.LogRow, error) {
 		AllTime:             nullInt64Ptr(allTime),
 		TTFTUs:              nullInt64Ptr(ttftUs),
 		TPOTUs:              nullInt64Ptr(tpotUs),
-		CostValue:           nullInt64Ptr(costValue),
+		CostValue:           nullCostAmountPtr(costValue),
 		CostCurrency:        nullStringPtr(costCurrency),
 		RateLimitHits:       nullStringPtr(rateLimitHits),
 		AuthRejectQuotaPlan: nullStringPtr(authRejectQuotaPlan),

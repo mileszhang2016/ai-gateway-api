@@ -14,10 +14,6 @@
 
 package query_test
 
-import (
-	"database/sql"
-)
-
 // 种子数据设计（数值均可手算）：
 //
 // 聚合表 bfe_ai_metrics_1m，查询窗口 [2026-09-15 09:59, 10:05)（≤6h → 60s 桶）：
@@ -31,7 +27,7 @@ import (
 //
 // 窗口合计：req=660 err=200 in=6600 out=1320 tot=7920 all_time=66000
 //           stream 请求=450 ttft_us=225000 tpot_us=22500 rl=2 rej=1
-//           cost: USD=350 RMB=300
+//           cost: USD=350 RMB=300（定点值；接口出口 ÷1e8 后为 3.5e-6 美元 / 3e-6 元）
 //
 // 明细表 bfe_ai_request_log 6 行（log_time 倒序后 logid 为 1006..1001），
 // 覆盖：err_code 非空、JSON 列非空、ai_apikey_id NULL（未认证行）、provider 空串。
@@ -64,13 +60,3 @@ VALUES
 (1004, '2026-09-15 10:00:40', 'gw-01', 'BFE', NULL, 'gpt-4', 'gpt-4o', 'openai', 'openai', 'chat', 0, 401, 'E401', 'invalid api key', 50, 10, 60, 50, NULL, NULL, 0, NULL, NULL, '["plan-a"]', NULL, NULL, '10.0.0.4', 'api.example.org', '/v1/chat', NULL, NULL),
 (1005, '2026-09-15 10:01:10', 'gw-01', 'BFE', 'key-3', 'claude-3', 'claude', '', 'openai', 'chat', 0, 200, NULL, NULL, 10, 2, 12, 10, NULL, NULL, 0, '', NULL, NULL, NULL, NULL, '10.0.0.5', 'api.example.org', '/v1/chat', NULL, NULL),
 (1006, '2026-09-15 10:02:00', 'gw-01', 'BFE', 'key-1', 'gpt-4', 'gpt-4o', 'openai', 'openai', 'chat', 0, 200, NULL, NULL, 60, 12, 72, 60, NULL, NULL, 60, 'USD', NULL, NULL, NULL, NULL, '10.0.0.6', 'api.example.org', '/v1/chat', NULL, NULL)`
-
-func seedReportData(db *sql.DB) error {
-	if _, err := db.Exec(aggregateSeedSQL); err != nil {
-		return err
-	}
-	if _, err := db.Exec(detailSeedSQL); err != nil {
-		return err
-	}
-	return nil
-}

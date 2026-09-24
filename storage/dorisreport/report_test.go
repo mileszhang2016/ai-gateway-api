@@ -186,8 +186,8 @@ func TestRowToMetricPoint(t *testing.T) {
 	ttft := rowToMetricPoint(ireport.MetricTTFT, 1000, 60, metricRowValues{ttftUsSum: 2_000_000, streamRequests: 4})
 	assert.InDelta(t, 500, *ttft.Value, 1e-9)
 
-	cost := rowToMetricPoint(ireport.MetricCost, 1000, 60, metricRowValues{value: 600, currency: "USD"})
-	assert.InDelta(t, 10, *cost.Value, 1e-9)
+	cost := rowToMetricPoint(ireport.MetricCost, 1000, 60, metricRowValues{value: 600_000_000, currency: "USD"})
+	assert.InDelta(t, 0.1, *cost.Value, 1e-9) // 6e8 定点 / 60s / 1e8 = 0.1 元/秒
 	assert.Equal(t, "USD", cost.Currency)
 
 	_, err := scanMetricPoint(nil, "bogus", 60)
@@ -223,8 +223,13 @@ func TestNullPtrHelpers(t *testing.T) {
 	assert.Nil(t, nullInt64Ptr(sql.NullInt64{}))
 	assert.Nil(t, nullInt16Ptr(sql.NullInt64{}))
 	assert.Nil(t, nullStringPtr(sql.NullString{}))
+	assert.Nil(t, nullCostAmountPtr(sql.NullInt64{}))
 
 	v := sql.NullInt64{Int64: 7, Valid: true}
 	require.NotNil(t, nullInt64Ptr(v))
 	assert.Equal(t, int16(7), *nullInt16Ptr(v))
+
+	c := sql.NullInt64{Int64: 66900, Valid: true}
+	require.NotNil(t, nullCostAmountPtr(c))
+	assert.InDelta(t, 0.000669, *nullCostAmountPtr(c), 1e-12)
 }
