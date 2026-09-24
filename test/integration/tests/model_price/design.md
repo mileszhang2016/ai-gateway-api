@@ -726,6 +726,7 @@ models:
 | MP-5-001 | 查询存在的组合键 | 正常参数 | 返回单个 ModelPrice 对象（非列表包装），字段匹配 |
 | MP-5-002 | 缺少 query 参数 | 边界场景 | 带 model 但缺 mode，验证 ErrNum=422 |
 | MP-5-003 | 查询不存在的组合键 | 异常参数 | 验证 ErrNum=404（Record Not Exist） |
+| MP-5-004 | 8 位小数价格双链路数值无损 | 精度语义 | OpenAPI 组合键查询 + InnerAPI 导出 ModelTable 的 prices 值精确等于写入值（fixes #102；现行合同允许十进制或科学计数法文本形态，故锁定"数值往返无损 + 报文 token 可无损解析"） |
 
 ### 11.4 测试场景详细设计
 
@@ -781,6 +782,24 @@ models:
 ##### 预期返回结果
 
 **ErrNum**：404
+
+---
+
+#### MP-5-004：8 位小数价格双链路数值无损（精度语义）
+
+##### 设计思路
+
+写入 `input_cost_per_token=0.0000015`、`output_cost_per_token=0.00000025`（Go 默认 `%g` 序列化形态为 `1.5e-06` / `2.5e-07`）。现行合同（MP-1-009）明确十进制与科学计数法均为合法输出形态，因此本用例锁定**数值无损**而非文本形态：反序列化值精确等于写入值（InDelta 1e-18），且原始报文中价格 token 可被 `strconv.ParseFloat` 无损解析（防中间环节文本截断——issue #102 的实际危害面）。覆盖 OpenAPI 组合键查询与 InnerAPI `server_data_conf` 导出 `AIConf.ModelTable` 两条链路。
+
+> 注意：导出 cluster 要求 llm 模型为 provider models 子集，需显式创建 provider
+> （`models=[被测模型]`）后再创建 cluster，否则 cluster 会从导出中缺席。
+
+##### 执行步骤
+
+1. 创建 provider（models 含被测模型）+ 创建 model price（8 位小数 prices）+ 创建 cluster 引用该 provider 与模型。
+2. GET 组合键查询：断言 `prices.*` 反序列化值精确；断言原始报文 token 无损解析。
+3. GET `/inner-api/v1/configs/tls_conf/server_data_conf`：定位 `ClusterConf.Config.{cluster}.AIConf.ModelTable.Models[]` 中该模型条目，断言 `Prices` 值精确；断言原始导出报文 token 无损解析。
+4. 清理：删除 cluster / model price / provider。
 
 ---
 

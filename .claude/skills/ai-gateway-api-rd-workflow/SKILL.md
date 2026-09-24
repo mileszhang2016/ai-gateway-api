@@ -118,6 +118,8 @@ description: 引导用户在 ai-gateway-api 代码库中完成一次完整的功
 
 集成测试设计文档位于 `test/integration/tests/<module>/design.md`。在写测试代码之前，先补充对应场景的设计文档。
 
+**设计用例时必须先调用 `ai-gateway-api-integration-test-design` skill**（若可用；否则参考其 SKILL.md 中的 12 项检查清单与反面模式清单）。该清单来自 36 个历史 issue 的复盘，重点覆盖：PATCH/PUT 省略字段保留原值、4xx 后回读零变更、非法值矩阵、跨对象引用完整性、审计日志断言、InnerAPI 导出断言、MySQL 并发用例（build tag）等高频漏测家族。
+
 1. 在 `test/integration/tests/<module>/design.md` 中：
    - 模块概述补充新字段/新行为说明
    - 接口参数表补充新增字段
@@ -190,6 +192,7 @@ description: 引导用户在 ai-gateway-api 代码库中完成一次完整的功
 - **OpenAPI 与 InnerAPI 字段命名不一致**：OpenAPI 使用 snake_case（如 `key_affinity`、`redis_prefix`），InnerAPI/BFE 配置常使用 PascalCase（如 `SessionAffinityRedisPrefix`），注意映射关系。
 - **默认值未同步**：修改默认值时，需同时更新模型层默认值、校验层默认值、设计文档、api-define 文档、集成测试断言。
 - **Schema 测试遗漏**：新增 OpenAPI/InnerAPI 字段后，记得同步更新 `test/integration/tests/schema/openapi/` 与 `test/integration/tests/schema/innerapi/`。
+- **断言固化缺陷**：写集成断言必须以 `design-docs/api-define/` 合同为依据，禁止按实现现状写断言（历史教训：#202、#170、#115 的用例曾把缺陷固化成"通行证"）；负向用例必须带"拒绝后 GET 回读零变更"断言；PATCH 用例必须断言未提交字段原值不变。详见 `ai-gateway-api-integration-test-design` skill。
 - **Integration 测试需要重新编译二进制**：运行集成测试前确保已执行 `go build -o ai-gateway-api.exe .`，否则测试会启动旧版本服务。
 - **SQLite 日志文件占用**：Windows 上并发运行多个 integration 测试包时，可能出现日志文件被占用导致启动失败，可单独重新运行失败包。
 

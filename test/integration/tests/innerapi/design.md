@@ -114,6 +114,7 @@ innerapi/
 | IN-1-002 | 导出 ClusterConf 含多 Key AIConf | 返回数据 | 验证 ClusterConf.AIConf.Keys/KeyPolicy 与 OpenAPI 写入一致 |
 | IN-1-003 | 导出 ClusterConf 含模型定价表 | 返回数据 | 验证 ClusterConf.AIConf.ModelTable 与导入的 model prices 一致 |
 | IN-1-004 | 导出 ClusterConf 含 ModelProtocols（对应 IN-TLS-1-007） | 返回数据 | 验证 ClusterConf.AIConf.ModelProtocols 与 OpenAPI 写入一致 |
+| IN-TLS-1-009 | 同秒连续变更导出版本严格递增 | 并发语义 | create→export→delete→export 连续 6 轮，版本串严格递增；携带旧版本拉取返回新内容（fixes #142，版本楔死回归锚点） |
 | IN-TIER-1-001 | 导出 ClusterConf 含分时段定价 | 返回数据 | 验证 ModelTable 携带 TimeZone/Tiers 与 ModelPrice 的 TierPrices |
 | IN-TIER-1-002 | 未配置时段规则时导出固定价格 | 返回数据 | 验证 ModelTable.Tiers 为空，仍按默认 Prices 导出 |
 
@@ -284,6 +285,19 @@ innerapi/
 |------|--------|---------|
 | Data.ClusterConf.Config.cluster_inner_model_protocols.AIConf.ModelProtocols | 长度为 1 | Len=1 |
 | Data.ClusterConf.Config.cluster_inner_model_protocols.AIConf.ModelProtocols[0] | "anthropic" | Equals |
+
+---
+
+### 6.4.5 IN-TLS-1-009：同秒连续变更导出版本严格递增（并发语义）
+
+##### 设计思路
+
+导出版本号为 14 位定宽时间串（`yyyyMMddHHmmss`）。预修复实现下，同一墙钟秒内两次"内容已变"的导出计算出相同版本串，叠加 sign 短路后版本推进被楔死，按版本轮询收敛的数据面消费者无限挂起（issue #142，SC2101-TC018 六连失败的根因）。用例以 create→export→delete→export 连续 6 轮覆盖"同秒"窗口（亚秒级连发必然同秒），每轮断言第二次导出版本**严格大于**第一次；末尾追加收敛语义断言：携带旧版本号拉取，内容已变更时必须返回新内容而非 `Data=null`。
+
+##### 执行步骤
+
+1. 循环 6 轮：创建 cluster（unique 名）→ 导出取版本 v1 → 删除该 cluster → 导出取版本 v2 → 断言 `v2 > v1`（字符串比较）。
+2. 再创建一个 cluster，携带 v2 作为 version 参数拉取导出，断言返回 `Data != null` 且 `Version > v2`。
 
 ---
 
@@ -1140,7 +1154,7 @@ version=XXX
 |------|------|---------|---------|
 | IN-EPP-001 | 空池创建 EPP 集群进入未分配态并降级导出 | 降级语义 | 空池上创建 EPP cluster 进入未分配态；`server_data_conf` 导出降级为 WRR、无 EPPAddr |
 | IN-EPP-002 | 恢复容量后 reconciler 自动分配并回到 EPP | 自动分配 | PATCH `/epp-pool` 注入实例后 reconciler 自动选主；导出 BalanceMode=EPP 且 EPPAddr=[primary, standby] |
-| IN-EPP-003 | epp_data 导出含编译后 epp_config 与 assignment 两段 | 返回数据 | 创建带完整 `epp_config`（含 `flow_control`）的 cluster，校验导出编译产物：flowControl 段各字段、**`priorityBands` 显式下发 band 0**（fixes #198）、插件链、profile 权重、assignment 与分配视图一致 |
+| IN-EPP-003 | epp_data 导出含编译后 epp_config 与 assignment 两段 | 返回数据 | 创建带完整 `epp_config`（含 `flow_control`）的 cluster，校验导出编译产物：flowControl 段各字段、**`priorityBands` 显式下发 band 0**（fixes #198）、插件链、**session-scorer `strategy=session_id` 显式下发**（fixes #181）、profile 权重、assignment 与分配视图一致 |
 | IN-EPP-004 | epp_data 增量拉取同版本返回 Data null | 增量同步 | 携带当前 version 再拉取返回 `Data=null` |
 | IN-EPP-005 | 手工覆写后版本推进且 assignment 更新 | 版本推进 | PUT `/epp-assignments/{cluster}` 覆写 primary 后版本 bump、assignment 更新 |
 

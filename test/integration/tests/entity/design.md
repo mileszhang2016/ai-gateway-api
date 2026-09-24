@@ -124,6 +124,7 @@ entity/
 | E-1-008 | 创建层级 Entity（非法 parent level） | 异常参数 | 父 level 必须小于子 |
 | E-1-009 | type 格式非法（含大写） | 合法性条件 | 验证 ErrNum=422 |
 | E-1-010 | Entity name 包含首尾空白 | 合法性条件 | 验证 ErrNum=422 |
+| E-1-103 | MySQL 后端 700 并发创建（自动 id） | 并发语义 | 50 goroutine × 14 全部 2xx、id 全局唯一、无 422 Duplicate/500（fixes #132；需 `AIAPI_MYSQL_DSN`，`-tags mysql`） |
 | E-1-019 | Entity name 含 `@`（`用户名@项目名` 形式） | 合法性条件 | 验证 ErrNum=200（Issue #135 放开 `@`） |
 | E-1-020 | Entity name 以 `@` 开头 | 合法性条件 | 验证 ErrNum=422 |
 | E-1-021 | Entity name 以 `@` 结尾 | 合法性条件 | 验证 ErrNum=422 |

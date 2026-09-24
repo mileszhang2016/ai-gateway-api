@@ -128,6 +128,7 @@ api_key/
 | AK-1-008 | quota_plan 非法 unit | 合法性条件 | 验证 ErrNum=422 |
 | AK-1-009 | rate_limit_policy 非法 window_minutes | 合法性条件 | 验证 ErrNum=422 |
 | AK-1-010 | route_rules 规则名称重复 | 合法性条件 | 验证 ErrNum=422 |
+| AK-1-012 | MySQL 后端 700 并发创建（自动 id） | 并发语义 | 50 goroutine × 14 全部 2xx、id 全局唯一、无 422 Duplicate/500/锁等待（fixes #80/#99；需 `AIAPI_MYSQL_DSN`，`-tags mysql`） |
 
 ### 6.4 测试场景详细设计
 

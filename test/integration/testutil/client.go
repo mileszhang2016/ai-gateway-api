@@ -31,6 +31,9 @@ type APIResponse struct {
 	ErrMsg   string          `json:"ErrMsg"`
 	Data     json.RawMessage `json:"Data"`
 	WorkMode string          `json:"WorkMode"`
+	// RawBody 保留原始响应报文，供"文本形态"类断言使用
+	//（如 8 位小数价格的序列化形态，issue #102）。`json:"-"` 避免进入序列化比较。
+	RawBody []byte `json:"-"`
 }
 
 // Client HTTP 测试客户端
@@ -199,6 +202,7 @@ func (c *Client) doMultipartRequest(method, path, fieldName, fileName string, fi
 	if err := json.Unmarshal(respBody, &apiResp); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
 	}
+	apiResp.RawBody = respBody
 
 	return &apiResp, nil
 }
@@ -234,6 +238,7 @@ func (c *Client) RawBody(method, path, body string, contentType string) (*APIRes
 	if err := json.Unmarshal(respBody, &apiResp); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
 	}
+	apiResp.RawBody = respBody
 
 	return &apiResp, nil
 }
@@ -274,6 +279,7 @@ func (c *Client) doRequest(method, url string, body interface{}) (*APIResponse, 
 	if err := json.Unmarshal(respBody, &apiResp); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
 	}
+	apiResp.RawBody = respBody
 
 	return &apiResp, nil
 }

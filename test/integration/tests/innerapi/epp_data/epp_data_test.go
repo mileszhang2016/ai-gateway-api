@@ -300,6 +300,9 @@ func TestInnerAPI_EppData(t *testing.T) {
 			plugin := p.(map[string]interface{})
 			if plugin["name"] == "session-scorer" {
 				params := plugin["parameters"].(map[string]interface{})
+				// strategy 必须显式下发 session_id：缺失时落到 llm-d 插件默认值
+				// （无状态 header 亲和），会话亲和静默失效（issue #181 回归锚点）。
+				assert.Equal(t, "session_id", params["strategy"], "session-scorer strategy must be session_id")
 				sessionCfg := params["sessionIdConfig"].(map[string]interface{})
 				sources := sessionCfg["sources"].([]interface{})
 				source := sources[0].(map[string]interface{})
