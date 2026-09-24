@@ -35,10 +35,15 @@ integration/
     ├── model_provider/
     ├── model_price/
     ├── operation_log/
-    ├── report/                    # 报表查询（组 A 离线必跑；组 B 需 REPORT_MYSQL_DSN）
+    ├── report/                    # 报表查询（组 A 离线必跑；组 B/C 需 REPORT_MYSQL_DSN）
     │   ├── design.md
     │   ├── not_assembled/not_assembled_test.go
+    │   ├── partition/partition_test.go
     │   └── query/query_test.go
+    ├── schema/                    # 接口契约 schema 校验（report 组需 REPORT_MYSQL_DSN）
+    │   ├── openapi/
+    │   ├── innerapi/
+    │   └── report/
     └── innerapi/
 ```
 
@@ -302,6 +307,9 @@ go test -v -count=1 -timeout 300s ./tests/schema/openapi/...
 
 # 仅 InnerAPI schema 测试
 go test -v -count=1 -timeout 300s ./tests/schema/innerapi/...
+
+# Report schema 测试（需 REPORT_MYSQL_DSN，未设置时自动 Skip）
+REPORT_MYSQL_DSN="root:****@tcp(127.0.0.1:3306)/" go test -v -count=1 -timeout 300s ./tests/schema/report/...
 ```
 
 ### 目录说明
@@ -322,8 +330,11 @@ tests/schema/
 │   ├── tools.go
 │   └── openapi_schema_test.go
 └── innerapi/                # InnerAPI v1 schema 定义与测试
-    ├── schema.go            # 各导出配置顶层 schema
-    └── innerapi_schema_test.go
+│   ├── schema.go            # 各导出配置顶层 schema
+│   └── innerapi_schema_test.go
+└── report/                  # /report/* schema 定义与测试（REPORT_MYSQL_DSN 门控）
+    ├── schema.go            # OverviewResult / CostItem / CostMetricPoint / LogRow schema
+    └── report_schema_test.go
 ```
 
 ### 校验框架

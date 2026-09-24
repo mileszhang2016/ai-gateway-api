@@ -28,8 +28,17 @@ const (
 	MetricLatency = "latency" // request latency in milliseconds
 	MetricTTFT    = "ttft"    // time to first token in milliseconds (stream requests)
 	MetricTPOT    = "tpot"    // time per output token in milliseconds (stream requests)
-	MetricCost    = "cost"    // cost growth (fixed-point integer per second), per currency
+	MetricCost    = "cost"    // cost growth (amount per second in the currency unit), per currency
 )
+
+// CostFixedPointScale is the scale of the fixed-point cost values stored
+// in the report tables and produced by BFE: one unit equals 1e-8 of the
+// currency amount (1e-8 yuan for RMB, 1e-8 dollar for USD).
+const CostFixedPointScale = 1e8
+
+// CostFixedPointToAmount converts a raw fixed-point cost integer into the
+// currency amount returned by the report API.
+func CostFixedPointToAmount(value int64) float64 { return float64(value) / CostFixedPointScale }
 
 // TimeSeriesMetrics is the validation set of metric names.
 var TimeSeriesMetrics = map[string]bool{
@@ -112,11 +121,11 @@ type LogFilter struct {
 }
 
 // CostItem is one currency bucket of the aggregated cost. Value is the
-// fixed-point integer in its original scale; the frontend formats it per
-// currency.
+// cost amount in the currency unit (yuan for RMB, dollar for USD),
+// converted from the fixed-point value by CostFixedPointToAmount.
 type CostItem struct {
-	Currency string `json:"currency"`
-	Value    int64  `json:"value"`
+	Currency string  `json:"currency"`
+	Value    float64 `json:"value"`
 }
 
 // OverviewResult is the data of GET /report/overview. LatencyP50Ms /
@@ -184,6 +193,8 @@ type DistItem struct {
 // LogRow is the display projection of one bfe_ai_request_log row; field
 // names align with the table columns. JSON columns are returned verbatim
 // as strings for the frontend to expand. Nullable columns are pointers.
+// CostValue is the cost amount in the currency unit (converted from the
+// fixed-point value), nil when the row has no cost.
 type LogRow struct {
 	LogID               *int64  `json:"logid"`
 	LogTime             int64   `json:"log_time"`
@@ -205,7 +216,7 @@ type LogRow struct {
 	AllTime             *int64  `json:"all_time"`
 	TTFTUs              *int64  `json:"ai_ttft_us"`
 	TPOTUs              *int64  `json:"ai_tpot_us"`
-	CostValue           *int64  `json:"ai_cost_value"`
+	CostValue           *float64 `json:"ai_cost_value"`
 	CostCurrency        *string `json:"ai_cost_currency"`
 	RateLimitHits       *string `json:"ai_rate_limit_hits"`
 	AuthRejectQuotaPlan *string `json:"ai_auth_reject_quota_plans"`

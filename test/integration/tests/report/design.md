@@ -9,6 +9,7 @@
 - **组 A（not_assembled，离线必跑）**：`[Report]` 缺省时模块不装配，五个端点整体不注册，请求返回 404。
 - **组 B（query，环境变量门控）**：真实 MySQL 8.x 上建专用库、套用项目 DDL、灌确定性种子，验证五端点的口径、分页、过滤与参数校验。
 - **组 C（partition，环境变量门控）**：真实 MySQL 8.x 上验证分区维护 JOB 的自动建分区行为（issue #191 回归：配置 `[Report].Database` 后分区查询不匹配 information_schema、JOB 静默降级 DELETE 兜底、log-reader 写入 Error 1526）。
+- **组 D（schema，见 `tests/schema/report/`）**：/report/* 的 api-define 契约形状守卫，REPORT_MYSQL_DSN 门控，与组 B 共用 `testutil.StartReportServer` 装配；种子定点成本取非整数金额（RMB 66900 → 0.000669），形状断言（value 为 number）叠加 0<value<1 语义断言锁死成本金额口径（issue #207）。
 
 ## 2. 接口列表
 
@@ -137,7 +138,7 @@ EnablePartitionMgmt = false
 
 ### 7.4 期望值（手算）
 
-- **overview**：request_total=660，error_total=200，error_rate=200/660，input/output/total_tokens=6600/1320/7920；latency_avg=66000/660=100ms，latency_max=100ms（各组均值的 MAX）；ttft_avg=225000/450/1000=0.5ms、tpot_avg=22500/450/1000=0.05ms（stream 请求 450）；cost：USD=350、RMB=300；rate_limit_hits=2，auth_rejects=1，logs_total=6；MySQL 后端不返回 latency_p50/p90/p99（字段不存在）。
+- **overview**：request_total=660，error_total=200，error_rate=200/660，input/output/total_tokens=6600/1320/7920；latency_avg=66000/660=100ms，latency_max=100ms（各组均值的 MAX）；ttft_avg=225000/450/1000=0.5ms、tpot_avg=22500/450/1000=0.05ms（stream 请求 450）；cost：USD=350、RMB=300（定点种子；接口出口 ÷1e8 后 USD=3.5e-6、RMB=3e-6）；rate_limit_hits=2，auth_rejects=1，logs_total=6；MySQL 后端不返回 latency_p50/p90/p99（字段不存在）。
 - **timeseries(metric=qps)**：bucket_sec=60（≤6h 窗口）；两个桶：10:00→600/60=10，10:01→60/60=1。
 - **timeseries(metric=tokens)**：10:00 → input=6000/60=100、output=20、total=120；10:01 → 10/2/12。
 - **rankings(model)**：gpt-4o(350, err 200, in 3500, out 700) > gpt-4(300) > claude(10)。

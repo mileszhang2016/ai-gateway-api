@@ -63,12 +63,13 @@ func TestOverview(t *testing.T) {
 	assert.InDelta(t, 22500.0/450/1000, data.TpotAvgMs, 1e-9)  // 0.05ms
 
 	require.Len(t, data.Cost, 2)
-	costByCurrency := map[string]int64{}
+	costByCurrency := map[string]float64{}
 	for _, one := range data.Cost {
 		costByCurrency[one.Currency] = one.Value
 	}
-	assert.Equal(t, int64(350), costByCurrency["USD"])
-	assert.Equal(t, int64(300), costByCurrency["RMB"])
+	// 定点种子 USD=350 / RMB=300，接口出口换算为金额（÷1e8）。
+	assert.InDelta(t, 3.5e-6, costByCurrency["USD"], 1e-12)
+	assert.InDelta(t, 3e-6, costByCurrency["RMB"], 1e-12)
 
 	assert.Equal(t, int64(2), data.RateLimitHits)
 	assert.Equal(t, int64(1), data.AuthRejects)
@@ -122,6 +123,34 @@ func TestTimeSeries_Tokens(t *testing.T) {
 	assert.InDelta(t, 10, *data.Series[1].Input, 1e-9)  // 600/60
 	assert.InDelta(t, 2, *data.Series[1].Output, 1e-9)  // 120/60
 	assert.InDelta(t, 12, *data.Series[1].Total, 1e-9)  // 720/60
+}
+
+// TestTimeSeries_Cost 验证成本时序：金额/秒口径（定点值 ÷ 桶宽 ÷ 1e8），
+// 按 (time, currency) 分序列。注意：时序成本不像 overview 成本那样过滤空币种，
+// 种子行 E 会产生 (10:01, "") 的 0 值点，此处一并锁定该现状行为。
+func TestTimeSeries_Cost(t *testing.T) {
+	var data timeseriesData
+	getJSON(t, reportPrefix+"/timeseries", with(windowQuery(), "metric", "cost"), &data)
+
+	assert.Equal(t, 60, data.BucketSec)
+	require.Len(t, data.Series, 4)
+
+	type pointKey struct {
+		time     int64
+		currency string
+	}
+	byKey := map[pointKey]float64{}
+	for _, one := range data.Series {
+		require.NotNil(t, one.Value)
+		byKey[pointKey{one.Time, one.Currency}] = *one.Value
+	}
+
+	// 10:00 桶：USD 定点 300（行 A+B）、RMB 定点 300（行 C）；
+	// 10:01 桶：USD 定点 50（行 D）、空币种定点 0（行 E）。
+	assert.InDelta(t, 300.0/60/1e8, byKey[pointKey{epoch("2026-09-15 10:00:00"), "USD"}], 1e-15)
+	assert.InDelta(t, 300.0/60/1e8, byKey[pointKey{epoch("2026-09-15 10:00:00"), "RMB"}], 1e-15)
+	assert.InDelta(t, 50.0/60/1e8, byKey[pointKey{epoch("2026-09-15 10:01:00"), "USD"}], 1e-15)
+	assert.Equal(t, 0.0, byKey[pointKey{epoch("2026-09-15 10:01:00"), ""}])
 }
 
 // TestRankings_Model 验证模型维度排行：按 request_count 降序，指标列精确。
@@ -290,6 +319,24 @@ func TestLogs_RowShape(t *testing.T) {
 	assert.Equal(t, "ops", *tagged.Level1)
 	require.NotNil(t, tagged.OriginURI)
 	assert.Equal(t, "/v1/chat", *tagged.OriginURI)
+
+	// 成本列：定点值换算为金额（÷1e8），币种随列返回。
+	withCost := byID[1001]
+	require.NotNil(t, withCost.CostValue)
+	assert.InDelta(t, 100.0/1e8, *withCost.CostValue, 1e-15)
+	require.NotNil(t, withCost.CostCurrency)
+	assert.Equal(t, "USD", *withCost.CostCurrency)
+
+	// 零成本行：currency 为 NULL（1004）/ 空串（1005）时 ai_cost_value 为 0。
+	noCurrency := byID[1004]
+	require.NotNil(t, noCurrency.CostValue)
+	assert.Equal(t, 0.0, *noCurrency.CostValue)
+	assert.Nil(t, noCurrency.CostCurrency)
+	emptyCurrency := byID[1005]
+	require.NotNil(t, emptyCurrency.CostValue)
+	assert.Equal(t, 0.0, *emptyCurrency.CostValue)
+	require.NotNil(t, emptyCurrency.CostCurrency)
+	assert.Equal(t, "", *emptyCurrency.CostCurrency)
 }
 
 // TestLogs_RequestedModels 验证 requested_models 过滤（仅明细端点支持）。
