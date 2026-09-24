@@ -40,6 +40,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ik8s_pool"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
@@ -63,6 +64,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
 	entityStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/entity"
 	eppPoolStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/epp_pool"
+	k8sPoolStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/k8s_pool"
 	operationLogStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ioperlog"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/model_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/protocol"
@@ -204,6 +206,16 @@ func Init() error {
 			"route_rules": container.RouteRulesManager.ClusterModelUpdateChecker,
 		})
 	container.ClusterManager.SetOperationLogManager(container.OperationLogManager)
+
+	// K8s pool manager: maintains the k8s_pools table and the
+	// k8s_instance_pool mirrors of referencing providers, propagating the
+	// effective pool to derived cluster pools transactionally (k8s-pools.md).
+	container.K8sPoolStorager = k8sPoolStorage.NewRDBK8sPoolStorager(stateful.NewBFEDBContext)
+	container.K8sPoolManager = ik8s_pool.NewK8sPoolManager(
+		container.TxnStoragerSingleton,
+		container.K8sPoolStorager,
+		container.ProviderStoragerSingleton,
+		container.ClusterManager)
 
 	// EPP pool manager: the cluster manager provides the EPPClusterSource
 	// (balance_mode=EPP clusters and their raw epp_config); ManagerOptions are

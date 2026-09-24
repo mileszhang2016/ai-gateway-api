@@ -482,6 +482,9 @@ CREATE TABLE providers (
   models TEXT,
   api_keys TEXT,
   instance_pool TEXT NOT NULL,
+  instance_source TEXT NOT NULL DEFAULT 'instance_pool',
+  k8s_pool_name TEXT,
+  k8s_instance_pool TEXT,
   model_protocols TEXT NOT NULL,
   protocol_paths TEXT,
   time_zone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
@@ -493,6 +496,20 @@ CREATE TABLE providers (
 CREATE INDEX providers_name ON providers (name);
 CREATE TRIGGER providers_updated_at AFTER UPDATE ON providers
   FOR EACH ROW BEGIN UPDATE providers SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create k8s_pools
+DROP TABLE IF EXISTS k8s_pools;
+CREATE TABLE k8s_pools (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  instances TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE INDEX k8s_pools_name ON k8s_pools (name);
+CREATE TRIGGER k8s_pools_updated_at AFTER UPDATE ON k8s_pools
+  FOR EACH ROW BEGIN UPDATE k8s_pools SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
 -- create rate_limit_policies
 DROP TABLE IF EXISTS rate_limit_policies;

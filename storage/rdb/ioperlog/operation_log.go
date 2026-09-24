@@ -104,11 +104,16 @@ func entryToParam(entry *ioperlog.OperationLogEntry) *dao.TOperationLogParam {
 		CreatedAt:        &entry.CreatedAt,
 	}
 
-	if len(entry.ChangeSummary) > 0 {
-		bs, _ := json.Marshal(entry.ChangeSummary)
-		changeSummary := string(bs)
-		param.ChangeSummary = &changeSummary
-	}
+	// ChangeSummary is always assigned (even for empty/nil summaries) so that
+	// every row of a batch insert carries the same column set. struct2map skips
+	// nil pointers, and gendry's insert builder rejects batches whose rows have
+	// mismatched keys with "insert data not match" — one summary-less entry
+	// (e.g. a failed delete of a missing resource, which has neither before
+	// nor after) used to poison the whole batch and silently drop every log
+	// in it.
+	bs, _ := json.Marshal(entry.ChangeSummary)
+	changeSummary := string(bs)
+	param.ChangeSummary = &changeSummary
 
 	return param
 }

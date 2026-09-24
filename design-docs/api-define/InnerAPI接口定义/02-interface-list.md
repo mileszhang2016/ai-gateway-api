@@ -15,7 +15,18 @@
 | 9 | `/configs/ai-route` | 导出 AI 路由配置 | `version` | [ai-route.md](./ai-route.md) |
 | 10 | `/configs/epp_data/config` | 导出 EPP 配置（epp_config + assignment 全量视图，合并单端点） | `version` | [epp-data.md](./epp-data.md) |
 
-## 2. 特殊参数说明
+## 2. k8s_pools 接口（资源读写）
+
+K8s 实例池维护接口，供 K8s 发现组件写入发现的实例快照。与导出接口不同，不支持 `version` 增量同步参数。
+
+| 序号 | 接口路径 | Method | 功能描述 | 文档 |
+|------|----------|--------|----------|------|
+| 1 | `/k8s_pools/{name}/instances` | PUT | 全量替换 pool 实例列表（幂等 upsert） | [k8s-pools.md](./k8s-pools.md) |
+| 2 | `/k8s_pools/{name}` | GET | 查询单个 pool 条目 | [k8s-pools.md](./k8s-pools.md) |
+| 3 | `/k8s_pools` | GET | 查询全部 pool 列表 | [k8s-pools.md](./k8s-pools.md) |
+| 4 | `/k8s_pools/{name}` | DELETE | 删除 pool（无引用保护） | [k8s-pools.md](./k8s-pools.md) |
+
+## 3. 特殊参数说明
 
 | 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
 |--------|------|------|------|------------|

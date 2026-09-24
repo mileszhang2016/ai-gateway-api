@@ -2,7 +2,7 @@
 
 ## 1. 模块概述
 
-InnerAPI 模块为 BFE/Conf Agent 提供只读配置导出接口，支持基于 `version` 的增量同步。所有接口均为 GET 请求，返回值包含 `WorkMode` 字段。v0.3.0 对应 OpenAPI 的模块精简不影响 InnerAPI 导出结构（底层表结构未变）。v0.3.0 起，路由规则导出（`/configs/tls_conf/server_data_conf`）中的 `ClusterConf` 会包含模型定价表（`AIConf.ModelTable`），用于 BFE 按 provider 匹配可用模型。
+InnerAPI 模块为 BFE/Conf Agent 提供只读配置导出接口，支持基于 `version` 的增量同步。导出类接口均为 GET 请求，返回值包含 `WorkMode` 字段；`/k8s_pools` 域（IN-11）为例外的资源读写接口（PUT/GET/DELETE），供 K8s 发现组件维护实例池，不支持 `version` 增量同步。v0.3.0 对应 OpenAPI 的模块精简不影响 InnerAPI 导出结构（底层表结构未变）。v0.3.0 起，路由规则导出（`/configs/tls_conf/server_data_conf`）中的 `ClusterConf` 会包含模型定价表（`AIConf.ModelTable`），用于 BFE 按 provider 匹配可用模型。
 
 v0.5.0 起，模型定价表支持分时段定价：OpenAPI 在 `/providers` 上维护 `time_zone`/`tiers` 时段模板，在 `/model-prices` 上维护 `tier_prices`；InnerAPI 导出时把 provider 的时段模板与 model-prices 的分时价格拼接到 `AIConf.ModelTable` 中，BFE 按请求时刻匹配 tier 并取对应价格。
 
@@ -24,6 +24,7 @@ v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、
 | IN-8 | 导出限流策略配置 | GET | `/inner-api/v1/configs/rate-limit-policy` | version 可选 |
 | IN-9 | 导出 AI 路由配置 | GET | `/inner-api/v1/configs/ai-route` | version 可选 |
 | IN-10 | 导出 EPP 配置 | GET | `/inner-api/v1/configs/epp_data/config` | version 可选 |
+| IN-11 | K8s 实例池维护 | PUT/GET/DELETE | `/inner-api/v1/k8s_pools/{name}/instances`、`/inner-api/v1/k8s_pools/{name}`、`/inner-api/v1/k8s_pools` | 资源读写，无 version；发现组件写入通道 |
 
 ## 3. 测试用例统计
 
@@ -39,7 +40,8 @@ v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、
 | 导出限流策略配置 | 1 |
 | 导出 AI 路由配置 | 2 |
 | 导出 EPP 配置 | 5 |
-| **合计** | **23** |
+| K8s 实例池维护 | 4 |
+| **合计** | **27** |
 
 ## 4. 认证方式
 
@@ -70,7 +72,10 @@ innerapi/
 ├── ai_route/
 │   └── ai_route_test.go
 └── epp_data/
-    └── epp_data_test.go
+│   └── epp_data_test.go
+└── k8s_pools/
+    ├── k8s_pools_test.go
+    └── concurrency_mysql_test.go  # //go:build mysql，需 AIAPI_MYSQL_DSN
 ```
 
 ## 6. 导出 TLS/Server 配置
@@ -1170,13 +1175,49 @@ IN-EPP-003 中 `flow_control` 写入 `{"max_requests": 200, "queue_ttl": 45, "no
 
 ---
 
-## 16. 依赖与数据准备
+## 16. K8s 实例池维护
+
+### 16.1 接口信息
+
+| 项目 | 值 |
+|-----|-----|
+| 模块 | InnerAPI |
+| 接口名称 | K8s 实例池维护（`k8s_pools`） |
+| 方法 | PUT（`/k8s_pools/{name}/instances`）、GET（`/k8s_pools/{name}`、`/k8s_pools`）、DELETE（`/k8s_pools/{name}`） |
+| 说明 | 资源读写接口，供 K8s 发现组件写入发现的实例快照；不支持 `version` 增量同步；DELETE 无引用保护 |
+
+### 16.2 返回数据字段
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| Data.name | string | pool 名称 |
+| Data.instances | array | 实例列表（元素 `{addr, port, weight}`，weight 缺省 100） |
+| Data.instance_count | int | 实例数量 |
+| Data.last_sync_time | int64 | 最近同步时间（unix 秒），取条目 `updated_at` |
+| ErrNum | int | 200 成功；404 pool 不存在；422 参数非法 |
+| WorkMode | string | 控制台工作模式 |
+
+### 16.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| IN-K8S-001 | PUT 幂等 upsert 全生命周期 | 正常参数 | 创建（weight 缺省 100）→ GET 单个 → 全量替换 → 重复 PUT 幂等 → GET 列表 → DELETE → GET 404 → 重复 DELETE 404 |
+| IN-K8S-002 | 参数校验 | 必填/边界校验 | 路径名非法、缺 addr、addr/port 重复、weight 越界均 422；空数组（零实例）合法 |
+| IN-K8S-003 | 共享池读路径与 last_sync_time | 返回数据 | N:1 读场景下 GET 单个返回完整实例列表；再次 PUT 后 `last_sync_time` 不回退 |
+| IN-K8S-007 | 4xx 回读零变更 | 假事务/校验层回归 | 对已存在 pool 的非法 PUT（重复 addr/port）→ 422 后 pool 逐字段不变；非法路径名下 GET/DELETE 返回 422（区别于 404） |
+| IN-K8S-008 | 并发全量替换（MySQL） | 并发语义（`//go:build mysql`，需 `AIAPI_MYSQL_DSN`） | 20 并发对同一 pool PUT 不同实例列表：全部 2xx、无 500/deadlock、最终读回与某一提交 payload 完全一致（last-write-wins） |
+
+> provider 镜像（`k8s_instance_pool`）刷新、cluster 派生池同步、cluster_table 导出跟随等跨域链路用例见 `tests/provider/k8s_pool/`（PV-K8S 系列）。
+
+---
+
+## 17. 依赖与数据准备
 
 1. 需要预先通过 OpenAPI 创建 API-Key、Entity、Cluster、证书、Global Route 等数据，才能验证导出内容非空；验证模型定价表时需先导入 model prices 并创建对应 provider 的 Cluster；验证分时段定价时需先设置 provider 的 `time_zone`/`tiers` 并导入含 `tier_prices` 的 model prices。
 2. `/configs/gslb_data/gslb` 依赖正确的 `bfe_cluster` 参数，通常为 `BFE-AI_product.szyf`。
 3. InnerAPI 鉴权为 `McUserProbe`，测试环境需配置为可跳过或使用 Support Token。
 
-## 17. 注意事项
+## 18. 注意事项
 
 1. InnerAPI 返回值仍包含 `WorkMode`（与 OpenAPI v0.3.0 不同，InnerAPI 未移除该字段）。
 2. 配置未变化时 `Data=null`，不要断言为空对象 `{}`。

@@ -369,9 +369,14 @@ func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr st
 		// 外部 DB 覆盖（MySQL）：整体替换 [Databases.bfe_db] 段
 		confStr = replaceDBSection(confStr, dbPatchCfg.section)
 	} else {
-		// 替换数据库路径（使用正斜杠避免 TOML 转义问题）
+		// 替换数据库路径（使用正斜杠避免 TOML 转义问题）。
+		// file: URI + _pragma=busy_timeout：后台审计日志批量刷盘与请求事务
+		// 在 SQLite 单写者模型下会瞬态争用写锁；无 busy_timeout 时直接
+		// SQLITE_BUSY 500（integration/data 下版本单调等高频用例曾因此
+		// 偶发失败）。busy_timeout 让写方毫秒级自旋等待而非立刻报错。
 		dbPathForTOML := strings.ReplaceAll(dbPath, "\\", "/")
-		confStr = strings.Replace(confStr, `DBName  = "./data/test_ai_gateway.db"`, fmt.Sprintf(`DBName  = "%s"`, dbPathForTOML), 1)
+		dbNameURI := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)", dbPathForTOML)
+		confStr = strings.Replace(confStr, `DBName  = "./data/test_ai_gateway.db"`, fmt.Sprintf(`DBName  = "%s"`, dbNameURI), 1)
 	}
 	// 替换 Redis 配置为指向 miniredis
 	confStr = strings.Replace(confStr, `Bns = "mock"`, `Bns = "test.redis.miniredis"`, 1)

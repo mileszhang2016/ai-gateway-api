@@ -24,7 +24,7 @@ import (
 
 func TestEndpoints(t *testing.T) {
 	eps := endpoints()
-	require.Len(t, eps, 11)
+	require.Len(t, eps, 15)
 
 	paths := make([]string, 0, len(eps))
 	for _, ep := range eps {
@@ -48,6 +48,10 @@ func TestEndpoints(t *testing.T) {
 		"/configs/rate-limit-policy",
 		"/configs/ai-route",
 		"/configs/epp_data/config",
+		"/k8s_pools/{name}/instances",
+		"/k8s_pools/{name}",
+		"/k8s_pools",
+		"/k8s_pools/{name}",
 	}, paths)
 }
 
@@ -78,4 +82,7 @@ func TestRegisterRouter(t *testing.T) {
 	assert.Contains(t, matchedPaths, "/inner-api/v1/configs/rate-limit-policy")
 	assert.Contains(t, matchedPaths, "/inner-api/v1/configs/ai-route")
 	assert.Contains(t, matchedPaths, "/inner-api/v1/configs/epp_data/config")
+	assert.Contains(t, matchedPaths, "/inner-api/v1/k8s_pools/{name}/instances")
+	assert.Contains(t, matchedPaths, "/inner-api/v1/k8s_pools/{name}")
+	assert.Contains(t, matchedPaths, "/inner-api/v1/k8s_pools")
 }

@@ -35,6 +35,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ik8s_pool"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imodel_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/imods"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
@@ -103,6 +104,11 @@ var (
 	// Providers
 	ProviderStoragerSingleton iprovider.ProviderStorager
 	ProviderManager           *iprovider.ProviderManager
+
+	// K8s instance pools (instance_source=k8s_pool mirror maintenance,
+	// k8s-pools.md)
+	K8sPoolStorager ik8s_pool.K8sPoolStorager
+	K8sPoolManager  *ik8s_pool.K8sPoolManager
 
 	EntityTypeManager      *entity.EntityTypeManager
 	EntityManager          *entity.EntityManager
