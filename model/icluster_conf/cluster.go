@@ -483,12 +483,15 @@ func (cm *ClusterManager) CreateCluster(ctx context.Context, product *ibasic.Pro
 			// balance_mode=EPP creates a Role=EPP pool that still carries the
 			// provider instance list, so cluster_table export has RS entries for
 			// EPP backend discovery and BFE local fallback (design-changes.md §2.3);
-			// WRR keeps the same provider-snapshot path.
+			// WRR keeps the same provider-snapshot path. The snapshot uses the
+			// provider's effective pool, so a k8s_pool-mode provider with an
+			// empty mirror yields an empty (but present) pool — the clear
+			// semantics required by the k8s_pool flow.
 			poolRole := ProductPoolRoleCommon
 			if balanceMode == BalanceModeEPP {
 				poolRole = ProductPoolRoleEPP
 			}
-			poolInstances := providerInstancesToClusterInstances(provider.InstancePool)
+			poolInstances := providerInstancesToClusterInstances(iprovider.EffectiveInstancePool(provider))
 
 			pool, err := cm.poolStorager.CreatePool(ctx, product, &PoolParam{
 				Name:      &poolName,
@@ -896,17 +899,15 @@ func providerModelsEqual(a, b []string) bool {
 	return true
 }
 
-// ProviderInstancePoolSyncer returns a hook suitable for passing to
-// iprovider.ProviderManager.UpdateProvider. When the provider's instance_pool
-// changes, it updates the instance pool of every non-EPP sub-cluster that
-// references the provider to match the new provider instances.
-func (cm *ClusterManager) ProviderInstancePoolSyncer(ctx context.Context,
-	oldProvider, newProvider *iprovider.Provider) error {
-
-	if newProvider == nil || len(newProvider.InstancePool) == 0 {
-		return nil
-	}
-	if oldProvider != nil && providerInstancePoolEqual(oldProvider.InstancePool, newProvider.InstancePool) {
+// SyncProviderEffectivePool propagates the provider's effective instance pool
+// to every sub-cluster pool of clusters referencing the provider. An empty
+// effective pool is written as an empty instance list (clear semantics): K8s
+// instances come and go dynamically, and "pool does not exist" must be
+// equivalent to "zero instances" downstream. EPP-role pools are synced as
+// well since they carry the provider instance snapshot for EPP backend
+// discovery and BFE local fallback.
+func (cm *ClusterManager) SyncProviderEffectivePool(ctx context.Context, provider *iprovider.Provider) error {
+	if provider == nil {
 		return nil
 	}
 
@@ -915,12 +916,15 @@ func (cm *ClusterManager) ProviderInstancePoolSyncer(ctx context.Context,
 		return err
 	}
 
-	newInstances := providerInstancesToClusterInstances(newProvider.InstancePool)
+	// providerInstancesToClusterInstances always returns a non-nil slice, so
+	// an empty effective pool is stored as "[]" instead of being skipped by
+	// the DAO nil-skip (which would leave stale instances behind).
+	newInstances := providerInstancesToClusterInstances(iprovider.EffectiveInstancePool(provider))
 	for _, cluster := range clusters {
 		if cluster.LLMConfig == nil || cluster.LLMConfig.Provider == nil {
 			continue
 		}
-		if *cluster.LLMConfig.Provider != newProvider.Name {
+		if *cluster.LLMConfig.Provider != provider.Name {
 			continue
 		}
 
@@ -928,10 +932,6 @@ func (cm *ClusterManager) ProviderInstancePoolSyncer(ctx context.Context,
 			if sc.InstancePool == nil {
 				continue
 			}
-			// EPP-role pools are synced as well: they carry the provider
-			// instance snapshot for EPP backend discovery and BFE local
-			// fallback, so instance_pool changes (e.g. weight=0 drain) must
-			// reach them too (same rationale as the creation path).
 			if err := cm.poolStorager.UpdatePool(ctx, sc.InstancePool, &PoolParam{
 				Instances: newInstances,
 			}); err != nil {
@@ -941,6 +941,25 @@ func (cm *ClusterManager) ProviderInstancePoolSyncer(ctx context.Context,
 	}
 
 	return nil
+}
+
+// ProviderInstancePoolSyncer returns a hook suitable for passing to
+// iprovider.ProviderManager.UpdateProvider. When the provider's effective
+// instance pool changes (including mode switches and becoming empty), it
+// updates the instance pool of every sub-cluster that references the provider
+// to match the new effective instances.
+func (cm *ClusterManager) ProviderInstancePoolSyncer(ctx context.Context,
+	oldProvider, newProvider *iprovider.Provider) error {
+
+	if newProvider == nil {
+		return nil
+	}
+	if oldProvider != nil && providerInstancePoolEqual(
+		iprovider.EffectiveInstancePool(oldProvider), iprovider.EffectiveInstancePool(newProvider)) {
+		return nil
+	}
+
+	return cm.SyncProviderEffectivePool(ctx, newProvider)
 }
 
 // ProviderKeyRefChecker returns a hook that verifies all clusters referencing

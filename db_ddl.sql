@@ -463,7 +463,10 @@ CREATE TABLE `providers` (
   `model_endpoint` JSON COMMENT '模型发现端点配置',
   `models` JSON COMMENT '支持的模型列表',
   `api_keys` JSON COMMENT 'API key 列表',
-  `instance_pool` JSON NOT NULL COMMENT '实例池列表',
+  `instance_pool` JSON NOT NULL COMMENT '实例池列表（instance_source=instance_pool 时有效）',
+  `instance_source` VARCHAR(32) NOT NULL DEFAULT 'instance_pool' COMMENT '实例供给方式：instance_pool（人维护）/ k8s_pool（发现组件维护）',
+  `k8s_pool_name` VARCHAR(255) NULL COMMENT '引用的 K8s 实例池名称（instance_source=k8s_pool 时有效）',
+  `k8s_instance_pool` JSON NULL COMMENT 'K8s 实例池只读镜像（系统从 /k8s_pools 同步）',
   `model_protocols` JSON NOT NULL COMMENT '支持的模型协议列表',
   `protocol_paths` JSON COMMENT '按协议的上游路径前缀（protocol -> base path）',
   `time_zone` VARCHAR(255) NOT NULL DEFAULT 'Asia/Shanghai' COMMENT '计算时段所使用的时区',
@@ -472,6 +475,17 @@ CREATE TABLE `providers` (
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE KEY `uk_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型提供商表';
+
+-- create k8s_pools (K8s 实例池表)
+DROP TABLE IF EXISTS `k8s_pools`;
+CREATE TABLE `k8s_pools` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
+  `name` VARCHAR(255) NOT NULL COMMENT 'K8s 实例池名称（控制面内普通标识符，与 K8s Service 名无耦合）',
+  `instances` JSON NOT NULL COMMENT '实例列表（发现组件全量替换写入）',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY `uk_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='K8s 实例池表';
 
 -- create rate_limit_policies (限流策略表)
 DROP TABLE IF EXISTS `rate_limit_policies`;

@@ -127,6 +127,9 @@ const (
 	FeatureModelPrice Feature = "ModelPrice"
 	FeatureProvider   Feature = "Provider"
 
+	// K8s instance pools (discovery-component write channel, k8s-pools.md)
+	FeatureK8sPool Feature = "K8sPool"
+
 	// operation logs
 	FeatureOperationLog Feature = "OperationLog"
 
@@ -180,6 +183,7 @@ var scope2permission = map[string]map[Feature]Action{
 
 		FeatureModelPrice:   actionAll,
 		FeatureProvider:     actionAll,
+		FeatureK8sPool:      actionAll,
 		FeatureOperationLog: actionAll,
 
 		FeatureReport: actionAll,
