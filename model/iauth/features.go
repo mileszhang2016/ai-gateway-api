@@ -126,6 +126,9 @@ const (
 	// ai cache
 	FeatureAICache Feature = "AICache"
 
+	// traffic mirror
+	FeatureTrafficMirror Feature = "TrafficMirror"
+
 	// model pricing
 	FeatureModelPrice Feature = "ModelPrice"
 	FeatureProvider   Feature = "Provider"
@@ -230,5 +233,6 @@ var scope2permission = map[string]map[Feature]Action{
 		FeatureAPIKey:            ActionExport,
 		FeatureRateLimitPolicy:   ActionExport,
 		FeatureAICache:           ActionExport,
+		FeatureTrafficMirror:     ActionExport,
 	},
 }

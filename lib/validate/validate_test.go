@@ -539,3 +539,150 @@ func TestAICacheRules(t *testing.T) {
 	rule.MaxValueBytes = nil
 	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
 }
+
+func TestTrafficMirrorRules(t *testing.T) {
+	validCond := "req_path_in(\"/v1/chat/completions\", false) && req_body_json_in(\"model\", \"gpt-4o\", false)"
+
+	validRule := func() *shared.TrafficMirrorRuleParam {
+		return &shared.TrafficMirrorRuleParam{
+			Name:          lib.PString("mirror-gpt4o-to-shadow"),
+			Cond:          &validCond,
+			MirrorCluster: lib.PString("cluster_shadow"),
+			Percentage:    lib.PInt(10),
+			RemoveHeaders: &[]string{"Authorization", "Cookie", "X-Api-Key"},
+			SetHeaders:    map[string]string{"X-Env": "shadow"},
+			BodyRewrites:  []*shared.TrafficMirrorBodyRewriteParam{{Path: lib.PString("model"), Value: lib.PString("deepseek-v3")}},
+			PathRewrite:   lib.PString("/v1/mirror"),
+		}
+	}
+
+	// nil param and nil rules are accepted (null rules means clear all).
+	assert.NoError(t, TrafficMirrorRules(nil))
+	assert.NoError(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{}))
+
+	assert.NoError(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{validRule()}}))
+
+	// minimal rule: only required fields.
+	assert.NoError(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{
+		{Name: lib.PString("minimal"), Cond: lib.PString("default_t()"), MirrorCluster: lib.PString("cluster_shadow")},
+	}}))
+
+	// null rule element is rejected.
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{nil}}))
+
+	// name: required, length 1-128, unique within the collection.
+	rule := validRule()
+	rule.Name = nil
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Name = lib.PString("")
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Name = lib.PString(string(make([]byte, MaxTrafficMirrorRuleNameLength+1)))
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Name = lib.PString(string(make([]byte, MaxTrafficMirrorRuleNameLength)))
+	assert.NoError(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	dup := validRule()
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{validRule(), dup}}))
+
+	// cond: required, must compile, unique within the collection (two
+	// identical expressions such as default_t() are rejected).
+	rule = validRule()
+	rule.Cond = nil
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Cond = lib.PString("")
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Cond = lib.PString("unknown_func()")
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	other := validRule()
+	other.Name = lib.PString("other")
+	other.Cond = lib.PString("default_t()")
+	dupCond := validRule()
+	dupCond.Name = lib.PString("dup-cond")
+	dupCond.Cond = lib.PString("default_t()")
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{other, dupCond}}))
+
+	// mirror_cluster: required, length 1-128 (existence is an endpoint concern).
+	rule = validRule()
+	rule.MirrorCluster = nil
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	rule = validRule()
+	rule.MirrorCluster = lib.PString("")
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	rule = validRule()
+	rule.MirrorCluster = lib.PString(string(make([]byte, MaxTrafficMirrorClusterNameLength+1)))
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	// percentage: 0-100 (nil allowed).
+	rule = validRule()
+	rule.Percentage = lib.PInt(-1)
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.Percentage = lib.PInt(101)
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.Percentage = lib.PInt(0)
+	assert.NoError(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.Percentage = nil
+	assert.NoError(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	// remove_headers: elements must be non-empty (nil and explicit empty allowed).
+	rule = validRule()
+	rule.RemoveHeaders = &[]string{"Authorization", ""}
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.RemoveHeaders = &[]string{}
+	assert.NoError(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	// set_headers: key/value must be non-empty.
+	rule = validRule()
+	rule.SetHeaders = map[string]string{"": "v"}
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.SetHeaders = map[string]string{"X-Key": ""}
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	// body_rewrites: path must be "model", value required and non-empty.
+	rule = validRule()
+	rule.BodyRewrites = []*shared.TrafficMirrorBodyRewriteParam{nil}
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.BodyRewrites = []*shared.TrafficMirrorBodyRewriteParam{{Path: lib.PString("temperature"), Value: lib.PString("0")}}
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.BodyRewrites = []*shared.TrafficMirrorBodyRewriteParam{{Path: nil, Value: lib.PString("0")}}
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.BodyRewrites = []*shared.TrafficMirrorBodyRewriteParam{{Path: lib.PString("model"), Value: nil}}
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.BodyRewrites = []*shared.TrafficMirrorBodyRewriteParam{{Path: lib.PString("model"), Value: lib.PString("")}}
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.BodyRewrites = nil
+	assert.NoError(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+
+	// path_rewrite: empty or must start with '/'.
+	rule = validRule()
+	rule.PathRewrite = lib.PString("v1/mirror")
+	assert.Error(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.PathRewrite = lib.PString("")
+	assert.NoError(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+	rule = validRule()
+	rule.PathRewrite = nil
+	assert.NoError(t, TrafficMirrorRules(&shared.TrafficMirrorRulesParam{Rules: []*shared.TrafficMirrorRuleParam{rule}}))
+}

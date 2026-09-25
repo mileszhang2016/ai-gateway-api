@@ -75,6 +75,8 @@ innerapi/
 │   └── ai_route_test.go
 ├── ai_cache/
 │   └── ai_cache_test.go
+├── traffic_mirror/
+│   └── traffic_mirror_test.go
 └── epp_data/
 │   └── epp_data_test.go
 └── k8s_pools/
@@ -1230,7 +1232,57 @@ IN-EPP-003 中 `flow_control` 写入 `{"max_requests": 200, "queue_ttl": 45, "no
 
 ---
 
-## 17. K8s 实例池维护
+## 17. 导出流量镜像规则配置
+
+### 17.1 接口信息
+
+| 项目 | 值 |
+|-----|-----|
+| 模块 | InnerAPI |
+| 接口名称 | 导出流量镜像规则配置 |
+| 方法 | GET |
+| 路径 | `/inner-api/v1/configs/traffic-mirror-rule` |
+| 说明 | 导出 BFE `mod_traffic_mirror` 规则文件（`mirror_rule.data`），支持 version 增量同步；每条规则**全字段 7 个 tag 恒输出**（`cond`/`mirrorCluster`/`percentage`/`removeHeaders`/`setHeaders`/`bodyRewrites`/`pathRewrite`，大写驼峰，与 Open API 词汇不同）；空值输出零值（`{}`/`[]`/`""`），不用 omitempty；`removeHeaders` 两层默认语义（缺省填默认黑名单 `["Authorization","Cookie","X-Api-Key"]`、显式 `[]` 不剔除） |
+
+### 17.2 接口参数说明
+
+#### 17.2.1 请求参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| version | string | 否 | 上次返回的版本号；相同（内容未变）时 Data 为 null |
+
+#### 17.2.2 返回数据字段
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| Data.Config | object | 按产品线组织的镜像规则（key=`AI_product`，取自 `AIRouteInnerProductName`）；空集合导出空数组 `[]` 且 product 键 present |
+| Data.Config.AI_product[] | object | 规则按 first-match-wins 匹配，数组顺序即优先级（= Open API PUT 提交顺序）；每条规则恰含 7 个导出 tag |
+| Data.Config.AI_product[].cond | string | BFE 条件表达式（控制面必填，不生成空 cond） |
+| Data.Config.AI_product[].mirrorCluster | string | 镜像目标 cluster 名（必含、显式非空） |
+| Data.Config.AI_product[].percentage | int | 镜像采样百分比（0-100） |
+| Data.Config.AI_product[].removeHeaders | array | 剔除 Header 黑名单；**缺省填默认黑名单，显式 `[]` 导出不剔除（两层默认语义，BFE 自身缺省为空列表）** |
+| Data.Config.AI_product[].setHeaders | object | 注入 Header（空输出 `{}`）；`X-Bfe-Mirror` 由 BFE 缺失时兜底注入，不随导出携带 |
+| Data.Config.AI_product[].bodyRewrites | array | body 字段改写（空输出 `[]`；一期 `path` 仅 `"model"`） |
+| Data.Config.AI_product[].pathRewrite | string | 镜像路径改写（空输出 `""`） |
+| Data.Version | string | 配置版本号（`yyyyMMddHHmmss` 14 位定宽） |
+
+### 17.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| TMIE-1-001 | 首拉与全字段文本形态 | 正常参数 | PUT 2 条（缺省 remove_headers + 显式全字段）→ 7 tag 精确集合与值；原始 body 文本断言 `"mirrorCluster"`、`"removeHeaders":["Authorization","Cookie","X-Api-Key"]`、`"setHeaders":{}`、`"bodyRewrites":[{"path":"model","value":"..."}]`、`"pathRewrite":""` 与 `"/v1/internal/chat/completions"`（家族8 文本形态/#102） |
+| TMIE-1-002 | 显式空黑名单导出 | 正常参数 | 显式 `remove_headers:[]` 的规则导出 `"removeHeaders":[]`（与缺省填默认黑名单对照，锁两层默认语义，家族1） |
+| TMIE-1-003 | 增量同步 | 正常参数 | 带当前 version 再拉 → Data null；不传 version 再拉 → 有数据且 Version 相同 |
+| TMIE-1-004 | 版本单调 | 并发语义 | 同一秒内连续两次不同 PUT → 轮询导出（500ms×10）直到版本严格大于旧版本且内容收敛（家族8/#142） |
+| TMIE-1-005 | 清空导出 | 边界值 | PUT `{"rules":[]}` → Config.AI_product 为 `[]`（非 null，product 键 present，body 文本 `"AI_product":[]`）（家族8） |
+| TMIE-1-006 | 422 防泄漏 | 异常参数 | PUT 被拒 → 带旧 version 增量拉取 Data null、Version 不变且内容与拒绝前一致（家族4） |
+
+> 逐用例明细（前置、步骤、请求、预期）见 `tests/traffic_mirror/design.md` 第 8 节。
+
+---
+
+## 18. K8s 实例池维护
 
 ### 16.1 接口信息
 
@@ -1266,13 +1318,13 @@ IN-EPP-003 中 `flow_control` 写入 `{"max_requests": 200, "queue_ttl": 45, "no
 
 ---
 
-## 18. 依赖与数据准备
+## 19. 依赖与数据准备
 
 1. 需要预先通过 OpenAPI 创建 API-Key、Entity、Cluster、证书、Global Route 等数据，才能验证导出内容非空；验证模型定价表时需先导入 model prices 并创建对应 provider 的 Cluster；验证分时段定价时需先设置 provider 的 `time_zone`/`tiers` 并导入含 `tier_prices` 的 model prices。
 2. `/configs/gslb_data/gslb` 依赖正确的 `bfe_cluster` 参数，通常为 `BFE-AI_product.szyf`。
 3. InnerAPI 鉴权为 `McUserProbe`，测试环境需配置为可跳过或使用 Support Token。
 
-## 19. 注意事项
+## 20. 注意事项
 
 1. InnerAPI 返回值仍包含 `WorkMode`（与 OpenAPI v0.3.0 不同，InnerAPI 未移除该字段）。
 2. 配置未变化时 `Data=null`，不要断言为空对象 `{}`。

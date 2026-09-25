@@ -40,6 +40,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route_tables"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/subcluster"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/traffic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/traffic_mirror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 )
@@ -72,6 +73,7 @@ func endpoints() []*xreq.Endpoint {
 		entity.Endpoints,
 		global_route_rules.Endpoints,
 		ai_cache.Endpoints,
+		traffic_mirror.Endpoints,
 		route_tables.Endpoints,
 		model_price.Endpoints,
 		operation_log.Endpoints,

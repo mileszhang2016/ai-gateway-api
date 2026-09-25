@@ -543,6 +543,25 @@ CREATE TABLE ai_cache_rules (
 CREATE TRIGGER ai_cache_rules_updated_at AFTER UPDATE ON ai_cache_rules
   FOR EACH ROW BEGIN UPDATE ai_cache_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
+-- create traffic_mirror_rules (流量镜像规则表)
+DROP TABLE IF EXISTS traffic_mirror_rules;
+CREATE TABLE traffic_mirror_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  cond TEXT,
+  mirror_cluster TEXT NOT NULL,
+  percentage INTEGER NOT NULL DEFAULT 100,
+  remove_headers TEXT,
+  set_headers TEXT,
+  body_rewrites TEXT,
+  path_rewrite TEXT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE TRIGGER traffic_mirror_rules_updated_at AFTER UPDATE ON traffic_mirror_rules
+  FOR EACH ROW BEGIN UPDATE traffic_mirror_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
 -- create route_rules (路由规则表)
 DROP TABLE IF EXISTS route_rules;
 CREATE TABLE route_rules (

@@ -50,6 +50,7 @@ func TestOpenAPI_Schema(t *testing.T) {
 	t.Run("route_tables", testRouteTableSchema)
 	t.Run("global_route_rules", testGlobalRouteRulesSchema)
 	t.Run("ai_cache", testAICacheSchema)
+	t.Run("traffic_mirror", testTrafficMirrorSchema)
 	t.Run("epp_pool", testEppPoolSchema)
 	t.Run("epp_assignments", testEppAssignmentsSchema)
 }
@@ -822,6 +823,72 @@ func testAICacheSchema(t *testing.T) {
 	t.Cleanup(func() {
 		// 恢复空集合，避免影响其他模块。
 		_, _ = testutil.GetClient().Put("/open-api/v1/ai-cache-rules", map[string]interface{}{
+			"rules": []interface{}{},
+		})
+	})
+}
+
+// ---------- traffic-mirror-rules ----------
+
+// testTrafficMirrorSchema 覆盖流量镜像规则集合（GET/PUT 同构）。
+// 集合级资源无 /{id} 端点："GET 单查" 即全量查询的重复拉取（唯一读形状）。
+// 另做定向断言：最小提交规则恰为 6 固定键（可选键缺席），全字段提交恰为 10 键，
+// 均不得含内部 id、无 enabled（traffic-mirror-rules.md §1，家族1 省略语义 / #201 幻影键）。
+func testTrafficMirrorSchema(t *testing.T) {
+	clusterName, err := testutil.CreateCluster(testutil.UniqueClusterName())
+	require.NoError(t, err)
+
+	fixedKeys := []string{"name", "cond", "mirror_cluster", "percentage", "created_at", "updated_at"}
+	fullKeys := []string{
+		"name", "cond", "mirror_cluster", "percentage",
+		"remove_headers", "set_headers", "body_rewrites", "path_rewrite",
+		"created_at", "updated_at",
+	}
+
+	// 建集合（PUT）：1 条最小 + 1 条全字段。
+	putResp, err := testutil.GetClient().Put("/open-api/v1/traffic-mirror-rules", map[string]interface{}{
+		"rules": []interface{}{
+			map[string]interface{}{"name": testutil.UniqueName("schema-tm-1"), "cond": `default_t()`, "mirror_cluster": clusterName},
+			map[string]interface{}{
+				"name": testutil.UniqueName("schema-tm-2"), "cond": `req_path_prefix_in("/v1/completions", true)`, "mirror_cluster": clusterName,
+				"percentage":    10,
+				"remove_headers": []interface{}{"Authorization"},
+				"set_headers":    map[string]interface{}{"X-A": "1"},
+				"body_rewrites":  []interface{}{map[string]interface{}{"path": "model", "value": "m2"}},
+				"path_rewrite":   "/v1/internal/x",
+			},
+		},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, putResp)
+	testutil.AssertSchema(t, putResp, TrafficMirrorRulesSchema)
+
+	// GET 列表（全量查询）。
+	listResp, err := testutil.GetClient().Get("/open-api/v1/traffic-mirror-rules")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, listResp)
+	testutil.AssertSchema(t, listResp, TrafficMirrorRulesSchema)
+
+	// 定向合同锁：rules[0] 精确 6 固定键（可选键缺席），rules[1] 精确 10 键。
+	var data map[string]interface{}
+	require.NoError(t, json.Unmarshal(listResp.Data, &data))
+	rules, ok := data["rules"].([]interface{})
+	require.True(t, ok, "rules should be array")
+	require.Len(t, rules, 2)
+	for i, wantKeys := range [][]string{fixedKeys, fullKeys} {
+		rule, ok := rules[i].(map[string]interface{})
+		require.True(t, ok, "rules[%d] should be object", i)
+		keys := make([]string, 0, len(rule))
+		for k := range rule {
+			keys = append(keys, k)
+		}
+		assert.ElementsMatch(t, wantKeys, keys,
+			"rules[%d] keys must exactly match contract (no id/enabled)", i)
+	}
+
+	t.Cleanup(func() {
+		// 恢复空集合，避免影响其他模块。
+		_, _ = testutil.GetClient().Put("/open-api/v1/traffic-mirror-rules", map[string]interface{}{
 			"rules": []interface{}{},
 		})
 	})

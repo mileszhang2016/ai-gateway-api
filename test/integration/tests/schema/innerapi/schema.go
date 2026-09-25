@@ -234,3 +234,46 @@ var AICacheRuleExportSchema = &testutil.ObjectSchema{
 		"Config":  {Type: testutil.TypeObject, Nested: AICacheRuleExportBodySchema},
 	},
 }
+
+// TrafficMirrorRuleExportItemSchema /configs/traffic-mirror-rule 导出单条规则 schema。
+// Required 恰为合同 7 个导出 tag（大写驼峰，与 Open API 词汇不同）；规则全字段恒输出
+//（含空值零值 {} / [] / ""，不用 omitempty）——removeHeaders 两层默认语义
+//（缺省填默认黑名单 / 显式 [] 不剔除）由取值断言覆盖（traffic-mirror-rule.md §3.2）。
+var TrafficMirrorRuleExportItemSchema = &testutil.ObjectSchema{
+	Required: []string{
+		"cond", "mirrorCluster", "percentage", "removeHeaders", "setHeaders", "bodyRewrites", "pathRewrite",
+	},
+	Fields: map[string]testutil.FieldSpec{
+		"cond":          {Type: testutil.TypeString},
+		"mirrorCluster": {Type: testutil.TypeString},
+		"percentage":    {Type: testutil.TypeInt},
+		"removeHeaders": {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
+		"setHeaders":    {Type: testutil.TypeObject},
+		"bodyRewrites": {Type: testutil.TypeArray, Elem: &testutil.ObjectSchema{
+			Required: []string{"path", "value"},
+			Fields: map[string]testutil.FieldSpec{
+				"path":  {Type: testutil.TypeString},
+				"value": {Type: testutil.TypeString},
+			},
+		}},
+		"pathRewrite": {Type: testutil.TypeString},
+	},
+}
+
+// TrafficMirrorRuleExportBodySchema /configs/traffic-mirror-rule 返回 Config 段 schema。
+// product 键取自 AIRouteInnerProductName（测试环境为 AI_product）；空集合导出 [] 且键 present。
+var TrafficMirrorRuleExportBodySchema = &testutil.ObjectSchema{
+	Required: []string{"AI_product"},
+	Fields: map[string]testutil.FieldSpec{
+		"AI_product": {Type: testutil.TypeArray, Elem: TrafficMirrorRuleExportItemSchema},
+	},
+}
+
+// TrafficMirrorRuleExportSchema /configs/traffic-mirror-rule 返回 schema
+var TrafficMirrorRuleExportSchema = &testutil.ObjectSchema{
+	Required: []string{"Version", "Config"},
+	Fields: map[string]testutil.FieldSpec{
+		"Version": {Type: testutil.TypeString},
+		"Config":  {Type: testutil.TypeObject, Nested: TrafficMirrorRuleExportBodySchema},
+	},
+}

@@ -705,6 +705,111 @@ func AICacheRules(param *shared.AICacheRulesParam) error {
 	return nil
 }
 
+const (
+	// MaxTrafficMirrorRuleNameLength bounds the traffic mirror rule name length.
+	MaxTrafficMirrorRuleNameLength = 128
+	// MaxTrafficMirrorClusterNameLength bounds the mirror_cluster name length
+	// (existence is checked separately by the endpoint).
+	MaxTrafficMirrorClusterNameLength = 128
+
+	// TrafficMirrorBodyRewritePathModel is the only body rewrite path supported
+	// in phase 1 (aligned with BFE mod_traffic_mirror Check).
+	TrafficMirrorBodyRewritePathModel = "model"
+)
+
+// TrafficMirrorRules validates a traffic mirror rule set (the full-replace PUT
+// body). A nil rules list is treated as empty (clear all rules); any single
+// failure rejects the whole collection with a param error (HTTP 422). The
+// mirror_cluster existence check is intentionally not done here; it is checked
+// separately by the endpoint against the cluster manager.
+func TrafficMirrorRules(param *shared.TrafficMirrorRulesParam) error {
+	if param == nil {
+		return nil
+	}
+
+	rules := param.Rules
+	if rules == nil {
+		rules = []*shared.TrafficMirrorRuleParam{}
+	}
+
+	nameSet := map[string]struct{}{}
+	condSet := map[string]struct{}{}
+	for i, rule := range rules {
+		if rule == nil {
+			return xerror.WrapParamErrorWithMsg("traffic mirror rule #%d is null", i)
+		}
+
+		if rule.Name == nil || *rule.Name == "" {
+			return xerror.WrapParamErrorWithMsg("traffic mirror rule name is required")
+		}
+		if len(*rule.Name) > MaxTrafficMirrorRuleNameLength {
+			return xerror.WrapParamErrorWithMsg("traffic mirror rule name length must be <= %d", MaxTrafficMirrorRuleNameLength)
+		}
+		if _, ok := nameSet[*rule.Name]; ok {
+			return xerror.WrapParamErrorWithMsg("duplicate traffic mirror rule name: %s", *rule.Name)
+		}
+		nameSet[*rule.Name] = struct{}{}
+
+		if rule.Cond == nil || *rule.Cond == "" {
+			return xerror.WrapParamErrorWithMsg("traffic mirror rule %s cond is required", *rule.Name)
+		}
+		if err := ConditionExpression(*rule.Cond); err != nil {
+			return xerror.WrapParamErrorWithMsg("traffic mirror rule %s cond: %v", *rule.Name, err)
+		}
+		if _, ok := condSet[*rule.Cond]; ok {
+			return xerror.WrapParamErrorWithMsg("duplicate traffic mirror rule cond: %s", *rule.Cond)
+		}
+		condSet[*rule.Cond] = struct{}{}
+
+		if rule.MirrorCluster == nil || *rule.MirrorCluster == "" {
+			return xerror.WrapParamErrorWithMsg("traffic mirror rule %s mirror_cluster is required", *rule.Name)
+		}
+		if len(*rule.MirrorCluster) > MaxTrafficMirrorClusterNameLength {
+			return xerror.WrapParamErrorWithMsg("traffic mirror rule %s mirror_cluster length must be <= %d", *rule.Name, MaxTrafficMirrorClusterNameLength)
+		}
+
+		if rule.Percentage != nil && (*rule.Percentage < 0 || *rule.Percentage > 100) {
+			return xerror.WrapParamErrorWithMsg("traffic mirror rule %s percentage must be between 0 and 100", *rule.Name)
+		}
+
+		if rule.RemoveHeaders != nil {
+			for _, header := range *rule.RemoveHeaders {
+				if header == "" {
+					return xerror.WrapParamErrorWithMsg("traffic mirror rule %s remove_headers cannot contain empty header", *rule.Name)
+				}
+			}
+		}
+
+		if rule.SetHeaders != nil {
+			for key, value := range rule.SetHeaders {
+				if key == "" || value == "" {
+					return xerror.WrapParamErrorWithMsg("traffic mirror rule %s set_headers key/value cannot be empty", *rule.Name)
+				}
+			}
+		}
+
+		if rule.BodyRewrites != nil {
+			for _, rewrite := range rule.BodyRewrites {
+				if rewrite == nil {
+					return xerror.WrapParamErrorWithMsg("traffic mirror rule %s body_rewrites cannot contain null element", *rule.Name)
+				}
+				if rewrite.Path == nil || *rewrite.Path != TrafficMirrorBodyRewritePathModel {
+					return xerror.WrapParamErrorWithMsg("traffic mirror rule %s body_rewrites path must be %q", *rule.Name, TrafficMirrorBodyRewritePathModel)
+				}
+				if rewrite.Value == nil || *rewrite.Value == "" {
+					return xerror.WrapParamErrorWithMsg("traffic mirror rule %s body_rewrites value is required and cannot be empty", *rule.Name)
+				}
+			}
+		}
+
+		if rule.PathRewrite != nil && *rule.PathRewrite != "" && !strings.HasPrefix(*rule.PathRewrite, "/") {
+			return xerror.WrapParamErrorWithMsg("traffic mirror rule %s path_rewrite must start with '/'", *rule.Name)
+		}
+	}
+
+	return nil
+}
+
 // LLMConfig validates the LLM configuration block used by clusters.
 func LLMConfig(c *icluster_conf.LLMConfig) error {
 	if c == nil {

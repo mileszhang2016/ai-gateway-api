@@ -72,6 +72,7 @@ const (
 	ResourceTypeQuotaPlan       ResourceType = "quota_plan"
 	ResourceTypeRateLimitPolicy ResourceType = "rate_limit_policy"
 	ResourceTypeAICacheRule     ResourceType = "ai_cache_rule"
+	ResourceTypeTrafficMirrorRule ResourceType = "traffic_mirror_rule"
 	ResourceTypeModelPrice      ResourceType = "model_price"
 	ResourceTypeUser            ResourceType = "user"
 	ResourceTypeToken           ResourceType = "token"
