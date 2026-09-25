@@ -201,3 +201,36 @@ var EppDataSchema = &testutil.ObjectSchema{
 		"Config":  {Type: testutil.TypeObject, Nested: EppDataConfigBodySchema},
 	},
 }
+
+// AICacheRuleExportItemSchema /configs/ai-cache-rule 导出单条规则 schema。
+// Required 恰为合同一期 5 个导出 tag（大写驼峰，与 Open API 词汇不同）；
+// 二期/预留字段 cacheKeyFrom/cacheValueFrom/cacheStreamValueFrom/cacheToolCallsFrom/
+// responseTemplate/streamResponseTemplate 不得出现（ai-cache-rule.md §3.2）。
+var AICacheRuleExportItemSchema = &testutil.ObjectSchema{
+	Required: []string{"cond", "cacheKeyStrategy", "cacheTTL", "maxBodyBytes", "maxValueBytes"},
+	Fields: map[string]testutil.FieldSpec{
+		"cond":             {Type: testutil.TypeString},
+		"cacheKeyStrategy": {Type: testutil.TypeString, Enum: []interface{}{"lastQuestion", "allQuestions", "disabled"}},
+		"cacheTTL":         {Type: testutil.TypeInt},
+		"maxBodyBytes":     {Type: testutil.TypeInt},
+		"maxValueBytes":    {Type: testutil.TypeInt},
+	},
+}
+
+// AICacheRuleExportBodySchema /configs/ai-cache-rule 返回 Config 段 schema。
+// product 键取自 AIRouteInnerProductName（测试环境为 AI_product）；空集合导出 [] 且键 present。
+var AICacheRuleExportBodySchema = &testutil.ObjectSchema{
+	Required: []string{"AI_product"},
+	Fields: map[string]testutil.FieldSpec{
+		"AI_product": {Type: testutil.TypeArray, Elem: AICacheRuleExportItemSchema},
+	},
+}
+
+// AICacheRuleExportSchema /configs/ai-cache-rule 返回 schema
+var AICacheRuleExportSchema = &testutil.ObjectSchema{
+	Required: []string{"Version", "Config"},
+	Fields: map[string]testutil.FieldSpec{
+		"Version": {Type: testutil.TypeString},
+		"Config":  {Type: testutil.TypeObject, Nested: AICacheRuleExportBodySchema},
+	},
+}

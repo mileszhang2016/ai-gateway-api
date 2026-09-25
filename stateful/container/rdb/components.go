@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ai_cache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/epp_pool"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
@@ -57,6 +58,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/dorisreport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/mysqlreport"
+	aiCacheStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_cache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
 	apiKeyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/auth"
@@ -320,6 +322,14 @@ func Init() error {
 		container.EntityStorager,
 		container.VersionControlManager)
 	container.RateLimitPolicyManager.SetOperationLogManager(container.OperationLogManager)
+
+	container.AICacheStorager = aiCacheStorage.NewAICacheStorager(stateful.NewBFEDBContext)
+	container.AICacheManager = ai_cache.NewAICacheManager(
+		container.TxnStoragerSingleton,
+		container.AICacheStorager,
+		container.VersionControlManager,
+		stateful.DefaultConfig.RunTime.AIRouteInnerProductName)
+	container.AICacheManager.SetOperationLogManager(container.OperationLogManager)
 
 	// Wire nested-resource auditors so Entity/API Key nested quota-plan and
 	// rate-limit-policy writes emit operation logs with resource_parent_id

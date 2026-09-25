@@ -14,6 +14,7 @@
 | 8 | `/configs/rate-limit-policy` | 导出限流策略配置 | `version` | [rate-limit-policy.md](./rate-limit-policy.md) |
 | 9 | `/configs/ai-route` | 导出 AI 路由配置 | `version` | [ai-route.md](./ai-route.md) |
 | 10 | `/configs/epp_data/config` | 导出 EPP 配置（epp_config + assignment 全量视图，合并单端点） | `version` | [epp-data.md](./epp-data.md) |
+| 11 | `/configs/ai-cache-rule` | 导出 AI 缓存规则配置 | `version` | [ai-cache-rule.md](./ai-cache-rule.md) |
 
 ## 2. k8s_pools 接口（资源读写）
 

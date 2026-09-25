@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,6 +49,7 @@ func TestOpenAPI_Schema(t *testing.T) {
 	t.Run("model_prices", testModelPriceSchema)
 	t.Run("route_tables", testRouteTableSchema)
 	t.Run("global_route_rules", testGlobalRouteRulesSchema)
+	t.Run("ai_cache", testAICacheSchema)
 	t.Run("epp_pool", testEppPoolSchema)
 	t.Run("epp_assignments", testEppAssignmentsSchema)
 }
@@ -745,6 +747,85 @@ func testGlobalRouteRulesSchema(t *testing.T) {
 }
 
 
+
+// ---------- ai-cache-rules ----------
+
+// testAICacheSchema 覆盖 AI 缓存规则集合（GET/PUT 同构）。
+// 集合级资源无 /{id} 端点："GET 单查" 即全量查询的重复拉取（唯一读形状）。
+// 另做定向断言：rules 元素键集合精确为合同 8 字段（含 created_at/updated_at），
+// 不得含内部 id、无 enabled（ai-cache-rules.md §1）。
+func testAICacheSchema(t *testing.T) {
+	validCond := `req_path_in("/v1/chat/completions", false)`
+	name1 := testutil.UniqueName("schema-ac-1")
+	name2 := testutil.UniqueName("schema-ac-2")
+
+	// 建集合（PUT）。
+	putResp, err := testutil.GetClient().Put("/open-api/v1/ai-cache-rules", map[string]interface{}{
+		"rules": []interface{}{
+			map[string]interface{}{"name": name1, "cond": validCond, "cache_ttl": 3600},
+		},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, putResp)
+	testutil.AssertSchema(t, putResp, AICacheRulesSchema)
+
+	// GET 列表（全量查询）。
+	listResp, err := testutil.GetClient().Get("/open-api/v1/ai-cache-rules")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, listResp)
+	testutil.AssertSchema(t, listResp, AICacheRulesSchema)
+
+	// GET 重复拉取（唯一读形状，等价单查）。
+	oneResp, err := testutil.GetClient().Get("/open-api/v1/ai-cache-rules")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, oneResp)
+	testutil.AssertSchema(t, oneResp, AICacheRulesSchema)
+
+	// PUT 修改（全量替换为 2 条）。
+	put2Resp, err := testutil.GetClient().Put("/open-api/v1/ai-cache-rules", map[string]interface{}{
+		"rules": []interface{}{
+			map[string]interface{}{"name": name1, "cond": validCond, "cache_ttl": 7200},
+			map[string]interface{}{"name": name2, "cond": validCond, "cache_key_strategy": "disabled"},
+		},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, put2Resp)
+	testutil.AssertSchema(t, put2Resp, AICacheRulesSchema)
+
+	// 修改后再 GET。
+	get2Resp, err := testutil.GetClient().Get("/open-api/v1/ai-cache-rules")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, get2Resp)
+	testutil.AssertSchema(t, get2Resp, AICacheRulesSchema)
+
+	// 定向合同锁：rules 元素键集合精确 8 字段，无 id/enabled。
+	var data map[string]interface{}
+	require.NoError(t, json.Unmarshal(get2Resp.Data, &data))
+	rules, ok := data["rules"].([]interface{})
+	require.True(t, ok, "rules should be array")
+	require.Len(t, rules, 2)
+	wantStrategies := []string{"lastQuestion", "disabled"}
+	for i, item := range rules {
+		rule, ok := item.(map[string]interface{})
+		require.True(t, ok, "rules[%d] should be object", i)
+		keys := make([]string, 0, len(rule))
+		for k := range rule {
+			keys = append(keys, k)
+		}
+		assert.ElementsMatch(t, []string{
+			"name", "cond", "cache_key_strategy", "cache_ttl",
+			"max_body_bytes", "max_value_bytes", "created_at", "updated_at",
+		}, keys, "rules[%d] keys must exactly match contract (no id/enabled)", i)
+		assert.Equal(t, wantStrategies[i], rule["cache_key_strategy"])
+	}
+
+	t.Cleanup(func() {
+		// 恢复空集合，避免影响其他模块。
+		_, _ = testutil.GetClient().Put("/open-api/v1/ai-cache-rules", map[string]interface{}{
+			"rules": []interface{}{},
+		})
+	})
+}
 
 // ---------- epp-pool ----------
 

@@ -633,6 +633,78 @@ func RouteRules(p *shared.RouteRulesParam) error {
 	return nil
 }
 
+const (
+	// MaxAICacheRuleNameLength bounds the AI cache rule name length.
+	MaxAICacheRuleNameLength = 128
+
+	// AI cache key strategies (BFE mod_ai_cache contract).
+	AICacheKeyStrategyLastQuestion = "lastQuestion"
+	AICacheKeyStrategyAllQuestions = "allQuestions"
+	AICacheKeyStrategyDisabled     = "disabled"
+)
+
+// AICacheRules validates an AI cache rule set (the full-replace PUT body).
+// A nil rules list is treated as empty (clear all rules); any single failure
+// rejects the whole collection with a param error (HTTP 422).
+func AICacheRules(param *shared.AICacheRulesParam) error {
+	if param == nil {
+		return nil
+	}
+
+	rules := param.Rules
+	if rules == nil {
+		rules = []*shared.AICacheRuleParam{}
+	}
+
+	nameSet := map[string]struct{}{}
+	for i, rule := range rules {
+		if rule == nil {
+			return xerror.WrapParamErrorWithMsg("ai cache rule #%d is null", i)
+		}
+
+		if rule.Name == nil || *rule.Name == "" {
+			return xerror.WrapParamErrorWithMsg("ai cache rule name is required")
+		}
+		if len(*rule.Name) > MaxAICacheRuleNameLength {
+			return xerror.WrapParamErrorWithMsg("ai cache rule name length must be <= %d", MaxAICacheRuleNameLength)
+		}
+		if _, ok := nameSet[*rule.Name]; ok {
+			return xerror.WrapParamErrorWithMsg("duplicate ai cache rule name: %s", *rule.Name)
+		}
+		nameSet[*rule.Name] = struct{}{}
+
+		if rule.Cond == nil || *rule.Cond == "" {
+			return xerror.WrapParamErrorWithMsg("ai cache rule %s cond is required", *rule.Name)
+		}
+		if err := ConditionExpression(*rule.Cond); err != nil {
+			return xerror.WrapParamErrorWithMsg("ai cache rule %s cond: %v", *rule.Name, err)
+		}
+
+		if rule.CacheKeyStrategy != nil {
+			switch *rule.CacheKeyStrategy {
+			case AICacheKeyStrategyLastQuestion, AICacheKeyStrategyAllQuestions, AICacheKeyStrategyDisabled:
+			default:
+				return xerror.WrapParamErrorWithMsg("ai cache rule %s cache_key_strategy must be one of %s/%s/%s",
+					*rule.Name, AICacheKeyStrategyLastQuestion, AICacheKeyStrategyAllQuestions, AICacheKeyStrategyDisabled)
+			}
+		}
+
+		if rule.CacheTTL != nil && *rule.CacheTTL < 0 {
+			return xerror.WrapParamErrorWithMsg("ai cache rule %s cache_ttl must be >= 0", *rule.Name)
+		}
+
+		if rule.MaxBodyBytes != nil && *rule.MaxBodyBytes <= 0 {
+			return xerror.WrapParamErrorWithMsg("ai cache rule %s max_body_bytes must be > 0", *rule.Name)
+		}
+
+		if rule.MaxValueBytes != nil && *rule.MaxValueBytes <= 0 {
+			return xerror.WrapParamErrorWithMsg("ai cache rule %s max_value_bytes must be > 0", *rule.Name)
+		}
+	}
+
+	return nil
+}
+
 // LLMConfig validates the LLM configuration block used by clusters.
 func LLMConfig(c *icluster_conf.LLMConfig) error {
 	if c == nil {

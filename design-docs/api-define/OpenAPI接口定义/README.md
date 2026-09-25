@@ -15,6 +15,7 @@
 | /entity-types | [entity-types.md](./entity-types.md) |
 | /entities | [entities.md](./entities.md) |
 | /global-route-rules | [global-route-rules.md](./global-route-rules.md) |
+| /ai-cache-rules | [ai-cache-rules.md](./ai-cache-rules.md) |
 | /route-tables | [route-tables.md](./route-tables.md) |
 | /auth | [auth.md](./auth.md) |
 | /certificates | [certificates.md](./certificates.md) |

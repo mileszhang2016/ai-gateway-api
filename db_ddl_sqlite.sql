@@ -526,6 +526,23 @@ CREATE INDEX rate_limit_policies_enabled ON rate_limit_policies (enabled);
 CREATE TRIGGER rate_limit_policies_updated_at AFTER UPDATE ON rate_limit_policies
   FOR EACH ROW BEGIN UPDATE rate_limit_policies SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
+-- create ai_cache_rules (AI缓存规则表)
+DROP TABLE IF EXISTS ai_cache_rules;
+CREATE TABLE ai_cache_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  cond TEXT NOT NULL,
+  cache_key_strategy TEXT NOT NULL DEFAULT 'lastQuestion',
+  cache_ttl INTEGER NOT NULL DEFAULT 0,
+  max_body_bytes INTEGER NOT NULL DEFAULT 1048576,
+  max_value_bytes INTEGER NOT NULL DEFAULT 1048576,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (name)
+);
+CREATE TRIGGER ai_cache_rules_updated_at AFTER UPDATE ON ai_cache_rules
+  FOR EACH ROW BEGIN UPDATE ai_cache_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
 -- create route_rules (路由规则表)
 DROP TABLE IF EXISTS route_rules;
 CREATE TABLE route_rules (

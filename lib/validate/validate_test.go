@@ -447,3 +447,95 @@ func TestExpiredTime(t *testing.T) {
 	assert.Error(t, ExpiredTime(&past))
 	assert.NoError(t, ExpiredTime(nil))
 }
+
+func TestAICacheRules(t *testing.T) {
+	validCond := "req_path_in(\"/v1/chat/completions\", false) && req_body_json_in(\"model\", \"deepseek-chat\", false)"
+
+	validRule := func() *shared.AICacheRuleParam {
+		return &shared.AICacheRuleParam{
+			Name:             lib.PString("cache-deepseek-chat"),
+			Cond:             &validCond,
+			CacheKeyStrategy: lib.PString(AICacheKeyStrategyLastQuestion),
+			CacheTTL:         lib.PInt(3600),
+			MaxBodyBytes:     lib.PInt64(1048576),
+			MaxValueBytes:    lib.PInt64(1048576),
+		}
+	}
+
+	// nil param and nil rules are accepted (null rules means clear all).
+	assert.NoError(t, AICacheRules(nil))
+	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{}))
+
+	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{validRule()}}))
+
+	// minimal rule: only required fields.
+	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{
+		{Name: lib.PString("minimal"), Cond: lib.PString("default_t()")},
+	}}))
+
+	// null rule element is rejected.
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{nil}}))
+
+	// name: required, length 1-128, unique within the collection.
+	rule := validRule()
+	rule.Name = nil
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Name = lib.PString("")
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Name = lib.PString(string(make([]byte, MaxAICacheRuleNameLength+1)))
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Name = lib.PString(string(make([]byte, MaxAICacheRuleNameLength)))
+	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+
+	dup := validRule()
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{validRule(), dup}}))
+
+	// cond: required and must compile.
+	rule = validRule()
+	rule.Cond = nil
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Cond = lib.PString("")
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Cond = lib.PString("unknown_func()")
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+
+	// cache_key_strategy enum.
+	for _, strategy := range []string{AICacheKeyStrategyLastQuestion, AICacheKeyStrategyAllQuestions, AICacheKeyStrategyDisabled} {
+		rule = validRule()
+		rule.CacheKeyStrategy = lib.PString(strategy)
+		assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+	}
+	rule = validRule()
+	rule.CacheKeyStrategy = lib.PString("firstQuestion")
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+
+	// cache_ttl >= 0 (nil allowed, 0 allowed).
+	rule = validRule()
+	rule.CacheTTL = lib.PInt(-1)
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+	rule = validRule()
+	rule.CacheTTL = lib.PInt(0)
+	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+
+	// byte limits > 0 (nil allowed).
+	rule = validRule()
+	rule.MaxBodyBytes = lib.PInt64(0)
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+	rule = validRule()
+	rule.MaxValueBytes = lib.PInt64(-1)
+	assert.Error(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+	rule = validRule()
+	rule.MaxBodyBytes = nil
+	rule.MaxValueBytes = nil
+	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+}

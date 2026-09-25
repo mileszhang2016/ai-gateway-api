@@ -18,6 +18,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/middleware"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/ai_cache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/auth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_cluster"
@@ -70,6 +71,7 @@ func endpoints() []*xreq.Endpoint {
 		entity_type.Endpoints,
 		entity.Endpoints,
 		global_route_rules.Endpoints,
+		ai_cache.Endpoints,
 		route_tables.Endpoints,
 		model_price.Endpoints,
 		operation_log.Endpoints,

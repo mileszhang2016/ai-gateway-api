@@ -25,6 +25,7 @@ v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、
 | IN-9 | 导出 AI 路由配置 | GET | `/inner-api/v1/configs/ai-route` | version 可选 |
 | IN-10 | 导出 EPP 配置 | GET | `/inner-api/v1/configs/epp_data/config` | version 可选 |
 | IN-11 | K8s 实例池维护 | PUT/GET/DELETE | `/inner-api/v1/k8s_pools/{name}/instances`、`/inner-api/v1/k8s_pools/{name}`、`/inner-api/v1/k8s_pools` | 资源读写，无 version；发现组件写入通道 |
+| IN-12 | 导出 AI 缓存规则配置 | GET | `/inner-api/v1/configs/ai-cache-rule` | version 可选；Data 形状 `{"Config": {"AI_product": [...]}, "Version": "..."}`；一期每条规则仅导出 cond/cacheKeyStrategy/cacheTTL/maxBodyBytes/maxValueBytes 5 个 tag |
 
 ## 3. 测试用例统计
 
@@ -40,8 +41,9 @@ v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、
 | 导出限流策略配置 | 1 |
 | 导出 AI 路由配置 | 2 |
 | 导出 EPP 配置 | 5 |
+| 导出 AI 缓存规则配置 | 6 |
 | K8s 实例池维护 | 4 |
-| **合计** | **27** |
+| **合计** | **33** |
 
 ## 4. 认证方式
 
@@ -71,6 +73,8 @@ innerapi/
 │   └── rate_limit_policy_test.go
 ├── ai_route/
 │   └── ai_route_test.go
+├── ai_cache/
+│   └── ai_cache_test.go
 └── epp_data/
 │   └── epp_data_test.go
 └── k8s_pools/
@@ -1175,7 +1179,58 @@ IN-EPP-003 中 `flow_control` 写入 `{"max_requests": 200, "queue_ttl": 45, "no
 
 ---
 
-## 16. K8s 实例池维护
+## 16. 导出 AI 缓存规则配置
+
+### 16.1 接口信息
+
+| 项目 | 值 |
+|-----|-----|
+| 模块 | InnerAPI |
+| 接口名称 | 导出 AI 缓存规则配置 |
+| 方法 | GET |
+| 路径 | `/inner-api/v1/configs/ai-cache-rule` |
+| 说明 | 导出 BFE `mod_ai_cache` 规则文件（`ai_cache.data`），支持 version 增量同步；一期每条规则仅导出 `cond`/`cacheKeyStrategy`/`cacheTTL`/`maxBodyBytes`/`maxValueBytes` 5 个 tag（大写驼峰，与 Open API 词汇不同） |
+
+### 16.2 接口参数说明
+
+#### 16.2.1 请求参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| version | string | 否 | 上次返回的版本号；相同（内容未变）时 Data 为 null |
+
+#### 16.2.2 返回数据字段
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| Data.Config | object | 按产品线组织的缓存规则（key=`AI_product`，取自 `AIRouteInnerProductName`）；空集合导出空数组 `[]` 且 product 键 present |
+| Data.Config.AI_product[] | object | 规则按 first-match-wins 匹配，数组顺序即优先级（= Open API PUT 提交顺序） |
+| Data.Config.AI_product[].cond | string | BFE 条件表达式（必含） |
+| Data.Config.AI_product[].cacheKeyStrategy | string | 缓存键策略（`disabled` 为缓存豁免） |
+| Data.Config.AI_product[].cacheTTL | int | 缓存 TTL（秒），0 表示不过期 |
+| Data.Config.AI_product[].maxBodyBytes | int64 | 请求体大小上限 |
+| Data.Config.AI_product[].maxValueBytes | int64 | 缓存值大小上限 |
+| Data.Version | string | 配置版本号（`yyyyMMddHHmmss` 14 位定宽） |
+| WorkMode | string | 控制台工作模式 |
+
+合同锁定：一期不得导出 `cacheKeyFrom`/`cacheValueFrom`/`cacheStreamValueFrom`/`cacheToolCallsFrom`/`responseTemplate`/`streamResponseTemplate`（二期/预留字段）。
+
+### 16.3 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| AICE-1-001 | 首拉 | 正常参数 | PUT 2 条 → Config.AI_product 长度 2、顺序=提交顺序、5 个导出 tag 精确集合且值正确；对原始 body 文本断言 `"cacheKeyStrategy":"lastQuestion"` 等（家族8 文本形态） |
+| AICE-1-002 | 二期字段缺席 | 合同一致性 | 导出 body 不得含 6 个二期/预留字段（家族8） |
+| AICE-1-003 | 增量同步 | 正常参数 | 带当前 version 再拉 → Data null；不传 version 再拉 → 有数据且 Version 相同 |
+| AICE-1-004 | 版本单调 | 并发语义 | 同一秒内连续两次不同 PUT → 轮询导出（500ms×10）直到版本严格大于旧版本且内容收敛为最新集合（家族8/#142） |
+| AICE-1-005 | 清空导出 | 边界值 | PUT `{"rules":[]}` → Config.AI_product 为 `[]`（非 null，product 键 present）（家族8） |
+| AICE-1-006 | 422 防泄漏 | 异常参数 | PUT 被拒 → 带旧 version 增量拉取 Data null、Version 不变且内容与拒绝前一致（家族4） |
+
+> 逐用例明细（前置、步骤、请求、预期）见 `tests/ai_cache/design.md` 第 8 节。
+
+---
+
+## 17. K8s 实例池维护
 
 ### 16.1 接口信息
 
@@ -1211,13 +1266,13 @@ IN-EPP-003 中 `flow_control` 写入 `{"max_requests": 200, "queue_ttl": 45, "no
 
 ---
 
-## 17. 依赖与数据准备
+## 18. 依赖与数据准备
 
 1. 需要预先通过 OpenAPI 创建 API-Key、Entity、Cluster、证书、Global Route 等数据，才能验证导出内容非空；验证模型定价表时需先导入 model prices 并创建对应 provider 的 Cluster；验证分时段定价时需先设置 provider 的 `time_zone`/`tiers` 并导入含 `tier_prices` 的 model prices。
 2. `/configs/gslb_data/gslb` 依赖正确的 `bfe_cluster` 参数，通常为 `BFE-AI_product.szyf`。
 3. InnerAPI 鉴权为 `McUserProbe`，测试环境需配置为可跳过或使用 Support Token。
 
-## 18. 注意事项
+## 19. 注意事项
 
 1. InnerAPI 返回值仍包含 `WorkMode`（与 OpenAPI v0.3.0 不同，InnerAPI 未移除该字段）。
 2. 配置未变化时 `Data=null`，不要断言为空对象 `{}`。
