@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,6 +49,8 @@ func TestOpenAPI_Schema(t *testing.T) {
 	t.Run("model_prices", testModelPriceSchema)
 	t.Run("route_tables", testRouteTableSchema)
 	t.Run("global_route_rules", testGlobalRouteRulesSchema)
+	t.Run("ai_cache", testAICacheSchema)
+	t.Run("traffic_mirror", testTrafficMirrorSchema)
 	t.Run("epp_pool", testEppPoolSchema)
 	t.Run("epp_assignments", testEppAssignmentsSchema)
 }
@@ -745,6 +748,151 @@ func testGlobalRouteRulesSchema(t *testing.T) {
 }
 
 
+
+// ---------- ai-cache-rules ----------
+
+// testAICacheSchema 覆盖 AI 缓存规则集合（GET/PUT 同构）。
+// 集合级资源无 /{id} 端点："GET 单查" 即全量查询的重复拉取（唯一读形状）。
+// 另做定向断言：rules 元素键集合精确为合同 8 字段（含 created_at/updated_at），
+// 不得含内部 id、无 enabled（ai-cache-rules.md §1）。
+func testAICacheSchema(t *testing.T) {
+	validCond := `req_path_in("/v1/chat/completions", false)`
+	name1 := testutil.UniqueName("schema-ac-1")
+	name2 := testutil.UniqueName("schema-ac-2")
+
+	// 建集合（PUT）。
+	putResp, err := testutil.GetClient().Put("/open-api/v1/ai-cache-rules", map[string]interface{}{
+		"rules": []interface{}{
+			map[string]interface{}{"name": name1, "cond": validCond, "cache_ttl": 3600},
+		},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, putResp)
+	testutil.AssertSchema(t, putResp, AICacheRulesSchema)
+
+	// GET 列表（全量查询）。
+	listResp, err := testutil.GetClient().Get("/open-api/v1/ai-cache-rules")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, listResp)
+	testutil.AssertSchema(t, listResp, AICacheRulesSchema)
+
+	// GET 重复拉取（唯一读形状，等价单查）。
+	oneResp, err := testutil.GetClient().Get("/open-api/v1/ai-cache-rules")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, oneResp)
+	testutil.AssertSchema(t, oneResp, AICacheRulesSchema)
+
+	// PUT 修改（全量替换为 2 条）。
+	put2Resp, err := testutil.GetClient().Put("/open-api/v1/ai-cache-rules", map[string]interface{}{
+		"rules": []interface{}{
+			map[string]interface{}{"name": name1, "cond": validCond, "cache_ttl": 7200},
+			map[string]interface{}{"name": name2, "cond": validCond, "cache_key_strategy": "disabled"},
+		},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, put2Resp)
+	testutil.AssertSchema(t, put2Resp, AICacheRulesSchema)
+
+	// 修改后再 GET。
+	get2Resp, err := testutil.GetClient().Get("/open-api/v1/ai-cache-rules")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, get2Resp)
+	testutil.AssertSchema(t, get2Resp, AICacheRulesSchema)
+
+	// 定向合同锁：rules 元素键集合精确 8 字段，无 id/enabled。
+	var data map[string]interface{}
+	require.NoError(t, json.Unmarshal(get2Resp.Data, &data))
+	rules, ok := data["rules"].([]interface{})
+	require.True(t, ok, "rules should be array")
+	require.Len(t, rules, 2)
+	wantStrategies := []string{"lastQuestion", "disabled"}
+	for i, item := range rules {
+		rule, ok := item.(map[string]interface{})
+		require.True(t, ok, "rules[%d] should be object", i)
+		keys := make([]string, 0, len(rule))
+		for k := range rule {
+			keys = append(keys, k)
+		}
+		assert.ElementsMatch(t, []string{
+			"name", "cond", "cache_key_strategy", "cache_ttl",
+			"max_body_bytes", "max_value_bytes", "created_at", "updated_at",
+		}, keys, "rules[%d] keys must exactly match contract (no id/enabled)", i)
+		assert.Equal(t, wantStrategies[i], rule["cache_key_strategy"])
+	}
+
+	t.Cleanup(func() {
+		// 恢复空集合，避免影响其他模块。
+		_, _ = testutil.GetClient().Put("/open-api/v1/ai-cache-rules", map[string]interface{}{
+			"rules": []interface{}{},
+		})
+	})
+}
+
+// ---------- traffic-mirror-rules ----------
+
+// testTrafficMirrorSchema 覆盖流量镜像规则集合（GET/PUT 同构）。
+// 集合级资源无 /{id} 端点："GET 单查" 即全量查询的重复拉取（唯一读形状）。
+// 另做定向断言：最小提交规则恰为 6 固定键（可选键缺席），全字段提交恰为 10 键，
+// 均不得含内部 id、无 enabled（traffic-mirror-rules.md §1，家族1 省略语义 / #201 幻影键）。
+func testTrafficMirrorSchema(t *testing.T) {
+	clusterName, err := testutil.CreateCluster(testutil.UniqueClusterName())
+	require.NoError(t, err)
+
+	fixedKeys := []string{"name", "cond", "mirror_cluster", "percentage", "created_at", "updated_at"}
+	fullKeys := []string{
+		"name", "cond", "mirror_cluster", "percentage",
+		"remove_headers", "set_headers", "body_rewrites", "path_rewrite",
+		"created_at", "updated_at",
+	}
+
+	// 建集合（PUT）：1 条最小 + 1 条全字段。
+	putResp, err := testutil.GetClient().Put("/open-api/v1/traffic-mirror-rules", map[string]interface{}{
+		"rules": []interface{}{
+			map[string]interface{}{"name": testutil.UniqueName("schema-tm-1"), "cond": `default_t()`, "mirror_cluster": clusterName},
+			map[string]interface{}{
+				"name": testutil.UniqueName("schema-tm-2"), "cond": `req_path_prefix_in("/v1/completions", true)`, "mirror_cluster": clusterName,
+				"percentage":    10,
+				"remove_headers": []interface{}{"Authorization"},
+				"set_headers":    map[string]interface{}{"X-A": "1"},
+				"body_rewrites":  []interface{}{map[string]interface{}{"path": "model", "value": "m2"}},
+				"path_rewrite":   "/v1/internal/x",
+			},
+		},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, putResp)
+	testutil.AssertSchema(t, putResp, TrafficMirrorRulesSchema)
+
+	// GET 列表（全量查询）。
+	listResp, err := testutil.GetClient().Get("/open-api/v1/traffic-mirror-rules")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, listResp)
+	testutil.AssertSchema(t, listResp, TrafficMirrorRulesSchema)
+
+	// 定向合同锁：rules[0] 精确 6 固定键（可选键缺席），rules[1] 精确 10 键。
+	var data map[string]interface{}
+	require.NoError(t, json.Unmarshal(listResp.Data, &data))
+	rules, ok := data["rules"].([]interface{})
+	require.True(t, ok, "rules should be array")
+	require.Len(t, rules, 2)
+	for i, wantKeys := range [][]string{fixedKeys, fullKeys} {
+		rule, ok := rules[i].(map[string]interface{})
+		require.True(t, ok, "rules[%d] should be object", i)
+		keys := make([]string, 0, len(rule))
+		for k := range rule {
+			keys = append(keys, k)
+		}
+		assert.ElementsMatch(t, wantKeys, keys,
+			"rules[%d] keys must exactly match contract (no id/enabled)", i)
+	}
+
+	t.Cleanup(func() {
+		// 恢复空集合，避免影响其他模块。
+		_, _ = testutil.GetClient().Put("/open-api/v1/traffic-mirror-rules", map[string]interface{}{
+			"rules": []interface{}{},
+		})
+	})
+}
 
 // ---------- epp-pool ----------
 

@@ -110,6 +110,7 @@ var ZeroVersion = Version(time.Time{})
 | `GET /configs/mod-api-key` | `APIKeyRuleManager` | `mod_api_key_rule` | API-Key 校验规则与配额计划 |
 | `GET /configs/mod-body-process` | `ModBodyProcessManager` | `mod_body_process` | 请求体处理模块配置 |
 | `GET /configs/rate-limit-policy` | `RateLimitPolicyManager` | `mod_ai_rate_limit` | 限流策略配置 |
+| `GET /configs/ai-cache-rule` | `AICacheManager` | `mod_ai_cache` | AI 缓存规则配置（BFE `mod_ai_cache` 数据源，产物 `ai_cache.data`） |
 | `GET /configs/ai-route` | `AIRouteExporter` | `ai_route` | AI 路由规则与绑定关系 |
 
 ---
@@ -301,6 +302,26 @@ type AiRouteDataExport struct {
 
 > AI 路由条件表达式的构造详见《AI 路由规则与条件表达式.md》（待补充）。
 
+### 4.10 ai-cache-rule（`/configs/ai-cache-rule`）
+
+由 `model/ai_cache/ai_cache_manager.go` 实现，是 BFE `mod_ai_cache` 模块的规则数据源：
+
+```go
+type AICacheRuleExport struct {
+    Version string `json:"Version"`
+    Config map[string][]*AICacheRuleConf `json:"Config"`
+}
+```
+
+生成流程：
+
+1. 查询全部 `ai_cache_rules`，按 `id` 升序（无 enabled 过滤——提交列表即生效集合）；
+2. 组装 `Config[AIRouteInnerProductName] = 规则数组`（product 名取自运行时配置 `RunTime.AIRouteInnerProductName`，默认 `AI_product`，不硬编码）；
+3. 空表时导出空数组（product 键仍 present，值为 `[]`）；
+4. 一期每条规则仅导出 `cond` / `cacheKeyStrategy` / `cacheTTL` / `maxBodyBytes` / `maxValueBytes` 五字段，其余字段由 BFE 规则加载器 `setDefaults` 填默认。
+
+> 详见《AI缓存规则与导出.md》。Redis 连接等静态配置不进本接口，由 BFE 静态 `mod_ai_cache.conf` 经 conf-agent `CopyFiles` 下发。
+
 ---
 
 ## 5. 增量同步机制
@@ -361,6 +382,7 @@ Authorization: Token <token>
 | `mod_api_key_rule` | API-Key 模块 | 否 |
 | `mod_body_process` | Body 处理模块 | 否 |
 | `mod_ai_rate_limit` | 限流策略模块 | 否 |
+| `mod_ai_cache` | AI 缓存规则模块 | 否 |
 | `ai_route` | AI 路由模块 | 否 |
 
 > `gslb.<bfe_cluster>` 因为依赖参数，不同 BFE 集群的版本号线相互独立。
@@ -408,6 +430,7 @@ Authorization: Token <token>
 | `endpoints/innerapi_v1/mod_api_key/export.go` | mod-api-key 导出端点 |
 | `endpoints/innerapi_v1/mod_body_process/export.go` | mod-body-process 导出端点 |
 | `endpoints/innerapi_v1/rate_limit_policy/export.go` | 限流策略导出端点 |
+| `endpoints/innerapi_v1/ai_cache/export.go` | AI 缓存规则导出端点 |
 | `endpoints/innerapi_v1/ai_route/export.go` | AI 路由导出端点 |
 | `model/iroute_conf/exporter.go` | Server Data 配置生成 |
 | `model/icluster_conf/exporter.go` | GSLB / Cluster Table 配置生成；`AIConf.Provider` / `AIConf.ModelTable` 填充 |
@@ -418,3 +441,4 @@ Authorization: Token <token>
 | `model/imods/mod_body_process.go` | mod-body-process 配置生成 |
 | `model/imods/ai_route_exporter.go` | AI 路由配置生成 |
 | `model/rate_limit_policy/rate_limit_policy_manager.go` | 限流策略配置生成 |
+| `model/ai_cache/ai_cache_manager.go` | AI 缓存规则配置生成（topic `mod_ai_cache`） |

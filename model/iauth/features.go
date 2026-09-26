@@ -123,6 +123,12 @@ const (
 	FeatureQuotaPlan       Feature = "QuotaPlan"
 	FeatureRateLimitPolicy Feature = "RateLimitPolicy"
 
+	// ai cache
+	FeatureAICache Feature = "AICache"
+
+	// traffic mirror
+	FeatureTrafficMirror Feature = "TrafficMirror"
+
 	// model pricing
 	FeatureModelPrice Feature = "ModelPrice"
 	FeatureProvider   Feature = "Provider"
@@ -226,5 +232,7 @@ var scope2permission = map[string]map[Feature]Action{
 		FeatureExtraFile:         ActionExport,
 		FeatureAPIKey:            ActionExport,
 		FeatureRateLimitPolicy:   ActionExport,
+		FeatureAICache:           ActionExport,
+		FeatureTrafficMirror:     ActionExport,
 	},
 }

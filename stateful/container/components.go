@@ -29,6 +29,7 @@
 package container
 
 import (
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ai_cache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/epp_pool"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
@@ -52,6 +53,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/traffic_mirror"
 )
 
 var (
@@ -94,6 +96,8 @@ var (
 	EntityIDGenerator       entity.EntityIDGenerator
 	QuotaPlanStorager       quota.QuotaPlanStorager
 	RateLimitPolicyStorager rate_limit_policy.RateLimitPolicyStorager
+	AICacheStorager         ai_cache.AICacheStorager
+	TrafficMirrorStorager   traffic_mirror.TrafficMirrorStorager
 	RouteRulesStorager      shared.RouteRulesStorager
 	QuotaCacheSingleton     quotacache.QuotaCache
 
@@ -114,6 +118,8 @@ var (
 	EntityManager          *entity.EntityManager
 	QuotaPlanManager       *quota.QuotaPlanManager
 	RateLimitPolicyManager *rate_limit_policy.RateLimitPolicyManager
+	AICacheManager         *ai_cache.AICacheManager
+	TrafficMirrorManager   *traffic_mirror.TrafficMirrorManager
 	RouteRulesManager      *route_rules.RouteRulesManager
 	AIRouteExporter        *imods.AIRouteExporter
 	BalanceSyncManager     *quota.BalanceSyncManager

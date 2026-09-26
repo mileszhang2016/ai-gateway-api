@@ -500,6 +500,38 @@ CREATE TABLE `rate_limit_policies` (
   INDEX `idx_enabled` (`enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='限流策略表';
 
+-- create ai_cache_rules (AI缓存规则表)
+DROP TABLE IF EXISTS `ai_cache_rules`;
+CREATE TABLE `ai_cache_rules` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID（排序/优先级用，不暴露API）',
+  `name` VARCHAR(128) NOT NULL COMMENT '规则名称（集合内唯一，可读性/审计用）',
+  `cond` TEXT NOT NULL COMMENT 'BFE条件表达式，如 req_path_in(...) && req_body_json_in("model", ...)',
+  `cache_key_strategy` VARCHAR(32) NOT NULL DEFAULT 'lastQuestion' COMMENT '缓存键策略：lastQuestion|allQuestions|disabled',
+  `cache_ttl` INT NOT NULL DEFAULT 0 COMMENT '缓存TTL（秒），0表示不过期',
+  `max_body_bytes` BIGINT NOT NULL DEFAULT 1048576 COMMENT '请求体大小上限（字节），超限不缓存',
+  `max_value_bytes` BIGINT NOT NULL DEFAULT 1048576 COMMENT '缓存值大小上限（字节），超限不缓存',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY `uk_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI缓存规则表';
+
+-- create traffic_mirror_rules (流量镜像规则表)
+DROP TABLE IF EXISTS `traffic_mirror_rules`;
+CREATE TABLE `traffic_mirror_rules` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID（排序/优先级用，不暴露API）',
+  `name` VARCHAR(128) NOT NULL COMMENT '规则名称（集合内唯一，可读性/审计用）',
+  `cond` TEXT COMMENT 'BFE条件表达式，如 req_path_prefix_in(...) && req_body_json_in("model", ...)；空串/NULL=全匹配',
+  `mirror_cluster` VARCHAR(128) NOT NULL COMMENT '镜像目标cluster名（引用cluster表，PUT时校验存在性）',
+  `percentage` INT NOT NULL DEFAULT 100 COMMENT '镜像采样百分比（0-100），0=命中但不采样',
+  `remove_headers` TEXT COMMENT '镜像副本剔除Header黑名单（JSON数组）；NULL=控制面导出时填默认黑名单',
+  `set_headers` TEXT COMMENT '镜像副本注入Header（JSON对象）；NULL=不注入',
+  `body_rewrites` TEXT COMMENT 'body字段改写（JSON数组[{"path","value"}]）；一期path仅允许model；NULL=不改写',
+  `path_rewrite` VARCHAR(1024) COMMENT '镜像路径整体替换（query保留）；NULL/空串=不改写',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  UNIQUE KEY `uk_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='流量镜像规则表';
+
 -- create route_rules (路由规则表)
 DROP TABLE IF EXISTS `route_rules`;
 CREATE TABLE `route_rules` (

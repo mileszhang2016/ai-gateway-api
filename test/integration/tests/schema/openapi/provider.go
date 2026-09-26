@@ -80,7 +80,7 @@ var ProviderSchema = &testutil.ObjectSchema{
 		"keys":              {Type: testutil.TypeArray, Elem: ProviderKeySchema},
 		"instance_pool":     {Type: testutil.TypeArray, Elem: ProviderInstanceSchema},
 		"instance_source":   {Type: testutil.TypeString, Enum: []interface{}{"instance_pool", "k8s_pool"}},
-		"k8s_pool_name":     {Type: testutil.TypeString},
+		"k8s_pool_name":     {Type: testutil.TypeString, Nullable: true}, // instance_pool 形态下合同为 null（providers.md 数据模型示例）
 		"k8s_instance_pool": {Type: testutil.TypeArray, Elem: ProviderInstanceSchema},
 		"model_protocols":   {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString, Enum: []interface{}{"openai", "anthropic", "gemini"}}},
 		"protocol_paths":    {Type: testutil.TypeObject},

@@ -49,6 +49,8 @@ func TestInnerAPI_Schema(t *testing.T) {
 	t.Run("mod_body_process", testModBodyProcessSchema)
 	t.Run("rate_limit_policy", testRateLimitPolicySchema)
 	t.Run("ai_route", testAIRouteSchema)
+	t.Run("ai_cache_rule", testAICacheRuleSchema)
+	t.Run("traffic_mirror_rule", testTrafficMirrorRuleSchema)
 	t.Run("epp_data", testEppDataSchema)
 	t.Run("server_data_conf_epp", testServerDataConfEppSchema)
 }
@@ -688,6 +690,192 @@ func testAIRouteSchema(t *testing.T) {
 		testutil.DeleteAPIKey(apiKeyID)
 		testutil.DeleteCluster(clusterName)
 	})
+}
+
+// ---------- ai_cache_rule ----------
+
+// phaseTwoAICacheFields 一期不得导出的二期/预留字段（ai-cache-rule.md §3.2 合同锁定）。
+var phaseTwoAICacheFields = []string{
+	"cacheKeyFrom", "cacheValueFrom", "cacheStreamValueFrom",
+	"cacheToolCallsFrom", "responseTemplate", "streamResponseTemplate",
+}
+
+func testAICacheRuleSchema(t *testing.T) {
+	// 自建集合：1 条仅 name+cond（默认值回填），1 条显式非默认。
+	validCond := `req_path_in("/v1/chat/completions", false)`
+	putResp, err := testutil.GetClient().Put("/open-api/v1/ai-cache-rules", map[string]interface{}{
+		"rules": []interface{}{
+			map[string]interface{}{"name": testutil.UniqueName("inner-schema-ac-1"), "cond": validCond},
+			map[string]interface{}{
+				"name": testutil.UniqueName("inner-schema-ac-2"), "cond": validCond,
+				"cache_key_strategy": "allQuestions", "cache_ttl": 3600,
+				"max_body_bytes": 2097152, "max_value_bytes": 2097152,
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 200, putResp.ErrNum, putResp.ErrMsg)
+	t.Cleanup(func() {
+		_, _ = testutil.GetClient().Put("/open-api/v1/ai-cache-rules", map[string]interface{}{
+			"rules": []interface{}{},
+		})
+	})
+
+	resp, err := testutil.GetClient().Get("/inner-api/v1/configs/ai-cache-rule")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, resp)
+	if resp.Data == nil || string(resp.Data) == "null" {
+		t.Fatal("first pull must return data")
+	}
+	testutil.AssertSchema(t, resp, AICacheRuleExportSchema)
+
+	// 定向断言 1：Version/Config 存在，Config.AI_product 长度=2。
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal(resp.Data, &payload))
+	version, ok := payload["Version"].(string)
+	require.True(t, ok, "Version should be string")
+	require.NotEmpty(t, version)
+	config, ok := payload["Config"].(map[string]interface{})
+	require.True(t, ok, "Config should be object")
+	productRules, ok := config["AI_product"].([]interface{})
+	require.True(t, ok, "Config.AI_product should be array")
+	require.Len(t, productRules, 2)
+
+	// 定向断言 2：每条规则恰含 5 个导出 tag（精确集合，防幻影键），值正确。
+	wantValues := []map[string]interface{}{
+		{
+			"cond": validCond, "cacheKeyStrategy": "lastQuestion",
+			"cacheTTL": float64(0), "maxBodyBytes": float64(1048576), "maxValueBytes": float64(1048576),
+		},
+		{
+			"cond": validCond, "cacheKeyStrategy": "allQuestions",
+			"cacheTTL": float64(3600), "maxBodyBytes": float64(2097152), "maxValueBytes": float64(2097152),
+		},
+	}
+	wantKeys := []string{"cond", "cacheKeyStrategy", "cacheTTL", "maxBodyBytes", "maxValueBytes"}
+	for i, item := range productRules {
+		rule, ok := item.(map[string]interface{})
+		require.True(t, ok, "AI_product[%d] should be object", i)
+		keys := make([]string, 0, len(rule))
+		for k := range rule {
+			keys = append(keys, k)
+		}
+		assert.ElementsMatch(t, wantKeys, keys, "AI_product[%d] must carry exactly the 5 phase-1 tags", i)
+		for k, v := range wantValues[i] {
+			assert.Equal(t, v, rule[k], "AI_product[%d].%s", i, k)
+		}
+	}
+
+	// 定向断言 3：二期 6 字段在整个导出 body 中缺席（合同锁定）。
+	body := string(resp.RawBody)
+	for _, field := range phaseTwoAICacheFields {
+		assert.NotContains(t, body, field, "phase-2 field %s must not appear in export", field)
+	}
+}
+
+// ---------- traffic_mirror_rule ----------
+
+// testTrafficMirrorRuleSchema 覆盖 /configs/traffic-mirror-rule 导出 schema。
+// 合同锁定：每条规则恰含 7 个导出 tag（全字段恒输出）；removeHeaders 两层默认语义
+//（缺省填默认黑名单、显式 [] 不剔除）以取值断言锁死。
+func testTrafficMirrorRuleSchema(t *testing.T) {
+	clusterName, err := testutil.CreateCluster(testutil.UniqueClusterName())
+	require.NoError(t, err)
+
+	validCond := `req_path_prefix_in("/v1/chat/completions", true)`
+	validCondB := `default_t()`
+	validCondC := `req_path_prefix_in("/v1/completions", true)`
+	defaultBlacklist := []string{"Authorization", "Cookie", "X-Api-Key"}
+
+	// 自建集合：1 条仅必填（缺省 remove_headers），1 条显式空黑名单，1 条全字段。
+	putResp, err := testutil.GetClient().Put("/open-api/v1/traffic-mirror-rules", map[string]interface{}{
+		"rules": []interface{}{
+			map[string]interface{}{"name": testutil.UniqueName("inner-schema-tm-1"), "cond": validCond, "mirror_cluster": clusterName},
+			map[string]interface{}{
+				"name": testutil.UniqueName("inner-schema-tm-2"), "cond": validCondB, "mirror_cluster": clusterName,
+				"remove_headers": []interface{}{},
+			},
+			map[string]interface{}{
+				"name": testutil.UniqueName("inner-schema-tm-3"), "cond": validCondC, "mirror_cluster": clusterName,
+				"percentage":    10,
+				"remove_headers": []interface{}{"X-Custom-Secret"},
+				"set_headers":    map[string]interface{}{"X-Shadow-Env": "pre-release"},
+				"body_rewrites":  []interface{}{map[string]interface{}{"path": "model", "value": "deepseek-v3"}},
+				"path_rewrite":   "/v1/internal/chat/completions",
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 200, putResp.ErrNum, putResp.ErrMsg)
+	t.Cleanup(func() {
+		_, _ = testutil.GetClient().Put("/open-api/v1/traffic-mirror-rules", map[string]interface{}{
+			"rules": []interface{}{},
+		})
+	})
+
+	resp, err := testutil.GetClient().Get("/inner-api/v1/configs/traffic-mirror-rule")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, resp)
+	if resp.Data == nil || string(resp.Data) == "null" {
+		t.Fatal("first pull must return data")
+	}
+	testutil.AssertSchema(t, resp, TrafficMirrorRuleExportSchema)
+
+	// 定向断言 1：Version/Config 存在，Config.AI_product 长度=3、顺序=提交顺序。
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal(resp.Data, &payload))
+	version, ok := payload["Version"].(string)
+	require.True(t, ok, "Version should be string")
+	require.NotEmpty(t, version)
+	config, ok := payload["Config"].(map[string]interface{})
+	require.True(t, ok, "Config should be object")
+	productRules, ok := config["AI_product"].([]interface{})
+	require.True(t, ok, "Config.AI_product should be array")
+	require.Len(t, productRules, 3)
+
+	// 定向断言 2：每条规则恰含 7 个导出 tag（精确集合，防幻影键），值正确。
+	wantKeys := []string{
+		"cond", "mirrorCluster", "percentage", "removeHeaders", "setHeaders", "bodyRewrites", "pathRewrite",
+	}
+	type wantRule struct {
+		cond          string
+		percentage    float64
+		removeHeaders []string
+	}
+	wants := []wantRule{
+		{cond: validCond, percentage: 100, removeHeaders: defaultBlacklist}, // 缺省 → 默认黑名单
+		{cond: validCondB, percentage: 100, removeHeaders: []string{}},      // 显式 [] → 不剔除
+		{cond: validCondC, percentage: 10, removeHeaders: []string{"X-Custom-Secret"}},
+	}
+	for i, item := range productRules {
+		rule, ok := item.(map[string]interface{})
+		require.True(t, ok, "AI_product[%d] should be object", i)
+		keys := make([]string, 0, len(rule))
+		for k := range rule {
+			keys = append(keys, k)
+		}
+		assert.ElementsMatch(t, wantKeys, keys, "AI_product[%d] must carry exactly the 7 export tags", i)
+		assert.Equal(t, wants[i].cond, rule["cond"], "AI_product[%d].cond", i)
+		assert.Equal(t, clusterName, rule["mirrorCluster"], "AI_product[%d].mirrorCluster", i)
+		assert.Equal(t, wants[i].percentage, rule["percentage"], "AI_product[%d].percentage", i)
+		gotRH, ok := rule["removeHeaders"].([]interface{})
+		require.True(t, ok, "AI_product[%d].removeHeaders should be array", i)
+		gotRHStr := make([]string, 0, len(gotRH))
+		for _, h := range gotRH {
+			gotRHStr = append(gotRHStr, h.(string))
+		}
+		assert.ElementsMatch(t, wants[i].removeHeaders, gotRHStr,
+			"AI_product[%d].removeHeaders 两层默认语义", i)
+	}
+
+	// 定向断言 3：两层默认语义的原始 body 文本形态（家族8/#102）。
+	body := string(resp.RawBody)
+	assert.Contains(t, body, `"removeHeaders":["Authorization","Cookie","X-Api-Key"]`)
+	assert.Contains(t, body, `"removeHeaders":[]`)
+	assert.Contains(t, body, `"removeHeaders":["X-Custom-Secret"]`)
+	assert.Contains(t, body, `"setHeaders":{}`)
+	assert.Contains(t, body, `"pathRewrite":""`)
+	assert.Contains(t, body, `"bodyRewrites":[{"path":"model","value":"deepseek-v3"}]`)
 }
 
 // ---------- epp_data ----------

@@ -238,3 +238,57 @@ type RateLimitPolicyStorager interface {
 	DeleteRateLimitPolicy(ctx context.Context, id int64) error
 	FetchRateLimitPolicy(ctx context.Context, id int64) (*RateLimitPolicyParam, error)
 }
+
+// AICacheRuleParam defines an AI cache rule. The Open API vocabulary is
+// lowercase snake_case; optional fields left nil are filled with defaults
+// (cache_key_strategy=lastQuestion, cache_ttl=0, max_body_bytes/max_value_bytes=1048576).
+// CreatedAt/UpdatedAt are read-only response fields (RFC3339).
+type AICacheRuleParam struct {
+	Name             *string    `json:"name"`
+	Cond             *string    `json:"cond"`
+	CacheKeyStrategy *string    `json:"cache_key_strategy,omitempty"`
+	CacheTTL         *int       `json:"cache_ttl,omitempty"`
+	MaxBodyBytes     *int64     `json:"max_body_bytes,omitempty"`
+	MaxValueBytes    *int64     `json:"max_value_bytes,omitempty"`
+	CreatedAt        *time.Time `json:"created_at,omitempty"`
+	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
+}
+
+// AICacheRulesParam defines the AI cache rule collection (full-replace semantics:
+// the submitted list is the effective set; a null rules list is treated as empty).
+type AICacheRulesParam struct {
+	Rules []*AICacheRuleParam `json:"rules"`
+}
+
+// TrafficMirrorBodyRewriteParam defines a body field rewrite on the mirror copy.
+// Phase 1 hard-checks path to "model" (aligned with BFE mod_traffic_mirror Check).
+type TrafficMirrorBodyRewriteParam struct {
+	Path  *string `json:"path"`
+	Value *string `json:"value"`
+}
+
+// TrafficMirrorRuleParam defines a traffic mirror rule. The Open API vocabulary
+// is lowercase snake_case. Optional fields left nil keep their NULL semantics:
+// remove_headers nil means "not submitted" (the export fills the default
+// sensitive-header blacklist), while an explicit empty array strips nothing.
+// percentage is filled with the documented default (100) on write.
+// CreatedAt/UpdatedAt are read-only response fields (RFC3339).
+type TrafficMirrorRuleParam struct {
+	Name          *string                          `json:"name"`
+	Cond          *string                          `json:"cond"`
+	MirrorCluster *string                          `json:"mirror_cluster"`
+	Percentage    *int                             `json:"percentage,omitempty"`
+	RemoveHeaders *[]string                        `json:"remove_headers,omitempty"`
+	SetHeaders    map[string]string                `json:"set_headers,omitempty"`
+	BodyRewrites  []*TrafficMirrorBodyRewriteParam `json:"body_rewrites,omitempty"`
+	PathRewrite   *string                          `json:"path_rewrite,omitempty"`
+	CreatedAt     *time.Time                       `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time                       `json:"updated_at,omitempty"`
+}
+
+// TrafficMirrorRulesParam defines the traffic mirror rule collection
+// (full-replace semantics: the submitted list is the effective set; a null
+// rules list is treated as empty and clears the collection).
+type TrafficMirrorRulesParam struct {
+	Rules []*TrafficMirrorRuleParam `json:"rules"`
+}

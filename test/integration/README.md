@@ -26,6 +26,14 @@ integration/
     │   ├── design.md
     │   └── create/create_test.go
     │       ...
+    ├── ai_cache/                    # AI 缓存规则（集合级 PUT/GET + Inner 导出）
+    │   ├── design.md
+    │   ├── update/update_test.go
+    │   └── get/get_test.go
+    ├── traffic_mirror/              # 流量镜像规则（集合级 PUT/GET + Inner 导出）
+    │   ├── design.md
+    │   ├── update/update_test.go      # 含 //go:build mysql 并发用例（需 AIAPI_MYSQL_DSN）
+    │   └── get/get_test.go
     ├── ai_route/
     ├── auth/
     ├── entity/
