@@ -1,8 +1,10 @@
 # AI 缓存规则与导出
 
+> 2026-09-30 二期增量：语义缓存（`enable_semantic_cache` 规则开关 + 顶层 `Semantic` 全局块 + 单例设置资源 `ai_cache_semantic_settings`）。BFE 数据面已实现（`docs/zh_cn/modifications/2026-09-30-ai-cache-semantic-cache/`，bfe `v1.8.9-dev`）。变更方案见 `design-docs/modifications/2026-09-30-ai-cache-semantic-cache/`。下文以"二期"标注增量部分。
+
 ## 1. 概述
 
-AI 缓存规则（`ai_cache_rules`）是 AI 网关一期缓存能力（ai-cache，简化版：仅 Redis 精确匹配）的控制面配置入口。数据面由 BFE `mod_ai_cache` 模块消费规则文件（`ai_cache.data`）：命中规则的请求由 BFE 直接从缓存构造响应（非流式 JSON / 流式 SSE），不再转发到后端；访问日志记录 `ai_cache_status`（hit/miss/skip）与 `ai_cache_key`。
+AI 缓存规则（`ai_cache_rules`）是 AI 网关缓存能力（一期 Redis 精确匹配；二期语义缓存）的控制面配置入口。数据面由 BFE `mod_ai_cache` 模块消费规则文件（`ai_cache.data`）：命中规则的请求由 BFE 直接从缓存构造响应（非流式 JSON / 流式 SSE），不再转发到后端；访问日志记录 `ai_cache_status`（hit / hit_semantic / miss / skip）、语义命中时的 `ai_cache_semantic` / `ai_cache_similarity`（791/792）与 `ai_cache_key`。
 
 规则文件由 ai-gateway-api 生成、conf-agent 轮询拉取并触发 BFE 热加载，与既有配置导出链路（`topic + generator + MD5 签名 + config_versions + Inner API 轮询`）完全一致，本次为纯登记式扩展，导出框架零改动。
 
@@ -18,6 +20,14 @@ AI 缓存规则（`ai_cache_rules`）是 AI 网关一期缓存能力（ai-cache�
 - **一组有序规则，first-match-wins**：顺序 = PUT 数组顺序 = `id` 升序 = GET 返回顺序 = 导出数组顺序；不设显式 `priority` 字段；
 - `cache_key_strategy=disabled` 是**数据面缓存豁免**语义（BFE `mod_ai_cache` 命中即返回不缓存并阻断后续规则），与控制面"规则不在列表即不存在"是两个概念；典型用法是"全部缓存、除外某模型/路径"（BFE 侧条件表达式难以表达否定子句）；
 - PUT 为单事务整体重建（delete-all + insert-all）：不在提交列表中的规则即删除；`{"rules": []}` 清空全部规则。
+
+### 2.3 单例资源 `ai_cache_semantic_settings`（二期）
+
+- 语义缓存**全局调优参数**（`top_k` / `threshold` / `threshold_relation`）：描述向量检索与判定的全局特性，部署内一份——评审明确不做规则级重复配置（避免过度设计）；
+- **不走 `model/imods` 模式**：imods 每个 manager 产出独立 topic 文件（如 `mod_body_process.data`），而 `Semantic` 块必须并入 `ai_cache.data` 顶层（BFE 只加载这一个文件）；故设置为 ai_cache 域内子资源，由 `AICacheRuleGenerator` 合并导出；
+- Open API：`GET/PUT /open-api/v1/ai-cache-semantic-settings`，**upsert 语义**（单行表，不存在则插入、存在则整行覆盖）；GET 空表返默认值对象（`1 / 0.15 / lt`）；
+- **生命周期独立于规则集合**：清空 `/ai-cache-rules` 不影响设置，`Semantic` 块仍导出；
+- 复用 `FeatureAICache` 权限点，不新增 Feature。
 
 ### 2.2 与 rate_limit_policy 的关键差异
 
@@ -44,6 +54,7 @@ CREATE TABLE `ai_cache_rules` (
   `cache_ttl` INT NOT NULL DEFAULT 0 COMMENT '缓存TTL（秒），0表示不过期',
   `max_body_bytes` BIGINT NOT NULL DEFAULT 1048576 COMMENT '请求体大小上限（字节），超限不缓存',
   `max_value_bytes` BIGINT NOT NULL DEFAULT 1048576 COMMENT '缓存值大小上限（字节），超限不缓存',
+  `enable_semantic_cache` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用语义缓存: 0-否, 1-是（二期）',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   UNIQUE KEY `uk_name` (`name`)
@@ -54,7 +65,23 @@ CREATE TABLE `ai_cache_rules` (
 
 - **无 `enabled` 列**（全量替换模型下冗余，见 §2.1）；
 - `uk_name` 唯一键兜底集合内重名（服务端校验先行，DB 为最后防线）；
-- SQLite 版本（`db_ddl_sqlite.sql`）照 `rate_limit_policies` 的 SQLite 惯例改写：类型映射（`BIGINT`→`INTEGER`、`TEXT`/`VARCHAR`→`TEXT`、`DATETIME`→`TEXT`）+ `updated_at` 由触发器维护；新表对存量库为零迁移。
+- SQLite 版本（`db_ddl_sqlite.sql`）照 `rate_limit_policies` 的 SQLite 惯例改写：类型映射（`BIGINT`→`INTEGER`、`TEXT`/`VARCHAR`→`TEXT`、`DATETIME`→`TEXT`）+ `updated_at` 由触发器维护；新表对存量库为零迁移；
+- **二期加列**（存量环境 upgrade 脚本，幂等）：`ALTER TABLE ai_cache_rules ADD COLUMN enable_semantic_cache TINYINT(1) NOT NULL DEFAULT 0`——存量规则语义关闭，向后兼容。
+
+### 3.1.1 语义全局设置表 `ai_cache_semantic_settings`（二期，单行）
+
+```sql
+CREATE TABLE `ai_cache_semantic_settings` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID（恒为1语义，物理单行）',
+  `top_k` INT NOT NULL DEFAULT 1 COMMENT '语义检索TopK（1-10）',
+  `threshold` DOUBLE NOT NULL DEFAULT 0.15 COMMENT '相似度阈值（量纲与 threshold_relation 一致，0-2）',
+  `threshold_relation` VARCHAR(8) NOT NULL DEFAULT 'lt' COMMENT '阈值比较: gt/gte/lt/lte',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI缓存语义全局设置表（单行）';
+```
+
+要点：**空表 = 默认值**（不显式插入默认行，单一真相在 `model/ai_cache/` 的默认值常量）；`Get` 空表返回 `(nil, nil)` 由 model 层转默认值对象；`Upsert` 采用 delete-all + insert（单行表）；SQLite 版本照 `ai_cache_rules` 惯例改写（含 `updated_at` 触发器）。
 
 ### 3.2 Open API 数据形态
 
@@ -87,6 +114,7 @@ CREATE TABLE `ai_cache_rules` (
 | `rules[].cache_ttl` | int | 缓存 TTL（秒），`0` 表示不过期 | 非必填；未传时默认 `0`；≥ 0 |
 | `rules[].max_body_bytes` | int64 | 请求体大小上限（字节），超限不缓存 | 非必填；未传时默认 1048576（1MB）；> 0 |
 | `rules[].max_value_bytes` | int64 | 缓存值大小上限（字节），超限不缓存 | 非必填；未传时默认 1048576（1MB）；> 0 |
+| `rules[].enable_semantic_cache` | bool | 语义缓存开关（二期）；`cache_key_strategy=disabled` 时无效（BFE 忽略，不报错） | 非必填；未传时默认 `false` |
 
 响应只读字段（仅 GET/PUT 响应携带，提交时忽略）：`rules[].created_at`、`rules[].updated_at`（RFC3339）。规则 `id` 为内部排序字段，不出现在 API 请求与响应中。
 
@@ -100,6 +128,8 @@ CREATE TABLE `ai_cache_rules` (
 |--------|------|------|------|
 | GET | `/open-api/v1/ai-cache-rules` | `FeatureAICache + ActionRead` | 全量查询；空集合返回 `{"rules": []}`；按优先级升序返回（顺序同导出到 BFE 的顺序） |
 | PUT | `/open-api/v1/ai-cache-rules` | `FeatureAICache + ActionUpdate` | 全量更新（整体替换）；返回更新后全量集合 |
+| GET | `/open-api/v1/ai-cache-semantic-settings` | `FeatureAICache + ActionRead` | 查询语义全局设置（二期）；空表返默认值对象 |
+| PUT | `/open-api/v1/ai-cache-semantic-settings` | `FeatureAICache + ActionUpdate` | 全量更新语义全局设置（upsert，单行覆盖） |
 
 ### 4.2 校验（`lib/validate.AICacheRules`，任一失败则整个 PUT 422，集合不变）
 
@@ -111,6 +141,7 @@ CREATE TABLE `ai_cache_rules` (
 | 每条 `cache_key_strategy` | ∈ `lastQuestion` / `allQuestions` / `disabled` |
 | 每条 `cache_ttl` | ≥ 0 |
 | 每条 `max_body_bytes` / `max_value_bytes` | > 0 |
+| 每条 `enable_semantic_cache`（二期） | bool 类型；无组合校验——`disabled` 策略上的开关由 BFE 忽略（两侧一致，不报错） |
 | 集合内 `name` 唯一 | 遍历查重（422，请求集合内部矛盾，不用 409） |
 
 控制面校验把错误拦在写入前（fail-fast）；BFE 侧校验（最后防线）：`cond` 必须 `condition.Build` 编译通过、`cacheKeyStrategy` 枚举、`cacheTTL >= 0`、`maxBodyBytes`/`maxValueBytes > 0`、同一 product 内 `cond` 不可重复（BFE `ProductRuleConfListFile.Check` 拒绝；控制面不做集合内 cond 去重）。
@@ -127,6 +158,10 @@ PUT 的执行语义为**单事务整体重建**：
 
 本接口为整组规则的唯一写入口，配置生效时延 = conf-agent 轮询周期（`ReloadIntervalMs`）+ BFE 热加载时间。
 
+### 4.4 语义设置读写语义（二期）
+
+PUT `/ai-cache-semantic-settings` 为单事务 **upsert**：delete-all + insert（单行表）；校验（`lib/validate.AICacheSemanticSettings`）：`top_k` ∈ [1,10]、`threshold` ∈ [0,2]、`threshold_relation` ∈ 四枚举，全部字段可省略走默认（`1 / 0.15 / lt`）；任一失败 422 且设置不变（记失败审计）。事务成功记录 update 审计（`resource_type=ai_cache_semantic_settings`，`before` 空表时为默认值快照）。
+
 ---
 
 ## 5. 导出契约（冻结）
@@ -137,7 +172,12 @@ PUT 的执行语义为**单事务整体重建**：
 
 ```json
 {
-  "Version": "20260924103000",
+  "Version": "20260930103000",
+  "Semantic": {
+    "topK": 1,
+    "threshold": 0.15,
+    "thresholdRelation": "lt"
+  },
   "Config": {
     "<product>": [ /* ProductRuleConfFile 数组，first-match-wins */ ]
   }
@@ -145,6 +185,7 @@ PUT 的执行语义为**单事务整体重建**：
 ```
 
 - `Version` / `Config` 首字母大写：conf-agent 提取版本与配置的**硬契约**；
+- `Semantic`（二期新增）为顶层并列键，**恒导出**（设置行不存在时用默认值 `1 / 0.15 / lt`）；旧版 BFE 加载器忽略未知顶层字段，向后兼容；
 - `<product>` 从运行时配置取：`stateful.DefaultConfig.RunTime.AIRouteInnerProductName`（默认 `AI_product`），**不要硬编码**——与 mod_api_key/mod_body_process 导出一致；
 - `Config` 的 value 为数组；数组顺序 = `id` 升序 = PUT 提交顺序。
 
@@ -163,6 +204,17 @@ PUT 的执行语义为**单事务整体重建**：
 | `streamResponseTemplate` | `StreamResponseTemplate *string` | 否（二期） | 内置 SSE 模板（`%s` 占位） | 必须含 `%s` |
 | `maxBodyBytes` | `MaxBodyBytes *int64` | 是 | 1048576（1MB） | > 0 |
 | `maxValueBytes` | `MaxValueBytes *int64` | 是 | 1048576（1MB） | > 0 |
+| `enableSemanticCache` | `EnableSemanticCache *bool` | **是（二期起恒导出）** | `false` | bool；`cacheKeyStrategy=disabled` 时 BFE 忽略（不报错） |
+
+### 5.2.1 顶层 `Semantic` 块 tag 全表（`SemanticConfFile`，二期）
+
+| 导出 JSON tag | Go 字段 | 默认 | BFE 校验 | 说明 |
+|---------------|---------|------|----------|------|
+| `topK` | `TopK *int` | 1 | ∈ [1,10] | 向量检索近邻个数 |
+| `threshold` | `Threshold *float64` | 0.15 | ∈ [0,2] | 相似度阈值（量纲随 relation；cosine distance 语境保守默认，须按模型校准） |
+| `thresholdRelation` | `ThresholdRelation *string` | `lt` | ∈ `lt`/`lte`/`gt`/`gte` | distance 语义越小越相似 / similarity 语义越大越相似 |
+
+设置存于 Open API 单例资源 `ai_cache_semantic_settings`（小写下划线词汇），生成器合并导出；空表用默认值（单一真相在 `model/ai_cache/` 默认值常量，与 BFE `setDefaults` 数值一一对应）。
 
 **一期导出最小字段集**：每条规则只导出 `cond` / `cacheKeyStrategy` / `cacheTTL` / `maxBodyBytes` / `maxValueBytes` 五个字段，其余字段由 BFE `setDefaults` 填默认。理由：
 
@@ -189,9 +241,10 @@ func (m *AICacheManager) ConfigExport(ctx context.Context, lastVersion string) (
 ### 6.2 `AICacheRuleGenerator` 流程
 
 1. 查全部规则，按 `id` 升序（**无 enabled 过滤**——提交列表即生效集合）；
-2. 组装 `Config[AIRouteInnerProductName] = 规则数组`（规则结构使用与 §5.2 tag 完全一致的导出专用 struct，定义在 `model/ai_cache/` 内）；
-3. 空表时导出空数组（product 键仍 present，值为 `[]`）；
-4. 套 `iversion_control.ExportConfig(ctx, ConfigTopicProductAICache, generator)` 标准流程：生成数据 → MD5 签名 → 比对 `config_versions`（`name="mod_ai_cache"`）→ 签名相同返回旧版本（增量，HTTP Data 为 null）→ 不同则插新版本（版本号 = 时间戳 `20060102150405`，同 Topic 严格单调递增，机制见《InnerAPI配置导出与版本控制.md》）。
+2. （二期）查语义设置行，空表用默认值（`1 / 0.15 / lt`）组装顶层 `Semantic` 块；
+3. 组装 `Config[AIRouteInnerProductName] = 规则数组`（规则结构使用与 §5.2 tag 完全一致的导出专用 struct，定义在 `model/ai_cache/` 内；二期起每条带 `EnableSemanticCache`）；
+4. 空表时导出空数组（product 键仍 present，值为 `[]`）；**`Semantic` 块不受规则清空影响，恒导出**；
+5. 套 `iversion_control.ExportConfig(ctx, ConfigTopicProductAICache, generator)` 标准流程：生成数据 → MD5 签名（覆盖含 `Semantic` 的全量内容）→ 比对 `config_versions`（`name="mod_ai_cache"`）→ 签名相同返回旧版本（增量，HTTP Data 为 null）→ 不同则插新版本（版本号 = 时间戳 `20060102150405`，同 Topic 严格单调递增，机制见《InnerAPI配置导出与版本控制.md》）。**修改语义设置同样驱动版本流**。
 
 topic 常量 `ConfigTopicProductAICache = "mod_ai_cache"` 定义在 `model/ai_cache/ai_cache_manager.go` 内（与 rate_limit 的 topic 定义在自身包内一致）。
 
@@ -251,9 +304,10 @@ BFE `mod_ai_cache` 收到 `ai_cache.data` 并热加载后：
 
 1. 请求到达时按数组顺序逐条匹配规则（first-match-wins）；
 2. 命中 `cache_key_strategy=disabled` 的规则：不读不写缓存，直接放行到后端，且不再匹配后续规则（缓存豁免）；
-3. 命中其余规则：按 `cacheKeyStrategy` 构造缓存键（键内带凭证前缀实现租户隔离），读缓存命中则直接构造响应（非流式 JSON / 流式 SSE 模板），未命中则回源并回写缓存（受 `cacheTTL` / `maxBodyBytes` / `maxValueBytes` 约束）；
-4. 无规则命中：天然放行，等同未启用缓存；
-5. 访问日志记录 `ai_cache_status`（hit/miss/skip）与 `ai_cache_key`。
+3. 命中其余规则：按 `cacheKeyStrategy` 构造缓存键（键内带凭证前缀实现租户隔离），**Redis 精确查询命中则直接构造响应**（非流式 JSON / 流式 SSE 模板）——精确命中绝不触发 embedding；
+4. （二期）Redis 未命中且规则 `enableSemanticCache=true`（且 BFE 已配置 `[embedding]`/`[vector]`）：问题文本 embedding → Chroma 向量 TopK 检索（强制 `tenant_id` + TTL 过滤）→ 按 `Semantic` 块阈值判定，命中返回缓存答案（状态 `hit_semantic`）；未命中则回源，回写时答案写 Redis（`SETEX`，受 `cacheTTL` 等约束），`(question, embedding, answer)` 异步写向量库；
+5. 无规则命中：天然放行，等同未启用缓存；
+6. 访问日志记录 `ai_cache_status`（hit / hit_semantic / miss / skip）、语义命中时的 `ai_cache_semantic` / `ai_cache_similarity`（791/792，bfe-access-pb v0.3.10）与 `ai_cache_key`；语义命中置 `AiCacheHit=true`，`mod_ai_token_auth` 跳过配额扣减（二期零改动）。
 
 > BFE 具体缓存实现（Redis 连接池、序列化）不在本文档范围；Redis 连接以静态 `mod_ai_cache.conf` 为准（§7）。
 
@@ -269,6 +323,11 @@ BFE `mod_ai_cache` 收到 `ai_cache.data` 并热加载后：
 | `cond` 编译失败 | 422（Open API 层 `ConditionExpression` 校验，fail-fast） |
 | 集合内 `cond` 重复 | 控制面不拦截；BFE `ProductRuleConfListFile.Check` 拒绝加载（兜底） |
 | 漏导一期字段 | BFE `CheckNilField` 加载失败（P0 级契约事故）；单测对 marshal 结果做 JSON key 精确断言防回归 |
+| 漏导 `Semantic` 块 / `enableSemanticCache` | BFE 语义能力按默认值运行（**不报错**——二期字段全部可选，缺省即默认）；单测断言两键恒存在 |
+| PUT 设置非法（top_k 越界 / relation 非法枚举） | 422，设置不变，记失败审计 |
+| 清空规则后 `Semantic` 块 | **仍导出**（设置独立于规则生命周期）；BFE 无规则命中、天然放行 |
+| `enable_semantic_cache=true` + `disabled` 策略 | 控制面透传不拦截；BFE 忽略该开关（组合不报错，两侧一致） |
+| 旧版 BFE 收到顶层 `Semantic` | 忽略未知顶层字段，精确缓存行为不变（向后兼容） |
 | 导出后规则又变更 | 下次轮询时 MD5 签名变化 → 新版本号 → conf-agent 拉取并热加载；生效时延 = 轮询周期 + 热加载时间 |
 | 二期开放预留字段 | 表加列 → Open API 加字段 → generator 加导出字段，tag 照 §5.2 契约表，无需再对齐命名 |
 
@@ -282,11 +341,14 @@ BFE `mod_ai_cache` 收到 `ai_cache.data` 并热加载后：
 | `model/ai_cache/ai_cache_manager.go` | `AICacheManager`：集合全量读写、`ConfigExport`、`AICacheRuleGenerator`、topic 常量 |
 | `model/ai_cache/operation_log.go` | PUT 审计（集合快照 before/after） |
 | `storage/rdb/ai_cache/ai_cache.go` | `AICacheStorager` 实现：`FetchAll` + `ReplaceAll`（事务内 delete-all + insert-all） |
-| `storage/rdb/internal/dao/table_ai_cache_rules.go` | `ai_cache_rules` 表 DAO |
-| `endpoints/openapi_v1/ai_cache/` | Open API 端点（GET + PUT 集合全量读写） |
-| `endpoints/innerapi_v1/ai_cache/export.go` | Inner API 导出端点（`/configs/ai-cache-rule`） |
-| `lib/validate/validate.go` | `AICacheRules` 集合级全量校验 |
-| `stateful/container/components.go`、`stateful/container/rdb/components.go` | 容器声明与装配（AICacheStorager / AICacheManager） |
+| `storage/rdb/internal/dao/table_ai_cache_rules.go` | `ai_cache_rules` 表 DAO（二期带 `enable_semantic_cache` 列） |
+| `storage/rdb/internal/dao/table_ai_cache_semantic_settings.go`、`storage/rdb/ai_cache/settings_storager.go`（二期） | 语义全局设置 DAO / storager（`Get` 空表返 nil、`Upsert` 单行覆盖） |
+| `endpoints/openapi_v1/ai_cache/` | Open API 端点（rules GET + PUT；二期新增 settings GET + PUT） |
+| `endpoints/innerapi_v1/ai_cache/export.go` | Inner API 导出端点（`/configs/ai-cache-rule`，二期零代码改动——契约变化在生成器数据内） |
+| `lib/validate/validate.go` | `AICacheRules` 集合级全量校验；二期新增 `AICacheSemanticSettings` |
+| `stateful/container/components.go`、`stateful/container/rdb/components.go` | 容器声明与装配（AICacheStorager / AICacheManager；二期注入 settings storager） |
 | `design-docs/api-define/OpenAPI接口定义/ai-cache-rules.md` | Open API 接口定义 |
-| `design-docs/api-define/InnerAPI接口定义/ai-cache-rule.md` | Inner API 导出接口定义 |
-| `design-docs/modifications/2026-09-24-ai-cache-rule-export/` | 本次变更的变更摘要与设计变更说明 |
+| `design-docs/api-define/OpenAPI接口定义/ai-cache-semantic-settings.md`（二期） | 语义设置单例接口定义 |
+| `design-docs/api-define/InnerAPI接口定义/ai-cache-rule.md` | Inner API 导出接口定义（二期含顶层 `Semantic` 块） |
+| `design-docs/modifications/2026-09-24-ai-cache-rule-export/` | 一期变更摘要与设计变更说明 |
+| `design-docs/modifications/2026-09-30-ai-cache-semantic-cache/`（二期） | 二期变更摘要、API 契约与设计变更说明 |

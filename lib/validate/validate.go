@@ -643,6 +643,21 @@ const (
 	AICacheKeyStrategyDisabled     = "disabled"
 )
 
+// Semantic settings bounds and threshold relations (BFE mod_ai_cache
+// contract; the defaults themselves live in model/ai_cache).
+const (
+	MinAICacheSemanticTopK = 1
+	MaxAICacheSemanticTopK = 10
+
+	MinAICacheSemanticThreshold = 0.0
+	MaxAICacheSemanticThreshold = 2.0
+
+	AICacheSemanticThresholdRelationLT  = "lt"
+	AICacheSemanticThresholdRelationLTE = "lte"
+	AICacheSemanticThresholdRelationGT  = "gt"
+	AICacheSemanticThresholdRelationGTE = "gte"
+)
+
 // AICacheRules validates an AI cache rule set (the full-replace PUT body).
 // A nil rules list is treated as empty (clear all rules); any single failure
 // rejects the whole collection with a param error (HTTP 422).
@@ -699,6 +714,43 @@ func AICacheRules(param *shared.AICacheRulesParam) error {
 
 		if rule.MaxValueBytes != nil && *rule.MaxValueBytes <= 0 {
 			return xerror.WrapParamErrorWithMsg("ai cache rule %s max_value_bytes must be > 0", *rule.Name)
+		}
+
+		// enable_semantic_cache is a plain bool: nil is treated as false by the
+		// model layer default fill; no range or combination validation (a
+		// cache_key_strategy=disabled rule ignores the flag on the BFE side).
+	}
+
+	return nil
+}
+
+// AICacheSemanticSettings validates the singleton semantic settings (the
+// full-replace PUT body). Omitted fields fall back to the documented
+// defaults (filled by the model layer); any out-of-range value or illegal
+// threshold relation rejects the whole write with a param error (HTTP 422).
+func AICacheSemanticSettings(param *shared.AICacheSemanticSettingsParam) error {
+	if param == nil {
+		return nil
+	}
+
+	if param.TopK != nil && (*param.TopK < MinAICacheSemanticTopK || *param.TopK > MaxAICacheSemanticTopK) {
+		return xerror.WrapParamErrorWithMsg("ai cache semantic settings top_k must be in [%d, %d]",
+			MinAICacheSemanticTopK, MaxAICacheSemanticTopK)
+	}
+
+	if param.Threshold != nil && (*param.Threshold < MinAICacheSemanticThreshold || *param.Threshold > MaxAICacheSemanticThreshold) {
+		return xerror.WrapParamErrorWithMsg("ai cache semantic settings threshold must be in [%v, %v]",
+			MinAICacheSemanticThreshold, MaxAICacheSemanticThreshold)
+	}
+
+	if param.ThresholdRelation != nil {
+		switch *param.ThresholdRelation {
+		case AICacheSemanticThresholdRelationLT, AICacheSemanticThresholdRelationLTE,
+			AICacheSemanticThresholdRelationGT, AICacheSemanticThresholdRelationGTE:
+		default:
+			return xerror.WrapParamErrorWithMsg("ai cache semantic settings threshold_relation must be one of %s/%s/%s/%s",
+				AICacheSemanticThresholdRelationLT, AICacheSemanticThresholdRelationLTE,
+				AICacheSemanticThresholdRelationGT, AICacheSemanticThresholdRelationGTE)
 		}
 	}
 

@@ -49,23 +49,45 @@ func (f *fakeAICacheStorager) ReplaceAll(ctx context.Context, rules []*aiCacheMo
 	for _, r := range rules {
 		f.nextID++
 		f.rules = append(f.rules, &aiCacheModel.AICacheRuleParam{
-			ID:               lib.PInt64(f.nextID),
-			Name:             r.Name,
-			Cond:             r.Cond,
-			CacheKeyStrategy: r.CacheKeyStrategy,
-			CacheTTL:         r.CacheTTL,
-			MaxBodyBytes:     r.MaxBodyBytes,
-			MaxValueBytes:    r.MaxValueBytes,
-			CreatedAt:        &now,
-			UpdatedAt:        &now,
+			ID:                  lib.PInt64(f.nextID),
+			Name:                r.Name,
+			Cond:                r.Cond,
+			CacheKeyStrategy:    r.CacheKeyStrategy,
+			CacheTTL:            r.CacheTTL,
+			MaxBodyBytes:        r.MaxBodyBytes,
+			MaxValueBytes:       r.MaxValueBytes,
+			EnableSemanticCache: r.EnableSemanticCache,
+			CreatedAt:           &now,
+			UpdatedAt:           &now,
 		})
 	}
 	return nil
 }
 
-func setupAICacheManager(storager aiCacheModel.AICacheStorager) func() {
+// fakeAICacheSemanticSettingsStorager emulates the singleton settings table:
+// Get returns the in-memory row (nil when empty), Upsert overwrites it.
+type fakeAICacheSemanticSettingsStorager struct {
+	row *aiCacheModel.SemanticSettingsRow
+}
+
+func (f *fakeAICacheSemanticSettingsStorager) Get(ctx context.Context) (*aiCacheModel.SemanticSettingsRow, error) {
+	return f.row, nil
+}
+
+func (f *fakeAICacheSemanticSettingsStorager) Upsert(ctx context.Context, row *aiCacheModel.SemanticSettingsRow) error {
+	now := time.Date(2026, 9, 30, 10, 30, 0, 0, time.UTC)
+	row.ID = lib.PInt64(1)
+	row.CreatedAt = &now
+	row.UpdatedAt = &now
+	f.row = row
+	return nil
+}
+
+var _ aiCacheModel.AICacheSemanticSettingsStorager = (*fakeAICacheSemanticSettingsStorager)(nil)
+
+func setupAICacheManager(storager aiCacheModel.AICacheStorager, settingsStorager aiCacheModel.AICacheSemanticSettingsStorager) func() {
 	old := container.AICacheManager
-	container.AICacheManager = aiCacheModel.NewAICacheManager(&testutil.FakeTxn{}, storager, nil, "AI_product")
+	container.AICacheManager = aiCacheModel.NewAICacheManager(&testutil.FakeTxn{}, storager, settingsStorager, nil, "AI_product")
 	return func() {
 		container.AICacheManager = old
 	}
@@ -90,7 +112,7 @@ func TestAICacheRulesGetAction(t *testing.T) {
 				},
 			},
 		}
-		defer setupAICacheManager(store)()
+		defer setupAICacheManager(store, &fakeAICacheSemanticSettingsStorager{})()
 
 		req := httptest.NewRequest(http.MethodGet, "/ai-cache-rules", nil)
 		data, err := AICacheRulesGetAction(req)
@@ -108,7 +130,7 @@ func TestAICacheRulesGetAction(t *testing.T) {
 	})
 
 	t.Run("empty collection returns empty rules array", func(t *testing.T) {
-		defer setupAICacheManager(&fakeAICacheStorager{})()
+		defer setupAICacheManager(&fakeAICacheStorager{}, &fakeAICacheSemanticSettingsStorager{})()
 
 		req := httptest.NewRequest(http.MethodGet, "/ai-cache-rules", nil)
 		data, err := AICacheRulesGetAction(req)
@@ -141,7 +163,7 @@ func TestAICacheRulesUpdateAction(t *testing.T) {
 
 	t.Run("round trip with default backfill and no internal id", func(t *testing.T) {
 		store := &fakeAICacheStorager{}
-		defer setupAICacheManager(store)()
+		defer setupAICacheManager(store, &fakeAICacheSemanticSettingsStorager{})()
 
 		req := httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader(validBody))
 		data, err := AICacheRulesUpdateAction(req)
@@ -170,7 +192,7 @@ func TestAICacheRulesUpdateAction(t *testing.T) {
 
 	t.Run("empty rules clear the collection", func(t *testing.T) {
 		store := &fakeAICacheStorager{}
-		defer setupAICacheManager(store)()
+		defer setupAICacheManager(store, &fakeAICacheSemanticSettingsStorager{})()
 
 		req := httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader(`{"rules": []}`))
 		data, err := AICacheRulesUpdateAction(req)
@@ -181,8 +203,36 @@ func TestAICacheRulesUpdateAction(t *testing.T) {
 		assert.Contains(t, string(bs), `"rules":[]`)
 	})
 
+	t.Run("round trip with enable_semantic_cache", func(t *testing.T) {
+		store := &fakeAICacheStorager{}
+		defer setupAICacheManager(store, &fakeAICacheSemanticSettingsStorager{})()
+
+		body := `{"rules": [
+			{"name": "semantic-on", "cond": "default_t()", "enable_semantic_cache": true},
+			{"name": "semantic-off-explicit", "cond": "default_t()", "enable_semantic_cache": false}
+		]}`
+		req := httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader(body))
+		data, err := AICacheRulesUpdateAction(req)
+		require.NoError(t, err)
+
+		result, ok := data.(*shared.AICacheRulesParam)
+		require.True(t, ok)
+		require.Len(t, result.Rules, 2)
+		assert.Equal(t, true, *result.Rules[0].EnableSemanticCache)
+		assert.Equal(t, false, *result.Rules[1].EnableSemanticCache)
+
+		// Omitted flag defaults to false on read-back.
+		body = `{"rules": [{"name": "semantic-omitted", "cond": "default_t()"}]}`
+		req = httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader(body))
+		data, err = AICacheRulesUpdateAction(req)
+		require.NoError(t, err)
+		result = data.(*shared.AICacheRulesParam)
+		require.Len(t, result.Rules, 1)
+		assert.Equal(t, false, *result.Rules[0].EnableSemanticCache)
+	})
+
 	t.Run("invalid JSON is rejected", func(t *testing.T) {
-		defer setupAICacheManager(&fakeAICacheStorager{})()
+		defer setupAICacheManager(&fakeAICacheStorager{}, &fakeAICacheSemanticSettingsStorager{})()
 
 		req := httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader("not-json"))
 		_, err := AICacheRulesUpdateAction(req)
@@ -190,7 +240,7 @@ func TestAICacheRulesUpdateAction(t *testing.T) {
 	})
 
 	t.Run("422 invalid cond", func(t *testing.T) {
-		defer setupAICacheManager(&fakeAICacheStorager{})()
+		defer setupAICacheManager(&fakeAICacheStorager{}, &fakeAICacheSemanticSettingsStorager{})()
 
 		body := `{"rules": [{"name": "bad-cond", "cond": "unknown_func()"}]}`
 		req := httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader(body))
@@ -200,7 +250,7 @@ func TestAICacheRulesUpdateAction(t *testing.T) {
 	})
 
 	t.Run("422 duplicate name in collection", func(t *testing.T) {
-		defer setupAICacheManager(&fakeAICacheStorager{})()
+		defer setupAICacheManager(&fakeAICacheStorager{}, &fakeAICacheSemanticSettingsStorager{})()
 
 		body := `{"rules": [
 			{"name": "dup", "cond": "default_t()"},
@@ -213,7 +263,7 @@ func TestAICacheRulesUpdateAction(t *testing.T) {
 	})
 
 	t.Run("422 invalid cache_key_strategy enum", func(t *testing.T) {
-		defer setupAICacheManager(&fakeAICacheStorager{})()
+		defer setupAICacheManager(&fakeAICacheStorager{}, &fakeAICacheSemanticSettingsStorager{})()
 
 		body := `{"rules": [{"name": "bad-enum", "cond": "default_t()", "cache_key_strategy": "firstQuestion"}]}`
 		req := httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader(body))
@@ -223,7 +273,7 @@ func TestAICacheRulesUpdateAction(t *testing.T) {
 	})
 
 	t.Run("422 negative cache_ttl", func(t *testing.T) {
-		defer setupAICacheManager(&fakeAICacheStorager{})()
+		defer setupAICacheManager(&fakeAICacheStorager{}, &fakeAICacheSemanticSettingsStorager{})()
 
 		body := `{"rules": [{"name": "bad-ttl", "cond": "default_t()", "cache_ttl": -1}]}`
 		req := httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader(body))
@@ -233,7 +283,7 @@ func TestAICacheRulesUpdateAction(t *testing.T) {
 	})
 
 	t.Run("422 non-positive byte limits", func(t *testing.T) {
-		defer setupAICacheManager(&fakeAICacheStorager{})()
+		defer setupAICacheManager(&fakeAICacheStorager{}, &fakeAICacheSemanticSettingsStorager{})()
 
 		body := `{"rules": [{"name": "bad-bytes", "cond": "default_t()", "max_body_bytes": 0}]}`
 		req := httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader(body))
@@ -249,7 +299,7 @@ func TestAICacheRulesUpdateAction(t *testing.T) {
 	})
 
 	t.Run("422 null rule element", func(t *testing.T) {
-		defer setupAICacheManager(&fakeAICacheStorager{})()
+		defer setupAICacheManager(&fakeAICacheStorager{}, &fakeAICacheSemanticSettingsStorager{})()
 
 		body := `{"rules": [null]}`
 		req := httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader(body))
@@ -258,7 +308,7 @@ func TestAICacheRulesUpdateAction(t *testing.T) {
 	})
 
 	t.Run("422 empty name and oversized name", func(t *testing.T) {
-		defer setupAICacheManager(&fakeAICacheStorager{})()
+		defer setupAICacheManager(&fakeAICacheStorager{}, &fakeAICacheSemanticSettingsStorager{})()
 
 		body := `{"rules": [{"name": "", "cond": "default_t()"}]}`
 		req := httptest.NewRequest(http.MethodPut, "/ai-cache-rules", strings.NewReader(body))

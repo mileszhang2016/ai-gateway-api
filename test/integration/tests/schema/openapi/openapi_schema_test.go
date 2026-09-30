@@ -50,6 +50,7 @@ func TestOpenAPI_Schema(t *testing.T) {
 	t.Run("route_tables", testRouteTableSchema)
 	t.Run("global_route_rules", testGlobalRouteRulesSchema)
 	t.Run("ai_cache", testAICacheSchema)
+	t.Run("ai_cache_semantic_settings", testAICacheSemanticSettingsSchema)
 	t.Run("traffic_mirror", testTrafficMirrorSchema)
 	t.Run("intent_config", testIntentConfigSchema)
 	t.Run("epp_pool", testEppPoolSchema)
@@ -806,7 +807,7 @@ func testAICacheSchema(t *testing.T) {
 	testutil.AssertSuccess(t, get2Resp)
 	testutil.AssertSchema(t, get2Resp, AICacheRulesSchema)
 
-	// 定向合同锁：rules 元素键集合精确 8 字段，无 id/enabled。
+	// 定向合同锁：rules 元素键集合精确 9 字段，无 id/enabled。
 	var data map[string]interface{}
 	require.NoError(t, json.Unmarshal(get2Resp.Data, &data))
 	rules, ok := data["rules"].([]interface{})
@@ -822,9 +823,11 @@ func testAICacheSchema(t *testing.T) {
 		}
 		assert.ElementsMatch(t, []string{
 			"name", "cond", "cache_key_strategy", "cache_ttl",
-			"max_body_bytes", "max_value_bytes", "created_at", "updated_at",
+			"max_body_bytes", "max_value_bytes", "enable_semantic_cache",
+			"created_at", "updated_at",
 		}, keys, "rules[%d] keys must exactly match contract (no id/enabled)", i)
 		assert.Equal(t, wantStrategies[i], rule["cache_key_strategy"])
+		assert.Equal(t, false, rule["enable_semantic_cache"], "omitted flag must default to false")
 	}
 
 	t.Cleanup(func() {
@@ -833,6 +836,38 @@ func testAICacheSchema(t *testing.T) {
 			"rules": []interface{}{},
 		})
 	})
+}
+
+// ---------- ai-cache-semantic-settings ----------
+
+// testAICacheSemanticSettingsSchema 覆盖语义全局设置单例（GET/PUT 同构）。
+// 两种响应形态共用 AICacheSemanticSettingsSchema：空表 GET 返回默认值对象
+// （无时间戳键，Optional 不校验缺席），写入后响应携带 created_at/updated_at
+// （Optional 存在即校验类型）。
+func testAICacheSemanticSettingsSchema(t *testing.T) {
+	// 写入自定义设置后 GET：3 必填 + 2 时间戳可选键形态。
+	putResp, err := testutil.GetClient().Put("/open-api/v1/ai-cache-semantic-settings", map[string]interface{}{
+		"top_k": 4, "threshold": 0.5, "threshold_relation": "lte",
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, putResp)
+	testutil.AssertSchema(t, putResp, AICacheSemanticSettingsSchema)
+
+	getResp, err := testutil.GetClient().Get("/open-api/v1/ai-cache-semantic-settings")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, getResp)
+	testutil.AssertSchema(t, getResp, AICacheSemanticSettingsSchema)
+	testutil.AssertDataFieldEquals(t, getResp, "top_k", int64(4))
+	testutil.AssertDataFieldEquals(t, getResp, "threshold_relation", "lte")
+	testutil.AssertDataFieldNotEmpty(t, getResp, "created_at")
+	testutil.AssertDataFieldNotEmpty(t, getResp, "updated_at")
+
+	// 重置为全默认值，恢复空表等价形态（无时间戳），供默认值 schema 断言。
+	resetResp, err := testutil.GetClient().Put("/open-api/v1/ai-cache-semantic-settings", map[string]interface{}{
+		"top_k": 1, "threshold": 0.15, "threshold_relation": "lt",
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, resetResp)
 }
 
 // ---------- traffic-mirror-rules ----------

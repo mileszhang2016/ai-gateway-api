@@ -56,6 +56,37 @@ func (s *fakeAICacheRuleStorager) ReplaceAll(ctx context.Context, rules []*AICac
 
 var _ AICacheStorager = (*fakeAICacheRuleStorager)(nil)
 
+type fakeAICacheSemanticSettingsStorager struct {
+	getFn    func(ctx context.Context) (*SemanticSettingsRow, error)
+	upsertFn func(ctx context.Context, row *SemanticSettingsRow) error
+
+	getCalls    int
+	upsertCalls []*SemanticSettingsRow
+}
+
+func (s *fakeAICacheSemanticSettingsStorager) Get(ctx context.Context) (*SemanticSettingsRow, error) {
+	s.getCalls++
+	if s.getFn != nil {
+		return s.getFn(ctx)
+	}
+	// Emulate the singleton table: the last upserted row is what Get reads
+	// back (nil while the table is still empty).
+	if len(s.upsertCalls) > 0 {
+		return s.upsertCalls[len(s.upsertCalls)-1], nil
+	}
+	return nil, nil
+}
+
+func (s *fakeAICacheSemanticSettingsStorager) Upsert(ctx context.Context, row *SemanticSettingsRow) error {
+	s.upsertCalls = append(s.upsertCalls, row)
+	if s.upsertFn != nil {
+		return s.upsertFn(ctx, row)
+	}
+	return nil
+}
+
+var _ AICacheSemanticSettingsStorager = (*fakeAICacheSemanticSettingsStorager)(nil)
+
 type fakeVersionControlStorager struct {
 	upsertFn func(ctx context.Context, css *iversion_control.ExportData) (string, error)
 }

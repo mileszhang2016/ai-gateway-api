@@ -538,6 +538,56 @@ func TestAICacheRules(t *testing.T) {
 	rule.MaxBodyBytes = nil
 	rule.MaxValueBytes = nil
 	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+
+	// enable_semantic_cache: nil/true/false are all accepted (no combination
+	// validation; a cache_key_strategy=disabled rule ignores the flag).
+	rule = validRule()
+	rule.EnableSemanticCache = nil
+	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+	rule = validRule()
+	rule.EnableSemanticCache = lib.PBool(true)
+	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+	rule = validRule()
+	rule.EnableSemanticCache = lib.PBool(false)
+	rule.CacheKeyStrategy = lib.PString(AICacheKeyStrategyDisabled)
+	assert.NoError(t, AICacheRules(&shared.AICacheRulesParam{Rules: []*shared.AICacheRuleParam{rule}}))
+}
+
+func TestAICacheSemanticSettings(t *testing.T) {
+	// nil param and an all-nil body are accepted (defaults apply).
+	assert.NoError(t, AICacheSemanticSettings(nil))
+	assert.NoError(t, AICacheSemanticSettings(&shared.AICacheSemanticSettingsParam{}))
+
+	// top_k: 1-10 (boundaries accepted).
+	for _, topK := range []int{1, 5, 10} {
+		assert.NoError(t, AICacheSemanticSettings(&shared.AICacheSemanticSettingsParam{TopK: lib.PInt(topK)}))
+	}
+	for _, topK := range []int{0, 11, -1} {
+		assert.Error(t, AICacheSemanticSettings(&shared.AICacheSemanticSettingsParam{TopK: lib.PInt(topK)}))
+	}
+
+	// threshold: 0-2 (boundaries accepted).
+	for _, threshold := range []float64{0, 0.15, 2} {
+		assert.NoError(t, AICacheSemanticSettings(&shared.AICacheSemanticSettingsParam{Threshold: lib.PFloat64(threshold)}))
+	}
+	for _, threshold := range []float64{-0.1, 2.1} {
+		assert.Error(t, AICacheSemanticSettings(&shared.AICacheSemanticSettingsParam{Threshold: lib.PFloat64(threshold)}))
+	}
+
+	// threshold_relation: four-value enum, case-sensitive.
+	for _, relation := range []string{"lt", "lte", "gt", "gte"} {
+		assert.NoError(t, AICacheSemanticSettings(&shared.AICacheSemanticSettingsParam{ThresholdRelation: lib.PString(relation)}))
+	}
+	for _, relation := range []string{"LT", "Lt", "between", ""} {
+		assert.Error(t, AICacheSemanticSettings(&shared.AICacheSemanticSettingsParam{ThresholdRelation: lib.PString(relation)}))
+	}
+
+	// full body passes.
+	assert.NoError(t, AICacheSemanticSettings(&shared.AICacheSemanticSettingsParam{
+		TopK:              lib.PInt(3),
+		Threshold:         lib.PFloat64(0.5),
+		ThresholdRelation: lib.PString("gte"),
+	}))
 }
 
 func TestTrafficMirrorRules(t *testing.T) {

@@ -25,15 +25,16 @@ import (
 const tAICacheRuleTableName = "ai_cache_rules"
 
 type TAICacheRule struct {
-	ID               int64     `db:"id"`
-	Name             string    `db:"name"`
-	Cond             string    `db:"cond"`
-	CacheKeyStrategy string    `db:"cache_key_strategy"`
-	CacheTTL         int       `db:"cache_ttl"`
-	MaxBodyBytes     int64     `db:"max_body_bytes"`
-	MaxValueBytes    int64     `db:"max_value_bytes"`
-	CreatedAt        time.Time `db:"created_at"`
-	UpdatedAt        time.Time `db:"updated_at"`
+	ID                  int64     `db:"id"`
+	Name                string    `db:"name"`
+	Cond                string    `db:"cond"`
+	CacheKeyStrategy    string    `db:"cache_key_strategy"`
+	CacheTTL            int       `db:"cache_ttl"`
+	MaxBodyBytes        int64     `db:"max_body_bytes"`
+	MaxValueBytes       int64     `db:"max_value_bytes"`
+	EnableSemanticCache bool      `db:"enable_semantic_cache"`
+	CreatedAt           time.Time `db:"created_at"`
+	UpdatedAt           time.Time `db:"updated_at"`
 }
 
 // TAICacheRuleOne Query One
@@ -65,15 +66,16 @@ func TAICacheRuleList(dbCtx lib.DBContexter, where *TAICacheRuleParam) ([]*TAICa
 }
 
 type TAICacheRuleParam struct {
-	ID               *int64     `db:"id"`
-	Name             *string    `db:"name"`
-	Cond             *string    `db:"cond"`
-	CacheKeyStrategy *string    `db:"cache_key_strategy"`
-	CacheTTL         *int       `db:"cache_ttl"`
-	MaxBodyBytes     *int64     `db:"max_body_bytes"`
-	MaxValueBytes    *int64     `db:"max_value_bytes"`
-	CreatedAt        *time.Time `db:"created_at"`
-	UpdatedAt        *time.Time `db:"updated_at"`
+	ID                  *int64     `db:"id"`
+	Name                *string    `db:"name"`
+	Cond                *string    `db:"cond"`
+	CacheKeyStrategy    *string    `db:"cache_key_strategy"`
+	CacheTTL            *int       `db:"cache_ttl"`
+	MaxBodyBytes        *int64     `db:"max_body_bytes"`
+	MaxValueBytes       *int64     `db:"max_value_bytes"`
+	EnableSemanticCache *bool      `db:"enable_semantic_cache"`
+	CreatedAt           *time.Time `db:"created_at"`
+	UpdatedAt           *time.Time `db:"updated_at"`
 
 	OrderBy *string `db:"_orderby"`
 }

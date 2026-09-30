@@ -17,22 +17,25 @@ package openapi
 import "github.com/rainway-ai-gateway/ai-gateway-api/integration/testutil"
 
 // AICacheRuleSchema 单个 AI 缓存规则 schema。
-// Required 恰为合同 8 字段（6 业务字段 + created_at/updated_at 只读字段），
+// Required 恰为合同 9 字段（7 业务字段 + created_at/updated_at 只读字段），
 // 不得包含内部 id；无 enabled 字段（ai-cache-rules.md §1）。
+// enable_semantic_cache 为二期字段：响应恒携带，缺省填 false。
 var AICacheRuleSchema = &testutil.ObjectSchema{
 	Required: []string{
 		"name", "cond", "cache_key_strategy", "cache_ttl",
-		"max_body_bytes", "max_value_bytes", "created_at", "updated_at",
+		"max_body_bytes", "max_value_bytes", "enable_semantic_cache",
+		"created_at", "updated_at",
 	},
 	Fields: map[string]testutil.FieldSpec{
-		"name":               {Type: testutil.TypeString},
-		"cond":               {Type: testutil.TypeString},
-		"cache_key_strategy": {Type: testutil.TypeString, Enum: []interface{}{"lastQuestion", "allQuestions", "disabled"}},
-		"cache_ttl":          {Type: testutil.TypeInt},
-		"max_body_bytes":     {Type: testutil.TypeInt},
-		"max_value_bytes":    {Type: testutil.TypeInt},
-		"created_at":         {Type: testutil.TypeString},
-		"updated_at":         {Type: testutil.TypeString},
+		"name":                  {Type: testutil.TypeString},
+		"cond":                  {Type: testutil.TypeString},
+		"cache_key_strategy":    {Type: testutil.TypeString, Enum: []interface{}{"lastQuestion", "allQuestions", "disabled"}},
+		"cache_ttl":             {Type: testutil.TypeInt},
+		"max_body_bytes":        {Type: testutil.TypeInt},
+		"max_value_bytes":       {Type: testutil.TypeInt},
+		"enable_semantic_cache": {Type: testutil.TypeBool},
+		"created_at":            {Type: testutil.TypeString},
+		"updated_at":            {Type: testutil.TypeString},
 	},
 }
 

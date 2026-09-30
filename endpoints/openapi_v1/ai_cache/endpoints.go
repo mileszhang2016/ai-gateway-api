@@ -27,6 +27,8 @@ import (
 var Endpoints = []*xreq.Endpoint{
 	AICacheRulesGetRoute,
 	AICacheRulesUpdateRoute,
+	AICacheSemanticSettingsGetRoute,
+	AICacheSemanticSettingsUpdateRoute,
 }
 
 var AICacheRulesGetRoute = &xreq.Endpoint{

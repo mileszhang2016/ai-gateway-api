@@ -30,22 +30,29 @@ const ConfigTopicProductAICache = "mod_ai_cache"
 // ExportAICacheRule is the per-rule export structure consumed by the BFE
 // mod_ai_cache rule loader (ProductRuleConfFile). The JSON tags are frozen
 // contract (see design-docs/modifications/2026-09-24-ai-cache-rule-export
-// design-changes.md section 4.2) and must stay verbatim in sync with BFE.
+// design-changes.md section 4.2, extended by 2026-09-30-ai-cache-semantic-cache)
+// and must stay verbatim in sync with BFE.
 // Phase 1 exports only cond/cacheKeyStrategy/cacheTTL/maxBodyBytes/maxValueBytes;
-// Cond is a non-pointer required field so a missing cond fails at compile time.
+// phase 2 adds enableSemanticCache; Cond is a non-pointer required field so a
+// missing cond fails at compile time.
 type ExportAICacheRule struct {
-	Cond             string  `json:"cond"`
-	CacheKeyStrategy *string `json:"cacheKeyStrategy"`
-	CacheTTL         *int    `json:"cacheTTL"`
-	MaxBodyBytes     *int64  `json:"maxBodyBytes"`
-	MaxValueBytes    *int64  `json:"maxValueBytes"`
+	Cond                string  `json:"cond"`
+	CacheKeyStrategy    *string `json:"cacheKeyStrategy"`
+	CacheTTL            *int    `json:"cacheTTL"`
+	MaxBodyBytes        *int64  `json:"maxBodyBytes"`
+	MaxValueBytes       *int64  `json:"maxValueBytes"`
+	EnableSemanticCache *bool   `json:"enableSemanticCache"`
 }
 
-// ExportAICacheRuleConfig is the exported ai_cache.data payload. Version/Config
-// capitalized keys are the hard contract with conf-agent.
+// ExportAICacheRuleConfig is the exported ai_cache.data payload. Version/
+// Semantic/Config capitalized keys are the top-level contract with the BFE
+// rule loader; Version/Config capitalized keys are the hard contract with
+// conf-agent. Semantic is always exported (defaults when the settings table
+// is empty).
 type ExportAICacheRuleConfig struct {
-	Config  map[string][]*ExportAICacheRule `json:"Config"`
-	Version string                          `json:"Version"`
+	Version  string                          `json:"Version"`
+	Semantic *SemanticConf                   `json:"Semantic"`
+	Config   map[string][]*ExportAICacheRule `json:"Config"`
 }
 
 // UpdateVersion updates the configuration version.
@@ -54,10 +61,12 @@ func (conf *ExportAICacheRuleConfig) UpdateVersion(version string) error {
 	return nil
 }
 
-// AICacheManager manages the AI cache rule collection and its config export.
+// AICacheManager manages the AI cache rule collection, the singleton semantic
+// settings and the config export.
 type AICacheManager struct {
 	txn                     itxn.TxnStorager
 	storager                AICacheStorager
+	settingsStorager        AICacheSemanticSettingsStorager
 	versionControlManager   *iversion_control.VersionControlManager
 	operationLogManager     ioperlog.OperationLogRecorder
 	aiRouteInnerProductName string
@@ -65,10 +74,11 @@ type AICacheManager struct {
 
 // NewAICacheManager creates a new AICacheManager. aiRouteInnerProductName is
 // the runtime AI inner product name injected by the assembly point.
-func NewAICacheManager(txn itxn.TxnStorager, storager AICacheStorager, versionControlManager *iversion_control.VersionControlManager, aiRouteInnerProductName string) *AICacheManager {
+func NewAICacheManager(txn itxn.TxnStorager, storager AICacheStorager, settingsStorager AICacheSemanticSettingsStorager, versionControlManager *iversion_control.VersionControlManager, aiRouteInnerProductName string) *AICacheManager {
 	return &AICacheManager{
 		txn:                     txn,
 		storager:                storager,
+		settingsStorager:        settingsStorager,
 		versionControlManager:   versionControlManager,
 		aiRouteInnerProductName: aiRouteInnerProductName,
 	}
@@ -141,6 +151,52 @@ func (m *AICacheManager) SetAICacheRules(ctx context.Context, param *shared.AICa
 	return &shared.AICacheRulesParam{Rules: rst}, nil
 }
 
+// GetSemanticSettings returns the singleton semantic settings. An empty table
+// yields the documented defaults (1 / 0.15 / lt, no timestamps); otherwise
+// the stored row is returned with its timestamps.
+func (m *AICacheManager) GetSemanticSettings(ctx context.Context) (*shared.AICacheSemanticSettingsParam, error) {
+	row, err := m.settingsStorager.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return semanticSettingsRowToShared(row), nil
+}
+
+// SetSemanticSettings upserts the singleton semantic settings in a single
+// transaction (delete-all + insert) and returns the re-read settings (same
+// shape as GET). The audit before snapshot falls back to the documented
+// defaults when the table is empty.
+func (m *AICacheManager) SetSemanticSettings(ctx context.Context, param *shared.AICacheSemanticSettingsParam) (*shared.AICacheSemanticSettingsParam, error) {
+	if param == nil {
+		param = &shared.AICacheSemanticSettingsParam{}
+	}
+
+	before, _ := m.settingsStorager.Get(ctx)
+	beforeMap := aiCacheSemanticSettingsToMap(semanticSettingsRowToShared(before))
+
+	row := semanticSettingsRowFromShared(param)
+	afterMap := aiCacheSemanticSettingsToMap(semanticSettingsRowToShared(row))
+
+	err := m.txn.AtomExecute(ctx, func(ctx context.Context) error {
+		return m.settingsStorager.Upsert(ctx, row)
+	})
+	if err != nil {
+		m.recordSemanticSettingsOperation(ctx, string(ioperlog.ActionUpdate), beforeMap, afterMap, err)
+		return nil, err
+	}
+
+	after, err := m.settingsStorager.Get(ctx)
+	if err != nil {
+		m.recordSemanticSettingsOperation(ctx, string(ioperlog.ActionUpdate), beforeMap, afterMap, err)
+		return nil, err
+	}
+
+	m.recordSemanticSettingsOperation(ctx, string(ioperlog.ActionUpdate), beforeMap, aiCacheSemanticSettingsToMap(semanticSettingsRowToShared(after)), nil)
+
+	return semanticSettingsRowToShared(after), nil
+}
+
 // ConfigExport exports the ai_cache.data payload for BFE mod_ai_cache. When
 // the generated content signature matches the last exported version, it
 // returns nil (incremental, HTTP Data is null).
@@ -167,21 +223,30 @@ func (m *AICacheManager) ConfigExport(ctx context.Context, lastVersion string) (
 }
 
 // AICacheRuleGenerator generates the mod_ai_cache export data: the full rule
-// set (id ascending, no enabled filter) keyed by the AI inner product name.
-// An empty table exports an empty array while the product key stays present.
+// set (id ascending, no enabled filter) keyed by the AI inner product name,
+// plus the top-level Semantic block merged from the singleton settings
+// (defaults when the settings table is empty; always exported). An empty rule
+// table exports an empty array while the product key stays present.
 func (m *AICacheManager) AICacheRuleGenerator(ctx context.Context) (*iversion_control.ExportData, error) {
 	rules, err := m.storager.FetchAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("fetch ai cache rules error: %s", err.Error())
 	}
 
+	settingsRow, err := m.settingsStorager.Get(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetch ai cache semantic settings error: %s", err.Error())
+	}
+	settings := semanticSettingsRowToShared(settingsRow)
+
 	exportRules := make([]*ExportAICacheRule, 0, len(rules))
 	for _, rule := range rules {
 		exportRule := &ExportAICacheRule{
-			CacheKeyStrategy: rule.CacheKeyStrategy,
-			CacheTTL:         rule.CacheTTL,
-			MaxBodyBytes:     rule.MaxBodyBytes,
-			MaxValueBytes:    rule.MaxValueBytes,
+			CacheKeyStrategy:    rule.CacheKeyStrategy,
+			CacheTTL:            rule.CacheTTL,
+			MaxBodyBytes:        rule.MaxBodyBytes,
+			MaxValueBytes:       rule.MaxValueBytes,
+			EnableSemanticCache: rule.EnableSemanticCache,
 		}
 		if rule.Cond != nil {
 			exportRule.Cond = *rule.Cond
@@ -190,6 +255,11 @@ func (m *AICacheManager) AICacheRuleGenerator(ctx context.Context) (*iversion_co
 	}
 
 	conf := &ExportAICacheRuleConfig{
+		Semantic: &SemanticConf{
+			TopK:              settings.TopK,
+			Threshold:         settings.Threshold,
+			ThresholdRelation: settings.ThresholdRelation,
+		},
 		Config: map[string][]*ExportAICacheRule{
 			m.aiRouteInnerProductName: exportRules,
 		},
