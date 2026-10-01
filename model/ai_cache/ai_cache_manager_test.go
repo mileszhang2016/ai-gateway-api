@@ -63,7 +63,7 @@ func TestAICacheManager_GetAICacheRules(t *testing.T) {
 				}, nil
 			},
 		}
-		m := NewAICacheManager(&fakeTxn{}, store, nil, "AI_product")
+		m := NewAICacheManager(&fakeTxn{}, store, &fakeAICacheSemanticSettingsStorager{}, nil, "AI_product")
 
 		rules, err := m.GetAICacheRules(ctx)
 		require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestAICacheManager_GetAICacheRules(t *testing.T) {
 				return []*AICacheRuleParam{}, nil
 			},
 		}
-		m := NewAICacheManager(&fakeTxn{}, store, nil, "AI_product")
+		m := NewAICacheManager(&fakeTxn{}, store, &fakeAICacheSemanticSettingsStorager{}, nil, "AI_product")
 
 		rules, err := m.GetAICacheRules(ctx)
 		require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestAICacheManager_GetAICacheRules(t *testing.T) {
 				return nil, errors.New("db down")
 			},
 		}
-		m := NewAICacheManager(&fakeTxn{}, store, nil, "AI_product")
+		m := NewAICacheManager(&fakeTxn{}, store, &fakeAICacheSemanticSettingsStorager{}, nil, "AI_product")
 
 		_, err := m.GetAICacheRules(ctx)
 		require.Error(t, err)
@@ -114,7 +114,7 @@ func TestAICacheManager_SetAICacheRules(t *testing.T) {
 				return nil
 			},
 		}
-		m := NewAICacheManager(&fakeTxn{}, store, nil, "AI_product")
+		m := NewAICacheManager(&fakeTxn{}, store, &fakeAICacheSemanticSettingsStorager{}, nil, "AI_product")
 
 		updated, err := m.SetAICacheRules(ctx, &shared.AICacheRulesParam{
 			Rules: []*shared.AICacheRuleParam{
@@ -151,7 +151,7 @@ func TestAICacheManager_SetAICacheRules(t *testing.T) {
 
 	t.Run("nil param and nil rules clear the collection", func(t *testing.T) {
 		store := &fakeAICacheRuleStorager{}
-		m := NewAICacheManager(&fakeTxn{}, store, nil, "AI_product")
+		m := NewAICacheManager(&fakeTxn{}, store, &fakeAICacheSemanticSettingsStorager{}, nil, "AI_product")
 
 		_, err := m.SetAICacheRules(ctx, nil)
 		require.NoError(t, err)
@@ -170,7 +170,7 @@ func TestAICacheManager_SetAICacheRules(t *testing.T) {
 				return errors.New("replace error")
 			},
 		}
-		m := NewAICacheManager(&fakeTxn{}, store, nil, "AI_product")
+		m := NewAICacheManager(&fakeTxn{}, store, &fakeAICacheSemanticSettingsStorager{}, nil, "AI_product")
 		m.SetOperationLogManager(recorder)
 
 		_, err := m.SetAICacheRules(ctx, &shared.AICacheRulesParam{
@@ -198,7 +198,7 @@ func TestAICacheManager_SetAICacheRules(t *testing.T) {
 				return []*AICacheRuleParam{storageRule(2, "new-rule", "default_t()")}, nil
 			},
 		}
-		m := NewAICacheManager(&fakeTxn{}, store, nil, "AI_product")
+		m := NewAICacheManager(&fakeTxn{}, store, &fakeAICacheSemanticSettingsStorager{}, nil, "AI_product")
 		m.SetOperationLogManager(recorder)
 
 		_, err := m.SetAICacheRules(ctx, &shared.AICacheRulesParam{
@@ -236,7 +236,7 @@ func TestAICacheManager_SetAICacheRules(t *testing.T) {
 				return []*AICacheRuleParam{storageRule(1, "old-rule", "default_t()")}, nil
 			},
 		}
-		m := NewAICacheManager(&fakeTxn{}, store, nil, "AI_product")
+		m := NewAICacheManager(&fakeTxn{}, store, &fakeAICacheSemanticSettingsStorager{}, nil, "AI_product")
 		m.SetOperationLogManager(recorder)
 
 		m.RecordSetAICacheRulesFailure(ctx, &shared.AICacheRulesParam{
@@ -269,7 +269,7 @@ func TestAICacheManager_SetAICacheRules(t *testing.T) {
 
 	t.Run("no audit when operation log manager is nil", func(t *testing.T) {
 		store := &fakeAICacheRuleStorager{}
-		m := NewAICacheManager(&fakeTxn{}, store, nil, "AI_product")
+		m := NewAICacheManager(&fakeTxn{}, store, &fakeAICacheSemanticSettingsStorager{}, nil, "AI_product")
 
 		_, err := m.SetAICacheRules(ctx, &shared.AICacheRulesParam{
 			Rules: []*shared.AICacheRuleParam{sharedRule("r1", "default_t()")},
@@ -282,7 +282,7 @@ func TestAICacheManager_AICacheRuleGenerator(t *testing.T) {
 	ctx := context.Background()
 
 	newManager := func(store *fakeAICacheRuleStorager, product string) *AICacheManager {
-		return NewAICacheManager(&fakeTxn{}, store, nil, product)
+		return NewAICacheManager(&fakeTxn{}, store, &fakeAICacheSemanticSettingsStorager{}, nil, product)
 	}
 
 	t.Run("exports rules in id ascending order under injected product name", func(t *testing.T) {
@@ -349,7 +349,10 @@ func TestAICacheManager_AICacheRuleGenerator(t *testing.T) {
 
 		var top map[string]interface{}
 		require.NoError(t, json.Unmarshal(bs, &top))
-		assert.ElementsMatch(t, []string{"Version", "Config"}, keysOf(top))
+		assert.ElementsMatch(t, []string{"Version", "Semantic", "Config"}, keysOf(top))
+
+		semantic := top["Semantic"].(map[string]interface{})
+		assert.ElementsMatch(t, []string{"topK", "threshold", "thresholdRelation"}, keysOf(semantic))
 
 		config := top["Config"].(map[string]interface{})
 		assert.ElementsMatch(t, []string{"AI_product"}, keysOf(config))
@@ -358,7 +361,7 @@ func TestAICacheManager_AICacheRuleGenerator(t *testing.T) {
 		require.Len(t, rules, 1)
 		rule := rules[0].(map[string]interface{})
 		assert.ElementsMatch(t,
-			[]string{"cond", "cacheKeyStrategy", "cacheTTL", "maxBodyBytes", "maxValueBytes"},
+			[]string{"cond", "cacheKeyStrategy", "cacheTTL", "maxBodyBytes", "maxValueBytes", "enableSemanticCache"},
 			keysOf(rule))
 	})
 
@@ -384,7 +387,7 @@ func TestAICacheManager_ConfigExport(t *testing.T) {
 		if versionStore != nil {
 			vcm = iversion_control.NewVersionControllerManager(&fakeTxn{}, versionStore)
 		}
-		return NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, vcm, product)
+		return NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, &fakeAICacheSemanticSettingsStorager{}, vcm, product)
 	}
 
 	t.Run("returns nil when version unchanged", func(t *testing.T) {
@@ -448,14 +451,15 @@ func TestAICacheRuleParam_Conversions(t *testing.T) {
 	t.Run("round trip preserves values", func(t *testing.T) {
 		now := time.Date(2026, 9, 24, 10, 30, 0, 0, time.UTC)
 		original := &shared.AICacheRuleParam{
-			Name:             lib.PString("r1"),
-			Cond:             lib.PString("default_t()"),
-			CacheKeyStrategy: lib.PString("disabled"),
-			CacheTTL:         lib.PInt(60),
-			MaxBodyBytes:     lib.PInt64(1024),
-			MaxValueBytes:    lib.PInt64(2048),
-			CreatedAt:        &now,
-			UpdatedAt:        &now,
+			Name:                lib.PString("r1"),
+			Cond:                lib.PString("default_t()"),
+			CacheKeyStrategy:    lib.PString("disabled"),
+			CacheTTL:            lib.PInt(60),
+			MaxBodyBytes:        lib.PInt64(1024),
+			MaxValueBytes:       lib.PInt64(2048),
+			EnableSemanticCache: lib.PBool(true),
+			CreatedAt:           &now,
+			UpdatedAt:           &now,
 		}
 
 		rule := aiCacheRuleParamFromShared(original)
@@ -470,4 +474,300 @@ func keysOf(m map[string]interface{}) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func semanticSettingsRow(topK int, threshold float64, relation string) *SemanticSettingsRow {
+	now := time.Date(2026, 9, 30, 10, 30, 0, 0, time.UTC)
+	return &SemanticSettingsRow{
+		ID:                lib.PInt64(1),
+		TopK:              lib.PInt(topK),
+		Threshold:         lib.PFloat64(threshold),
+		ThresholdRelation: lib.PString(relation),
+		CreatedAt:         &now,
+		UpdatedAt:         &now,
+	}
+}
+
+func TestAICacheManager_GetSemanticSettings(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("empty table returns documented defaults without timestamps", func(t *testing.T) {
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, &fakeAICacheSemanticSettingsStorager{}, nil, "AI_product")
+
+		settings, err := m.GetSemanticSettings(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, settings)
+		assert.Equal(t, DefaultSemanticTopK, *settings.TopK)
+		assert.Equal(t, DefaultSemanticThreshold, *settings.Threshold)
+		assert.Equal(t, DefaultSemanticThresholdRelation, *settings.ThresholdRelation)
+		assert.Nil(t, settings.CreatedAt)
+		assert.Nil(t, settings.UpdatedAt)
+	})
+
+	t.Run("existing row returns stored values with timestamps", func(t *testing.T) {
+		store := &fakeAICacheSemanticSettingsStorager{
+			getFn: func(ctx context.Context) (*SemanticSettingsRow, error) {
+				return semanticSettingsRow(5, 0.5, "gte"), nil
+			},
+		}
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, store, nil, "AI_product")
+
+		settings, err := m.GetSemanticSettings(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, settings)
+		assert.Equal(t, 5, *settings.TopK)
+		assert.Equal(t, 0.5, *settings.Threshold)
+		assert.Equal(t, "gte", *settings.ThresholdRelation)
+		assert.NotNil(t, settings.CreatedAt)
+		assert.NotNil(t, settings.UpdatedAt)
+	})
+
+	t.Run("storage error propagates", func(t *testing.T) {
+		store := &fakeAICacheSemanticSettingsStorager{
+			getFn: func(ctx context.Context) (*SemanticSettingsRow, error) {
+				return nil, errors.New("db down")
+			},
+		}
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, store, nil, "AI_product")
+
+		_, err := m.GetSemanticSettings(ctx)
+		require.Error(t, err)
+	})
+}
+
+func TestAICacheManager_SetSemanticSettings(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("insert on empty table fills defaults for omitted fields", func(t *testing.T) {
+		store := &fakeAICacheSemanticSettingsStorager{}
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, store, nil, "AI_product")
+
+		updated, err := m.SetSemanticSettings(ctx, &shared.AICacheSemanticSettingsParam{
+			Threshold: lib.PFloat64(0.5),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, updated)
+		assert.Equal(t, DefaultSemanticTopK, *updated.TopK)
+		assert.Equal(t, 0.5, *updated.Threshold)
+		assert.Equal(t, DefaultSemanticThresholdRelation, *updated.ThresholdRelation)
+
+		// Upsert invoked exactly once, inside the transaction, with the full row.
+		require.Len(t, store.upsertCalls, 1)
+		assert.Equal(t, DefaultSemanticTopK, *store.upsertCalls[0].TopK)
+		assert.Equal(t, 0.5, *store.upsertCalls[0].Threshold)
+		assert.Equal(t, DefaultSemanticThresholdRelation, *store.upsertCalls[0].ThresholdRelation)
+	})
+
+	t.Run("explicit values are preserved", func(t *testing.T) {
+		store := &fakeAICacheSemanticSettingsStorager{}
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, store, nil, "AI_product")
+
+		updated, err := m.SetSemanticSettings(ctx, &shared.AICacheSemanticSettingsParam{
+			TopK:              lib.PInt(10),
+			Threshold:         lib.PFloat64(2),
+			ThresholdRelation: lib.PString("lte"),
+		})
+		require.NoError(t, err)
+		assert.Equal(t, 10, *updated.TopK)
+		assert.Equal(t, 2.0, *updated.Threshold)
+		assert.Equal(t, "lte", *updated.ThresholdRelation)
+	})
+
+	t.Run("nil param upserts the documented defaults", func(t *testing.T) {
+		store := &fakeAICacheSemanticSettingsStorager{}
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, store, nil, "AI_product")
+
+		updated, err := m.SetSemanticSettings(ctx, nil)
+		require.NoError(t, err)
+		assert.Equal(t, DefaultSemanticTopK, *updated.TopK)
+		assert.Equal(t, DefaultSemanticThreshold, *updated.Threshold)
+		assert.Equal(t, DefaultSemanticThresholdRelation, *updated.ThresholdRelation)
+		require.Len(t, store.upsertCalls, 1)
+	})
+
+	t.Run("records successful audit with default before snapshot on empty table", func(t *testing.T) {
+		recorder := &fakeOperationLogRecorder{}
+		store := &fakeAICacheSemanticSettingsStorager{}
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, store, nil, "AI_product")
+		m.SetOperationLogManager(recorder)
+
+		_, err := m.SetSemanticSettings(ctx, &shared.AICacheSemanticSettingsParam{
+			TopK: lib.PInt(3),
+		})
+		require.NoError(t, err)
+
+		require.Len(t, recorder.entries, 1)
+		entry := recorder.entries[0]
+		assert.Equal(t, string(ioperlog.ActionUpdate), entry.Action)
+		assert.Equal(t, string(ioperlog.ResourceTypeAICacheSemanticSettings), entry.ResourceType)
+		assert.Equal(t, aiCacheSemanticSettingsResourceID, entry.ResourceID)
+		assert.Equal(t, ioperlog.StatusSuccess, entry.Status)
+
+		before, ok := entry.ChangeSummary["before"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, DefaultSemanticTopK, before["top_k"])
+		assert.Equal(t, DefaultSemanticThreshold, before["threshold"])
+		assert.Equal(t, DefaultSemanticThresholdRelation, before["threshold_relation"])
+
+		after, ok := entry.ChangeSummary["after"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, 3, after["top_k"])
+	})
+
+	t.Run("records failed audit when upsert errors", func(t *testing.T) {
+		recorder := &fakeOperationLogRecorder{}
+		store := &fakeAICacheSemanticSettingsStorager{
+			upsertFn: func(ctx context.Context, row *SemanticSettingsRow) error {
+				return errors.New("upsert error")
+			},
+		}
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, store, nil, "AI_product")
+		m.SetOperationLogManager(recorder)
+
+		_, err := m.SetSemanticSettings(ctx, &shared.AICacheSemanticSettingsParam{})
+		require.Error(t, err)
+
+		require.Len(t, recorder.entries, 1)
+		entry := recorder.entries[0]
+		assert.Equal(t, ioperlog.StatusFailed, entry.Status)
+		assert.NotEmpty(t, entry.ErrorMsg)
+	})
+
+	t.Run("records failed audit for validation rejection", func(t *testing.T) {
+		recorder := &fakeOperationLogRecorder{}
+		store := &fakeAICacheSemanticSettingsStorager{}
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, store, nil, "AI_product")
+		m.SetOperationLogManager(recorder)
+
+		m.RecordSetSemanticSettingsFailure(ctx, &shared.AICacheSemanticSettingsParam{
+			TopK: lib.PInt(100),
+		}, errors.New("top_k out of range"))
+
+		require.Len(t, recorder.entries, 1)
+		entry := recorder.entries[0]
+		assert.Equal(t, string(ioperlog.ActionUpdate), entry.Action)
+		assert.Equal(t, string(ioperlog.ResourceTypeAICacheSemanticSettings), entry.ResourceType)
+		assert.Equal(t, ioperlog.StatusFailed, entry.Status)
+
+		after, ok := entry.ChangeSummary["after"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, 100, after["top_k"])
+	})
+}
+
+func TestAICacheManager_AICacheRuleGeneratorSemantic(t *testing.T) {
+	ctx := context.Background()
+
+	generate := func(t *testing.T, settingsStore *fakeAICacheSemanticSettingsStorager) *ExportAICacheRuleConfig {
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, settingsStore, nil, "AI_product")
+		data, err := m.AICacheRuleGenerator(ctx)
+		require.NoError(t, err)
+		conf, ok := data.DataWithoutVersion.(*ExportAICacheRuleConfig)
+		require.True(t, ok)
+		return conf
+	}
+
+	t.Run("empty settings table exports documented defaults", func(t *testing.T) {
+		conf := generate(t, &fakeAICacheSemanticSettingsStorager{})
+
+		require.NotNil(t, conf.Semantic)
+		assert.Equal(t, DefaultSemanticTopK, *conf.Semantic.TopK)
+		assert.Equal(t, DefaultSemanticThreshold, *conf.Semantic.Threshold)
+		assert.Equal(t, DefaultSemanticThresholdRelation, *conf.Semantic.ThresholdRelation)
+	})
+
+	t.Run("existing settings row exports stored values", func(t *testing.T) {
+		conf := generate(t, &fakeAICacheSemanticSettingsStorager{
+			getFn: func(ctx context.Context) (*SemanticSettingsRow, error) {
+				return semanticSettingsRow(4, 0.8, "gt"), nil
+			},
+		})
+
+		require.NotNil(t, conf.Semantic)
+		assert.Equal(t, 4, *conf.Semantic.TopK)
+		assert.Equal(t, 0.8, *conf.Semantic.Threshold)
+		assert.Equal(t, "gt", *conf.Semantic.ThresholdRelation)
+	})
+
+	t.Run("Semantic block is still exported when the rule set is empty", func(t *testing.T) {
+		conf := generate(t, &fakeAICacheSemanticSettingsStorager{})
+		require.NotNil(t, conf.Semantic)
+		assert.Empty(t, conf.Config["AI_product"])
+	})
+
+	t.Run("settings change drives the export signature", func(t *testing.T) {
+		signs := map[string]string{}
+		for name, relation := range map[string]string{"defaults": "lt", "custom": "gte"} {
+			var captured *iversion_control.ExportData
+			versionStore := &fakeVersionControlStorager{
+				upsertFn: func(ctx context.Context, css *iversion_control.ExportData) (string, error) {
+					captured = css
+					return "20260930103000", nil
+				},
+			}
+			vcm := iversion_control.NewVersionControllerManager(&fakeTxn{}, versionStore)
+
+			threshold := DefaultSemanticThreshold
+			if relation == "gte" {
+				threshold = 0.9
+			}
+			settingsStore := &fakeAICacheSemanticSettingsStorager{
+				getFn: func(ctx context.Context) (*SemanticSettingsRow, error) {
+					return semanticSettingsRow(DefaultSemanticTopK, threshold, relation), nil
+				},
+			}
+			m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, settingsStore, vcm, "AI_product")
+
+			_, err := m.ConfigExport(ctx, iversion_control.ZeroVersion)
+			require.NoError(t, err)
+			require.NotNil(t, captured)
+			signs[name] = captured.DataSignWithoutVersion
+		}
+
+		assert.NotEqual(t, signs["defaults"], signs["custom"])
+	})
+
+	t.Run("settings fetch error propagates", func(t *testing.T) {
+		m := NewAICacheManager(&fakeTxn{}, &fakeAICacheRuleStorager{}, &fakeAICacheSemanticSettingsStorager{
+			getFn: func(ctx context.Context) (*SemanticSettingsRow, error) {
+				return nil, errors.New("db down")
+			},
+		}, nil, "AI_product")
+
+		_, err := m.AICacheRuleGenerator(ctx)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "fetch ai cache semantic settings error")
+	})
+}
+
+func TestSemanticSettingsRow_Conversions(t *testing.T) {
+	t.Run("nil row converts to documented defaults", func(t *testing.T) {
+		param := semanticSettingsRowToShared(nil)
+		require.NotNil(t, param)
+		assert.Equal(t, DefaultSemanticTopK, *param.TopK)
+		assert.Equal(t, DefaultSemanticThreshold, *param.Threshold)
+		assert.Equal(t, DefaultSemanticThresholdRelation, *param.ThresholdRelation)
+	})
+
+	t.Run("nil param stays nil and nil fields are filled with defaults", func(t *testing.T) {
+		assert.Nil(t, semanticSettingsRowFromShared(nil))
+
+		row := semanticSettingsRowFromShared(&shared.AICacheSemanticSettingsParam{
+			TopK: lib.PInt(7),
+		})
+		require.NotNil(t, row)
+		assert.Equal(t, 7, *row.TopK)
+		assert.Equal(t, DefaultSemanticThreshold, *row.Threshold)
+		assert.Equal(t, DefaultSemanticThresholdRelation, *row.ThresholdRelation)
+	})
+
+	t.Run("round trip preserves values", func(t *testing.T) {
+		original := semanticSettingsRow(2, 1.5, "lte")
+		rst := semanticSettingsRowToShared(semanticSettingsRowFromShared(semanticSettingsRowToShared(original)))
+		assert.Equal(t, original.TopK, rst.TopK)
+		assert.Equal(t, original.Threshold, rst.Threshold)
+		assert.Equal(t, original.ThresholdRelation, rst.ThresholdRelation)
+		assert.Equal(t, original.CreatedAt, rst.CreatedAt)
+		assert.Equal(t, original.UpdatedAt, rst.UpdatedAt)
+	})
 }

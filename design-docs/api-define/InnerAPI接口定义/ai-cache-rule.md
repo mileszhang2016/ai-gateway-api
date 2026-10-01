@@ -40,6 +40,11 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-cache-rule?version=0
         "Config": {
             "AI_product": [/* 缓存规则 */]
         },
+        "Semantic": {
+            "topK": 1,
+            "threshold": 0.15,
+            "thresholdRelation": "lt"
+        },
         "Version": "00010101000000"
     },
     "WorkMode": "ModeNormal"
@@ -49,7 +54,8 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-cache-rule?version=0
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | Config | object | 按产品线组织的缓存规则，key 为产品线名称（取自运行时配置 `AIRouteInnerProductName`，默认 `AI_product`） |
-| Version | string | 配置版本号（时间戳格式 `20060102150405`） |
+| Semantic | object | 语义缓存全局调优参数（二期新增，**恒导出**）；值为控制面设置（缺省 `1 / 0.15 / lt`）；旧版 BFE 忽略未知顶层字段，向后兼容 |
+| Version | string | 配置版本号（时间戳格式 `20060102150405`）；MD5 签名覆盖含 `Semantic` 的全量生成内容，修改设置即产生新版本 |
 
 ### 3.2 Config 结构（缓存规则数组）
 
@@ -86,13 +92,23 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-cache-rule?version=0
 | streamResponseTemplate | string | 否（二期） | 命中流式（SSE）响应模板（须含 `%s` 占位） | 内置 SSE 模板 |
 | maxBodyBytes | int64 | 是 | 请求体大小上限（字节），超限不缓存 | 1048576（1MB） |
 | maxValueBytes | int64 | 是 | 缓存值大小上限（字节），超限不缓存 | 1048576（1MB） |
+| enableSemanticCache | bool | 是（二期起） | 语义缓存开关（规则级，按路由灰度用）；`cacheKeyStrategy=disabled` 时 BFE 忽略 | `false` |
+
+**顶层 `Semantic` 块**（二期新增，恒导出；字段 tag 为 BFE `SemanticConfFile` 契约，与管理端点小写下划线词汇不同）：
+
+| 字段 | 类型 | 说明 | 管理端点对应字段 |
+|------|------|------|------------------|
+| topK | int | 向量检索近邻个数（1-10） | `top_k` |
+| threshold | float64 | 相似度阈值（0-2，量纲随 relation） | `threshold` |
+| thresholdRelation | string | 阈值比较：`lt`/`lte`/`gt`/`gte` | `threshold_relation` |
 
 **说明**：
 
 - 一期控制面每条规则只导出 `cond` / `cacheKeyStrategy` / `cacheTTL` / `maxBodyBytes` / `maxValueBytes`，其余字段由 BFE 按上表缺省值填充；
-- 规则集合 = 控制面规则表全量（`id` 升序，无 enabled 过滤）；空表时 product 键对应空数组 `[]`；
-- 命中后的响应由 BFE `mod_ai_cache` 直接构造（非流式 JSON / 流式 SSE），不转发到后端；访问日志记录 `ai_cache_status`（hit/miss/skip）与 `ai_cache_key`；
-- BFE 侧校验（最后防线）：`cond` 必须 `condition.Build` 编译通过；`cacheTTL >= 0`；`maxBodyBytes`/`maxValueBytes > 0`；同一 product 内 `cond` 不可重复。
+- 二期起每条规则额外恒导出 `enableSemanticCache`（默认 `false`），顶层恒导出 `Semantic` 块（设置行不存在时用默认值 `1 / 0.15 / lt`）；
+- 规则集合 = 控制面规则表全量（`id` 升序，无 enabled 过滤）；空表时 product 键对应空数组 `[]`，`Semantic` 块**仍导出**（设置独立于规则生命周期）；
+- 命中后的响应由 BFE `mod_ai_cache` 直接构造（非流式 JSON / 流式 SSE），不转发到后端；访问日志记录 `ai_cache_status`（hit / **hit_semantic** / miss / skip）、语义命中时的 `ai_cache_semantic` / `ai_cache_similarity`（791/792，bfe-access-pb v0.3.10）与 `ai_cache_key`；
+- BFE 侧校验（最后防线）：`cond` 必须 `condition.Build` 编译通过；`cacheTTL >= 0`；`maxBodyBytes`/`maxValueBytes > 0`；同一 product 内 `cond` 不可重复；`topK` 1-10、`threshold` 0-2、`thresholdRelation` 四枚举（Semantic 块存在时）。
 
 ## 4. 成功返回示例
 
@@ -107,6 +123,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-cache-rule?version=0
                     "cond": "req_path_in(\"/v1/chat/completions\", false) && req_body_json_in(\"model\", \"deepseek-chat\", false)",
                     "cacheKeyStrategy": "lastQuestion",
                     "cacheTTL": 3600,
+                    "enableSemanticCache": true,
                     "maxBodyBytes": 1048576,
                     "maxValueBytes": 1048576
                 },
@@ -114,10 +131,16 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/ai-cache-rule?version=0
                     "cond": "req_path_in(\"/v1/chat/completions\", false)",
                     "cacheKeyStrategy": "lastQuestion",
                     "cacheTTL": 86400,
+                    "enableSemanticCache": false,
                     "maxBodyBytes": 1048576,
                     "maxValueBytes": 1048576
                 }
             ]
+        },
+        "Semantic": {
+            "topK": 1,
+            "threshold": 0.15,
+            "thresholdRelation": "lt"
         },
         "Version": "20260924103000"
     },

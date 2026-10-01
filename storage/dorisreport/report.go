@@ -17,6 +17,7 @@ package dorisreport
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 
 	"github.com/didi/gendry/builder"
@@ -39,11 +40,15 @@ const (
 // p50/p90/p99, and plain `col != ”` empty-dimension predicates.
 //
 // Phase 1 of the cache/mirror/intent fields (design-docs modifications
-// 2026-09-27-report-cache-mirror-intent-fields) only implements the
+// 2026-09-27-report-cache-mirror-intent-fields) only implemented the
 // detail-backed parts here: the overview cache/mirror/intent counts, the
-// log projection/filters and the timeseries cache_tokens metric. The three
-// new aggregate dimensions are NOT declared in Capabilities, so the
-// manager gates them with a 422 before reaching this storager.
+// log projection/filters and the timeseries cache_tokens metric. Phase 2
+// (design-docs modifications 2026-10-01-report-doris-cache-mirror-intent-alignment,
+// after the Doris aggregate table gains the three KEY dimensions) aligns
+// the capability set with the MySQL backend: the rankings / distribution /
+// timeseries dimension branches are implemented below and the three
+// dimensions are declared in Capabilities, so the manager gate no longer
+// fires for them.
 type ReportStorager struct {
 	db       *sql.DB
 	database string // optional schema override used as table prefix
@@ -60,10 +65,13 @@ func New(db *sql.DB, database, backend string) *ReportStorager {
 
 var _ ireport.ReportStorager = (*ReportStorager)(nil)
 
-// Capabilities implements ireport.ReportStorager. Doris phase 1 does not
-// declare the cache/mirror/intent dimensions (its aggregate table gains
-// them in phase 2); dimension requests on them are rejected by the manager
-// with an explicit 422.
+// Capabilities implements ireport.ReportStorager. Phase 2 aligns the
+// dimension set with the MySQL backend: the aggregate table carries the
+// cache/mirror/intent KEY dimensions, so all 13 dimensions are declared
+// (see design-docs modifications
+// 2026-10-01-report-doris-cache-mirror-intent-alignment). The manager gate
+// against Capabilities stays as a defense-in-depth check for future
+// dimensions.
 func (s *ReportStorager) Capabilities() *ireport.BackendCaps {
 	return &ireport.BackendCaps{
 		Backend: s.backend,
@@ -77,6 +85,9 @@ func (s *ReportStorager) Capabilities() *ireport.BackendCaps {
 			ireport.DimensionProtocol,
 			ireport.DimensionMode,
 			ireport.DimensionStream,
+			ireport.DimensionCacheStatus,
+			ireport.DimensionMirrorHit,
+			ireport.DimensionIntentAnswer,
 		},
 	}
 }
@@ -276,73 +287,102 @@ func buildLogsTotalSQL(detailTable string, f *ireport.Filter) (string, []interfa
 	return builder.BuildSelect(detailTable, detailWhere(f), []string{"COUNT(*)"})
 }
 
+// buildTimeSeriesSQL builds the per-metric time-series query over the
+// aggregate table. The optional dimension (one of the cache/mirror/intent
+// dimensions) splits the series per dimension value: the column renders as
+// "name" and widens the GROUP BY. Value fields are raw per-bucket sums; the
+// per-second division happens in rowToMetricPoint. cache_tokens has no
+// column to group by, so it is rendered as a UNION ALL of the
+// cache_read/cache_write arms, each carrying its literal kind.
 func buildTimeSeriesSQL(metricsTable, metric, dimension string, f *ireport.Filter, bucketSec int) (string, []interface{}, error) {
+	column := ""
 	if dimension != "" {
-		// The manager gates the cache/mirror/intent dimensions before
-		// reaching this storager (Capabilities excludes them on Doris);
-		// reaching here means a mismatch, so fail loudly.
-		return "", nil, xerror.WrapParamErrorWithMsg(
-			"dimension %s not supported by doris backend (mysql only until doris support lands)", dimension)
+		col, ok := ireport.DimensionColumns[dimension]
+		if !ok {
+			return "", nil, xerror.WrapParamErrorWithMsg("invalid dimension: %s", dimension)
+		}
+		column = col
+	}
+
+	if metric == ireport.MetricCacheTokens {
+		return buildCacheTokensTimeSeriesSQL(metricsTable, column, f, bucketSec)
 	}
 
 	where := metricsWhere(f)
-	where["_groupby"] = "time"
+	groupBy := "time"
+	if column != "" {
+		groupBy = "time," + column
+	}
+	if metric == ireport.MetricCost {
+		groupBy = "time,ai_cost_currency"
+		if column != "" {
+			groupBy = "time,ai_cost_currency," + column
+		}
+	}
+	where["_groupby"] = groupBy
 	where["_orderby"] = "time ASC"
 
+	fields, err := timeSeriesMetricFields(metric, bucketSec, column)
+	if err != nil {
+		return "", nil, err
+	}
+	return builder.BuildSelect(metricsTable, where, fields)
+}
+
+// timeSeriesMetricFields is the SELECT field list of one metric arm; the
+// optional dimension column is rendered as "name" right after the bucket.
+func timeSeriesMetricFields(metric string, bucketSec int, column string) ([]string, error) {
+	fields := []string{bucketExpr("ts_min", bucketSec)}
+	if column != "" {
+		fields = append(fields, column+" AS name")
+	}
 	switch metric {
 	case ireport.MetricQPS:
-		return builder.BuildSelect(metricsTable, where, []string{
-			bucketExpr("ts_min", bucketSec),
-			"SUM(request_count) AS total",
-		})
+		fields = append(fields, "SUM(request_count) AS total")
 	case ireport.MetricTokens:
-		return builder.BuildSelect(metricsTable, where, []string{
-			bucketExpr("ts_min", bucketSec),
+		fields = append(fields,
 			"SUM(input_tokens) AS input",
 			"SUM(output_tokens) AS output",
-			"SUM(total_tokens) AS total",
-		})
+			"SUM(total_tokens) AS total")
 	case ireport.MetricLatency:
-		return builder.BuildSelect(metricsTable, where, []string{
-			bucketExpr("ts_min", bucketSec),
+		fields = append(fields,
 			"SUM(all_time_sum) AS all_time_sum",
 			"SUM(request_count) AS request_count",
-			"MAX(all_time_sum/request_count) AS latency_max",
-		})
+			"MAX(all_time_sum/request_count) AS latency_max")
 	case ireport.MetricTTFT, ireport.MetricTPOT:
-		return builder.BuildSelect(metricsTable, where, []string{
-			bucketExpr("ts_min", bucketSec),
+		fields = append(fields,
 			"SUM(ttft_us_sum) AS ttft_us_sum",
 			"SUM(tpot_us_sum) AS tpot_us_sum",
-			"SUM(CASE WHEN ai_stream=1 THEN request_count ELSE 0 END) AS stream_requests",
-		})
+			"SUM(CASE WHEN ai_stream=1 THEN request_count ELSE 0 END) AS stream_requests")
 	case ireport.MetricCost:
-		where["_groupby"] = "time,ai_cost_currency"
-		return builder.BuildSelect(metricsTable, where, []string{
-			bucketExpr("ts_min", bucketSec),
+		fields = append(fields,
 			"ai_cost_currency AS currency",
-			"SUM(ai_cost_value_sum) AS value",
-		})
-	case ireport.MetricCacheTokens:
-		return buildCacheTokensTimeSeriesSQL(metricsTable, f, bucketSec)
+			"SUM(ai_cost_value_sum) AS value")
 	default:
-		return "", nil, xerror.WrapParamErrorWithMsg("invalid metric: %s", metric)
+		return nil, xerror.WrapParamErrorWithMsg("invalid metric: %s", metric)
 	}
+	return fields, nil
 }
 
 // buildCacheTokensTimeSeriesSQL renders the cache_read/cache_write series
 // as a UNION ALL over the same WHERE, the same caliber as the MySQL
-// backend (Doris accepts UNION ALL with a trailing ORDER BY).
-func buildCacheTokensTimeSeriesSQL(metricsTable string, f *ireport.Filter, bucketSec int) (string, []interface{}, error) {
+// backend (Doris accepts UNION ALL with a trailing ORDER BY). The optional
+// dimension column is carried as "name" in each arm.
+func buildCacheTokensTimeSeriesSQL(metricsTable, column string, f *ireport.Filter, bucketSec int) (string, []interface{}, error) {
 	where := metricsWhere(f)
-	where["_groupby"] = "time"
+	groupBy := "time"
+	if column != "" {
+		groupBy = "time," + column
+	}
+	where["_groupby"] = groupBy
 
 	arm := func(kind, sumField string) (string, []interface{}, error) {
-		return builder.BuildSelect(metricsTable, where, []string{
-			bucketExpr("ts_min", bucketSec),
-			"'" + kind + "' AS kind",
-			"SUM(" + sumField + ") AS value",
-		})
+		fields := []string{bucketExpr("ts_min", bucketSec), "'" + kind + "' AS kind"}
+		if column != "" {
+			fields = append(fields, column+" AS name")
+		}
+		fields = append(fields, "SUM("+sumField+") AS value")
+		return builder.BuildSelect(metricsTable, where, fields)
 	}
 
 	readSQL, readArgs, err := arm("cache_read", "cache_read_tokens")
@@ -354,7 +394,12 @@ func buildCacheTokensTimeSeriesSQL(metricsTable string, f *ireport.Filter, bucke
 		return "", nil, err
 	}
 
-	query := readSQL + " UNION ALL " + writeSQL + " ORDER BY time ASC,kind ASC"
+	orderBy := "time ASC"
+	if column != "" {
+		orderBy = "time ASC," + column + " ASC"
+	}
+	orderBy += ",kind ASC"
+	query := readSQL + " UNION ALL " + writeSQL + " ORDER BY " + orderBy
 	return query, append(readArgs, writeArgs...), nil
 }
 
@@ -392,28 +437,40 @@ func buildRankingsSQL(metricsTable, dimension string, f *ireport.Filter, limit i
 	}
 
 	field := column + " AS name"
-	if dimension == ireport.DimensionStatus || dimension == ireport.DimensionStream {
+	if dimension == ireport.DimensionStatus || dimension == ireport.DimensionStream || dimension == ireport.DimensionMirrorHit {
 		field = "CAST(" + column + " AS CHAR) AS name"
 	}
 
-	emptyKey, emptyValue := rankingEmptyPredicate(dimension, column)
 	where := metricsWhere(f)
-	where[emptyKey] = emptyValue
+	// mirror_hit is a numeric 0/1 dimension without an empty marker; both
+	// buckets rank. String dimensions keep the empty-marker exclusion.
+	if dimension != ireport.DimensionMirrorHit {
+		emptyKey, emptyValue := rankingEmptyPredicate(dimension, column)
+		where[emptyKey] = emptyValue
+	}
 	where["_groupby"] = column
 	where["_orderby"] = "request_count DESC"
-	where["_limit"] = []uint{0, uint(limit)}
 
-	return builder.BuildSelect(metricsTable, where, []string{
+	query, args, err := builder.BuildSelect(metricsTable, where, []string{
 		field,
 		"SUM(request_count) AS request_count",
 		"SUM(error_count) AS error_count",
 		"SUM(input_tokens) AS input_tokens",
 		"SUM(output_tokens) AS output_tokens",
 	})
+	if err != nil {
+		return "", nil, err
+	}
+	// Doris cannot parse bound parameters in LIMIT (a prepared `LIMIT ?,?`
+	// fails with "mismatched input 'LIMIT'"); limit is a server-derived
+	// integer clamped by the manager, inlined as a literal like the
+	// time-bucket width in bucketExpr.
+	return fmt.Sprintf("%s LIMIT %d", query, limit), args, nil
 }
 
 // distributionNameExpr renders the dimension value as its display name,
-// normalizing NULL/empty to 'unknown'.
+// normalizing NULL/empty to 'unknown'. Numeric dimensions are cast to
+// strings so the response shape is uniform.
 func distributionNameExpr(dimension string) (string, error) {
 	switch dimension {
 	case ireport.DimensionStatus:
@@ -424,6 +481,12 @@ func distributionNameExpr(dimension string) (string, error) {
 		return "CASE WHEN IFNULL(ai_protocol,'')='' THEN 'unknown' ELSE ai_protocol END AS name", nil
 	case ireport.DimensionMode:
 		return "CASE WHEN IFNULL(ai_mode,'')='' THEN 'unknown' ELSE ai_mode END AS name", nil
+	case ireport.DimensionCacheStatus:
+		return "CASE WHEN IFNULL(ai_cache_status,'')='' THEN 'unknown' ELSE ai_cache_status END AS name", nil
+	case ireport.DimensionIntentAnswer:
+		return "CASE WHEN IFNULL(ai_intent_answer,'')='' THEN 'unknown' ELSE ai_intent_answer END AS name", nil
+	case ireport.DimensionMirrorHit:
+		return "CAST(mirror_hit AS CHAR) AS name", nil
 	default:
 		return "", xerror.WrapParamErrorWithMsg("invalid dimension: %s", dimension)
 	}
@@ -513,9 +576,15 @@ func buildLogsSQL(detailTable string, f *ireport.LogFilter) (string, []interface
 
 	where := logWhere(f)
 	where["_orderby"] = "log_time DESC"
-	where["_limit"] = []uint{offset, uint(f.PageSize)}
-
-	return builder.BuildSelect(detailTable, where, logRowFields)
+	query, args, err := builder.BuildSelect(detailTable, where, logRowFields)
+	if err != nil {
+		return "", nil, err
+	}
+	// Doris cannot parse bound parameters in LIMIT (a prepared `LIMIT ?,?`
+	// fails with "mismatched input 'LIMIT'"); offset/pageSize are
+	// server-derived integers clamped by the manager, inlined as literals
+	// like the time-bucket width in bucketExpr.
+	return fmt.Sprintf("%s LIMIT %d OFFSET %d", query, uint(f.PageSize), offset), args, nil
 }
 
 // Overview implements ireport.ReportStorager. Compared to the MySQL
@@ -720,9 +789,11 @@ func overviewResultFromRow(row *overviewMetricsRow, cost []*ireport.CostItem, lo
 
 // TimeSeries implements ireport.ReportStorager. For the latency metric it
 // additionally queries per-bucket percentiles from the detail table and
-// merges them into the aggregate points (Doris only). The dimension
-// parameter is gated by the manager (Capabilities excludes the new
-// dimensions on Doris); a non-empty value reaching here is a hard error.
+// merges them into the aggregate points (Doris only). Percentiles are
+// whole-bucket calibers, so they are only attached to the plain
+// single-series latency points; a dimension-split latency series carries
+// avg/max per (bucket, name) only — the same degradation as the MySQL
+// backend, which never returns percentiles.
 func (s *ReportStorager) TimeSeries(ctx context.Context, metric, dimension string, f *ireport.Filter, bucketSec int) ([]*ireport.MetricPoint, error) {
 	query, args, err := buildTimeSeriesSQL(s.table(tableMetrics), metric, dimension, f, bucketSec)
 	if err != nil {
@@ -739,7 +810,7 @@ func (s *ReportStorager) TimeSeries(ctx context.Context, metric, dimension strin
 		return nil, err
 	}
 
-	if metric != ireport.MetricLatency {
+	if metric != ireport.MetricLatency || dimension != "" {
 		return points, nil
 	}
 

@@ -536,12 +536,26 @@ CREATE TABLE ai_cache_rules (
   cache_ttl INTEGER NOT NULL DEFAULT 0,
   max_body_bytes INTEGER NOT NULL DEFAULT 1048576,
   max_value_bytes INTEGER NOT NULL DEFAULT 1048576,
+  enable_semantic_cache INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (name)
 );
 CREATE TRIGGER ai_cache_rules_updated_at AFTER UPDATE ON ai_cache_rules
   FOR EACH ROW BEGIN UPDATE ai_cache_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create ai_cache_semantic_settings (AI缓存语义全局设置表，单行)
+DROP TABLE IF EXISTS ai_cache_semantic_settings;
+CREATE TABLE ai_cache_semantic_settings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  top_k INTEGER NOT NULL DEFAULT 1,
+  threshold REAL NOT NULL DEFAULT 0.15,
+  threshold_relation TEXT NOT NULL DEFAULT 'lt',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TRIGGER ai_cache_semantic_settings_updated_at AFTER UPDATE ON ai_cache_semantic_settings
+  FOR EACH ROW BEGIN UPDATE ai_cache_semantic_settings SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
 -- create traffic_mirror_rules (流量镜像规则表)
 DROP TABLE IF EXISTS traffic_mirror_rules;

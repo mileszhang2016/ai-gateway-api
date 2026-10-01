@@ -328,9 +328,11 @@ func Init() error {
 	container.RateLimitPolicyManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.AICacheStorager = aiCacheStorage.NewAICacheStorager(stateful.NewBFEDBContext)
+	container.AICacheSemanticSettingsStorager = aiCacheStorage.NewAICacheSemanticSettingsStorager(stateful.NewBFEDBContext)
 	container.AICacheManager = ai_cache.NewAICacheManager(
 		container.TxnStoragerSingleton,
 		container.AICacheStorager,
+		container.AICacheSemanticSettingsStorager,
 		container.VersionControlManager,
 		stateful.DefaultConfig.RunTime.AIRouteInnerProductName)
 	container.AICacheManager.SetOperationLogManager(container.OperationLogManager)

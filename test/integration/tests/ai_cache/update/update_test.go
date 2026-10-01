@@ -38,10 +38,11 @@ const (
 	defaultMaxValueBytes    = 1048576
 )
 
-// ruleContractKeys 是合同锁定的响应规则元素键集合（8 字段，无 id/enabled）。
+// ruleContractKeys 是合同锁定的响应规则元素键集合（9 字段，无 id/enabled）。
 var ruleContractKeys = []string{
 	"name", "cond", "cache_key_strategy", "cache_ttl",
-	"max_body_bytes", "max_value_bytes", "created_at", "updated_at",
+	"max_body_bytes", "max_value_bytes", "enable_semantic_cache",
+	"created_at", "updated_at",
 }
 
 var sm *testutil.ServerManager
@@ -128,7 +129,7 @@ func assertRuleFieldEquals(t *testing.T, rule map[string]interface{}, key string
 }
 
 // assertRuleMatches 逐字段断言规则与期望值一致（期望含默认值回填），
-// 并锁定响应键集合精确为合同 8 键（无 id/enabled，家族11/12 / #201）。
+// 并锁定响应键集合精确为合同 9 键（无 id/enabled，家族11/12 / #201）。
 func assertRuleMatches(t *testing.T, rule map[string]interface{}, want map[string]interface{}) {
 	t.Helper()
 	for k, v := range want {
@@ -224,12 +225,13 @@ func TestAICacheRules_Update_MinimalParams(t *testing.T) {
 	rules := rulesOf(t, resp)
 	require.Len(t, rules, 1)
 	assertRuleMatches(t, rules[0].(map[string]interface{}), map[string]interface{}{
-		"name":               name,
-		"cond":               validAICacheCondModel,
-		"cache_key_strategy": defaultCacheKeyStrategy,
-		"cache_ttl":          0,
-		"max_body_bytes":     defaultMaxBodyBytes,
-		"max_value_bytes":    defaultMaxValueBytes,
+		"name":                  name,
+		"cond":                  validAICacheCondModel,
+		"cache_key_strategy":    defaultCacheKeyStrategy,
+		"cache_ttl":             0,
+		"max_body_bytes":        defaultMaxBodyBytes,
+		"max_value_bytes":       defaultMaxValueBytes,
+		"enable_semantic_cache": false,
 	})
 
 	// GET 回读与 PUT 响应逐字段一致（含时间戳）。
@@ -249,16 +251,19 @@ func TestAICacheRules_Update_FullParams(t *testing.T) {
 			"name": n1, "cond": validAICacheCondModel,
 			"cache_key_strategy": "allQuestions", "cache_ttl": 3600,
 			"max_body_bytes": 2097152, "max_value_bytes": 2097152,
+			"enable_semantic_cache": true,
 		},
 		{
 			"name": n2, "cond": validAICacheCond,
 			"cache_key_strategy": "disabled", "cache_ttl": 86400,
 			"max_body_bytes": 1048576, "max_value_bytes": 524288,
+			"enable_semantic_cache": false,
 		},
 		{
 			"name": n3, "cond": validAICacheCond,
 			"cache_key_strategy": "lastQuestion", "cache_ttl": 60,
 			"max_body_bytes": 1048576, "max_value_bytes": 1048576,
+			"enable_semantic_cache": true,
 		},
 	}
 	body := map[string]interface{}{"rules": []interface{}{
@@ -293,11 +298,13 @@ func TestAICacheRules_Update_FullReplace(t *testing.T) {
 		"name": na1, "cond": validAICacheCond,
 		"cache_key_strategy": "allQuestions", "cache_ttl": 222,
 		"max_body_bytes": defaultMaxBodyBytes, "max_value_bytes": defaultMaxValueBytes,
+		"enable_semantic_cache": true,
 	}
 	wantB1 := map[string]interface{}{
 		"name": nb1, "cond": validAICacheCond,
 		"cache_key_strategy": defaultCacheKeyStrategy, "cache_ttl": 0,
 		"max_body_bytes": defaultMaxBodyBytes, "max_value_bytes": defaultMaxValueBytes,
+		"enable_semantic_cache": false,
 	}
 	resp := putAndAssert200(t, map[string]interface{}{"rules": []interface{}{
 		map[string]interface{}(wantA1),
@@ -470,8 +477,9 @@ func TestAICacheRules_Update_BoundaryValues(t *testing.T) {
 	want := map[string]interface{}{
 		"name": name128, "cond": validAICacheCond,
 		"cache_key_strategy": defaultCacheKeyStrategy, "cache_ttl": 0, // ttl 下界 ≥0
-		"max_body_bytes":  1, // >0 下界
-		"max_value_bytes": 1,
+		"max_body_bytes":        1, // >0 下界
+		"max_value_bytes":       1,
+		"enable_semantic_cache": false,
 	}
 	resp := putAndAssert200(t, map[string]interface{}{
 		"rules": []interface{}{map[string]interface{}(want)},
@@ -618,4 +626,45 @@ func TestAICacheRules_Update_MixedCollection(t *testing.T) {
 	// 带旧 version 增量拉取必须返回 Data=null（版本未推进即内容未变）。
 	incrResp := fetchInnerExport(t, versionBefore)
 	testutil.AssertDataNull(t, incrResp)
+}
+
+// ---------- AC-1-013 语义缓存开关往返（二期：enable_semantic_cache） ----------
+
+// TestAICacheRules_Update_SemanticCacheFlag 验证 rules 元素新增 enable_semantic_cache：
+// 显式 true/false 原样落库回读，省略时响应回填 false（GET 回读与 PUT 响应逐字段一致）。
+func TestAICacheRules_Update_SemanticCacheFlag(t *testing.T) {
+	nTrue := testutil.UniqueName("ac-1-013-true")
+	nFalse := testutil.UniqueName("ac-1-013-false")
+	nOmit := testutil.UniqueName("ac-1-013-omit")
+
+	wantTrue := map[string]interface{}{
+		"name": nTrue, "cond": validAICacheCondModel,
+		"cache_key_strategy": "allQuestions", "cache_ttl": 600,
+		"max_body_bytes": defaultMaxBodyBytes, "max_value_bytes": defaultMaxValueBytes,
+		"enable_semantic_cache": true,
+	}
+	wantFalse := map[string]interface{}{
+		"name": nFalse, "cond": validAICacheCond,
+		"cache_key_strategy": defaultCacheKeyStrategy, "cache_ttl": 0,
+		"max_body_bytes": defaultMaxBodyBytes, "max_value_bytes": defaultMaxValueBytes,
+		"enable_semantic_cache": false,
+	}
+
+	// 规则 1 显式 true；规则 2 显式 false；规则 3 省略（应回填 false）。
+	resp := putAndAssert200(t, map[string]interface{}{"rules": []interface{}{
+		map[string]interface{}(wantTrue),
+		map[string]interface{}(wantFalse),
+		acRule(nOmit, validAICacheCond),
+	}})
+
+	wantOmit := map[string]interface{}{
+		"name": nOmit, "cond": validAICacheCond,
+		"cache_key_strategy": defaultCacheKeyStrategy, "cache_ttl": 0,
+		"max_body_bytes": defaultMaxBodyBytes, "max_value_bytes": defaultMaxValueBytes,
+		"enable_semantic_cache": false,
+	}
+	assertRulesMatchWants(t, resp, []map[string]interface{}{wantTrue, wantFalse, wantOmit})
+
+	// GET 回读与 PUT 响应逐字段一致（家族1 往返）。
+	assertRulesMatchWants(t, getAICacheRules(t), []map[string]interface{}{wantTrue, wantFalse, wantOmit})
 }

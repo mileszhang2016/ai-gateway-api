@@ -731,30 +731,43 @@ func testAICacheRuleSchema(t *testing.T) {
 	}
 	testutil.AssertSchema(t, resp, AICacheRuleExportSchema)
 
-	// 定向断言 1：Version/Config 存在，Config.AI_product 长度=2。
+	// 定向断言 1：Version/Semantic/Config 存在，Config.AI_product 长度=2。
 	var payload map[string]interface{}
 	require.NoError(t, json.Unmarshal(resp.Data, &payload))
 	version, ok := payload["Version"].(string)
 	require.True(t, ok, "Version should be string")
 	require.NotEmpty(t, version)
+
+	// Semantic 块恒导出（二期）：空设置表时以默认值 1/0.15/lt 填充。
+	semantic, ok := payload["Semantic"].(map[string]interface{})
+	require.True(t, ok, "Semantic should be object")
+	assert.Equal(t, float64(1), semantic["topK"])
+	assert.InDelta(t, 0.15, semantic["threshold"], 1e-9)
+	assert.Equal(t, "lt", semantic["thresholdRelation"])
+
 	config, ok := payload["Config"].(map[string]interface{})
 	require.True(t, ok, "Config should be object")
 	productRules, ok := config["AI_product"].([]interface{})
 	require.True(t, ok, "Config.AI_product should be array")
 	require.Len(t, productRules, 2)
 
-	// 定向断言 2：每条规则恰含 5 个导出 tag（精确集合，防幻影键），值正确。
+	// 定向断言 2：每条规则恰含 6 个导出 tag（精确集合，防幻影键），值正确。
 	wantValues := []map[string]interface{}{
 		{
 			"cond": validCond, "cacheKeyStrategy": "lastQuestion",
 			"cacheTTL": float64(0), "maxBodyBytes": float64(1048576), "maxValueBytes": float64(1048576),
+			"enableSemanticCache": false,
 		},
 		{
 			"cond": validCond, "cacheKeyStrategy": "allQuestions",
 			"cacheTTL": float64(3600), "maxBodyBytes": float64(2097152), "maxValueBytes": float64(2097152),
+			"enableSemanticCache": false,
 		},
 	}
-	wantKeys := []string{"cond", "cacheKeyStrategy", "cacheTTL", "maxBodyBytes", "maxValueBytes"}
+	wantKeys := []string{
+		"cond", "cacheKeyStrategy", "cacheTTL", "maxBodyBytes", "maxValueBytes",
+		"enableSemanticCache",
+	}
 	for i, item := range productRules {
 		rule, ok := item.(map[string]interface{})
 		require.True(t, ok, "AI_product[%d] should be object", i)
@@ -762,7 +775,7 @@ func testAICacheRuleSchema(t *testing.T) {
 		for k := range rule {
 			keys = append(keys, k)
 		}
-		assert.ElementsMatch(t, wantKeys, keys, "AI_product[%d] must carry exactly the 5 phase-1 tags", i)
+		assert.ElementsMatch(t, wantKeys, keys, "AI_product[%d] must carry exactly the 6 contract tags", i)
 		for k, v := range wantValues[i] {
 			assert.Equal(t, v, rule[k], "AI_product[%d].%s", i, k)
 		}

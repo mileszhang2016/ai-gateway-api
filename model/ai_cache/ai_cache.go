@@ -31,18 +31,49 @@ const (
 	DefaultMaxValueBytes    = 1048576
 )
 
+// Defaults for the semantic cache settings, applied when the settings table
+// is empty (an empty table means "defaults", no default row is pre-inserted).
+// These values are frozen in sync with the BFE mod_ai_cache setDefaults
+// (1 / 0.15 / lt): changing one side requires changing the other.
+const (
+	DefaultSemanticTopK              = 1
+	DefaultSemanticThreshold         = 0.15
+	DefaultSemanticThresholdRelation = "lt"
+)
+
 // AICacheRuleParam is the storage-level AI cache rule. The internal ID is the
 // ordering/priority key and is never exposed through the Open API.
 type AICacheRuleParam struct {
-	ID               *int64
-	Name             *string
-	Cond             *string
-	CacheKeyStrategy *string
-	CacheTTL         *int
-	MaxBodyBytes     *int64
-	MaxValueBytes    *int64
-	CreatedAt        *time.Time
-	UpdatedAt        *time.Time
+	ID                  *int64
+	Name                *string
+	Cond                *string
+	CacheKeyStrategy    *string
+	CacheTTL            *int
+	MaxBodyBytes        *int64
+	MaxValueBytes       *int64
+	EnableSemanticCache *bool
+	CreatedAt           *time.Time
+	UpdatedAt           *time.Time
+}
+
+// SemanticSettingsRow is the storage-level singleton semantic settings row.
+type SemanticSettingsRow struct {
+	ID                *int64
+	TopK              *int
+	Threshold         *float64
+	ThresholdRelation *string
+	CreatedAt         *time.Time
+	UpdatedAt         *time.Time
+}
+
+// SemanticConf is the top-level Semantic block of the exported ai_cache.data,
+// consumed by the BFE mod_ai_cache rule loader (SemanticConfFile). The JSON
+// tags are frozen contract (see design-docs/sys-design/details/AI缓存规则与导出.md
+// section 5.2.1) and must stay verbatim in sync with BFE.
+type SemanticConf struct {
+	TopK              *int     `json:"topK"`
+	Threshold         *float64 `json:"threshold"`
+	ThresholdRelation *string  `json:"thresholdRelation"`
 }
 
 // AICacheStorager defines storage operations for the AI cache rule collection.
@@ -55,6 +86,16 @@ type AICacheStorager interface {
 	ReplaceAll(ctx context.Context, rules []*AICacheRuleParam) error
 }
 
+// AICacheSemanticSettingsStorager defines storage operations for the
+// singleton semantic settings. Upsert is executed inside a transaction
+// provided by itxn.TxnStorager.
+type AICacheSemanticSettingsStorager interface {
+	// Get returns the settings row, or (nil, nil) when the table is empty.
+	Get(ctx context.Context) (*SemanticSettingsRow, error)
+	// Upsert overwrites the singleton row (delete-all + insert).
+	Upsert(ctx context.Context, row *SemanticSettingsRow) error
+}
+
 // aiCacheRuleParamFromShared converts an API-level rule into the storage-level
 // rule, filling the documented defaults for omitted optional fields so that
 // every inserted row carries the full column set.
@@ -64,14 +105,15 @@ func aiCacheRuleParamFromShared(param *shared.AICacheRuleParam) *AICacheRulePara
 	}
 
 	rule := &AICacheRuleParam{
-		Name:             param.Name,
-		Cond:             param.Cond,
-		CacheKeyStrategy: param.CacheKeyStrategy,
-		CacheTTL:         param.CacheTTL,
-		MaxBodyBytes:     param.MaxBodyBytes,
-		MaxValueBytes:    param.MaxValueBytes,
-		CreatedAt:        param.CreatedAt,
-		UpdatedAt:        param.UpdatedAt,
+		Name:                param.Name,
+		Cond:                param.Cond,
+		CacheKeyStrategy:    param.CacheKeyStrategy,
+		CacheTTL:            param.CacheTTL,
+		MaxBodyBytes:        param.MaxBodyBytes,
+		MaxValueBytes:       param.MaxValueBytes,
+		EnableSemanticCache: param.EnableSemanticCache,
+		CreatedAt:           param.CreatedAt,
+		UpdatedAt:           param.UpdatedAt,
 	}
 
 	if rule.CacheKeyStrategy == nil {
@@ -86,6 +128,9 @@ func aiCacheRuleParamFromShared(param *shared.AICacheRuleParam) *AICacheRulePara
 	if rule.MaxValueBytes == nil {
 		rule.MaxValueBytes = lib.PInt64(DefaultMaxValueBytes)
 	}
+	if rule.EnableSemanticCache == nil {
+		rule.EnableSemanticCache = lib.PBool(false)
+	}
 
 	return rule
 }
@@ -97,13 +142,69 @@ func aiCacheRuleParamToShared(rule *AICacheRuleParam) *shared.AICacheRuleParam {
 	}
 
 	return &shared.AICacheRuleParam{
-		Name:             rule.Name,
-		Cond:             rule.Cond,
-		CacheKeyStrategy: rule.CacheKeyStrategy,
-		CacheTTL:         rule.CacheTTL,
-		MaxBodyBytes:     rule.MaxBodyBytes,
-		MaxValueBytes:    rule.MaxValueBytes,
-		CreatedAt:        rule.CreatedAt,
-		UpdatedAt:        rule.UpdatedAt,
+		Name:                rule.Name,
+		Cond:                rule.Cond,
+		CacheKeyStrategy:    rule.CacheKeyStrategy,
+		CacheTTL:            rule.CacheTTL,
+		MaxBodyBytes:        rule.MaxBodyBytes,
+		MaxValueBytes:       rule.MaxValueBytes,
+		EnableSemanticCache: rule.EnableSemanticCache,
+		CreatedAt:           rule.CreatedAt,
+		UpdatedAt:           rule.UpdatedAt,
+	}
+}
+
+// defaultSemanticSettingsParam builds the settings param carrying the
+// documented defaults (1 / 0.15 / lt), without timestamps (no row exists).
+func defaultSemanticSettingsParam() *shared.AICacheSemanticSettingsParam {
+	return &shared.AICacheSemanticSettingsParam{
+		TopK:              lib.PInt(DefaultSemanticTopK),
+		Threshold:         lib.PFloat64(DefaultSemanticThreshold),
+		ThresholdRelation: lib.PString(DefaultSemanticThresholdRelation),
+	}
+}
+
+// semanticSettingsRowFromShared converts the API-level settings into the
+// storage-level row, filling the documented defaults for omitted fields so
+// the inserted row carries the full column set.
+func semanticSettingsRowFromShared(param *shared.AICacheSemanticSettingsParam) *SemanticSettingsRow {
+	if param == nil {
+		return nil
+	}
+
+	row := &SemanticSettingsRow{
+		TopK:              param.TopK,
+		Threshold:         param.Threshold,
+		ThresholdRelation: param.ThresholdRelation,
+		CreatedAt:         param.CreatedAt,
+		UpdatedAt:         param.UpdatedAt,
+	}
+
+	if row.TopK == nil {
+		row.TopK = lib.PInt(DefaultSemanticTopK)
+	}
+	if row.Threshold == nil {
+		row.Threshold = lib.PFloat64(DefaultSemanticThreshold)
+	}
+	if row.ThresholdRelation == nil {
+		row.ThresholdRelation = lib.PString(DefaultSemanticThresholdRelation)
+	}
+
+	return row
+}
+
+// semanticSettingsRowToShared converts a storage-level settings row into the
+// API-level settings. A nil row yields the documented defaults.
+func semanticSettingsRowToShared(row *SemanticSettingsRow) *shared.AICacheSemanticSettingsParam {
+	if row == nil {
+		return defaultSemanticSettingsParam()
+	}
+
+	return &shared.AICacheSemanticSettingsParam{
+		TopK:              row.TopK,
+		Threshold:         row.Threshold,
+		ThresholdRelation: row.ThresholdRelation,
+		CreatedAt:         row.CreatedAt,
+		UpdatedAt:         row.UpdatedAt,
 	}
 }

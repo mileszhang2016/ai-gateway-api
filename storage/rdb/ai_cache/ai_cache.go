@@ -80,15 +80,16 @@ func aiCacheRuleParamToData(param *ai_cache.AICacheRuleParam) *dao.TAICacheRuleP
 	}
 
 	return &dao.TAICacheRuleParam{
-		ID:               param.ID,
-		Name:             param.Name,
-		Cond:             param.Cond,
-		CacheKeyStrategy: param.CacheKeyStrategy,
-		CacheTTL:         param.CacheTTL,
-		MaxBodyBytes:     param.MaxBodyBytes,
-		MaxValueBytes:    param.MaxValueBytes,
-		CreatedAt:        param.CreatedAt,
-		UpdatedAt:        param.UpdatedAt,
+		ID:                  param.ID,
+		Name:                param.Name,
+		Cond:                param.Cond,
+		CacheKeyStrategy:    param.CacheKeyStrategy,
+		CacheTTL:            param.CacheTTL,
+		MaxBodyBytes:        param.MaxBodyBytes,
+		MaxValueBytes:       param.MaxValueBytes,
+		EnableSemanticCache: param.EnableSemanticCache,
+		CreatedAt:           param.CreatedAt,
+		UpdatedAt:           param.UpdatedAt,
 	}
 }
 
@@ -98,14 +99,15 @@ func aiCacheRuleDataToParam(one *dao.TAICacheRule) *ai_cache.AICacheRuleParam {
 	}
 
 	return &ai_cache.AICacheRuleParam{
-		ID:               &one.ID,
-		Name:             &one.Name,
-		Cond:             &one.Cond,
-		CacheKeyStrategy: &one.CacheKeyStrategy,
-		CacheTTL:         &one.CacheTTL,
-		MaxBodyBytes:     &one.MaxBodyBytes,
-		MaxValueBytes:    &one.MaxValueBytes,
-		CreatedAt:        &one.CreatedAt,
-		UpdatedAt:        &one.UpdatedAt,
+		ID:                  &one.ID,
+		Name:                &one.Name,
+		Cond:                &one.Cond,
+		CacheKeyStrategy:    &one.CacheKeyStrategy,
+		CacheTTL:            &one.CacheTTL,
+		MaxBodyBytes:        &one.MaxBodyBytes,
+		MaxValueBytes:       &one.MaxValueBytes,
+		EnableSemanticCache: &one.EnableSemanticCache,
+		CreatedAt:           &one.CreatedAt,
+		UpdatedAt:           &one.UpdatedAt,
 	}
 }

@@ -203,17 +203,33 @@ var EppDataSchema = &testutil.ObjectSchema{
 }
 
 // AICacheRuleExportItemSchema /configs/ai-cache-rule 导出单条规则 schema。
-// Required 恰为合同一期 5 个导出 tag（大写驼峰，与 Open API 词汇不同）；
-// 二期/预留字段 cacheKeyFrom/cacheValueFrom/cacheStreamValueFrom/cacheToolCallsFrom/
-// responseTemplate/streamResponseTemplate 不得出现（ai-cache-rule.md §3.2）。
+// Required 恰为合同 6 个导出 tag（大写驼峰，与 Open API 词汇不同；二期新增
+// enableSemanticCache）；二期/预留字段 cacheKeyFrom/cacheValueFrom/cacheStreamValueFrom/
+// cacheToolCallsFrom/responseTemplate/streamResponseTemplate 不得出现（ai-cache-rule.md §3.2）。
 var AICacheRuleExportItemSchema = &testutil.ObjectSchema{
-	Required: []string{"cond", "cacheKeyStrategy", "cacheTTL", "maxBodyBytes", "maxValueBytes"},
+	Required: []string{
+		"cond", "cacheKeyStrategy", "cacheTTL", "maxBodyBytes", "maxValueBytes",
+		"enableSemanticCache",
+	},
 	Fields: map[string]testutil.FieldSpec{
-		"cond":             {Type: testutil.TypeString},
-		"cacheKeyStrategy": {Type: testutil.TypeString, Enum: []interface{}{"lastQuestion", "allQuestions", "disabled"}},
-		"cacheTTL":         {Type: testutil.TypeInt},
-		"maxBodyBytes":     {Type: testutil.TypeInt},
-		"maxValueBytes":    {Type: testutil.TypeInt},
+		"cond":                {Type: testutil.TypeString},
+		"cacheKeyStrategy":    {Type: testutil.TypeString, Enum: []interface{}{"lastQuestion", "allQuestions", "disabled"}},
+		"cacheTTL":            {Type: testutil.TypeInt},
+		"maxBodyBytes":        {Type: testutil.TypeInt},
+		"maxValueBytes":       {Type: testutil.TypeInt},
+		"enableSemanticCache": {Type: testutil.TypeBool},
+	},
+}
+
+// AICacheSemanticExportSchema /configs/ai-cache-rule 顶层 Semantic 块 schema。
+// camelCase tag（topK/threshold/thresholdRelation）与 BFE SemanticConfFile 逐字段冻结；
+// 恒导出（空设置表时以默认值 1/0.15/lt 填充）。
+var AICacheSemanticExportSchema = &testutil.ObjectSchema{
+	Required: []string{"topK", "threshold", "thresholdRelation"},
+	Fields: map[string]testutil.FieldSpec{
+		"topK":              {Type: testutil.TypeInt},
+		"threshold":         {Type: testutil.TypeNumber},
+		"thresholdRelation": {Type: testutil.TypeString, Enum: []interface{}{"lt", "lte", "gt", "gte"}},
 	},
 }
 
@@ -226,19 +242,21 @@ var AICacheRuleExportBodySchema = &testutil.ObjectSchema{
 	},
 }
 
-// AICacheRuleExportSchema /configs/ai-cache-rule 返回 schema
+// AICacheRuleExportSchema /configs/ai-cache-rule 返回 schema。
+// Semantic 块二期新增且恒导出（与 Version/Config 并列顶层键）。
 var AICacheRuleExportSchema = &testutil.ObjectSchema{
-	Required: []string{"Version", "Config"},
+	Required: []string{"Version", "Semantic", "Config"},
 	Fields: map[string]testutil.FieldSpec{
-		"Version": {Type: testutil.TypeString},
-		"Config":  {Type: testutil.TypeObject, Nested: AICacheRuleExportBodySchema},
+		"Version":  {Type: testutil.TypeString},
+		"Semantic": {Type: testutil.TypeObject, Nested: AICacheSemanticExportSchema},
+		"Config":   {Type: testutil.TypeObject, Nested: AICacheRuleExportBodySchema},
 	},
 }
 
 // TrafficMirrorRuleExportItemSchema /configs/traffic-mirror-rule 导出单条规则 schema。
 // Required 恰为合同 7 个导出 tag（大写驼峰，与 Open API 词汇不同）；规则全字段恒输出
-//（含空值零值 {} / [] / ""，不用 omitempty）——removeHeaders 两层默认语义
-//（缺省填默认黑名单 / 显式 [] 不剔除）由取值断言覆盖（traffic-mirror-rule.md §3.2）。
+// （含空值零值 {} / [] / ""，不用 omitempty）——removeHeaders 两层默认语义
+// （缺省填默认黑名单 / 显式 [] 不剔除）由取值断言覆盖（traffic-mirror-rule.md §3.2）。
 var TrafficMirrorRuleExportItemSchema = &testutil.ObjectSchema{
 	Required: []string{
 		"cond", "mirrorCluster", "percentage", "removeHeaders", "setHeaders", "bodyRewrites", "pathRewrite",

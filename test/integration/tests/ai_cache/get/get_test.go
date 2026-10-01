@@ -57,6 +57,14 @@ func getAICacheRules(t *testing.T) *testutil.APIResponse {
 	return resp
 }
 
+// acRule 构造仅含 name+cond 的规则（其余字段依赖默认值回填）。
+func acRule(name, cond string) map[string]interface{} {
+	return map[string]interface{}{
+		"name": name,
+		"cond": cond,
+	}
+}
+
 // ---------- AC-2-001 空集合形状（家族11：顶层键含 rules 且为 [] 非 null） ----------
 
 func TestAICacheRules_Get_EmptyShape(t *testing.T) {
@@ -123,4 +131,38 @@ func TestAICacheRules_Get_Idempotent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(first.Data, &firstData))
 	require.NoError(t, json.Unmarshal(second.Data, &secondData))
 	assert.Equal(t, firstData, secondData, "two consecutive GETs must be field-by-field identical")
+}
+
+// ---------- AC-2-004 语义缓存开关回读（二期：enable_semantic_cache） ----------
+
+// TestAICacheRules_Get_SemanticCacheFlag 验证 GET 回读规则元素恒携带
+// enable_semantic_cache：显式 true/false 原样返回，省略时回填 false。
+func TestAICacheRules_Get_SemanticCacheFlag(t *testing.T) {
+	nTrue := testutil.UniqueName("ac-2-004-true")
+	nOmit := testutil.UniqueName("ac-2-004-omit")
+
+	resp := putAICacheRules(t, map[string]interface{}{"rules": []interface{}{
+		map[string]interface{}{
+			"name": nTrue, "cond": validAICacheCond,
+			"enable_semantic_cache": true,
+		},
+		acRule(nOmit, validAICacheCond),
+	}})
+	testutil.AssertSuccess(t, resp)
+
+	var data map[string]interface{}
+	require.NoError(t, json.Unmarshal(getAICacheRules(t).Data, &data))
+	rules, ok := data["rules"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, rules, 2)
+
+	ruleTrue, ok := rules[0].(map[string]interface{})
+	require.True(t, ok, "rules[0] should be object")
+	assert.Equal(t, nTrue, ruleTrue["name"])
+	assert.Equal(t, true, ruleTrue["enable_semantic_cache"], "explicit true must round-trip")
+
+	ruleOmit, ok := rules[1].(map[string]interface{})
+	require.True(t, ok, "rules[1] should be object")
+	assert.Equal(t, nOmit, ruleOmit["name"])
+	assert.Equal(t, false, ruleOmit["enable_semantic_cache"], "omitted flag must default to false on GET")
 }

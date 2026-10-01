@@ -92,16 +92,17 @@ var (
 	AIRouteRuleManager              *iai_route.AIRouteRuleManager
 
 	// Quota management
-	EntityTypeStorager      entity.EntityTypeStorager
-	EntityStorager          entity.EntityStorager
-	EntityIDGenerator       entity.EntityIDGenerator
-	QuotaPlanStorager       quota.QuotaPlanStorager
-	RateLimitPolicyStorager rate_limit_policy.RateLimitPolicyStorager
-	AICacheStorager         ai_cache.AICacheStorager
-	TrafficMirrorStorager   traffic_mirror.TrafficMirrorStorager
-	IntentConfigStorager    iintent_config.IntentConfigStorager
-	RouteRulesStorager      shared.RouteRulesStorager
-	QuotaCacheSingleton     quotacache.QuotaCache
+	EntityTypeStorager              entity.EntityTypeStorager
+	EntityStorager                  entity.EntityStorager
+	EntityIDGenerator               entity.EntityIDGenerator
+	QuotaPlanStorager               quota.QuotaPlanStorager
+	RateLimitPolicyStorager         rate_limit_policy.RateLimitPolicyStorager
+	AICacheStorager                 ai_cache.AICacheStorager
+	AICacheSemanticSettingsStorager ai_cache.AICacheSemanticSettingsStorager
+	TrafficMirrorStorager           traffic_mirror.TrafficMirrorStorager
+	IntentConfigStorager            iintent_config.IntentConfigStorager
+	RouteRulesStorager              shared.RouteRulesStorager
+	QuotaCacheSingleton             quotacache.QuotaCache
 
 	// Model pricing
 	ModelPriceStorager imodel_price.ModelPriceStorager

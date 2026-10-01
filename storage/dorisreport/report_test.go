@@ -132,28 +132,54 @@ func TestBuildTimeSeriesSQL_CacheTokens(t *testing.T) {
 	assert.Equal(t, []interface{}{testStart, testEnd, testStart, testEnd}, args)
 }
 
-// TestBuildTimeSeriesSQL_DimensionGated 验证 Doris 一期不实现维度分支：
-// 任何非空 dimension 直接报错（manager 门控前的纵深防御）。
-func TestBuildTimeSeriesSQL_DimensionGated(t *testing.T) {
+// TestBuildTimeSeriesSQL_Dimension 验证二期维度分支：dimension 列渲染为
+// name 并加宽 GROUP BY（与 MySQL 后端同构，Doris 方言）。
+func TestBuildTimeSeriesSQL_Dimension(t *testing.T) {
 	f := &ireport.Filter{Start: testStart, End: testEnd}
 
-	for _, dim := range []string{ireport.DimensionCacheStatus, ireport.DimensionMirrorHit, ireport.DimensionIntentAnswer} {
-		_, _, err := buildTimeSeriesSQL("bfe_ai_metrics_1m", ireport.MetricQPS, dim, f, 60)
-		require.Error(t, err, dim)
-		assert.Contains(t, err.Error(), "not supported by doris backend (mysql only until doris support lands)")
-	}
+	// qps × ai_cache_status
+	query, args, err := buildTimeSeriesSQL("bfe_ai_metrics_1m", ireport.MetricQPS, ireport.DimensionCacheStatus, f, 300)
+	require.NoError(t, err)
+	assert.Equal(t, "SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS BIGINT) AS time,"+
+		"ai_cache_status AS name,SUM(request_count) AS total"+
+		" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?)"+
+		" GROUP BY time,ai_cache_status ORDER BY time ASC", query)
+	assert.Equal(t, []interface{}{testStart, testEnd}, args)
+
+	// cost × mirror_hit：维度列插在 bucket 与 currency 之间，GROUP BY 含币种
+	query, _, err = buildTimeSeriesSQL("bfe_ai_metrics_1m", ireport.MetricCost, ireport.DimensionMirrorHit, f, 300)
+	require.NoError(t, err)
+	assert.Contains(t, query, "AS time,mirror_hit AS name,ai_cost_currency AS currency,SUM(ai_cost_value_sum) AS value")
+	assert.Contains(t, query, "GROUP BY time,ai_cost_currency,mirror_hit")
+
+	// cache_tokens × ai_intent_answer：UNION ALL 双臂携带 name，ORDER BY 含维度列
+	query, args, err = buildTimeSeriesSQL("bfe_ai_metrics_1m", ireport.MetricCacheTokens, ireport.DimensionIntentAnswer, f, 300)
+	require.NoError(t, err)
+	bucket := "CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS BIGINT) AS time"
+	expect := "SELECT " + bucket + ",'cache_read' AS kind,ai_intent_answer AS name,SUM(cache_read_tokens) AS value" +
+		" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time,ai_intent_answer" +
+		" UNION ALL " +
+		"SELECT " + bucket + ",'cache_write' AS kind,ai_intent_answer AS name,SUM(cache_write_tokens) AS value" +
+		" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time,ai_intent_answer" +
+		" ORDER BY time ASC,ai_intent_answer ASC,kind ASC"
+	assert.Equal(t, expect, query)
+	assert.Equal(t, []interface{}{testStart, testEnd, testStart, testEnd}, args)
+
+	// 非法维度仍然报错
+	_, _, err = buildTimeSeriesSQL("bfe_ai_metrics_1m", ireport.MetricQPS, "bogus", f, 60)
+	require.Error(t, err)
 }
 
-// TestCapabilities 验证 Doris 一期能力声明：不声明三个新维度。
+// TestCapabilities 验证二期能力声明：与 MySQL 后端对齐，全量 13 维。
 func TestCapabilities(t *testing.T) {
 	caps := New(nil, "", "doris").Capabilities()
 	require.NotNil(t, caps)
 	assert.Equal(t, "doris", caps.Backend)
-	assert.Len(t, caps.SupportedDimensions, 9)
+	assert.Len(t, caps.SupportedDimensions, 12)
 	for _, dim := range []string{
 		ireport.DimensionCacheStatus, ireport.DimensionMirrorHit, ireport.DimensionIntentAnswer,
 	} {
-		assert.NotContains(t, caps.SupportedDimensions, dim)
+		assert.Contains(t, caps.SupportedDimensions, dim)
 	}
 }
 
@@ -163,13 +189,36 @@ func TestBuildRankingsSQL_Dialect(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, query, "SELECT ai_provider AS name,")
 	assert.Contains(t, query, "ai_provider!=?")
-	assert.Equal(t, []interface{}{"", testStart, testEnd, 0, 10}, args)
+	// LIMIT is inlined as a literal (Doris cannot parse bound LIMIT params).
+	assert.True(t, strings.HasSuffix(query, " LIMIT 10"))
+	assert.Equal(t, []interface{}{"", testStart, testEnd}, args)
 
 	// status dimension: numeric empty marker 0.
 	query, _, err = buildRankingsSQL("bfe_ai_metrics_1m", ireport.DimensionStatus, &ireport.Filter{Start: testStart, End: testEnd}, 10)
 	require.NoError(t, err)
 	assert.Contains(t, query, "SELECT CAST(res_status_code AS CHAR) AS name,")
 	assert.Contains(t, query, "res_status_code!=?")
+
+	// cache_status: string dimension with the empty-marker exclusion.
+	query, args, err = buildRankingsSQL("bfe_ai_metrics_1m", ireport.DimensionCacheStatus, &ireport.Filter{Start: testStart, End: testEnd}, 10)
+	require.NoError(t, err)
+	assert.Contains(t, query, "SELECT ai_cache_status AS name,")
+	assert.Contains(t, query, "ai_cache_status!=?")
+	assert.Equal(t, []interface{}{"", testStart, testEnd}, args)
+
+	// intent_answer: same string caliber.
+	query, _, err = buildRankingsSQL("bfe_ai_metrics_1m", ireport.DimensionIntentAnswer, &ireport.Filter{Start: testStart, End: testEnd}, 10)
+	require.NoError(t, err)
+	assert.Contains(t, query, "SELECT ai_intent_answer AS name,")
+	assert.Contains(t, query, "ai_intent_answer!=?")
+
+	// mirror_hit: numeric 0/1, CAST to name, both buckets rank (no empty predicate).
+	query, args, err = buildRankingsSQL("bfe_ai_metrics_1m", ireport.DimensionMirrorHit, &ireport.Filter{Start: testStart, End: testEnd}, 10)
+	require.NoError(t, err)
+	assert.Contains(t, query, "SELECT CAST(mirror_hit AS CHAR) AS name,")
+	assert.NotContains(t, query, "mirror_hit!=")
+	assert.True(t, strings.HasSuffix(query, " LIMIT 10"))
+	assert.Equal(t, []interface{}{testStart, testEnd}, args)
 
 	_, _, err = buildRankingsSQL("bfe_ai_metrics_1m", "bogus", &ireport.Filter{Start: testStart, End: testEnd}, 10)
 	require.Error(t, err)
@@ -185,6 +234,20 @@ func TestBuildDistributionSQL_Dialect(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, query, "CASE WHEN IFNULL(ai_mode,'')='' THEN 'unknown' ELSE ai_mode END AS name")
 
+	// cache_status / intent_answer: '' normalizes to the unknown bucket.
+	query, _, err = buildDistributionSQL("bfe_ai_metrics_1m", ireport.DimensionCacheStatus, &ireport.Filter{Start: testStart, End: testEnd})
+	require.NoError(t, err)
+	assert.Contains(t, query, "CASE WHEN IFNULL(ai_cache_status,'')='' THEN 'unknown' ELSE ai_cache_status END AS name")
+
+	query, _, err = buildDistributionSQL("bfe_ai_metrics_1m", ireport.DimensionIntentAnswer, &ireport.Filter{Start: testStart, End: testEnd})
+	require.NoError(t, err)
+	assert.Contains(t, query, "CASE WHEN IFNULL(ai_intent_answer,'')='' THEN 'unknown' ELSE ai_intent_answer END AS name")
+
+	// mirror_hit: numeric dimension as string buckets.
+	query, _, err = buildDistributionSQL("bfe_ai_metrics_1m", ireport.DimensionMirrorHit, &ireport.Filter{Start: testStart, End: testEnd})
+	require.NoError(t, err)
+	assert.Contains(t, query, "CAST(mirror_hit AS CHAR) AS name")
+
 	_, _, err = buildDistributionSQL("bfe_ai_metrics_1m", "model", &ireport.Filter{Start: testStart, End: testEnd})
 	require.Error(t, err)
 }
@@ -199,15 +262,17 @@ func TestBuildLogsSQL(t *testing.T) {
 	}
 	query, args, err := buildLogsSQL("bfe_ai_request_log", f)
 	require.NoError(t, err)
-	assert.Contains(t, query, " ORDER BY log_time DESC LIMIT ?,?")
+	// Doris cannot parse bound parameters in LIMIT: page/offset are inlined
+	// as literals (server-derived integers).
+	assert.Contains(t, query, " ORDER BY log_time DESC LIMIT 20 OFFSET 20")
 	assert.Contains(t, query, "err_msg LIKE ?")
-	assert.Equal(t, []interface{}{int8(1), "key-1", "openai", "gpt-4o", "gpt-4", "gw-01", 200, 500, "", testStart, testEnd, "%timeout%", 20, 20}, args)
+	assert.Equal(t, []interface{}{int8(1), "key-1", "openai", "gpt-4o", "gpt-4", "gw-01", 200, 500, "", testStart, testEnd, "%timeout%"}, args)
 
 	countSQL, countArgs, err := buildLogsCountSQL("bfe_ai_request_log", f)
 	require.NoError(t, err)
 	assert.Equal(t, "SELECT COUNT(*) FROM bfe_ai_request_log", countSQL[:strings.Index(countSQL, " WHERE")])
 	assert.Contains(t, countSQL, "IFNULL(err_code,'')!=?")
-	assert.Equal(t, args[:len(args)-2], countArgs)
+	assert.Equal(t, countArgs, args)
 }
 
 // TestBuildLogsSQL_CacheMirrorIntentFilters 验证 Doris 侧五个新过滤参数

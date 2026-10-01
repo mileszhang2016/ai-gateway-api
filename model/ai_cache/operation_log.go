@@ -69,6 +69,80 @@ func (m *AICacheManager) recordAICacheRulesOperation(ctx context.Context, action
 	m.operationLogManager.Record(ctx, entry)
 }
 
+// aiCacheSemanticSettingsResourceID identifies the singleton in operation
+// logs (the settings have no addressing field beyond the fixed resource id).
+const aiCacheSemanticSettingsResourceID = "ai_cache_semantic_settings"
+
+// RecordSetSemanticSettingsFailure records a failed update audit for a PUT
+// rejected by parameter validation (4xx). It is called from the endpoint
+// layer, which validation never passes through SetSemanticSettings. The
+// before snapshot is read from storage (defaults when the table is empty),
+// so the audit never depends on the request body (issue #155 discipline).
+func (m *AICacheManager) RecordSetSemanticSettingsFailure(ctx context.Context, param *shared.AICacheSemanticSettingsParam, validateErr error) {
+	before, _ := m.settingsStorager.Get(ctx)
+
+	var after map[string]interface{}
+	if param != nil {
+		after = aiCacheSemanticSettingsToMap(semanticSettingsRowToShared(semanticSettingsRowFromShared(param)))
+	}
+
+	m.recordSemanticSettingsOperation(ctx, string(ioperlog.ActionUpdate), aiCacheSemanticSettingsToMap(semanticSettingsRowToShared(before)), after, validateErr)
+}
+
+func (m *AICacheManager) recordSemanticSettingsOperation(ctx context.Context, action string, before, after map[string]interface{}, err error) {
+	if m.operationLogManager == nil {
+		return
+	}
+
+	status := ioperlog.StatusSuccess
+	errorMsg := ""
+	if err != nil {
+		status = ioperlog.StatusFailed
+		errorMsg = ioperlog.TruncateErrorMessageDefault(err)
+	}
+
+	entry := &ioperlog.OperationLogEntry{
+		Action:       action,
+		ResourceType: string(ioperlog.ResourceTypeAICacheSemanticSettings),
+		ResourceID:   aiCacheSemanticSettingsResourceID,
+		ResourceName: aiCacheSemanticSettingsResourceID,
+		Status:       status,
+		ErrorMsg:     errorMsg,
+		CreatedAt:    time.Now(),
+	}
+
+	entry.ChangeSummary = ioperlog.BuildChangeSummary(action, before, after)
+
+	m.operationLogManager.Record(ctx, entry)
+}
+
+// aiCacheSemanticSettingsToMap builds the audit snapshot of the settings
+// using the Open API lowercase vocabulary; nil fields are omitted (nil-guard).
+func aiCacheSemanticSettingsToMap(param *shared.AICacheSemanticSettingsParam) map[string]interface{} {
+	if param == nil {
+		return nil
+	}
+
+	m := map[string]interface{}{}
+	if param.TopK != nil {
+		m["top_k"] = *param.TopK
+	}
+	if param.Threshold != nil {
+		m["threshold"] = *param.Threshold
+	}
+	if param.ThresholdRelation != nil {
+		m["threshold_relation"] = *param.ThresholdRelation
+	}
+	if param.CreatedAt != nil {
+		m["created_at"] = *param.CreatedAt
+	}
+	if param.UpdatedAt != nil {
+		m["updated_at"] = *param.UpdatedAt
+	}
+
+	return m
+}
+
 // aiCacheRuleParamToMap builds the audit snapshot of a single rule using the
 // Open API lowercase vocabulary; nil fields are omitted (nil-guard).
 func aiCacheRuleParamToMap(rule *shared.AICacheRuleParam) map[string]interface{} {
@@ -94,6 +168,9 @@ func aiCacheRuleParamToMap(rule *shared.AICacheRuleParam) map[string]interface{}
 	}
 	if rule.MaxValueBytes != nil {
 		m["max_value_bytes"] = *rule.MaxValueBytes
+	}
+	if rule.EnableSemanticCache != nil {
+		m["enable_semantic_cache"] = *rule.EnableSemanticCache
 	}
 	if rule.CreatedAt != nil {
 		m["created_at"] = *rule.CreatedAt
