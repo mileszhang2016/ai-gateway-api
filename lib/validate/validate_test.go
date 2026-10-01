@@ -590,6 +590,165 @@ func TestAICacheSemanticSettings(t *testing.T) {
 	}))
 }
 
+func TestAIContextRules(t *testing.T) {
+	validRule := func() *shared.AIContextRuleParam {
+		return &shared.AIContextRuleParam{
+			Cond:             lib.PString("req_path_in(\"/v1/chat/completions\", false)"),
+			Mode:             lib.PString(AIContextModeBalanced),
+			MaxContextTokens: lib.PInt(64000),
+			ReserveTokens:    lib.PInt(8192),
+		}
+	}
+
+	// nil param and nil rules are accepted (null rules means clear all).
+	assert.NoError(t, AIContextRules(nil))
+	assert.NoError(t, AIContextRules(&shared.AIContextRulesParam{}))
+
+	// full body and minimal rule (required fields only) pass.
+	assert.NoError(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{validRule()}}))
+	assert.NoError(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{
+		{Cond: lib.PString("default_t()"), Mode: lib.PString(AIContextModeOff)},
+	}}))
+
+	// null rule element is rejected.
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{nil}}))
+
+	// cond: required, non-empty, and must compile (aligned with AICacheRules:
+	// catch invalid expressions at PUT time instead of a whole-file BFE
+	// rejection at load time).
+	rule := validRule()
+	rule.Cond = nil
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Cond = lib.PString("")
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Cond = lib.PString("default_t(")
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Cond = lib.PString("unknown_func()")
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+
+	// duplicate cond within the collection is rejected.
+	dup := validRule()
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{validRule(), dup}}))
+
+	// mode: required, four-value enum.
+	for _, mode := range []string{AIContextModeOff, AIContextModeConservative, AIContextModeBalanced, AIContextModeAggressive} {
+		rule = validRule()
+		rule.Mode = lib.PString(mode)
+		assert.NoError(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+	}
+
+	rule = validRule()
+	rule.Mode = nil
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Mode = lib.PString("")
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+
+	rule = validRule()
+	rule.Mode = lib.PString("hyper")
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+
+	// budget fields: >= 0 (nil allowed, 0 allowed).
+	rule = validRule()
+	rule.MaxContextTokens = lib.PInt(-1)
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+	rule = validRule()
+	rule.MaxContextTokens = lib.PInt(0)
+	assert.NoError(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+
+	rule = validRule()
+	rule.ReserveTokens = lib.PInt(-1)
+	assert.Error(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+	rule = validRule()
+	rule.ReserveTokens = nil
+	assert.NoError(t, AIContextRules(&shared.AIContextRulesParam{Rules: []*shared.AIContextRuleParam{rule}}))
+}
+
+func TestAIContextSettings(t *testing.T) {
+	// nil param and an all-nil body are accepted (defaults apply).
+	assert.NoError(t, AIContextSettings(nil))
+	assert.NoError(t, AIContextSettings(&shared.AIContextSettingsParam{}))
+
+	// trigger_ratio: (0, 1] (boundaries accepted).
+	for _, ratio := range []float64{0.1, 0.7, 1} {
+		assert.NoError(t, AIContextSettings(&shared.AIContextSettingsParam{TriggerRatio: lib.PFloat64(ratio)}))
+	}
+	for _, ratio := range []float64{0, -0.1, 1.1} {
+		assert.Error(t, AIContextSettings(&shared.AIContextSettingsParam{TriggerRatio: lib.PFloat64(ratio)}))
+	}
+
+	// keep_latest_images / tool_result_max_chars / image_token_estimate: >= 0.
+	for _, field := range []int{0, 1, 2000} {
+		assert.NoError(t, AIContextSettings(&shared.AIContextSettingsParam{
+			KeepLatestImages:   lib.PInt(field),
+			ToolResultMaxChars: lib.PInt(field),
+			ImageTokenEstimate: lib.PInt(field),
+		}))
+	}
+	assert.Error(t, AIContextSettings(&shared.AIContextSettingsParam{KeepLatestImages: lib.PInt(-1)}))
+	assert.Error(t, AIContextSettings(&shared.AIContextSettingsParam{ToolResultMaxChars: lib.PInt(-1)}))
+	assert.Error(t, AIContextSettings(&shared.AIContextSettingsParam{ImageTokenEstimate: lib.PInt(-1)}))
+
+	// thinking_policy: two-value enum, case-sensitive.
+	for _, policy := range []string{AIContextThinkingPolicyTrimAllButLast, AIContextThinkingPolicyKeep} {
+		assert.NoError(t, AIContextSettings(&shared.AIContextSettingsParam{ThinkingPolicy: lib.PString(policy)}))
+	}
+	for _, policy := range []string{"trim", "KEEP", ""} {
+		assert.Error(t, AIContextSettings(&shared.AIContextSettingsParam{ThinkingPolicy: lib.PString(policy)}))
+	}
+
+	// chars_per_token: >= 1.
+	assert.NoError(t, AIContextSettings(&shared.AIContextSettingsParam{CharsPerToken: lib.PInt(1)}))
+	assert.NoError(t, AIContextSettings(&shared.AIContextSettingsParam{CharsPerToken: lib.PInt(3)}))
+	assert.Error(t, AIContextSettings(&shared.AIContextSettingsParam{CharsPerToken: lib.PInt(0)}))
+
+	// rewrite: nil sub-object accepted; fields validated when present.
+	assert.NoError(t, AIContextSettings(&shared.AIContextSettingsParam{
+		Rewrite: &shared.AIContextRewriteParam{},
+	}))
+	for _, strength := range []string{AIContextRewriteStrengthLite, AIContextRewriteStrengthFull} {
+		assert.NoError(t, AIContextSettings(&shared.AIContextSettingsParam{
+			Rewrite: &shared.AIContextRewriteParam{Strength: lib.PString(strength)},
+		}))
+	}
+	assert.Error(t, AIContextSettings(&shared.AIContextSettingsParam{
+		Rewrite: &shared.AIContextRewriteParam{Strength: lib.PString("max")},
+	}))
+
+	// rewrite.protected_survival_rate: (0, 1].
+	for _, rate := range []float64{0.5, 0.95, 1} {
+		assert.NoError(t, AIContextSettings(&shared.AIContextSettingsParam{
+			Rewrite: &shared.AIContextRewriteParam{ProtectedSurvivalRate: lib.PFloat64(rate)},
+		}))
+	}
+	for _, rate := range []float64{0, -0.1, 1.1} {
+		assert.Error(t, AIContextSettings(&shared.AIContextSettingsParam{
+			Rewrite: &shared.AIContextRewriteParam{ProtectedSurvivalRate: lib.PFloat64(rate)},
+		}))
+	}
+
+	// full body passes.
+	assert.NoError(t, AIContextSettings(&shared.AIContextSettingsParam{
+		TriggerRatio:       lib.PFloat64(0.8),
+		KeepLatestImages:   lib.PInt(2),
+		ToolResultMaxChars: lib.PInt(2000),
+		ThinkingPolicy:     lib.PString(AIContextThinkingPolicyTrimAllButLast),
+		CharsPerToken:      lib.PInt(3),
+		ImageTokenEstimate: lib.PInt(1200),
+		Rewrite: &shared.AIContextRewriteParam{
+			Strength:              lib.PString(AIContextRewriteStrengthFull),
+			ProtectedSurvivalRate: lib.PFloat64(0.9),
+		},
+	}))
+}
+
 func TestTrafficMirrorRules(t *testing.T) {
 	validCond := "req_path_in(\"/v1/chat/completions\", false) && req_body_json_in(\"model\", \"gpt-4o\", false)"
 

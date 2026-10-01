@@ -30,6 +30,14 @@ integration/
     │   ├── design.md
     │   ├── update/update_test.go
     │   └── get/get_test.go
+    ├── ai_context/                  # AI 上下文压缩规则（集合级 PUT/GET，mode 必填 + cond 编译校验）
+    │   ├── design.md
+    │   ├── update/update_test.go
+    │   └── get/get_test.go
+    ├── ai_context_settings/         # AI 上下文压缩全局设置（单例 upsert，空表=默认值）
+    │   ├── design.md
+    │   ├── get/get_test.go
+    │   └── update/update_test.go
     ├── traffic_mirror/              # 流量镜像规则（集合级 PUT/GET + Inner 导出）
     │   ├── design.md
     │   ├── update/update_test.go      # 含 //go:build mysql 并发用例（需 AIAPI_MYSQL_DSN）

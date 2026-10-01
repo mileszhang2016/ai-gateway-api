@@ -18,6 +18,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/ai_cache"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/ai_context"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/ai_route"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/epp_data"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/innerapi_v1/extra_file"
@@ -47,6 +48,7 @@ func endpoints() []*xreq.Endpoint {
 		quota_reset.TriggerResetRoute,
 		rate_limit_policy.ExportRoute,
 		ai_cache.ExportRoute,
+		ai_context.ExportRoute,
 		traffic_mirror.ExportRoute,
 		ai_route.ExportRoute,
 		intent_config_export.ExportRoute,

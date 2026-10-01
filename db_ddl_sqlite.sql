@@ -557,6 +557,38 @@ CREATE TABLE ai_cache_semantic_settings (
 CREATE TRIGGER ai_cache_semantic_settings_updated_at AFTER UPDATE ON ai_cache_semantic_settings
   FOR EACH ROW BEGIN UPDATE ai_cache_semantic_settings SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
 
+-- create ai_context_rules (AI上下文压缩规则表)
+DROP TABLE IF EXISTS ai_context_rules;
+CREATE TABLE ai_context_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cond TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  max_context_tokens INTEGER NOT NULL DEFAULT 0,
+  reserve_tokens INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TRIGGER ai_context_rules_updated_at AFTER UPDATE ON ai_context_rules
+  FOR EACH ROW BEGIN UPDATE ai_context_rules SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create ai_context_settings (AI上下文压缩全局设置表，单行)
+DROP TABLE IF EXISTS ai_context_settings;
+CREATE TABLE ai_context_settings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trigger_ratio REAL NOT NULL DEFAULT 0.7,
+  keep_latest_images INTEGER NOT NULL DEFAULT 2,
+  tool_result_max_chars INTEGER NOT NULL DEFAULT 2000,
+  thinking_policy TEXT NOT NULL DEFAULT 'trim-all-but-last',
+  chars_per_token INTEGER NOT NULL DEFAULT 4,
+  image_token_estimate INTEGER NOT NULL DEFAULT 1200,
+  rewrite_strength TEXT NOT NULL DEFAULT 'lite',
+  rewrite_protected_survival_rate REAL NOT NULL DEFAULT 0.95,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TRIGGER ai_context_settings_updated_at AFTER UPDATE ON ai_context_settings
+  FOR EACH ROW BEGIN UPDATE ai_context_settings SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
 -- create traffic_mirror_rules (流量镜像规则表)
 DROP TABLE IF EXISTS traffic_mirror_rules;
 CREATE TABLE traffic_mirror_rules (

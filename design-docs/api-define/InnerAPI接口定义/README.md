@@ -24,6 +24,7 @@
 | ai-route 接口 | [ai-route.md](./ai-route.md) |
 | epp_data 接口 | [epp-data.md](./epp-data.md) |
 | ai-cache-rule 接口 | [ai-cache-rule.md](./ai-cache-rule.md) |
+| ai-context-rule 接口 | [ai-context-rule.md](./ai-context-rule.md) |
 | traffic-mirror-rule 接口 | [traffic-mirror-rule.md](./traffic-mirror-rule.md) |
 | mod-ai-intent 接口 | [mod-ai-intent.md](./mod-ai-intent.md) |
 | k8s_pools 接口 | [k8s-pools.md](./k8s-pools.md) |

@@ -276,6 +276,52 @@ type AICacheSemanticSettingsParam struct {
 	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
 }
 
+// AIContextRuleParam defines an AI context compression rule. The Open API
+// vocabulary is lowercase snake_case; optional fields left nil are filled
+// with defaults (max_context_tokens=0, reserve_tokens=0; 0 means "use the
+// model table window" / "auto reserve" on the BFE side). There is no name
+// field: cond is the rule identity within the collection.
+// Read-only timestamps are intentionally not exposed: the collection is a
+// full-replace resource (every PUT recreates all rows), so per-rule
+// created_at/updated_at carry no information (aligned with ai-cache-rules).
+type AIContextRuleParam struct {
+	Cond             *string `json:"cond"`
+	Mode             *string `json:"mode"`
+	MaxContextTokens *int    `json:"max_context_tokens,omitempty"`
+	ReserveTokens    *int    `json:"reserve_tokens,omitempty"`
+}
+
+// AIContextRulesParam defines the AI context rule collection (full-replace
+// semantics: the submitted list is the effective set; a null rules list is
+// treated as empty).
+type AIContextRulesParam struct {
+	Rules []*AIContextRuleParam `json:"rules"`
+}
+
+// AIContextRewriteParam defines the rewrite-layer sub-object of the global
+// AI context settings.
+type AIContextRewriteParam struct {
+	Strength              *string  `json:"strength,omitempty"`
+	ProtectedSurvivalRate *float64 `json:"protected_survival_rate,omitempty"`
+}
+
+// AIContextSettingsParam defines the singleton AI context global settings.
+// The Open API vocabulary is lowercase snake_case; optional fields left nil
+// (including a nil rewrite sub-object or its nil fields) are filled with the
+// documented defaults (0.7 / 2 / 2000 / trim-all-but-last / 4 / 1200 /
+// lite / 0.95), frozen in sync with the BFE mod_ai_context setDefaults.
+// CreatedAt/UpdatedAt are read-only response fields (RFC3339), present only
+// when a settings row exists in storage.
+type AIContextSettingsParam struct {
+	TriggerRatio       *float64               `json:"trigger_ratio,omitempty"`
+	KeepLatestImages   *int                   `json:"keep_latest_images,omitempty"`
+	ToolResultMaxChars *int                   `json:"tool_result_max_chars,omitempty"`
+	ThinkingPolicy     *string                `json:"thinking_policy,omitempty"`
+	CharsPerToken      *int                   `json:"chars_per_token,omitempty"`
+	ImageTokenEstimate *int                   `json:"image_token_estimate,omitempty"`
+	Rewrite            *AIContextRewriteParam `json:"rewrite,omitempty"`
+}
+
 // TrafficMirrorBodyRewriteParam defines a body field rewrite on the mirror copy.
 // Phase 1 hard-checks path to "model" (aligned with BFE mod_traffic_mirror Check).
 type TrafficMirrorBodyRewriteParam struct {
