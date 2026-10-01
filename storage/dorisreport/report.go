@@ -17,6 +17,7 @@ package dorisreport
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 
 	"github.com/didi/gendry/builder"
@@ -449,15 +450,22 @@ func buildRankingsSQL(metricsTable, dimension string, f *ireport.Filter, limit i
 	}
 	where["_groupby"] = column
 	where["_orderby"] = "request_count DESC"
-	where["_limit"] = []uint{0, uint(limit)}
 
-	return builder.BuildSelect(metricsTable, where, []string{
+	query, args, err := builder.BuildSelect(metricsTable, where, []string{
 		field,
 		"SUM(request_count) AS request_count",
 		"SUM(error_count) AS error_count",
 		"SUM(input_tokens) AS input_tokens",
 		"SUM(output_tokens) AS output_tokens",
 	})
+	if err != nil {
+		return "", nil, err
+	}
+	// Doris cannot parse bound parameters in LIMIT (a prepared `LIMIT ?,?`
+	// fails with "mismatched input 'LIMIT'"); limit is a server-derived
+	// integer clamped by the manager, inlined as a literal like the
+	// time-bucket width in bucketExpr.
+	return fmt.Sprintf("%s LIMIT %d", query, limit), args, nil
 }
 
 // distributionNameExpr renders the dimension value as its display name,
@@ -568,9 +576,15 @@ func buildLogsSQL(detailTable string, f *ireport.LogFilter) (string, []interface
 
 	where := logWhere(f)
 	where["_orderby"] = "log_time DESC"
-	where["_limit"] = []uint{offset, uint(f.PageSize)}
-
-	return builder.BuildSelect(detailTable, where, logRowFields)
+	query, args, err := builder.BuildSelect(detailTable, where, logRowFields)
+	if err != nil {
+		return "", nil, err
+	}
+	// Doris cannot parse bound parameters in LIMIT (a prepared `LIMIT ?,?`
+	// fails with "mismatched input 'LIMIT'"); offset/pageSize are
+	// server-derived integers clamped by the manager, inlined as literals
+	// like the time-bucket width in bucketExpr.
+	return fmt.Sprintf("%s LIMIT %d OFFSET %d", query, uint(f.PageSize), offset), args, nil
 }
 
 // Overview implements ireport.ReportStorager. Compared to the MySQL

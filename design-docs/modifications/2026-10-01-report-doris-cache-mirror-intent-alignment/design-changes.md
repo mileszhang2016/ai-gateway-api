@@ -44,6 +44,18 @@ logs 的缓存/镜像/意图过滤谓词（`cache_status` / `mirror_hit` /
 `intent_question` / `intent_answer` / `intent_source`）已由一期
 `logWhere` 落地并支持 Doris 方言，本方案不重复实现。
 
+### 1.5 Doris 3.0 分页方言修复（SC36 集成测试实跑发现）
+
+Doris 3.0.8 **无法解析预编译语句中 LIMIT 子句的占位符**：`LIMIT ?,?` 与
+`LIMIT ? OFFSET ?` 均在解析器报 `mismatched input 'LIMIT'`（字面量 LIMIT 正常）。
+此前 dorisreport 沿用 gendry 的 `_limit` 绑定参数，导致 logs / rankings 查询在
+真实 Doris 上不可用（mysqlreport 与既有 harness 以 MySQL 为数据源，均未暴露）。
+修复：dorisreport 的 `buildLogsSQL` / `buildRankingsSQL` 将分页改为**整数字面量
+内联**（`LIMIT <pageSize> OFFSET <offset>` / `LIMIT <limit>`）——page/offset/limit
+均为 manager 钳制后的服务端整数，内联安全且与 `bucketExpr` 内联桶宽的先例一致。
+`bfe_ai_request_log.log_time` 为 UTC 墙钟（observability 侧 2026-10-01 时区口径
+修复），本仓查询层绑定 UTC 时间窗即可对齐，无需额外改动。
+
 ## 2. 能力门控拉平（`model/ireport/types.go` + `storage/dorisreport/report.go`）
 
 1. `dorisreport.Capabilities().SupportedDimensions` 追加：
@@ -60,6 +72,9 @@ logs 的缓存/镜像/意图过滤谓词（`cache_status` / `mirror_hit` /
   （`EnableAggregateJob` / `RetentionDays` / `EnablePartitionMgmt` 生效）与
   Doris 标准形态（`Backend = "doris"`，三项 JOB 配置不生效——Doris 分钟聚合由
   数仓侧 INSERT JOB 维护、保留期由两表 `dynamic_partition` 属性自管）；
+  Doris 数据源必须显式设 `AllowNativePasswords = true`（`mysql.Config.FormatDSN`
+  会把零值序列化为 `allowNativePasswords=false`，Doris FE 的
+  mysql_native_password 认证会被拒绝——集成测试实跑发现）；
 - `Backend` 取值语义表（缺省 404 / mysql / doris / 非法值启动报错）入档；
 - 连接方式说明：Doris 走 FE 的 MySQL 协议端口（9030），作为 `Databases` map
   的普通条目（`Driver = "mysql"`），不引入新客户端；

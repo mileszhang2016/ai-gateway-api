@@ -151,6 +151,9 @@ MaxIdle = 10
 # Addr = "127.0.0.1:9030"       # Doris FE query_port
 # User = "report_read"          # SELECT-only is sufficient
 # Passwd = ""
+# AllowNativePasswords = true   # 必须显式开启：mysql.Config.FormatDSN 会把零值
+#                               # 序列化为 allowNativePasswords=false，Doris FE
+#                               # 的 mysql_native_password 认证随即被拒绝
 # MaxOpenConns = 20
 # MaxIdleConns = 5
 #

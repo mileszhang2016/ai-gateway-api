@@ -189,7 +189,9 @@ func TestBuildRankingsSQL_Dialect(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, query, "SELECT ai_provider AS name,")
 	assert.Contains(t, query, "ai_provider!=?")
-	assert.Equal(t, []interface{}{"", testStart, testEnd, 0, 10}, args)
+	// LIMIT is inlined as a literal (Doris cannot parse bound LIMIT params).
+	assert.True(t, strings.HasSuffix(query, " LIMIT 10"))
+	assert.Equal(t, []interface{}{"", testStart, testEnd}, args)
 
 	// status dimension: numeric empty marker 0.
 	query, _, err = buildRankingsSQL("bfe_ai_metrics_1m", ireport.DimensionStatus, &ireport.Filter{Start: testStart, End: testEnd}, 10)
@@ -202,7 +204,7 @@ func TestBuildRankingsSQL_Dialect(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, query, "SELECT ai_cache_status AS name,")
 	assert.Contains(t, query, "ai_cache_status!=?")
-	assert.Equal(t, []interface{}{"", testStart, testEnd, 0, 10}, args)
+	assert.Equal(t, []interface{}{"", testStart, testEnd}, args)
 
 	// intent_answer: same string caliber.
 	query, _, err = buildRankingsSQL("bfe_ai_metrics_1m", ireport.DimensionIntentAnswer, &ireport.Filter{Start: testStart, End: testEnd}, 10)
@@ -215,7 +217,8 @@ func TestBuildRankingsSQL_Dialect(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, query, "SELECT CAST(mirror_hit AS CHAR) AS name,")
 	assert.NotContains(t, query, "mirror_hit!=")
-	assert.Equal(t, []interface{}{testStart, testEnd, 0, 10}, args)
+	assert.True(t, strings.HasSuffix(query, " LIMIT 10"))
+	assert.Equal(t, []interface{}{testStart, testEnd}, args)
 
 	_, _, err = buildRankingsSQL("bfe_ai_metrics_1m", "bogus", &ireport.Filter{Start: testStart, End: testEnd}, 10)
 	require.Error(t, err)
@@ -259,15 +262,17 @@ func TestBuildLogsSQL(t *testing.T) {
 	}
 	query, args, err := buildLogsSQL("bfe_ai_request_log", f)
 	require.NoError(t, err)
-	assert.Contains(t, query, " ORDER BY log_time DESC LIMIT ?,?")
+	// Doris cannot parse bound parameters in LIMIT: page/offset are inlined
+	// as literals (server-derived integers).
+	assert.Contains(t, query, " ORDER BY log_time DESC LIMIT 20 OFFSET 20")
 	assert.Contains(t, query, "err_msg LIKE ?")
-	assert.Equal(t, []interface{}{int8(1), "key-1", "openai", "gpt-4o", "gpt-4", "gw-01", 200, 500, "", testStart, testEnd, "%timeout%", 20, 20}, args)
+	assert.Equal(t, []interface{}{int8(1), "key-1", "openai", "gpt-4o", "gpt-4", "gw-01", 200, 500, "", testStart, testEnd, "%timeout%"}, args)
 
 	countSQL, countArgs, err := buildLogsCountSQL("bfe_ai_request_log", f)
 	require.NoError(t, err)
 	assert.Equal(t, "SELECT COUNT(*) FROM bfe_ai_request_log", countSQL[:strings.Index(countSQL, " WHERE")])
 	assert.Contains(t, countSQL, "IFNULL(err_code,'')!=?")
-	assert.Equal(t, args[:len(args)-2], countArgs)
+	assert.Equal(t, countArgs, args)
 }
 
 // TestBuildLogsSQL_CacheMirrorIntentFilters 验证 Doris 侧五个新过滤参数
