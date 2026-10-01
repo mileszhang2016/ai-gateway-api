@@ -46,17 +46,17 @@ var (
 )
 
 const (
-	MaxUserNameLength       = 64
-	MaxTokenNameLength      = 64
-	MaxClusterNameLength    = 64
-	MaxCertNameLength       = 64
+	MaxUserNameLength          = 64
+	MaxTokenNameLength         = 64
+	MaxClusterNameLength       = 64
+	MaxCertNameLength          = 64
 	MaxEntityTypeNameLength    = 32
 	MaxEntityNameLength        = 64
 	MaxDescriptionLength       = 256
 	MaxEntityDescriptionLength = 255
 	MaxAPIDescriptionLength    = 512
-	MaxLLMKeyLength         = 512
-	MaxRateLimitNameLength  = 128
+	MaxLLMKeyLength            = 512
+	MaxRateLimitNameLength     = 128
 )
 
 var reservedUserNames = map[string]bool{
@@ -751,6 +751,135 @@ func AICacheSemanticSettings(param *shared.AICacheSemanticSettingsParam) error {
 			return xerror.WrapParamErrorWithMsg("ai cache semantic settings threshold_relation must be one of %s/%s/%s/%s",
 				AICacheSemanticThresholdRelationLT, AICacheSemanticThresholdRelationLTE,
 				AICacheSemanticThresholdRelationGT, AICacheSemanticThresholdRelationGTE)
+		}
+	}
+
+	return nil
+}
+
+const (
+	// AI context compression modes (BFE mod_ai_context contract).
+	AIContextModeOff          = "off"
+	AIContextModeConservative = "conservative"
+	AIContextModeBalanced     = "balanced"
+	AIContextModeAggressive   = "aggressive"
+
+	// AI context thinking policies (BFE mod_ai_context contract).
+	AIContextThinkingPolicyTrimAllButLast = "trim-all-but-last"
+	AIContextThinkingPolicyKeep           = "keep"
+
+	// AI context rewrite strengths (BFE mod_ai_context contract).
+	AIContextRewriteStrengthLite = "lite"
+	AIContextRewriteStrengthFull = "full"
+)
+
+// AIContextRules validates an AI context rule set (the full-replace PUT body).
+// A nil rules list is treated as empty (clear all rules); any single failure
+// rejects the whole collection with a param error (HTTP 422). Mode is
+// required (the BFE loader rejects the whole file on missing/illegal mode);
+// cond is checked non-empty only — compiling the expression stays on the BFE
+// side to avoid version coupling with condition primitives.
+func AIContextRules(param *shared.AIContextRulesParam) error {
+	if param == nil {
+		return nil
+	}
+
+	rules := param.Rules
+	if rules == nil {
+		rules = []*shared.AIContextRuleParam{}
+	}
+
+	condSet := map[string]struct{}{}
+	for i, rule := range rules {
+		if rule == nil {
+			return xerror.WrapParamErrorWithMsg("ai context rule #%d is null", i)
+		}
+
+		if rule.Cond == nil || *rule.Cond == "" {
+			return xerror.WrapParamErrorWithMsg("ai context rule #%d cond is required", i)
+		}
+		if err := ConditionExpression(*rule.Cond); err != nil {
+			return xerror.WrapParamErrorWithMsg("ai context rule #%d cond: %v", i, err)
+		}
+		if _, ok := condSet[*rule.Cond]; ok {
+			return xerror.WrapParamErrorWithMsg("duplicate ai context rule cond: %s", *rule.Cond)
+		}
+		condSet[*rule.Cond] = struct{}{}
+
+		if rule.Mode == nil || *rule.Mode == "" {
+			return xerror.WrapParamErrorWithMsg("ai context rule #%d mode is required", i)
+		}
+		switch *rule.Mode {
+		case AIContextModeOff, AIContextModeConservative, AIContextModeBalanced, AIContextModeAggressive:
+		default:
+			return xerror.WrapParamErrorWithMsg("ai context rule #%d mode must be one of %s/%s/%s/%s",
+				i, AIContextModeOff, AIContextModeConservative, AIContextModeBalanced, AIContextModeAggressive)
+		}
+
+		if rule.MaxContextTokens != nil && *rule.MaxContextTokens < 0 {
+			return xerror.WrapParamErrorWithMsg("ai context rule #%d max_context_tokens must be >= 0", i)
+		}
+
+		if rule.ReserveTokens != nil && *rule.ReserveTokens < 0 {
+			return xerror.WrapParamErrorWithMsg("ai context rule #%d reserve_tokens must be >= 0", i)
+		}
+	}
+
+	return nil
+}
+
+// AIContextSettings validates the singleton AI context global settings (the
+// full-replace PUT body). Omitted fields fall back to the documented defaults
+// (filled by the model layer); any out-of-range value or illegal enum rejects
+// the whole write with a param error (HTTP 422). A nil rewrite sub-object (or
+// its nil fields) falls back to the defaults as well.
+func AIContextSettings(param *shared.AIContextSettingsParam) error {
+	if param == nil {
+		return nil
+	}
+
+	if param.TriggerRatio != nil && (*param.TriggerRatio <= 0 || *param.TriggerRatio > 1) {
+		return xerror.WrapParamErrorWithMsg("ai context settings trigger_ratio must be in (0, 1]")
+	}
+
+	if param.KeepLatestImages != nil && *param.KeepLatestImages < 0 {
+		return xerror.WrapParamErrorWithMsg("ai context settings keep_latest_images must be >= 0")
+	}
+
+	if param.ToolResultMaxChars != nil && *param.ToolResultMaxChars < 0 {
+		return xerror.WrapParamErrorWithMsg("ai context settings tool_result_max_chars must be >= 0")
+	}
+
+	if param.ThinkingPolicy != nil {
+		switch *param.ThinkingPolicy {
+		case AIContextThinkingPolicyTrimAllButLast, AIContextThinkingPolicyKeep:
+		default:
+			return xerror.WrapParamErrorWithMsg("ai context settings thinking_policy must be one of %s/%s",
+				AIContextThinkingPolicyTrimAllButLast, AIContextThinkingPolicyKeep)
+		}
+	}
+
+	if param.CharsPerToken != nil && *param.CharsPerToken < 1 {
+		return xerror.WrapParamErrorWithMsg("ai context settings chars_per_token must be >= 1")
+	}
+
+	if param.ImageTokenEstimate != nil && *param.ImageTokenEstimate < 0 {
+		return xerror.WrapParamErrorWithMsg("ai context settings image_token_estimate must be >= 0")
+	}
+
+	if param.Rewrite != nil {
+		if param.Rewrite.Strength != nil {
+			switch *param.Rewrite.Strength {
+			case AIContextRewriteStrengthLite, AIContextRewriteStrengthFull:
+			default:
+				return xerror.WrapParamErrorWithMsg("ai context settings rewrite.strength must be one of %s/%s",
+					AIContextRewriteStrengthLite, AIContextRewriteStrengthFull)
+			}
+		}
+
+		if param.Rewrite.ProtectedSurvivalRate != nil &&
+			(*param.Rewrite.ProtectedSurvivalRate <= 0 || *param.Rewrite.ProtectedSurvivalRate > 1) {
+			return xerror.WrapParamErrorWithMsg("ai context settings rewrite.protected_survival_rate must be in (0, 1]")
 		}
 	}
 

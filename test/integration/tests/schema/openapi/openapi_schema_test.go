@@ -51,6 +51,8 @@ func TestOpenAPI_Schema(t *testing.T) {
 	t.Run("global_route_rules", testGlobalRouteRulesSchema)
 	t.Run("ai_cache", testAICacheSchema)
 	t.Run("ai_cache_semantic_settings", testAICacheSemanticSettingsSchema)
+	t.Run("ai_context", testAIContextSchema)
+	t.Run("ai_context_settings", testAIContextSettingsSchema)
 	t.Run("traffic_mirror", testTrafficMirrorSchema)
 	t.Run("intent_config", testIntentConfigSchema)
 	t.Run("epp_pool", testEppPoolSchema)
@@ -868,6 +870,160 @@ func testAICacheSemanticSettingsSchema(t *testing.T) {
 	})
 	require.NoError(t, err)
 	testutil.AssertSuccess(t, resetResp)
+}
+
+// ---------- ai-context-rules ----------
+
+// testAIContextSchema 覆盖 AI 上下文压缩规则集合（GET/PUT 同构）。
+// 集合级资源无 /{id} 端点："GET 单查" 即全量查询的重复拉取（唯一读形状）。
+// 另做定向断言：rules 元素键集合精确为合同 4 字段（cond/mode/max_context_tokens/
+// reserve_tokens），不得含内部 id/name/enabled，且不携带 created_at/updated_at
+// （整组替换语义，与 ai-cache-rules 不同；ai-context-rules.md §1）。
+func testAIContextSchema(t *testing.T) {
+	validCond := `req_path_in("/v1/chat/completions", false)`
+
+	// 建集合（PUT）：1 条 balanced 带显式预算 + 1 条 default_t() 兜底 off。
+	putResp, err := testutil.GetClient().Put("/open-api/v1/ai-context-rules", map[string]interface{}{
+		"rules": []interface{}{
+			map[string]interface{}{
+				"cond": validCond, "mode": "balanced",
+				"max_context_tokens": 64000, "reserve_tokens": 8192,
+			},
+			map[string]interface{}{"cond": "default_t()", "mode": "off"},
+		},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, putResp)
+	testutil.AssertSchema(t, putResp, AIContextRulesSchema)
+
+	// GET 列表（全量查询）。
+	listResp, err := testutil.GetClient().Get("/open-api/v1/ai-context-rules")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, listResp)
+	testutil.AssertSchema(t, listResp, AIContextRulesSchema)
+
+	// GET 重复拉取（唯一读形状，等价单查）。
+	oneResp, err := testutil.GetClient().Get("/open-api/v1/ai-context-rules")
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, oneResp)
+	testutil.AssertSchema(t, oneResp, AIContextRulesSchema)
+
+	// 定向合同锁：rules 元素键集合精确 4 字段，无 id/name/enabled/timestamps；
+	// 可空字段回填 0，mode 枚举原样回读。
+	var data map[string]interface{}
+	require.NoError(t, json.Unmarshal(listResp.Data, &data))
+	rules, ok := data["rules"].([]interface{})
+	require.True(t, ok, "rules should be array")
+	require.Len(t, rules, 2)
+	wantModes := []string{"balanced", "off"}
+	for i, item := range rules {
+		rule, ok := item.(map[string]interface{})
+		require.True(t, ok, "rules[%d] should be object", i)
+		assert.ElementsMatch(t,
+			[]string{"cond", "mode", "max_context_tokens", "reserve_tokens"}, keysOfMap(rule),
+			"rules[%d] keys must exactly match contract (no id/name/enabled/timestamps)", i)
+		assert.Equal(t, wantModes[i], rule["mode"])
+	}
+	assert.Equal(t, float64(64000), rules[0].(map[string]interface{})["max_context_tokens"])
+	assert.Equal(t, float64(8192), rules[0].(map[string]interface{})["reserve_tokens"])
+	assert.Equal(t, float64(0), rules[1].(map[string]interface{})["max_context_tokens"])
+	assert.Equal(t, float64(0), rules[1].(map[string]interface{})["reserve_tokens"])
+
+	// 原始 body 不得出现内部/只读键（核心合同锁定，#201 幻影键不敏感）。
+	body := string(listResp.RawBody)
+	assert.NotContains(t, body, `"id"`)
+	assert.NotContains(t, body, `"name"`)
+	assert.NotContains(t, body, `"enabled"`)
+	assert.NotContains(t, body, "created_at")
+	assert.NotContains(t, body, "updated_at")
+
+	t.Cleanup(func() {
+		// 恢复空集合，避免影响其他模块。
+		_, _ = testutil.GetClient().Put("/open-api/v1/ai-context-rules", map[string]interface{}{
+			"rules": []interface{}{},
+		})
+	})
+}
+
+// ---------- ai-context-settings ----------
+
+// testAIContextSettingsSchema 覆盖 AI 上下文压缩全局设置单例（GET/PUT 同构）。
+// 空表 GET 默认值对象与 PUT 自定义后响应共用 AIContextSettingsSchema（同 7 顶层键，
+// rewrite 嵌套对象 2 键；无时间戳形态分叉）。定向断言：默认值 8 项、
+// rewrite 逐字段合并语义、响应无 created_at/updated_at。
+func testAIContextSettingsSchema(t *testing.T) {
+	settingsPath := "/open-api/v1/ai-context-settings"
+
+	// 空表 GET：默认值对象（本包独立数据库，源码顺序最先执行，表必为空）。
+	emptyResp, err := testutil.GetClient().Get(settingsPath)
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, emptyResp)
+	testutil.AssertSchema(t, emptyResp, AIContextSettingsSchema)
+	assertSettingsDefaults(t, emptyResp.Data)
+
+	// PUT 自定义（trigger_ratio + rewrite.strength 部分字段）：嵌套逐字段合并。
+	putResp, err := testutil.GetClient().Put(settingsPath, map[string]interface{}{
+		"trigger_ratio": 0.8,
+		"rewrite":       map[string]interface{}{"strength": "full"},
+	})
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, putResp)
+	testutil.AssertSchema(t, putResp, AIContextSettingsSchema)
+
+	var putData map[string]interface{}
+	require.NoError(t, json.Unmarshal(putResp.Data, &putData))
+	assert.ElementsMatch(t,
+		[]string{
+			"trigger_ratio", "keep_latest_images", "tool_result_max_chars",
+			"thinking_policy", "chars_per_token", "image_token_estimate", "rewrite",
+		}, keysOfMap(putData), "settings keys must exactly match contract (no timestamps)")
+	assert.InDelta(t, 0.8, putData["trigger_ratio"], 1e-9)
+	putRewrite, ok := putData["rewrite"].(map[string]interface{})
+	require.True(t, ok, "rewrite should be object")
+	assert.Equal(t, "full", putRewrite["strength"])
+	assert.InDelta(t, 0.95, putRewrite["protected_survival_rate"], 1e-9,
+		"omitted rewrite field must fall back to default (field-wise merge)")
+	assert.Equal(t, float64(2), putData["keep_latest_images"], "omitted field must fall back to default")
+
+	// GET 回读同构。
+	getResp, err := testutil.GetClient().Get(settingsPath)
+	require.NoError(t, err)
+	testutil.AssertSuccess(t, getResp)
+	testutil.AssertSchema(t, getResp, AIContextSettingsSchema)
+	assert.Equal(t, putData, mustUnmarshalMap(t, getResp.Data), "GET readback must equal PUT response")
+
+	// 原始 body 不得出现时间戳键（与 ai-cache-settings 的形态差异点）。
+	body := string(getResp.RawBody)
+	assert.NotContains(t, body, "created_at")
+	assert.NotContains(t, body, "updated_at")
+
+	t.Cleanup(func() {
+		// 恢复全默认值（等价空表形态），避免影响其他模块。
+		_, _ = testutil.GetClient().Put(settingsPath, map[string]interface{}{})
+	})
+}
+
+// assertSettingsDefaults 定向断言空表默认值对象：8 项文档默认值 + rewrite 2 键。
+func assertSettingsDefaults(t *testing.T, data []byte) {
+	t.Helper()
+	payload := mustUnmarshalMap(t, data)
+	assert.InDelta(t, 0.7, payload["trigger_ratio"], 1e-9)
+	assert.Equal(t, float64(2), payload["keep_latest_images"])
+	assert.Equal(t, float64(2000), payload["tool_result_max_chars"])
+	assert.Equal(t, "trim-all-but-last", payload["thinking_policy"])
+	assert.Equal(t, float64(4), payload["chars_per_token"])
+	assert.Equal(t, float64(1200), payload["image_token_estimate"])
+	rewrite, ok := payload["rewrite"].(map[string]interface{})
+	require.True(t, ok, "rewrite should be object")
+	assert.Equal(t, "lite", rewrite["strength"])
+	assert.InDelta(t, 0.95, rewrite["protected_survival_rate"], 1e-9)
+}
+
+func mustUnmarshalMap(t *testing.T, data []byte) map[string]interface{} {
+	t.Helper()
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &payload))
+	return payload
 }
 
 // ---------- traffic-mirror-rules ----------

@@ -126,6 +126,9 @@ const (
 	// ai cache
 	FeatureAICache Feature = "AICache"
 
+	// ai context compress
+	FeatureAIContext Feature = "AIContext"
+
 	// traffic mirror
 	FeatureTrafficMirror Feature = "TrafficMirror"
 
@@ -236,6 +239,7 @@ var scope2permission = map[string]map[Feature]Action{
 		FeatureAPIKey:            ActionExport,
 		FeatureRateLimitPolicy:   ActionExport,
 		FeatureAICache:           ActionExport,
+		FeatureAIContext:         ActionExport,
 		FeatureTrafficMirror:     ActionExport,
 		FeatureAIIntent:          ActionExport,
 	},

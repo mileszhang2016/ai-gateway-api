@@ -527,6 +527,34 @@ CREATE TABLE `ai_cache_semantic_settings` (
   `updated_at` DATETIME NOT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI缓存语义全局设置表（单行）';
 
+-- create ai_context_rules (AI上下文压缩规则表)
+DROP TABLE IF EXISTS `ai_context_rules`;
+CREATE TABLE `ai_context_rules` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID（数组顺序=id 升序=优先级）',
+  `cond` VARCHAR(1024) NOT NULL COMMENT 'bfe 条件表达式',
+  `mode` VARCHAR(16) NOT NULL COMMENT '压缩档位: off/conservative/balanced/aggressive',
+  `max_context_tokens` INT NOT NULL DEFAULT 0 COMMENT '预算上限覆盖(token), 0=用模型表窗口',
+  `reserve_tokens` INT NOT NULL DEFAULT 0 COMMENT '预留输出token, 0=自动clamp(窗口x15%,256,16000)',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI上下文压缩规则表';
+
+-- create ai_context_settings (AI上下文压缩全局设置表，单行)
+DROP TABLE IF EXISTS `ai_context_settings`;
+CREATE TABLE `ai_context_settings` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID（恒为1语义，物理单行）',
+  `trigger_ratio` DOUBLE NOT NULL DEFAULT 0.7 COMMENT 'proactive触发阈值(占预算比例, 0-1]',
+  `keep_latest_images` INT NOT NULL DEFAULT 2 COMMENT '保留最近N张内联图片, 0=不裁图',
+  `tool_result_max_chars` INT NOT NULL DEFAULT 2000 COMMENT '单条tool结果最大字符数, 0=不截断',
+  `thinking_policy` VARCHAR(32) NOT NULL DEFAULT 'trim-all-but-last' COMMENT 'thinking块策略: trim-all-but-last/keep',
+  `chars_per_token` INT NOT NULL DEFAULT 4 COMMENT '文本估算系数(字节/token), 中文密集可调3',
+  `image_token_estimate` INT NOT NULL DEFAULT 1200 COMMENT '单张内联图片估值token',
+  `rewrite_strength` VARCHAR(8) NOT NULL DEFAULT 'lite' COMMENT '改写强度: lite/full',
+  `rewrite_protected_survival_rate` DOUBLE NOT NULL DEFAULT 0.95 COMMENT 'fidelity gate保护token存活率阈值(0-1]',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI上下文压缩全局设置表（单行）';
+
 -- create traffic_mirror_rules (流量镜像规则表)
 DROP TABLE IF EXISTS `traffic_mirror_rules`;
 CREATE TABLE `traffic_mirror_rules` (

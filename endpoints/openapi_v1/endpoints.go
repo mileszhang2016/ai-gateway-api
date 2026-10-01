@@ -19,6 +19,7 @@ import (
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/middleware"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/ai_cache"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/ai_context"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/auth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_cluster"
@@ -74,6 +75,7 @@ func endpoints() []*xreq.Endpoint {
 		entity.Endpoints,
 		global_route_rules.Endpoints,
 		ai_cache.Endpoints,
+		ai_context.Endpoints,
 		traffic_mirror.Endpoints,
 		intent_config.Endpoints,
 		route_tables.Endpoints,

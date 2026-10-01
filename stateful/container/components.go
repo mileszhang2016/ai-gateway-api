@@ -30,6 +30,7 @@ package container
 
 import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ai_cache"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ai_context"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/epp_pool"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
@@ -99,6 +100,8 @@ var (
 	RateLimitPolicyStorager         rate_limit_policy.RateLimitPolicyStorager
 	AICacheStorager                 ai_cache.AICacheStorager
 	AICacheSemanticSettingsStorager ai_cache.AICacheSemanticSettingsStorager
+	AIContextStorager               ai_context.AIContextStorager
+	AIContextSettingsStorager       ai_context.AIContextSettingsStorager
 	TrafficMirrorStorager           traffic_mirror.TrafficMirrorStorager
 	IntentConfigStorager            iintent_config.IntentConfigStorager
 	RouteRulesStorager              shared.RouteRulesStorager
@@ -122,6 +125,7 @@ var (
 	QuotaPlanManager       *quota.QuotaPlanManager
 	RateLimitPolicyManager *rate_limit_policy.RateLimitPolicyManager
 	AICacheManager         *ai_cache.AICacheManager
+	AIContextManager       *ai_context.AIContextManager
 	TrafficMirrorManager   *traffic_mirror.TrafficMirrorManager
 	IntentConfigManager    *iintent_config.IntentConfigManager
 	RouteRulesManager      *route_rules.RouteRulesManager

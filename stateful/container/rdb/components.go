@@ -35,6 +35,7 @@ import (
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ai_cache"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ai_context"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/epp_pool"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
@@ -60,6 +61,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/dorisreport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/mysqlreport"
 	aiCacheStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_cache"
+	aiContextStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_context"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
 	apiKeyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/auth"
@@ -336,6 +338,16 @@ func Init() error {
 		container.VersionControlManager,
 		stateful.DefaultConfig.RunTime.AIRouteInnerProductName)
 	container.AICacheManager.SetOperationLogManager(container.OperationLogManager)
+
+	container.AIContextStorager = aiContextStorage.NewAIContextStorager(stateful.NewBFEDBContext)
+	container.AIContextSettingsStorager = aiContextStorage.NewAIContextSettingsStorager(stateful.NewBFEDBContext)
+	container.AIContextManager = ai_context.NewAIContextManager(
+		container.TxnStoragerSingleton,
+		container.AIContextStorager,
+		container.AIContextSettingsStorager,
+		container.VersionControlManager,
+		stateful.DefaultConfig.RunTime.AIRouteInnerProductName)
+	container.AIContextManager.SetOperationLogManager(container.OperationLogManager)
 
 	container.TrafficMirrorStorager = trafficMirrorStorage.NewTrafficMirrorStorager(stateful.NewBFEDBContext)
 	container.TrafficMirrorManager = traffic_mirror.NewTrafficMirrorManager(

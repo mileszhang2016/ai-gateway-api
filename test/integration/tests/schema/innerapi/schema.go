@@ -253,6 +253,69 @@ var AICacheRuleExportSchema = &testutil.ObjectSchema{
 	},
 }
 
+// AIContextRuleExportItemSchema /configs/ai-context-rule 导出单条规则 schema。
+// Required 恰为合同 4 个导出 tag（camelCase，与 Open API 词汇不同）；
+// mode 必填四枚举（BFE 对缺失/非法 mode 整文件拒载，控制面 422 前置拦截）；
+// 二期字段 override 不得出现（ai-context-rule.md §3.3 合同锁定）。
+var AIContextRuleExportItemSchema = &testutil.ObjectSchema{
+	Required: []string{"cond", "mode", "maxContextTokens", "reserveTokens"},
+	Fields: map[string]testutil.FieldSpec{
+		"cond":             {Type: testutil.TypeString},
+		"mode":             {Type: testutil.TypeString, Enum: []interface{}{"off", "conservative", "balanced", "aggressive"}},
+		"maxContextTokens": {Type: testutil.TypeInt},
+		"reserveTokens":    {Type: testutil.TypeInt},
+	},
+}
+
+// AIContextRewriteExportSchema /configs/ai-context-rule Defaults 块 rewrite 子对象 schema。
+// camelCase tag（strength/protectedSurvivalRate）与 BFE RewriteConfFile 逐字段冻结。
+var AIContextRewriteExportSchema = &testutil.ObjectSchema{
+	Required: []string{"strength", "protectedSurvivalRate"},
+	Fields: map[string]testutil.FieldSpec{
+		"strength":              {Type: testutil.TypeString, Enum: []interface{}{"lite", "full"}},
+		"protectedSurvivalRate": {Type: testutil.TypeNumber},
+	},
+}
+
+// AIContextDefaultsExportSchema /configs/ai-context-rule 顶层 Defaults 块 schema。
+// camelCase tag（7 顶层键）与 BFE DefaultsConfFile 逐字段冻结；恒导出（空设置表时以
+// 默认值 0.7/2/2000/trim-all-but-last/4/1200/lite/0.95 填充）；rewrite 为嵌套对象。
+var AIContextDefaultsExportSchema = &testutil.ObjectSchema{
+	Required: []string{
+		"triggerRatio", "keepLatestImages", "toolResultMaxChars",
+		"thinkingPolicy", "charsPerToken", "imageTokenEstimate", "rewrite",
+	},
+	Fields: map[string]testutil.FieldSpec{
+		"triggerRatio":       {Type: testutil.TypeNumber},
+		"keepLatestImages":   {Type: testutil.TypeInt},
+		"toolResultMaxChars": {Type: testutil.TypeInt},
+		"thinkingPolicy":     {Type: testutil.TypeString, Enum: []interface{}{"trim-all-but-last", "keep"}},
+		"charsPerToken":      {Type: testutil.TypeInt},
+		"imageTokenEstimate": {Type: testutil.TypeInt},
+		"rewrite":            {Type: testutil.TypeObject, Nested: AIContextRewriteExportSchema},
+	},
+}
+
+// AIContextRuleExportBodySchema /configs/ai-context-rule 返回 Config 段 schema。
+// product 键取自 AIRouteInnerProductName（测试环境为 AI_product）；空集合导出 [] 且键 present。
+var AIContextRuleExportBodySchema = &testutil.ObjectSchema{
+	Required: []string{"AI_product"},
+	Fields: map[string]testutil.FieldSpec{
+		"AI_product": {Type: testutil.TypeArray, Elem: AIContextRuleExportItemSchema},
+	},
+}
+
+// AIContextRuleExportSchema /configs/ai-context-rule 返回 schema。
+// Defaults 块恒导出且进入 MD5 签名（设置变更驱动版本流），与 Version/Config 并列顶层键。
+var AIContextRuleExportSchema = &testutil.ObjectSchema{
+	Required: []string{"Version", "Defaults", "Config"},
+	Fields: map[string]testutil.FieldSpec{
+		"Version":  {Type: testutil.TypeString},
+		"Defaults": {Type: testutil.TypeObject, Nested: AIContextDefaultsExportSchema},
+		"Config":   {Type: testutil.TypeObject, Nested: AIContextRuleExportBodySchema},
+	},
+}
+
 // TrafficMirrorRuleExportItemSchema /configs/traffic-mirror-rule 导出单条规则 schema。
 // Required 恰为合同 7 个导出 tag（大写驼峰，与 Open API 词汇不同）；规则全字段恒输出
 // （含空值零值 {} / [] / ""，不用 omitempty）——removeHeaders 两层默认语义

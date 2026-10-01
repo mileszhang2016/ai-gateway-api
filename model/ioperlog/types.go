@@ -73,6 +73,8 @@ const (
 	ResourceTypeRateLimitPolicy         ResourceType = "rate_limit_policy"
 	ResourceTypeAICacheRule             ResourceType = "ai_cache_rule"
 	ResourceTypeAICacheSemanticSettings ResourceType = "ai_cache_semantic_settings"
+	ResourceTypeAIContextRule           ResourceType = "ai_context_rule"
+	ResourceTypeAIContextSettings       ResourceType = "ai_context_settings"
 	ResourceTypeTrafficMirrorRule       ResourceType = "traffic_mirror_rule"
 	ResourceTypeIntentConfig            ResourceType = "intent_config"
 	ResourceTypeModelPrice              ResourceType = "model_price"
