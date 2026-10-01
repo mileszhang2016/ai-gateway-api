@@ -467,7 +467,9 @@ func TestDimensionColumns(t *testing.T) {
 }
 
 // TestReportManager_DimensionCapabilityGate 验证后端能力门控：维度白名单
-// 校验通过但后端不支持时返回 422，错误信息指明 mysql only（xerror 约定）。
+// 校验通过但后端不支持时返回 422，错误信息指明后端名（xerror 约定）。
+// 二期起真实 dorisreport 声明全量维度，门控仅作为未来维度的纵深防御，
+// 这里用 fake caps（不含新维度）锁定机制本身。
 func TestReportManager_DimensionCapabilityGate(t *testing.T) {
 	start, end := testWindow()
 	newDims := []string{DimensionCacheStatus, DimensionMirrorHit, DimensionIntentAnswer}
@@ -480,7 +482,7 @@ func TestReportManager_DimensionCapabilityGate(t *testing.T) {
 				Dimension: dim,
 			})
 			require.Error(t, err, dim)
-			assert.Contains(t, err.Error(), "not supported by doris backend (mysql only until doris support lands)")
+			assert.Contains(t, err.Error(), "not supported by doris backend")
 		}
 	})
 

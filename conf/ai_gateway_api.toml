@@ -122,6 +122,8 @@ MaxIdle = 10
 # see design-docs/modifications/2026-09-15-report-query-api and
 # db_ddl_report_mysql.sql. When [Report] is absent the report module is
 # not assembled and /open-api/v1/report/* stay 404.
+#
+# 轻量形态（Backend="mysql"，本机 MySQL 报表库 + 进程内聚合/分区 JOB）：
 # [Databases.report_db]
 # Driver = "mysql"
 # DBName = "bfe_report"
@@ -132,10 +134,34 @@ MaxIdle = 10
 # MaxIdleConns = 5
 #
 # [Report]
-# Backend = "mysql"             # mysql | doris
-# Datasource = "report_db"      # a [Databases.*] entry (doris: FE 9030)
+# Backend = "mysql"
+# Datasource = "report_db"      # a [Databases.*] entry
 # Database = ""                 # schema override for table names (optional)
-# EnableAggregateJob = true     # backend=mysql only
+# EnableAggregateJob = true     # minute aggregate job (detail -> bfe_ai_metrics_1m)
+# AggregateIntervalSec = 60
+# RetentionDays = 7             # detail retention (partition DROP / DELETE window)
+# EnablePartitionMgmt = true    # partition management job (DELETE fallback)
+#
+# 标准形态（Backend="doris"，既有 Kafka -> Doris 链路；Doris 走 FE 的 MySQL
+# 协议端口，不引入新客户端；需先完成 ai-gateway-observability 侧建表/升级，
+# 见该仓 doris/docs/user/HOWTO.md）：
+# [Databases.doris_db]
+# Driver = "mysql"              # Doris FE MySQL-protocol port, not a new client
+# DBName = "bfe_observability"
+# Addr = "127.0.0.1:9030"       # Doris FE query_port
+# User = "report_read"          # SELECT-only is sufficient
+# Passwd = ""
+# MaxOpenConns = 20
+# MaxIdleConns = 5
+#
+# [Report]
+# Backend = "doris"
+# Datasource = "doris_db"       # a [Databases.*] entry (doris: FE 9030)
+# Database = ""                 # schema override for table names (optional)
+# The three job options below only take effect with backend=mysql; with the
+# doris backend they are inert either way (aggregation is maintained by the
+# warehouse-side INSERT JOB, retention by the tables' dynamic_partition props):
+# EnableAggregateJob = false
 # AggregateIntervalSec = 60
 # RetentionDays = 7
-# EnablePartitionMgmt = true
+# EnablePartitionMgmt = false

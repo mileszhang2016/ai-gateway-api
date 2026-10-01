@@ -282,6 +282,6 @@ func (m *ReportManager) checkDimensionSupported(dimension string) error {
 		backend = "current"
 	}
 	return xerror.WrapParamErrorWithMsg(
-		"dimension %s not supported by %s backend (mysql only until doris support lands)",
+		"dimension %s not supported by %s backend",
 		dimension, backend)
 }
