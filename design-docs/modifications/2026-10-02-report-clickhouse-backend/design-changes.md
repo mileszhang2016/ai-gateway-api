@@ -223,7 +223,7 @@ logs 明细投影的 `log_time` 列：dorisreport 用
 
 ## 9. 参考文档
 
-- 权威设计稿：`document-ai-gateway/迭代系统设计/v0.8/starrocks和clickhouse对接/数据报表-ClickHouse和StarRocks对接设计方案.md`（§5 ClickHouse 数仓资产、§6.3 查询层改动）
+- 权威设计稿：《数据报表-ClickHouse 与 StarRocks 对接设计方案》（v0.8 迭代系统设计稿，2026-10-01）§5 ClickHouse 数仓资产、§6.3 查询层改动
 - 代码依据：`model/ireport/types.go`（`ReportStorager` / `BackendCaps` / `Dimension*`）、`stateful/config.go`（`ReportConfig`）、`stateful/config_database.go`（`DbConfig.FormatDSN()`）、`stateful/container/rdb/components.go`（`initReport()`）、`storage/dorisreport/report.go` + `report_test.go`、`test/integration/testutil/report_server.go`
 - 数仓依据：ai-gateway-observability `clickhouse/sqls/`（`bfe_ai_request_log.sql`、`bfe_ai_log_kafka.sql`、`bfe_ai_log_load_mv.sql`、`bfe_ai_metrics_1m.sql`、`bfe_ai_metrics_1m_mv.sql`）、`clickhouse/docs/design/TABLE_DESIGN.md`、`clickhouse/docs/modifications/2026-10-01-clickhouse-dock/design-changes.md`、`api/depends_api/req_log.md`
 - 环境依据：`environment/clickhouse-installation.md`（ClickHouse 26.10.1.1149，HTTP 8123 / Native 9000）

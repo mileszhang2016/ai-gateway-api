@@ -1,7 +1,6 @@
 # 报表查询新增 ClickHouse 后端 变更摘要
 
-> 本文档覆盖《数据报表-ClickHouse 与 StarRocks 对接设计方案》（
-> `document-ai-gateway/迭代系统设计/v0.8/starrocks和clickhouse对接/数据报表-ClickHouse和StarRocks对接设计方案.md`，
+> 本文档覆盖《数据报表-ClickHouse 与 StarRocks 对接设计方案》（v0.8 迭代系统设计稿，
 > 2026-10-01，下称"对接设计稿"）的 **ai-gateway-api 侧 ClickHouse 改动**（对接设计稿 §3.3 配置契约、
 > §6.3 查询层改动、§7 发布顺序、§8 测试计划中 api 相关条目）。
 > 对接设计稿 §5 的 ClickHouse 数仓侧资产由 ai-gateway-observability 仓落地，
@@ -93,10 +92,9 @@ v0.7《数据报表-多存储与API化设计方案》确立"一套报表 API、�
 
 ## 7. 关联文档
 
-- 权威设计稿：《数据报表-ClickHouse 与 StarRocks 对接设计方案》
-  （`document-ai-gateway/迭代系统设计/v0.8/starrocks和clickhouse对接/`，2026-10-01）
-- 架构源头：`document-ai-gateway/迭代系统设计/v0.7/数据报表/数据报表-多存储与API化设计方案.md`
-- 平行模板：`document-ai-gateway/迭代系统设计/v0.8/doris-report/数据报表-Doris后端设计方案.md`
+- 权威设计稿：《数据报表-ClickHouse 与 StarRocks 对接设计方案》（v0.8 迭代系统设计稿，2026-10-01）
+- 架构源头：《数据报表-多存储与API化设计方案》（v0.7 迭代系统设计稿，多后端架构与 [Report] 配置的首次定义）
+- 平行模板：《数据报表-Doris 后端设计方案》（v0.8 迭代系统设计稿，本方案平行扩展的既定模式来源）
 - 数仓侧（另一仓，已交付）：ai-gateway-observability
   `clickhouse/docs/modifications/2026-10-01-clickhouse-dock/design-changes.md`、
   `clickhouse/docs/design/TABLE_DESIGN.md`、`clickhouse/docs/user/HOWTO.md`
