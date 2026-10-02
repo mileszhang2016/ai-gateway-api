@@ -144,22 +144,37 @@ CostFixedPointToAmount）逐字克隆。
 
 ## 8. 风险（api 侧）
 
-1. **`CAST AS SIGNED` 在 StarRocks 3.5.21 的接受度**（实施验证门）：MySQL 8.4 仅接受
-   SIGNED/UNSIGNED（2026-10-02 dorisreport 修复已证实 BIGINT 在 MySQL 非法）；SR 原生
-   支持 CAST AS BIGINT，SIGNED 别名需实机确认。**不接受时的回退方案**：starrocksreport
-   桶表达式改回 `CAST AS BIGINT`（SR 原生），同时借-MySQL 集成组降为"装配 + 参数校验
-   422 + 精确 500 区分 404"模式（仿 clickhouse_test.go 组 1 的原始形态），数据断言仅在
-   真实 SR 组进行。设计已兼容两种结局，实施时按实机结论锁定。
-2. **logs 复杂列线格式**（实施验证门）：SR `ARRAY<STRUCT>` 经 MySQL 协议预期返回
-   JSON 文本（同 Doris JSON 列），扫描层 NullString 直收；若实机返回非字符串形态，
-   投影改 SR `to_json(col)` 包装（SR 3.5 内置），快照同步锁定。
-3. **异步 MV 新鲜度**：`REFRESH ASYNC EVERY 1 MINUTE` + 分区对齐，端到端 1~2 分钟
-   （与 Doris JOB 同量级）；集成测试种子直插基表/物化路径时按实机 HOWTO 验证窗口等待策略。
-4. **环境互斥**：SR 与 Doris 同端口，真实实例组与 Doris 组不可同跑；借-MySQL 组不受
+1. **~~`CAST AS SIGNED` 在 StarRocks 3.5.21 的接受度~~（已实机验证通过，2026-10-02）**：
+   本机 SR 3.5.21 实测 `CAST(FLOOR(TIMESTAMPDIFF(...)/300)*300 AS SIGNED)` 正常返回
+   （1915696800），`percentile_approx` 对 6 值种子精确返回中位数 150——**维持 SIGNED，
+   无需回退 BIGINT**；借-MySQL 集成组的数据断言模式成立。记录：MySQL 8.4 仅接受
+   SIGNED/UNSIGNED（2026-10-02 dorisreport 修复已证实 BIGINT 在 MySQL 非法），SR 两者均接受。
+2. **~~logs 复杂列线格式~~（已实机验证通过，2026-10-02）**：SR `ARRAY<STRUCT>` 经
+   MySQL 协议 SELECT 返回 **JSON 文本**（实测 `[{"key":"X-Test","value":"1"},...]`，
+   空数组为 `[]`），与 Doris JSON 列线格式一致，扫描层 NullString 直收，**无需
+   to_json 包装**。同时实机确认种子灌入语法：裸 `CAST(varchar AS ARRAY<STRUCT>)` 报
+   Not support cast，**必须 `CAST(parse_json('...') AS ARRAY<STRUCT<...>>)`**——
+   集成测试 fixture 按此构造（与 observability MV 的还原手法一致）。
+3. **`mysql.Config.Net` 零值陷阱（实施期实机发现，已处理）**：`Net` 为空时
+   `FormatDSN` 丢弃整个 `protocol[(address)]` 段，驱动回退 `127.0.0.1:3306`——
+   借-MySQL 组因目标恰为 3306 而"侥幸可用"，直连 9030 必败。conf starrocks 样例已补
+   `Net = "tcp"` 并注明。**注意 doris 注释样例存在同款隐患**（远程 FE 地址会被忽略），
+   属 doris 段存量问题，本变更未代改。
+4. **go-sql-driver v1.6.0 宽结果集 NULL 位图 bug（实施期实机发现，影响面超出本变更）**：
+   logs 47 列投影 + 绑定参数走 COM_STMT 二进制协议时，行内 `''`/NULL 串位、非空值
+   丢为 NULL（v1.9.2 同查询正确；无参查询/CLI 走文本协议不受影响）。doris / starrocks
+   后端的 logs 端点在**生产同样触发**。本变更测试装配以 `InterpolateParams = true`
+   规避（驱动端转义内联，SQL 语义不变；已写入 starrocks 段 conf 样例与测试 TOML）。
+   **根治需升级驱动 ≥1.9.x**，建议另立变更统一处理（一并解除 doris/CH 的 InterpolateParams
+   依赖——ClickHouse 后端因 clickhouse-go 独立驱动不受此 bug 影响）。
+5. **异步 MV 新鲜度**：`REFRESH ASYNC EVERY 1 MINUTE` + 分区对齐，端到端 1~2 分钟
+   （与 Doris JOB 同量级）；集成测试采用单源种子（只灌基表明细，由 MV 聚合）+
+   起 api 前轮询 MV 行数（2s 间隔、150s 上限，本机实测 3~34s）消除时序 flaky。
+6. **环境互斥**：SR 与 Doris 同端口，真实实例组与 Doris 组不可同跑；借-MySQL 组不受
    影响（不占用 9030）。
-5. **无 JOB 与配置语义**：三个 JOB 配置项对 starrocks 后端不生效（既有语义延伸，
+7. **无 JOB 与配置语义**：三个 JOB 配置项对 starrocks 后端不生效（既有语义延伸，
    conf 样例已注明）；运维勿误以为 api 会代管 SR 聚合/保留。
-6. **回滚耦合点**：`Backend = "starrocks"` 配置与老版本 api 不兼容（启动报错），
+8. **回滚耦合点**：`Backend = "starrocks"` 配置与老版本 api 不兼容（启动报错），
    配置回滚必须与 api 回滚同步（与 ClickHouse 变更同款，唯一回滚耦合点）。
 
 ## 9. 发布顺序

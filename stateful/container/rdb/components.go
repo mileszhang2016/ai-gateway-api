@@ -61,6 +61,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/clickhousereport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/dorisreport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/mysqlreport"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/starrocksreport"
 	aiCacheStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_cache"
 	aiContextStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_context"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
@@ -453,6 +454,12 @@ func initReport() error {
 		// queries, no local job (see design-docs
 		// modifications/2026-10-02-report-clickhouse-backend).
 		container.ReportManager = ireport.NewReportManager(clickhousereport.New(db, cfg.Database, "clickhouse"))
+	case "starrocks":
+		// StarRocks aggregation is maintained by the warehouse-side async
+		// materialized view; retention by dynamic_partition + partition_ttl.
+		// The api only queries, no local job (see design-docs
+		// modifications/2026-10-02-report-starrocks-backend).
+		container.ReportManager = ireport.NewReportManager(starrocksreport.New(db, cfg.Database, "starrocks"))
 	default:
 		container.ReportManager = nil
 		return fmt.Errorf("unsupported [Report].Backend: %s", cfg.Backend)

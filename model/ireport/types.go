@@ -328,14 +328,14 @@ type LogQueryResult struct {
 // instead of silently returning an empty report (see design-docs
 // modifications/2026-09-27-report-cache-mirror-intent-fields).
 type BackendCaps struct {
-	Backend             string   // backend identifier: "mysql" | "doris" | "clickhouse"
+	Backend             string   // backend identifier: "mysql" | "doris" | "clickhouse" | "starrocks"
 	SupportedDimensions []string // dimension names (Dimension* constants) supported by this backend
 }
 
 // ReportStorager defines the storage operations backing the report queries.
 // Implementations exist for MySQL (storage/mysqlreport), Doris
-// (storage/dorisreport) and ClickHouse (storage/clickhousereport); the
-// manager never contains SQL. The dimension
+// (storage/dorisreport), ClickHouse (storage/clickhousereport) and
+// StarRocks (storage/starrocksreport); the manager never contains SQL. The dimension
 // parameter of TimeSeries is optional (empty = plain per-time series); the
 // accepted values are the TimeSeriesDimensions set.
 type ReportStorager interface {
