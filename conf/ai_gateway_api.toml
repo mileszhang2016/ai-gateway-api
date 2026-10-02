@@ -168,3 +168,27 @@ MaxIdle = 10
 # AggregateIntervalSec = 60
 # RetentionDays = 7
 # EnablePartitionMgmt = false
+#
+# 标准形态（Backend="clickhouse"，既有 Kafka -> ClickHouse 链路；需先完成
+# ai-gateway-observability 侧建表/升级，见该仓 clickhouse/docs/user/HOWTO.md；
+# 本包为纯查询后端，无本地 JOB）：
+# [Databases.clickhouse_db]
+# Driver = "clickhouse"         # clickhouse-go/v2 stdlib, native TCP protocol
+# DBName = "bfe_observability"
+# Addr = "127.0.0.1:9000"       # ClickHouse native TCP port (9000), not HTTP (8123)
+# User = "report_read"          # SELECT-only is sufficient
+# Passwd = "******"
+# MaxOpenConns = 20
+# MaxIdleConns = 5
+#
+# [Report]
+# Backend = "clickhouse"
+# Datasource = "clickhouse_db"  # a [Databases.*] entry (clickhouse: native 9000)
+# Database = ""                 # schema override for table names (optional)
+# The three job options below only take effect with backend=mysql; with the
+# clickhouse backend they are inert either way (aggregation is maintained by
+# the warehouse-side materialized view, retention by the tables' TTL):
+# EnableAggregateJob = false
+# AggregateIntervalSec = 60
+# RetentionDays = 7
+# EnablePartitionMgmt = false

@@ -58,6 +58,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/route_rules"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 	"github.com/rainway-ai-gateway/ai-gateway-api/stateful/container"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/clickhousereport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/dorisreport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/mysqlreport"
 	aiCacheStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_cache"
@@ -446,6 +447,12 @@ func initReport() error {
 		// which gates the cache/mirror/intent dimensions (phase 1: mysql
 		// only, see design-docs modifications/2026-09-27-report-cache-mirror-intent-fields).
 		container.ReportManager = ireport.NewReportManager(dorisreport.New(db, cfg.Database, "doris"))
+	case "clickhouse":
+		// ClickHouse aggregation is maintained by the warehouse-side
+		// materialized view and retention by the tables' TTL; the api only
+		// queries, no local job (see design-docs
+		// modifications/2026-10-02-report-clickhouse-backend).
+		container.ReportManager = ireport.NewReportManager(clickhousereport.New(db, cfg.Database, "clickhouse"))
 	default:
 		container.ReportManager = nil
 		return fmt.Errorf("unsupported [Report].Backend: %s", cfg.Backend)

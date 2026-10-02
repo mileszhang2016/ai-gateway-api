@@ -15,14 +15,19 @@
 package testutil
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	// Register the ClickHouse database/sql driver (clickhouse-go v2 stdlib
+	// mode, native protocol) for the clickhouse report datasource.
+	_ "github.com/ClickHouse/clickhouse-go/v2"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -36,6 +41,10 @@ type ReportServer struct {
 	DB        *sql.DB
 	ServerDSN string // user:pass@tcp(addr)/，用于清理时重建连接
 	DBName    string
+	// CHServerDSN 非空表示 ClickHouse 数据源（clickhouse://user:pass@host:port，
+	// 不带库名，管理连接固定落 default 库）：Close 时用该 DSN 重建连接并
+	// DROP DATABASE DBName。MySQL 形态下为空串，Close 行为不变。
+	CHServerDSN string
 }
 
 // Close 停止 api 进程、关闭种子连接并 DROP 测试数据库。
@@ -45,6 +54,13 @@ func (s *ReportServer) Close() {
 	}
 	if s.DB != nil {
 		s.DB.Close()
+	}
+	if s.CHServerDSN != "" && s.DBName != "" {
+		serverDB, err := sql.Open("clickhouse", s.CHServerDSN)
+		if err == nil {
+			serverDB.Exec("DROP DATABASE IF EXISTS " + s.DBName)
+			serverDB.Close()
+		}
 	}
 	if s.ServerDSN != "" && s.DBName != "" {
 		serverDB, err := sql.Open("mysql", s.ServerDSN)
@@ -139,6 +155,152 @@ EnablePartitionMgmt = false
 		return nil, err
 	}
 	return s, nil
+}
+
+// clickhouseDDLFiles 是报表查询所需的无 Kafka 依赖建表资产（相对 ddlDir），
+// 顺序即执行顺序：建库、明细表、聚合表。Kafka 引擎表与消费/聚合 MV 由数仓侧
+// 维护，不在报表查询测试范围（真实 CH 实例上 Kafka 不可达会产生后台重连噪音）。
+var clickhouseDDLFiles = []string{
+	"bfe_observability.sql",
+	"bfe_ai_request_log.sql",
+	"bfe_ai_metrics_1m.sql",
+}
+
+// PingClickHouse 探测 ClickHouse 可达性：chDSN 中的库名可能尚不存在（或指向
+// 未建的业务库），故管理连接固定落 default 库（其恒存在），5 秒超时。
+func PingClickHouse(chDSN string) error {
+	adminDSN, err := clickHouseAdminDSN(chDSN)
+	if err != nil {
+		return err
+	}
+	db, err := sql.Open("clickhouse", adminDSN)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return db.PingContext(ctx)
+}
+
+// StartClickHouseReportServer 装配报表查询集成测试环境（Backend=clickhouse，
+// 数据源为真实 ClickHouse 实例，native TCP）：
+//  1. 以 chDSN（clickhouse-go/v2 stdlib DSN，形如
+//     clickhouse://user:pass@host:9000[/db][?params]，库名段会被忽略）建立
+//     管理连接（落 default 库），建专用随机名数据库 report_ch_it_<ns>
+//     （DROP DATABASE IF EXISTS + CREATE DATABASE）；
+//  2. 切到临时库连接，按顺序执行 ddlDir 下 clickhouseDDLFiles 中的建表 SQL
+//     （仅 ${CLICKHOUSE_DATABASE} 占位符做最小替换，规则同
+//     ai-gateway-observability/clickhouse/setup.sh；残留 ${VAR} 视为资产漂移
+//     报错，防止误执行含 Kafka 占位的文件）；
+//  3. 依次执行 seedSQL 中的种子语句（ClickHouse 方言字面量，由调用方给出）；
+//  4. 注入 [Databases.report_db]（Driver="clickhouse"，DBName=临时库）+
+//     [Report] Backend="clickhouse" 并启动 api 进程。
+//
+// 任一失败时清理已创建的资源并返回错误。Close 负责停进程并 DROP 临时库
+// （级联删除库内表），调用方应以 t.Cleanup(rs.Close) 注册。
+func StartClickHouseReportServer(chDSN, ddlDir string, seedSQL ...string) (*ReportServer, error) {
+	u, err := url.Parse(chDSN)
+	if err != nil || u.Scheme != "clickhouse" || u.Host == "" {
+		return nil, fmt.Errorf("invalid clickhouse dsn %q: scheme/host required", chDSN)
+	}
+	user := u.User.Username()
+	pass, _ := u.User.Password()
+	if user == "" {
+		return nil, fmt.Errorf("invalid clickhouse dsn %q: user required", chDSN)
+	}
+
+	s := &ReportServer{
+		DBName: fmt.Sprintf("report_ch_it_%d", time.Now().UnixNano()),
+	}
+	adminDSN, err := clickHouseAdminDSN(chDSN)
+	if err != nil {
+		return nil, err
+	}
+	s.CHServerDSN = adminDSN
+
+	// clickhouse-go 要求 DSN 中的库存在，管理连接固定落 default 库。
+	adminDB, err := sql.Open("clickhouse", adminDSN)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := adminDB.Exec("DROP DATABASE IF EXISTS " + s.DBName); err != nil {
+		adminDB.Close()
+		return nil, fmt.Errorf("drop ch test database: %w", err)
+	}
+	if _, err := adminDB.Exec("CREATE DATABASE " + s.DBName); err != nil {
+		adminDB.Close()
+		return nil, fmt.Errorf("create ch test database failed (check REPORT_CLICKHOUSE_DSN privileges): %w", err)
+	}
+	adminDB.Close()
+
+	// 种子连接：DSN 库名段替换为临时库。
+	seedURL := *u
+	seedURL.Path = "/" + s.DBName
+	s.DB, err = sql.Open("clickhouse", seedURL.String())
+	if err != nil {
+		s.Close()
+		return nil, err
+	}
+	for _, file := range clickhouseDDLFiles {
+		data, err := os.ReadFile(filepath.Join(ddlDir, file))
+		if err != nil {
+			s.Close()
+			return nil, fmt.Errorf("read ch ddl %s: %w", file, err)
+		}
+		script := strings.ReplaceAll(string(data), "${CLICKHOUSE_DATABASE}", s.DBName)
+		if strings.Contains(script, "${") {
+			s.Close()
+			return nil, fmt.Errorf("ch ddl %s contains unreplaced ${VAR} placeholder (kafka assets are not supported)", file)
+		}
+		if _, err := s.DB.Exec(script); err != nil {
+			s.Close()
+			return nil, fmt.Errorf("apply ch ddl %s: %w", file, err)
+		}
+	}
+	for _, stmt := range seedSQL {
+		if _, err := s.DB.Exec(stmt); err != nil {
+			s.Close()
+			return nil, fmt.Errorf("seed report data: %w", err)
+		}
+	}
+
+	// api 侧 FormatDSN 组装 clickhouse://user:passwd@addr/dbname?...，
+	// DBName 必须为该临时库（DSN 里携带的库名仅用于建库阶段的连接）。
+	extraTOML := fmt.Sprintf(`
+[Databases.report_db]
+Driver = "clickhouse"
+DBName = "%s"
+Addr = "%s"
+User = "%s"
+Passwd = %s
+MaxOpenConns = 10
+MaxIdleConns = 5
+
+[Report]
+Backend = "clickhouse"
+Datasource = "report_db"
+EnableAggregateJob = false
+EnablePartitionMgmt = false
+`, s.DBName, u.Host, user, tomlLiteral(pass))
+
+	s.Server, err = StartServerWithExtraConfig(extraTOML)
+	if err != nil {
+		s.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+// clickHouseAdminDSN 把 chDSN 的库名段替换为 default（管理连接/清理重建连接用；
+// clickhouse-go 要求 DSN 中的库存在，default 恒存在）。
+func clickHouseAdminDSN(chDSN string) (string, error) {
+	u, err := url.Parse(chDSN)
+	if err != nil || u.Scheme != "clickhouse" || u.Host == "" {
+		return "", fmt.Errorf("invalid clickhouse dsn %q: scheme/host required", chDSN)
+	}
+	u.Path = "/default"
+	return u.String(), nil
 }
 
 type reportServerConfig struct {
