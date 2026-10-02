@@ -97,15 +97,16 @@ func TestBuildTimeSeriesSQL_Dialect(t *testing.T) {
 
 	query, args, err := buildTimeSeriesSQL("bfe_ai_metrics_1m", ireport.MetricQPS, "", f, 300)
 	require.NoError(t, err)
-	// Session-timezone neutral bucket: CAST(FLOOR(TIMESTAMPDIFF(SECOND, epoch, ts_min)/300)*300 AS BIGINT)
-	assert.Equal(t, "SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS BIGINT) AS time,"+
+	// Session-timezone neutral bucket: CAST(FLOOR(TIMESTAMPDIFF(SECOND, epoch, ts_min)/300)*300 AS SIGNED)
+	// (SIGNED, not BIGINT: MySQL 8.4 only accepts CAST AS SIGNED/UNSIGNED; Doris accepts both.)
+	assert.Equal(t, "SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS SIGNED) AS time,"+
 		"SUM(request_count) AS total"+
 		" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time ORDER BY time ASC", query)
 	assert.Equal(t, []interface{}{testStart, testEnd}, args)
 
 	query, _, err = buildLatencyPercentileSQL("bfe_ai_request_log", f, 60)
 	require.NoError(t, err)
-	assert.Equal(t, "SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', log_time)/60)*60 AS BIGINT) AS time,"+
+	assert.Equal(t, "SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', log_time)/60)*60 AS SIGNED) AS time,"+
 		"PERCENTILE_APPROX(all_time, 0.5) AS p50,"+
 		"PERCENTILE_APPROX(all_time, 0.9) AS p90,"+
 		"PERCENTILE_APPROX(all_time, 0.99) AS p99"+
@@ -121,7 +122,7 @@ func TestBuildTimeSeriesSQL_CacheTokens(t *testing.T) {
 	query, args, err := buildTimeSeriesSQL("bfe_ai_metrics_1m", ireport.MetricCacheTokens, "", f, 300)
 	require.NoError(t, err)
 
-	bucket := "CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS BIGINT) AS time"
+	bucket := "CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS SIGNED) AS time"
 	expect := "SELECT " + bucket + ",'cache_read' AS kind,SUM(cache_read_tokens) AS value" +
 		" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time" +
 		" UNION ALL " +
@@ -140,7 +141,7 @@ func TestBuildTimeSeriesSQL_Dimension(t *testing.T) {
 	// qps × ai_cache_status
 	query, args, err := buildTimeSeriesSQL("bfe_ai_metrics_1m", ireport.MetricQPS, ireport.DimensionCacheStatus, f, 300)
 	require.NoError(t, err)
-	assert.Equal(t, "SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS BIGINT) AS time,"+
+	assert.Equal(t, "SELECT CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS SIGNED) AS time,"+
 		"ai_cache_status AS name,SUM(request_count) AS total"+
 		" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?)"+
 		" GROUP BY time,ai_cache_status ORDER BY time ASC", query)
@@ -155,7 +156,7 @@ func TestBuildTimeSeriesSQL_Dimension(t *testing.T) {
 	// cache_tokens × ai_intent_answer：UNION ALL 双臂携带 name，ORDER BY 含维度列
 	query, args, err = buildTimeSeriesSQL("bfe_ai_metrics_1m", ireport.MetricCacheTokens, ireport.DimensionIntentAnswer, f, 300)
 	require.NoError(t, err)
-	bucket := "CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS BIGINT) AS time"
+	bucket := "CAST(FLOOR(TIMESTAMPDIFF(SECOND, '1970-01-01 00:00:00', ts_min)/300)*300 AS SIGNED) AS time"
 	expect := "SELECT " + bucket + ",'cache_read' AS kind,ai_intent_answer AS name,SUM(cache_read_tokens) AS value" +
 		" FROM bfe_ai_metrics_1m WHERE (ts_min>=? AND ts_min<?) GROUP BY time,ai_intent_answer" +
 		" UNION ALL " +

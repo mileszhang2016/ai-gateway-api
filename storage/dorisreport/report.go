@@ -220,7 +220,7 @@ const epochLiteral = "'1970-01-01 00:00:00'"
 // gendry cannot bind parameters inside SELECT fields.
 func bucketExpr(timeCol string, bucketSec int) string {
 	b := strconv.Itoa(bucketSec)
-	return "CAST(FLOOR(TIMESTAMPDIFF(SECOND, " + epochLiteral + ", " + timeCol + ")/" + b + ")*" + b + " AS BIGINT) AS time"
+	return "CAST(FLOOR(TIMESTAMPDIFF(SECOND, " + epochLiteral + ", " + timeCol + ")/" + b + ")*" + b + " AS SIGNED) AS time"
 }
 
 var overviewMetricFields = []string{
