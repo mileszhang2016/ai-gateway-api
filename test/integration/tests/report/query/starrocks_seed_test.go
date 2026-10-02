@@ -73,15 +73,18 @@ package query_test
 //     非 CH 的 ""）；1001/1003 等行的 req_headers/res_headers 为 NULL
 //     （响应 null，非 CH 数组列的 "[]"）。
 //
-//  6. 旧版 go-sql-driver 宽结果集陷阱（实机定位，2026-10-02）：api 与集成
-//     模块均 pin go-sql-driver v1.6.0，其对"绑定参数 + 宽结果集"（logs 端点
-//     47 列投影，COM_STMT 二进制协议）的 NULL 位图解析错位——行内 ''/NULL
-//     串位、个别非空值丢为 NULL（mysql CLI 与无参查询走 COM_QUERY 文本
-//     协议，均正确；v1.9.2 驱动同查询全部正确，确系驱动 bug）。规避：测试
-//     装配的 [Databases.report_db] 显式 InterpolateParams = true（参数
-//     客户端插值，回归文本协议；SQL 语义不变）。该问题对 api 生产部署
-//     同样成立（doris/starrocks 后端的 logs 宽投影），升级驱动或在配置
-//     中开启 InterpolateParams 为后续治理项。
+//  6. FE 二进制协议陷阱（实机定位，2026-10-02）：SR FE（MySQL 协议重实现）
+//     的 COM_STMT 二进制行包存在编码缺陷——JSON 列与 NULL 列相邻的行触发
+//     解析错位（驱动 v1.6.0：行内 ''/NULL 静默串位；升级 v1.9.3 后同查询
+//     改为 packets.go readRow panic，二者均为 FE 行包畸形、与驱动版本无
+//     关；行 1004 稳定复现，列子集二分：投影列 24-25（JSON + NULL）即触发，
+//     全 49 列在行中部错位）。规避：测试装配的 [Databases.report_db] 显式
+//     InterpolateParams = true（参数客户端插值回归文本协议；SQL 语义不变，
+//     mysql CLI/无参查询同为文本协议故正确）。该缺陷对 api 生产部署同样
+//     成立（logs 47+ 列宽投影），SR 生产配置必须开启 InterpolateParams
+//     （已写入 conf starrocks 段样例）；根治需 SR FE 修复，建议向 SR 提
+//     issue（复现要点见 design-docs/modifications/
+//     2026-10-02-report-mysql-driver-upgrade/change-summary.md）。
 //
 // MV 派生手算值（6 行明细经异步 MV，查询窗口 [2030-09-15 09:59, 10:05)，
 // 60s 桶；本机 3.5.21 实机核对，见 starrocks_test.go 断言）：

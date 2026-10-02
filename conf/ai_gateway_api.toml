@@ -149,11 +149,19 @@ MaxIdle = 10
 # Driver = "mysql"              # Doris FE MySQL-protocol port, not a new client
 # DBName = "bfe_observability"
 # Addr = "127.0.0.1:9030"       # Doris FE query_port
+# Net = "tcp"                   # 必须显式设置：Net 为空时 FormatDSN 丢弃地址段，
+#                               # 驱动回退 127.0.0.1:3306（2026-10-02 实机踩坑，
+#                               # 同 starrocks 段说明）
 # User = "report_read"          # SELECT-only is sufficient
 # Passwd = ""
 # AllowNativePasswords = true   # 必须显式开启：mysql.Config.FormatDSN 会把零值
 #                               # 序列化为 allowNativePasswords=false，Doris FE
 #                               # 的 mysql_native_password 认证随即被拒绝
+# InterpolateParams = true      # 建议显式开启：Doris FE 同为 MySQL 协议重实现，
+#                               # 二进制协议（COM_STMT）宽结果集路径尚未在本机
+#                               # 环境验证（v1.6.0 驱动该路径有 NULL 位图错位
+#                               # 记录；SR FE 已实锤有同类缺陷）；文本协议确定
+#                               # 可用。环境恢复后验证 binary 路径可再关闭
 # MaxOpenConns = 20
 # MaxIdleConns = 5
 #
@@ -206,6 +214,11 @@ MaxIdle = 10
 # User = "report_read"          # SELECT-only is sufficient
 # Passwd = "******"
 # AllowNativePasswords = true   # 必须显式开启（同 doris 段说明）
+# InterpolateParams = true      # 必须显式开启：SR FE（MySQL 协议重实现）的
+#                               # COM_STMT 二进制行包在 JSON 列与 NULL 列相邻
+#                               # 时有编码缺陷（驱动 v1.6.0 静默串位 / v1.9.3
+#                               # readRow panic，均 FE 侧问题，2026-10-02 实机
+#                               # 复现）；文本协议（参数客户端插值）规避
 # MaxOpenConns = 20
 # MaxIdleConns = 5
 #

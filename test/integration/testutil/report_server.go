@@ -197,7 +197,7 @@ type realInstanceReportConfig struct {
 	user         string // [Databases.report_db] User
 	pass         string // [Databases.report_db] Passwd
 	allowNativePasswords bool // mysql driver 形态必须显式开启（StarRocks FE 与 Doris 同为 mysql_native_password 认证，mysql.Config.FormatDSN 零值序列化会静默关闭该选项）
-	interpolateParams bool  // mysql driver 形态必须显式开启：go-sql-driver v1.6.0 对宽结果集（logs 47 列投影 + 绑定参数 → COM_STMT 二进制协议）的 NULL 位图解析有错位 bug（实机：行内 ''/NULL 串位、非空值丢为 NULL；v1.9.2 已修复），插值参数走 COM_QUERY 文本协议规避；mysql CLI/无参查询同为文本协议故不受影响
+	interpolateParams bool  // StarRocks FE 必须显式开启：FE（MySQL 协议重实现）对 COM_STMT 二进制行包的编码存在缺陷——JSON 列与 NULL 列相邻的行会触发解析错位（v1.6.0 静默串位、v1.9.3 在 packets.go readRow panic，均为 FE 行包畸形所致，与驱动版本无关；2030 种子行 1004 稳定复现，列子集二分定位见 design-docs/modifications/2026-10-02-report-mysql-driver-upgrade/change-summary.md）。插值参数走 COM_QUERY 文本协议后 FE 编码正确
 	adminDSN     string   // 服务器级 DSN（不带库名），建库/清理重建连接用
 	seedDSN      func(dbName string) string            // 含临时库名的 DDL/种子连接 DSN
 	placeholders func(dbName string) map[string]string // DDL ${VAR} 替换表
@@ -411,8 +411,8 @@ func PingStarRocks(srDSN string) error {
 //  4. 轮询物化视图行数达到 expectMVRows 后，注入
 //     [Databases.report_db]（Driver="mysql"；Net="tcp"、
 //     AllowNativePasswords = true、InterpolateParams = true 三项均须显式
-//     给出，均为 mysql.Config 零值/旧版驱动陷阱，详见
-//     realInstanceReportConfig 字段注释）+ [Report]
+//     给出：前两项为 mysql.Config 零值陷阱，第三项规避 SR FE 二进制行包
+//     缺陷，详见 realInstanceReportConfig 字段注释）+ [Report]
 //     Backend="starrocks" 并启动 api 进程。
 //
 // 任一失败时清理已创建的资源并返回错误。Close 负责停进程并 DROP 临时库
@@ -428,9 +428,10 @@ func StartStarRocksReportServer(srDSN, ddlDir string, expectMVRows int, seedSQL 
 	// SR FE 经 mysql driver 直连：Net 必须显式 "tcp"（FormatDSN 对零值
 	// Net 会连地址段一起丢弃，驱动回退默认 127.0.0.1:3306）；
 	// AllowNativePasswords 必须显式开启（SR FE 与 Doris 同为
-	// mysql_native_password 认证）；InterpolateParams 必须显式开启（规避
-	// go-sql-driver v1.6.0 宽结果集 NULL 位图 bug，见 cfg.interpolateParams
-	// 注释——api 进程内查询都经该数据源连接）。
+	// mysql_native_password 认证）；InterpolateParams 必须显式开启——
+	// 驱动 v1.9.3 下 FE 的二进制行包仍会在 JSON 列与 NULL 列相邻的行上
+	// 触发解析错位（packets.go readRow panic），属 FE 侧协议实现缺陷，
+	// 与驱动版本无关，只有文本协议（参数客户端插值）可规避。
 	s, err := startRealInstanceReportServer(&realInstanceReportConfig{
 		dbName:               fmt.Sprintf("report_sr_it_%d", time.Now().UnixNano()),
 		ddlFiles:             starrocksDDLFiles,

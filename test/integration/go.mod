@@ -6,12 +6,13 @@ require (
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/bfenetworks/go-lib v0.0.4
 	github.com/glebarez/go-sqlite v1.21.2
-	github.com/go-sql-driver/mysql v1.6.0
+	github.com/go-sql-driver/mysql v1.9.3
 	github.com/rainway-ai-gateway/ai-gateway-api v0.0.0
 	github.com/stretchr/testify v1.11.1
 )
 
 require (
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/ClickHouse/ch-go v0.67.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/go-faster/city v1.0.1 // indirect

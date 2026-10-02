@@ -158,15 +158,19 @@ CostFixedPointToAmount）逐字克隆。
 3. **`mysql.Config.Net` 零值陷阱（实施期实机发现，已处理）**：`Net` 为空时
    `FormatDSN` 丢弃整个 `protocol[(address)]` 段，驱动回退 `127.0.0.1:3306`——
    借-MySQL 组因目标恰为 3306 而"侥幸可用"，直连 9030 必败。conf starrocks 样例已补
-   `Net = "tcp"` 并注明。**注意 doris 注释样例存在同款隐患**（远程 FE 地址会被忽略），
-   属 doris 段存量问题，本变更未代改。
-4. **go-sql-driver v1.6.0 宽结果集 NULL 位图 bug（实施期实机发现，影响面超出本变更）**：
-   logs 47 列投影 + 绑定参数走 COM_STMT 二进制协议时，行内 `''`/NULL 串位、非空值
-   丢为 NULL（v1.9.2 同查询正确；无参查询/CLI 走文本协议不受影响）。doris / starrocks
-   后端的 logs 端点在**生产同样触发**。本变更测试装配以 `InterpolateParams = true`
-   规避（驱动端转义内联，SQL 语义不变；已写入 starrocks 段 conf 样例与测试 TOML）。
-   **根治需升级驱动 ≥1.9.x**，建议另立变更统一处理（一并解除 doris/CH 的 InterpolateParams
-   依赖——ClickHouse 后端因 clickhouse-go 独立驱动不受此 bug 影响）。
+   `Net = "tcp"` 并注明。doris 注释样例同款隐患已由
+   [2026-10-02-report-mysql-driver-upgrade](../2026-10-02-report-mysql-driver-upgrade/change-summary.md)
+   补齐。
+4. **FE 二进制协议宽结果集缺陷（实施期实机发现，已修正归因并规避）**：
+   logs 47+ 列投影 + 绑定参数走 COM_STMT 二进制协议时，SR FE（MySQL 协议重实现）的
+   行包编码在 JSON 列与 NULL 列相邻的行上畸形——驱动 v1.6.0 表现为 ''/NULL 静默串位，
+   v1.9.3 表现为 packets.go readRow panic（升级验证时实锤，探针二分定位，见
+   [2026-10-02-report-mysql-driver-upgrade](../2026-10-02-report-mysql-driver-upgrade/change-summary.md)
+   §问题 3）。**同一 FE 缺陷的两种症状，与驱动版本无关**；文本协议（CLI/无参查询/
+   `InterpolateParams = true`）下 FE 编码正确。doris / starrocks 后端的 logs 端点在
+   **生产同样触发**，SR 生产配置必须开启 `InterpolateParams`（已写入 conf starrocks
+   段样例）；根治需 SR FE 修复（拟提社区 issue）。（ClickHouse 后端因 clickhouse-go
+   独立驱动不受此缺陷影响。）
 5. **异步 MV 新鲜度**：`REFRESH ASYNC EVERY 1 MINUTE` + 分区对齐，端到端 1~2 分钟
    （与 Doris JOB 同量级）；集成测试采用单源种子（只灌基表明细，由 MV 聚合）+
    起 api 前轮询 MV 行数（2s 间隔、150s 上限，本机实测 3~34s）消除时序 flaky。
