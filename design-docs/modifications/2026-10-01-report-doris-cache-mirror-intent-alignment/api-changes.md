@@ -41,7 +41,8 @@ Backend=mysql 与缺省（未装配）部署的所有端点行为**零变化**�
 ```
 
 保留的 4xx 语义不变：未装配 `/report/*` 返回 404；无报表读权限返回 402；
-非法 dimension/metric 参数返回 400（参数级校验先于后端能力校验）。
+非法 dimension/metric 参数返回 422（`xerror` PARAM → ErrNum=422、HTTP 422；
+参数级校验先于后端能力校验）。
 
 ## 4. 不变项与既有差异声明
 

@@ -60,12 +60,14 @@ type RunTimeConfig struct {
 }
 
 // ReportConfig is the [Report] section. It switches the report query
-// backend (mysql | doris) and tunes the MySQL aggregate/partition jobs;
-// when Backend is empty the report module is not assembled at all and the
-// /report/* routes are not registered (see design-docs
-// modifications/2026-09-15-report-query-api).
+// backend (mysql | doris | clickhouse | starrocks) and tunes the MySQL
+// aggregate/partition jobs; when Backend is empty the report module is not
+// assembled at all and the /report/* routes are not registered (see
+// design-docs modifications/2026-09-15-report-query-api,
+// modifications/2026-10-02-report-clickhouse-backend and
+// modifications/2026-10-02-report-starrocks-backend).
 type ReportConfig struct {
-	Backend              string // mysql | doris; empty disables the module
+	Backend              string // mysql | doris | clickhouse | starrocks; empty disables the module
 	Datasource           string // name of a [Databases.*] entry
 	Database             string // optional schema override for table names
 	EnableAggregateJob   bool   // backend=mysql: run the minute aggregate job

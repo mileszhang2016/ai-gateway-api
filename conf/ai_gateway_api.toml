@@ -149,11 +149,19 @@ MaxIdle = 10
 # Driver = "mysql"              # Doris FE MySQL-protocol port, not a new client
 # DBName = "bfe_observability"
 # Addr = "127.0.0.1:9030"       # Doris FE query_port
+# Net = "tcp"                   # 必须显式设置：Net 为空时 FormatDSN 丢弃地址段，
+#                               # 驱动回退 127.0.0.1:3306（2026-10-02 实机踩坑，
+#                               # 同 starrocks 段说明）
 # User = "report_read"          # SELECT-only is sufficient
 # Passwd = ""
 # AllowNativePasswords = true   # 必须显式开启：mysql.Config.FormatDSN 会把零值
 #                               # 序列化为 allowNativePasswords=false，Doris FE
 #                               # 的 mysql_native_password 认证随即被拒绝
+# InterpolateParams = true      # 建议显式开启：Doris FE 同为 MySQL 协议重实现，
+#                               # 二进制协议（COM_STMT）宽结果集路径尚未在本机
+#                               # 环境验证（v1.6.0 驱动该路径有 NULL 位图错位
+#                               # 记录；SR FE 已实锤有同类缺陷）；文本协议确定
+#                               # 可用。环境恢复后验证 binary 路径可再关闭
 # MaxOpenConns = 20
 # MaxIdleConns = 5
 #
@@ -164,6 +172,64 @@ MaxIdle = 10
 # The three job options below only take effect with backend=mysql; with the
 # doris backend they are inert either way (aggregation is maintained by the
 # warehouse-side INSERT JOB, retention by the tables' dynamic_partition props):
+# EnableAggregateJob = false
+# AggregateIntervalSec = 60
+# RetentionDays = 7
+# EnablePartitionMgmt = false
+#
+# 标准形态（Backend="clickhouse"，既有 Kafka -> ClickHouse 链路；需先完成
+# ai-gateway-observability 侧建表/升级，见该仓 clickhouse/docs/user/HOWTO.md；
+# 本包为纯查询后端，无本地 JOB）：
+# [Databases.clickhouse_db]
+# Driver = "clickhouse"         # clickhouse-go/v2 stdlib, native TCP protocol
+# DBName = "bfe_observability"
+# Addr = "127.0.0.1:9000"       # ClickHouse native TCP port (9000), not HTTP (8123)
+# User = "report_read"          # SELECT-only is sufficient
+# Passwd = "******"
+# MaxOpenConns = 20
+# MaxIdleConns = 5
+#
+# [Report]
+# Backend = "clickhouse"
+# Datasource = "clickhouse_db"  # a [Databases.*] entry (clickhouse: native 9000)
+# Database = ""                 # schema override for table names (optional)
+# The three job options below only take effect with backend=mysql; with the
+# clickhouse backend they are inert either way (aggregation is maintained by
+# the warehouse-side materialized view, retention by the tables' TTL):
+# EnableAggregateJob = false
+# AggregateIntervalSec = 60
+# RetentionDays = 7
+# EnablePartitionMgmt = false
+#
+# 标准形态（Backend="starrocks"，既有 Kafka -> StarRocks 链路；SR FE 走
+# MySQL 协议端口，零新驱动；需先完成 ai-gateway-observability 侧建表/升级，
+# 见该仓 starrocks/docs/user/HOWTO.md；与 Doris 端口互斥不可同时部署；
+# 本包为纯查询后端，无本地 JOB）：
+# [Databases.starrocks_db]
+# Driver = "mysql"              # StarRocks FE MySQL-protocol port, 零新驱动
+# DBName = "bfe_observability"
+# Addr = "127.0.0.1:9030"       # SR FE query_port
+# Net = "tcp"                   # 必须显式设置：Net 为空时 FormatDSN 丢弃地址段，
+#                               # 驱动回退 127.0.0.1:3306（2026-10-02 实机踩坑）
+# User = "report_read"          # SELECT-only is sufficient
+# Passwd = "******"
+# AllowNativePasswords = true   # 必须显式开启（同 doris 段说明）
+# InterpolateParams = true      # 必须显式开启：SR FE（MySQL 协议重实现）的
+#                               # COM_STMT 二进制行包在 JSON 列与 NULL 列相邻
+#                               # 时有编码缺陷（驱动 v1.6.0 静默串位 / v1.9.3
+#                               # readRow panic，均 FE 侧问题，2026-10-02 实机
+#                               # 复现）；文本协议（参数客户端插值）规避
+# MaxOpenConns = 20
+# MaxIdleConns = 5
+#
+# [Report]
+# Backend = "starrocks"
+# Datasource = "starrocks_db"   # a [Databases.*] entry (starrocks: FE 9030)
+# Database = ""                 # schema override for table names (optional)
+# The three job options below only take effect with backend=mysql; with the
+# starrocks backend they are inert either way (aggregation is maintained by
+# the warehouse-side async materialized view, retention by dynamic_partition
+# + partition_ttl):
 # EnableAggregateJob = false
 # AggregateIntervalSec = 60
 # RetentionDays = 7

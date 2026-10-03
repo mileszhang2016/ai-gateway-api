@@ -12,7 +12,7 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package dorisreport
+package starrocksreport
 
 import (
 	"context"
@@ -31,47 +31,51 @@ const (
 	tableMetrics = "bfe_ai_metrics_1m"
 )
 
-// ReportStorager implements ireport.ReportStorager against Doris
-// (standard deployment). Doris is reached through the FE MySQL-protocol
-// port as a regular entry of the Databases map; no extra client is
-// introduced. The dialect differences vs storage/mysqlreport follow
-// design-docs/modifications/2026-09-15-report-query-api/design-changes.md
-// §6: Grafana-style time buckets, PERCENTILE_APPROX on the detail table for
-// p50/p90/p99, and plain `col != ”` empty-dimension predicates.
+// ReportStorager implements ireport.ReportStorager against StarRocks.
+// StarRocks is reached through the FE MySQL-protocol port (9030) as a
+// regular entry of the Databases map with Driver = "mysql"; no extra
+// client is introduced (go-sql-driver/mysql + gendry builder, zero new
+// driver). This package is a same-source clone of storage/dorisreport
+// (see design-docs/modifications/2026-10-02-report-starrocks-backend/
+// design-changes.md §5): the SQL text is identical to dorisreport and
+// the differences converge on the lowercase percentile_approx function
+// names and the "starrocks" backend identifier. The Grafana-style time
+// buckets (CAST AS SIGNED), percentile_approx on the detail table for
+// p50/p90/p99 and plain `col != ”` empty-dimension predicates are
+// carried over verbatim.
 //
-// Phase 1 of the cache/mirror/intent fields (design-docs modifications
-// 2026-09-27-report-cache-mirror-intent-fields) only implemented the
-// detail-backed parts here: the overview cache/mirror/intent counts, the
-// log projection/filters and the timeseries cache_tokens metric. Phase 2
-// (design-docs modifications 2026-10-01-report-doris-cache-mirror-intent-alignment,
-// after the Doris aggregate table gains the three KEY dimensions) aligns
-// the capability set with the MySQL backend: the rankings / distribution /
-// timeseries dimension branches are implemented below and the three
-// dimensions are declared in Capabilities, so the manager gate no longer
-// fires for them.
+// The cache/mirror/intent fields are implemented on both the
+// detail-backed paths (the overview cache/mirror/intent counts, the log
+// projection/filters and the timeseries cache_tokens metric) and the
+// aggregate dimension branches (rankings / distribution / timeseries),
+// and the three dimensions are declared in Capabilities, so the manager
+// gate no longer fires for them.
+//
+// Note: the detail table's complex columns (ARRAY<STRUCT>) are returned
+// over the MySQL protocol as JSON text (same behavior as Doris JSON
+// columns), so the direct projection is received by the scan layer as
+// NullString with no extra wrapping.
 type ReportStorager struct {
 	db       *sql.DB
 	database string // optional schema override used as table prefix
 	backend  string // backend identifier reported by Capabilities()
 }
 
-// New creates a new Doris report storager. database may be empty (tables
-// are then resolved within the connection's default schema) or a schema
-// name used to prefix table names. backend is the capability identifier
-// injected by the container assembly (e.g. "doris").
+// New creates a new StarRocks report storager. database may be empty
+// (tables are then resolved within the connection's default schema) or
+// a schema name used to prefix table names. backend is the capability
+// identifier injected by the container assembly (e.g. "starrocks").
 func New(db *sql.DB, database, backend string) *ReportStorager {
 	return &ReportStorager{db: db, database: database, backend: backend}
 }
 
 var _ ireport.ReportStorager = (*ReportStorager)(nil)
 
-// Capabilities implements ireport.ReportStorager. Phase 2 aligns the
-// dimension set with the MySQL backend: the aggregate table carries the
-// cache/mirror/intent KEY dimensions, so all 13 dimensions are declared
-// (see design-docs modifications
-// 2026-10-01-report-doris-cache-mirror-intent-alignment). The manager gate
-// against Capabilities stays as a defense-in-depth check for future
-// dimensions.
+// Capabilities implements ireport.ReportStorager. The dimension set is
+// aligned with the MySQL backend: the aggregate table carries the
+// cache/mirror/intent KEY dimensions, so all 12 dimensions are
+// declared. The manager gate against Capabilities stays as a
+// defense-in-depth check for future dimensions.
 func (s *ReportStorager) Capabilities() *ireport.BackendCaps {
 	return &ireport.BackendCaps{
 		Backend: s.backend,
@@ -209,15 +213,15 @@ func logWhere(f *ireport.LogFilter) map[string]interface{} {
 
 // epochLiteral is the wall-clock UTC epoch used to turn a stored DATETIME
 // into Unix seconds without any session-timezone interpretation
-// (TIMESTAMPDIFF is pure calendar arithmetic; Doris' UNIX_TIMESTAMP reads
-// the DATETIME in the session zone just like MySQL's). log-reader writes
-// UTC wall clock, so the stored value IS the UTC wall clock.
+// (TIMESTAMPDIFF is pure calendar arithmetic; StarRocks' UNIX_TIMESTAMP
+// reads the DATETIME in the session zone just like MySQL's). log-reader
+// writes UTC wall clock, so the stored value IS the UTC wall clock.
 const epochLiteral = "'1970-01-01 00:00:00'"
 
-// bucketExpr is the Doris time-bucket expression aligned with the Grafana
-// $__timeGroup rendering. The bucket width is server-controlled (one of
-// 60/300/1800 computed by the manager) and inlined as an integer literal:
-// gendry cannot bind parameters inside SELECT fields.
+// bucketExpr is the StarRocks time-bucket expression aligned with the
+// Grafana $__timeGroup rendering. The bucket width is server-controlled
+// (one of 60/300/1800 computed by the manager) and inlined as an
+// integer literal: gendry cannot bind parameters inside SELECT fields.
 func bucketExpr(timeCol string, bucketSec int) string {
 	b := strconv.Itoa(bucketSec)
 	return "CAST(FLOOR(TIMESTAMPDIFF(SECOND, " + epochLiteral + ", " + timeCol + ")/" + b + ")*" + b + " AS SIGNED) AS time"
@@ -242,7 +246,7 @@ var overviewMetricFields = []string{
 
 // overviewDetailCountFields are the conditional detail-table COUNT columns
 // of the cache/mirror/intent indicator groups (same calibers as the MySQL
-// backend; IFNULL is accepted by Doris).
+// backend; IFNULL is accepted by StarRocks).
 var overviewDetailCountFields = []string{
 	"IFNULL(SUM(CASE WHEN ai_cache_status='hit' THEN 1 ELSE 0 END),0) AS cache_hit_count",
 	"IFNULL(SUM(CASE WHEN ai_cache_status='miss' THEN 1 ELSE 0 END),0) AS cache_miss_count",
@@ -270,16 +274,16 @@ func buildOverviewCostSQL(metricsTable string, f *ireport.Filter) (string, []int
 	})
 }
 
-// buildOverviewPercentileSQL computes the Doris-only p50/p90/p99 of
-// all_time over the whole window from the detail table, aligning with the
-// Grafana latency panel (PERCENTILE_APPROX on bfe_ai_request_log).
+// buildOverviewPercentileSQL computes the p50/p90/p99 of all_time over
+// the whole window from the detail table, aligning with the Grafana
+// latency panel (percentile_approx on bfe_ai_request_log).
 func buildOverviewPercentileSQL(detailTable string, f *ireport.Filter) (string, []interface{}, error) {
 	where := detailWhere(f)
 	where["all_time null"] = builder.IsNotNull
 	return builder.BuildSelect(detailTable, where, []string{
-		"PERCENTILE_APPROX(all_time, 0.5) AS p50",
-		"PERCENTILE_APPROX(all_time, 0.9) AS p90",
-		"PERCENTILE_APPROX(all_time, 0.99) AS p99",
+		"percentile_approx(all_time, 0.5) AS p50",
+		"percentile_approx(all_time, 0.9) AS p90",
+		"percentile_approx(all_time, 0.99) AS p99",
 	})
 }
 
@@ -366,8 +370,8 @@ func timeSeriesMetricFields(metric string, bucketSec int, column string) ([]stri
 
 // buildCacheTokensTimeSeriesSQL renders the cache_read/cache_write series
 // as a UNION ALL over the same WHERE, the same caliber as the MySQL
-// backend (Doris accepts UNION ALL with a trailing ORDER BY). The optional
-// dimension column is carried as "name" in each arm.
+// backend (StarRocks accepts UNION ALL with a trailing ORDER BY). The
+// optional dimension column is carried as "name" in each arm.
 func buildCacheTokensTimeSeriesSQL(metricsTable, column string, f *ireport.Filter, bucketSec int) (string, []interface{}, error) {
 	where := metricsWhere(f)
 	groupBy := "time"
@@ -403,8 +407,8 @@ func buildCacheTokensTimeSeriesSQL(metricsTable, column string, f *ireport.Filte
 	return query, append(readArgs, writeArgs...), nil
 }
 
-// buildLatencyPercentileSQL is the Doris-only companion of the latency
-// time-series: per-bucket p50/p90/p99 of all_time from the detail table.
+// buildLatencyPercentileSQL is the companion of the latency time-series:
+// per-bucket p50/p90/p99 of all_time from the detail table.
 func buildLatencyPercentileSQL(detailTable string, f *ireport.Filter, bucketSec int) (string, []interface{}, error) {
 	where := detailWhere(f)
 	where["all_time null"] = builder.IsNotNull
@@ -412,9 +416,9 @@ func buildLatencyPercentileSQL(detailTable string, f *ireport.Filter, bucketSec 
 	where["_orderby"] = "time ASC"
 	return builder.BuildSelect(detailTable, where, []string{
 		bucketExpr("log_time", bucketSec),
-		"PERCENTILE_APPROX(all_time, 0.5) AS p50",
-		"PERCENTILE_APPROX(all_time, 0.9) AS p90",
-		"PERCENTILE_APPROX(all_time, 0.99) AS p99",
+		"percentile_approx(all_time, 0.5) AS p50",
+		"percentile_approx(all_time, 0.9) AS p90",
+		"percentile_approx(all_time, 0.99) AS p99",
 	})
 }
 
@@ -461,10 +465,9 @@ func buildRankingsSQL(metricsTable, dimension string, f *ireport.Filter, limit i
 	if err != nil {
 		return "", nil, err
 	}
-	// Doris cannot parse bound parameters in LIMIT (a prepared `LIMIT ?,?`
-	// fails with "mismatched input 'LIMIT'"); limit is a server-derived
-	// integer clamped by the manager, inlined as a literal like the
-	// time-bucket width in bucketExpr.
+	// limit is a server-derived integer clamped by the manager, inlined
+	// as a literal like the time-bucket width in bucketExpr (same
+	// inlining discipline as dorisreport).
 	return fmt.Sprintf("%s LIMIT %d", query, limit), args, nil
 }
 
@@ -580,16 +583,15 @@ func buildLogsSQL(detailTable string, f *ireport.LogFilter) (string, []interface
 	if err != nil {
 		return "", nil, err
 	}
-	// Doris cannot parse bound parameters in LIMIT (a prepared `LIMIT ?,?`
-	// fails with "mismatched input 'LIMIT'"); offset/pageSize are
-	// server-derived integers clamped by the manager, inlined as literals
-	// like the time-bucket width in bucketExpr.
+	// offset/pageSize are server-derived integers clamped by the manager,
+	// inlined as literals like the time-bucket width in bucketExpr (same
+	// inlining discipline as dorisreport).
 	return fmt.Sprintf("%s LIMIT %d OFFSET %d", query, uint(f.PageSize), offset), args, nil
 }
 
 // Overview implements ireport.ReportStorager. Compared to the MySQL
-// backend it additionally fills latency_p50_ms / p90 / p99 from the detail
-// table via PERCENTILE_APPROX.
+// backend it additionally fills latency_p50_ms / p90 / p99 from the
+// detail table via percentile_approx.
 func (s *ReportStorager) Overview(ctx context.Context, f *ireport.Filter) (*ireport.OverviewResult, error) {
 	metricsTable := s.table(tableMetrics)
 	detailTable := s.table(tableDetail)
@@ -735,7 +737,7 @@ type overviewDetailCounts struct {
 
 // overviewResultFromRow assembles the overview card with the documented
 // calibers (identical to the MySQL backend); the percentile fields stay
-// nil here and are attached by Overview (Doris only).
+// nil here and are attached by Overview (StarRocks only).
 func overviewResultFromRow(row *overviewMetricsRow, cost []*ireport.CostItem, logsTotal int64,
 	detailCounts *overviewDetailCounts) *ireport.OverviewResult {
 	requestTotal := row.requestTotal.Int64
@@ -789,7 +791,7 @@ func overviewResultFromRow(row *overviewMetricsRow, cost []*ireport.CostItem, lo
 
 // TimeSeries implements ireport.ReportStorager. For the latency metric it
 // additionally queries per-bucket percentiles from the detail table and
-// merges them into the aggregate points (Doris only). Percentiles are
+// merges them into the aggregate points (StarRocks only). Percentiles are
 // whole-bucket calibers, so they are only attached to the plain
 // single-series latency points; a dimension-split latency series carries
 // avg/max per (bucket, name) only — the same degradation as the MySQL

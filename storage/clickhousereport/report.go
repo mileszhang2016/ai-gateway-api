@@ -12,15 +12,38 @@
 //See the License for the specific language governing permissions and
 //limitations under the License.
 
-package dorisreport
+// Package clickhousereport implements the report storager against
+// ClickHouse as a dialect port of storage/dorisreport (pure queries, no
+// JOB: the minute aggregate table is maintained by ClickHouse materialized
+// views and retention by TTL, see design-docs/modifications/
+// 2026-10-02-report-clickhouse-backend). The SummingMergeTree aggregate
+// table is always read as "GROUP BY dimension + SUM(metric)" (SELECT * on
+// it is forbidden), and the detail table backs the percentile and log-list
+// queries.
+//
+// SQL is rendered with fmt templates plus fixed-order WHERE fragments
+// instead of the gendry builder, which is a MySQL-dialect builder and
+// cannot target ClickHouse. The literal-inlining discipline of dorisreport
+// is kept: only the time-bucket width, LIMIT/OFFSET and the
+// 'cache_read'/'cache_write' kind literals of the cache_tokens UNION ALL
+// are inlined; every other value (including the empty-string markers) is
+// bound as a parameter. The driver is registered in stdlib mode
+// (database/sql over the native protocol) by the blank import below; this
+// storager itself only speaks database/sql.
+package clickhousereport
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"strconv"
+	"strings"
 
-	"github.com/didi/gendry/builder"
+	// Register the ClickHouse database/sql driver (clickhouse-go v2 stdlib
+	// mode, native protocol) so the container assembly can sql.Open a
+	// "clickhouse" datasource.
+	_ "github.com/ClickHouse/clickhouse-go/v2"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ireport"
@@ -31,47 +54,35 @@ const (
 	tableMetrics = "bfe_ai_metrics_1m"
 )
 
-// ReportStorager implements ireport.ReportStorager against Doris
-// (standard deployment). Doris is reached through the FE MySQL-protocol
-// port as a regular entry of the Databases map; no extra client is
-// introduced. The dialect differences vs storage/mysqlreport follow
-// design-docs/modifications/2026-09-15-report-query-api/design-changes.md
-// §6: Grafana-style time buckets, PERCENTILE_APPROX on the detail table for
-// p50/p90/p99, and plain `col != ”` empty-dimension predicates.
-//
-// Phase 1 of the cache/mirror/intent fields (design-docs modifications
-// 2026-09-27-report-cache-mirror-intent-fields) only implemented the
-// detail-backed parts here: the overview cache/mirror/intent counts, the
-// log projection/filters and the timeseries cache_tokens metric. Phase 2
-// (design-docs modifications 2026-10-01-report-doris-cache-mirror-intent-alignment,
-// after the Doris aggregate table gains the three KEY dimensions) aligns
-// the capability set with the MySQL backend: the rankings / distribution /
-// timeseries dimension branches are implemented below and the three
-// dimensions are declared in Capabilities, so the manager gate no longer
-// fires for them.
+// ReportStorager implements ireport.ReportStorager against ClickHouse.
+// ClickHouse is reached through the clickhouse-go v2 stdlib driver (native
+// TCP port) as a regular entry of the Databases map; no extra client is
+// introduced. The dialect differences vs storage/dorisreport follow
+// design-docs/modifications/2026-10-02-report-clickhouse-backend/design-changes.md
+// §5: Unix-second time buckets (intDiv), fromUnixTimestamp time filters,
+// quantile t-digest percentiles on the detail table, toString dimension
+// casts, if(...) unknown-bucket normalization and count() aggregates.
 type ReportStorager struct {
 	db       *sql.DB
 	database string // optional schema override used as table prefix
 	backend  string // backend identifier reported by Capabilities()
 }
 
-// New creates a new Doris report storager. database may be empty (tables
-// are then resolved within the connection's default schema) or a schema
-// name used to prefix table names. backend is the capability identifier
-// injected by the container assembly (e.g. "doris").
+// New creates a new ClickHouse report storager. database may be empty
+// (tables are then resolved within the connection's default schema) or a
+// schema name used to prefix table names. backend is the capability
+// identifier injected by the container assembly (e.g. "clickhouse").
 func New(db *sql.DB, database, backend string) *ReportStorager {
 	return &ReportStorager{db: db, database: database, backend: backend}
 }
 
 var _ ireport.ReportStorager = (*ReportStorager)(nil)
 
-// Capabilities implements ireport.ReportStorager. Phase 2 aligns the
-// dimension set with the MySQL backend: the aggregate table carries the
-// cache/mirror/intent KEY dimensions, so all 13 dimensions are declared
-// (see design-docs modifications
-// 2026-10-01-report-doris-cache-mirror-intent-alignment). The manager gate
-// against Capabilities stays as a defense-in-depth check for future
-// dimensions.
+// Capabilities implements ireport.ReportStorager. The ClickHouse aggregate
+// table carries the full dimension set (all Dimension* constants of
+// model/ireport, cache/mirror/intent included), so the manager dimension
+// gate never fires for them; the declaration doubles as a
+// defense-in-depth check for future dimensions.
 func (s *ReportStorager) Capabilities() *ireport.BackendCaps {
 	return &ireport.BackendCaps{
 		Backend: s.backend,
@@ -122,169 +133,223 @@ func streamValue(stream *bool) int8 {
 	return 0
 }
 
-// metricsWhere builds the shared WHERE map for the aggregate table.
-func metricsWhere(f *ireport.Filter) map[string]interface{} {
-	where := map[string]interface{}{
-		"ts_min >=": f.Start,
-		"ts_min <":  f.End,
-	}
-	if len(f.Models) > 0 {
-		where["ai_target_model in"] = toInterfaces(f.Models)
-	}
-	if len(f.ApikeyIDs) > 0 {
-		where["ai_apikey_id in"] = toInterfaces(f.ApikeyIDs)
-	}
-	if len(f.Providers) > 0 {
-		where["ai_provider in"] = toInterfaces(f.Providers)
-	}
-	if len(f.Hosts) > 0 {
-		where["hostid in"] = toInterfaces(f.Hosts)
-	}
-	if f.Stream != nil {
-		where["ai_stream ="] = streamValue(f.Stream)
-	}
-	if len(f.StatusCodes) > 0 {
-		where["res_status_code in"] = toIntInterfaces(f.StatusCodes)
-	}
-	return where
+// whereBuilder accumulates WHERE fragments in a fixed declaration order
+// together with their bound arguments, so the rendered SQL is
+// deterministic (the gendry map of the Doris backend is replaced by this
+// explicit chain).
+type whereBuilder struct {
+	conds []string
+	args  []interface{}
 }
 
-// detailWhere builds the WHERE map for the detail table from the shared
-// filter fields (the detail table uses the same column names).
-func detailWhere(f *ireport.Filter) map[string]interface{} {
-	where := map[string]interface{}{
-		"log_time >=": f.Start,
-		"log_time <":  f.End,
+func (w *whereBuilder) add(cond string, args ...interface{}) {
+	w.conds = append(w.conds, cond)
+	w.args = append(w.args, args...)
+}
+
+// addIn renders "col IN (?,?...)" with one bound argument per value.
+func (w *whereBuilder) addIn(col string, vals []interface{}) {
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(vals)), ",")
+	w.add(col+" IN ("+placeholders+")", vals...)
+}
+
+func (w *whereBuilder) clause() string {
+	return strings.Join(w.conds, " AND ")
+}
+
+// selectQuery renders "SELECT fields FROM table [WHERE clause] [GROUP BY g]
+// [ORDER BY o]" in a single canonical shape locked by the snapshot tests.
+func selectQuery(table, fields, where, groupBy, orderBy string) string {
+	var sb strings.Builder
+	sb.WriteString("SELECT ")
+	sb.WriteString(fields)
+	sb.WriteString(" FROM ")
+	sb.WriteString(table)
+	if where != "" {
+		sb.WriteString(" WHERE ")
+		sb.WriteString(where)
 	}
+	if groupBy != "" {
+		sb.WriteString(" GROUP BY ")
+		sb.WriteString(groupBy)
+	}
+	if orderBy != "" {
+		sb.WriteString(" ORDER BY ")
+		sb.WriteString(orderBy)
+	}
+	return sb.String()
+}
+
+// metricsWhere builds the shared WHERE fragment for the aggregate table.
+// Time bounds bind Unix seconds: ClickHouse compares the DateTime columns
+// by epoch, so no session-timezone interpretation is involved.
+func metricsWhere(f *ireport.Filter) *whereBuilder {
+	w := &whereBuilder{}
+	w.add("ts_min >= fromUnixTimestamp(?)", f.Start.Unix())
+	w.add("ts_min < fromUnixTimestamp(?)", f.End.Unix())
 	if len(f.Models) > 0 {
-		where["ai_target_model in"] = toInterfaces(f.Models)
+		w.addIn("ai_target_model", toInterfaces(f.Models))
 	}
 	if len(f.ApikeyIDs) > 0 {
-		where["ai_apikey_id in"] = toInterfaces(f.ApikeyIDs)
+		w.addIn("ai_apikey_id", toInterfaces(f.ApikeyIDs))
 	}
 	if len(f.Providers) > 0 {
-		where["ai_provider in"] = toInterfaces(f.Providers)
+		w.addIn("ai_provider", toInterfaces(f.Providers))
 	}
 	if len(f.Hosts) > 0 {
-		where["hostid in"] = toInterfaces(f.Hosts)
+		w.addIn("hostid", toInterfaces(f.Hosts))
 	}
 	if f.Stream != nil {
-		where["ai_stream ="] = streamValue(f.Stream)
+		w.add("ai_stream = ?", streamValue(f.Stream))
 	}
 	if len(f.StatusCodes) > 0 {
-		where["res_status_code in"] = toIntInterfaces(f.StatusCodes)
+		w.addIn("res_status_code", toIntInterfaces(f.StatusCodes))
 	}
-	return where
+	return w
+}
+
+// detailWhere builds the WHERE fragment for the detail table from the
+// shared filter fields (the detail table uses the same column names).
+func detailWhere(f *ireport.Filter) *whereBuilder {
+	w := &whereBuilder{}
+	w.add("log_time >= fromUnixTimestamp(?)", f.Start.Unix())
+	w.add("log_time < fromUnixTimestamp(?)", f.End.Unix())
+	if len(f.Models) > 0 {
+		w.addIn("ai_target_model", toInterfaces(f.Models))
+	}
+	if len(f.ApikeyIDs) > 0 {
+		w.addIn("ai_apikey_id", toInterfaces(f.ApikeyIDs))
+	}
+	if len(f.Providers) > 0 {
+		w.addIn("ai_provider", toInterfaces(f.Providers))
+	}
+	if len(f.Hosts) > 0 {
+		w.addIn("hostid", toInterfaces(f.Hosts))
+	}
+	if f.Stream != nil {
+		w.add("ai_stream = ?", streamValue(f.Stream))
+	}
+	if len(f.StatusCodes) > 0 {
+		w.addIn("res_status_code", toIntInterfaces(f.StatusCodes))
+	}
+	return w
 }
 
 // logWhere extends detailWhere with the logs-only criteria.
-func logWhere(f *ireport.LogFilter) map[string]interface{} {
-	where := detailWhere(&f.Filter)
+func logWhere(f *ireport.LogFilter) *whereBuilder {
+	w := detailWhere(&f.Filter)
 	if len(f.RequestedModels) > 0 {
-		where["ai_requested_model in"] = toInterfaces(f.RequestedModels)
+		w.addIn("ai_requested_model", toInterfaces(f.RequestedModels))
 	}
 	if f.ErrOnly {
-		where["IFNULL(err_code,'') !="] = ""
+		w.add("ifNull(err_code, '') != ?", "")
 	}
 	if f.Keyword != "" {
-		where["err_msg like"] = "%" + f.Keyword + "%"
+		w.add("err_msg LIKE ?", "%"+f.Keyword+"%")
 	}
 	if f.CacheStatus != nil {
-		where["ai_cache_status ="] = *f.CacheStatus
+		w.add("ai_cache_status = ?", *f.CacheStatus)
 	}
 	if f.MirrorHit != nil {
-		where["mirror_hit ="] = streamValue(f.MirrorHit)
+		w.add("mirror_hit = ?", streamValue(f.MirrorHit))
 	}
 	if f.IntentQuestion != nil {
-		where["ai_intent_question ="] = *f.IntentQuestion
+		w.add("ai_intent_question = ?", *f.IntentQuestion)
 	}
 	if f.IntentAnswer != nil {
-		where["ai_intent_answer ="] = *f.IntentAnswer
+		w.add("ai_intent_answer = ?", *f.IntentAnswer)
 	}
 	if f.IntentSource != nil {
-		where["ai_intent_source ="] = *f.IntentSource
+		w.add("ai_intent_source = ?", *f.IntentSource)
 	}
-	return where
+	return w
 }
 
-// epochLiteral is the wall-clock UTC epoch used to turn a stored DATETIME
-// into Unix seconds without any session-timezone interpretation
-// (TIMESTAMPDIFF is pure calendar arithmetic; Doris' UNIX_TIMESTAMP reads
-// the DATETIME in the session zone just like MySQL's). log-reader writes
-// UTC wall clock, so the stored value IS the UTC wall clock.
-const epochLiteral = "'1970-01-01 00:00:00'"
-
-// bucketExpr is the Doris time-bucket expression aligned with the Grafana
-// $__timeGroup rendering. The bucket width is server-controlled (one of
-// 60/300/1800 computed by the manager) and inlined as an integer literal:
-// gendry cannot bind parameters inside SELECT fields.
+// bucketExpr is the ClickHouse time-bucket expression: pure Unix-second
+// arithmetic (intDiv) over the DateTime column, free of any
+// session-timezone interpretation. The bucket width is server-controlled
+// (one of 60/300/1800 computed by the manager) and inlined as an integer
+// literal: parameters cannot be bound inside SELECT fields.
 func bucketExpr(timeCol string, bucketSec int) string {
 	b := strconv.Itoa(bucketSec)
-	return "CAST(FLOOR(TIMESTAMPDIFF(SECOND, " + epochLiteral + ", " + timeCol + ")/" + b + ")*" + b + " AS SIGNED) AS time"
+	return "intDiv(toUnixTimestamp(" + timeCol + "), " + b + ") * " + b + " AS time"
 }
 
 var overviewMetricFields = []string{
-	"IFNULL(SUM(request_count),0) AS request_total",
-	"IFNULL(SUM(error_count),0) AS error_total",
-	"IFNULL(SUM(input_tokens),0) AS input_tokens",
-	"IFNULL(SUM(output_tokens),0) AS output_tokens",
-	"IFNULL(SUM(total_tokens),0) AS total_tokens",
-	"IFNULL(SUM(all_time_sum),0) AS all_time_sum",
-	"IFNULL(MAX(all_time_sum/request_count),0) AS latency_max",
-	"IFNULL(SUM(ttft_us_sum),0) AS ttft_us_sum",
-	"IFNULL(SUM(CASE WHEN ai_stream=1 THEN request_count ELSE 0 END),0) AS stream_requests",
-	"IFNULL(SUM(tpot_us_sum),0) AS tpot_us_sum",
-	"IFNULL(SUM(rate_limit_hits),0) AS rate_limit_hits",
-	"IFNULL(SUM(auth_reject_count),0) AS auth_rejects",
-	"IFNULL(SUM(cache_read_tokens),0) AS cache_read_tokens",
-	"IFNULL(SUM(cache_write_tokens),0) AS cache_write_tokens",
+	// CH alias rule: a SELECT alias shadows the column of the same name for
+	// the whole query, so any later reference (e.g. latency_max below reads
+	// all_time_sum) would resolve to the aggregate itself and fail with
+	// "Aggregate function ... is found inside another aggregate function".
+	// Outer aggregates therefore never reuse the inner column name (_total).
+	"ifNull(SUM(request_count),0) AS request_total",
+	"ifNull(SUM(error_count),0) AS error_total",
+	"ifNull(SUM(input_tokens),0) AS input_tokens_total",
+	"ifNull(SUM(output_tokens),0) AS output_tokens_total",
+	"ifNull(SUM(total_tokens),0) AS total_tokens_total",
+	"ifNull(SUM(all_time_sum),0) AS all_time_sum_total",
+	"ifNull(MAX(all_time_sum/request_count),0) AS latency_max",
+	"ifNull(SUM(ttft_us_sum),0) AS ttft_us_sum_total",
+	"ifNull(SUM(CASE WHEN ai_stream=1 THEN request_count ELSE 0 END),0) AS stream_requests",
+	"ifNull(SUM(tpot_us_sum),0) AS tpot_us_sum_total",
+	"ifNull(SUM(rate_limit_hits),0) AS rate_limit_hits_total",
+	"ifNull(SUM(auth_reject_count),0) AS auth_rejects",
+	"ifNull(SUM(cache_read_tokens),0) AS cache_read_tokens_total",
+	"ifNull(SUM(cache_write_tokens),0) AS cache_write_tokens_total",
 }
 
 // overviewDetailCountFields are the conditional detail-table COUNT columns
 // of the cache/mirror/intent indicator groups (same calibers as the MySQL
-// backend; IFNULL is accepted by Doris).
+// and Doris backends; nullable detail columns are wrapped in ifNull).
 var overviewDetailCountFields = []string{
-	"IFNULL(SUM(CASE WHEN ai_cache_status='hit' THEN 1 ELSE 0 END),0) AS cache_hit_count",
-	"IFNULL(SUM(CASE WHEN ai_cache_status='miss' THEN 1 ELSE 0 END),0) AS cache_miss_count",
-	"IFNULL(SUM(CASE WHEN ai_cache_status='skip' THEN 1 ELSE 0 END),0) AS cache_skip_count",
-	"IFNULL(SUM(CASE WHEN IFNULL(mirror_hit,0)=1 THEN 1 ELSE 0 END),0) AS mirror_hit_count",
-	"IFNULL(SUM(CASE WHEN IFNULL(ai_intent_answer,'')!='' AND ai_intent_answer!='unknown' THEN 1 ELSE 0 END),0) AS intent_classified_count",
-	"IFNULL(SUM(CASE WHEN ai_intent_answer='unknown' THEN 1 ELSE 0 END),0) AS intent_unknown_count",
+	"ifNull(SUM(CASE WHEN ai_cache_status='hit' THEN 1 ELSE 0 END),0) AS cache_hit_count",
+	"ifNull(SUM(CASE WHEN ai_cache_status='miss' THEN 1 ELSE 0 END),0) AS cache_miss_count",
+	"ifNull(SUM(CASE WHEN ai_cache_status='skip' THEN 1 ELSE 0 END),0) AS cache_skip_count",
+	"ifNull(SUM(CASE WHEN ifNull(mirror_hit,0)=1 THEN 1 ELSE 0 END),0) AS mirror_hit_count",
+	"ifNull(SUM(CASE WHEN ifNull(ai_intent_answer,'')!='' AND ai_intent_answer!='unknown' THEN 1 ELSE 0 END),0) AS intent_classified_count",
+	"ifNull(SUM(CASE WHEN ai_intent_answer='unknown' THEN 1 ELSE 0 END),0) AS intent_unknown_count",
+}
+
+// percentileFields are the three independent quantile aggregate columns
+// (t-digest, the same algorithm family as Doris PERCENTILE_APPROX, so
+// cross-engine values are "approximately equal" within tolerance). Three
+// separate columns are used instead of the quantiles() tuple form because
+// scanning a tuple column through database/sql is unreliable.
+var percentileFields = []string{
+	"quantile(0.5)(all_time) AS p50",
+	"quantile(0.9)(all_time) AS p90",
+	"quantile(0.99)(all_time) AS p99",
 }
 
 func buildOverviewMetricsSQL(metricsTable string, f *ireport.Filter) (string, []interface{}, error) {
-	return builder.BuildSelect(metricsTable, metricsWhere(f), overviewMetricFields)
+	w := metricsWhere(f)
+	return selectQuery(metricsTable, strings.Join(overviewMetricFields, ","), w.clause(), "", ""), w.args, nil
 }
 
 func buildOverviewDetailCountsSQL(detailTable string, f *ireport.Filter) (string, []interface{}, error) {
-	return builder.BuildSelect(detailTable, detailWhere(f), overviewDetailCountFields)
+	w := detailWhere(f)
+	return selectQuery(detailTable, strings.Join(overviewDetailCountFields, ","), w.clause(), "", ""), w.args, nil
 }
 
 func buildOverviewCostSQL(metricsTable string, f *ireport.Filter) (string, []interface{}, error) {
-	where := metricsWhere(f)
-	where["ai_cost_currency !="] = ""
-	where["_groupby"] = "ai_cost_currency"
-	return builder.BuildSelect(metricsTable, where, []string{
-		"ai_cost_currency AS currency",
-		"IFNULL(SUM(ai_cost_value_sum),0) AS value",
-	})
+	w := metricsWhere(f)
+	w.add("ai_cost_currency != ?", "")
+	return selectQuery(metricsTable,
+		"ai_cost_currency AS currency,ifNull(SUM(ai_cost_value_sum),0) AS value",
+		w.clause(), "ai_cost_currency", ""), w.args, nil
 }
 
-// buildOverviewPercentileSQL computes the Doris-only p50/p90/p99 of
-// all_time over the whole window from the detail table, aligning with the
-// Grafana latency panel (PERCENTILE_APPROX on bfe_ai_request_log).
+// buildOverviewPercentileSQL computes the p50/p90/p99 of all_time over the
+// whole window from the detail table, aligning with the Grafana latency
+// panel (quantile t-digest on bfe_ai_request_log).
 func buildOverviewPercentileSQL(detailTable string, f *ireport.Filter) (string, []interface{}, error) {
-	where := detailWhere(f)
-	where["all_time null"] = builder.IsNotNull
-	return builder.BuildSelect(detailTable, where, []string{
-		"PERCENTILE_APPROX(all_time, 0.5) AS p50",
-		"PERCENTILE_APPROX(all_time, 0.9) AS p90",
-		"PERCENTILE_APPROX(all_time, 0.99) AS p99",
-	})
+	w := detailWhere(f)
+	w.add("all_time IS NOT NULL")
+	return selectQuery(detailTable, strings.Join(percentileFields, ","), w.clause(), "", ""), w.args, nil
 }
 
 func buildLogsTotalSQL(detailTable string, f *ireport.Filter) (string, []interface{}, error) {
-	return builder.BuildSelect(detailTable, detailWhere(f), []string{"COUNT(*)"})
+	w := detailWhere(f)
+	return selectQuery(detailTable, "count()", w.clause(), "", ""), w.args, nil
 }
 
 // buildTimeSeriesSQL builds the per-metric time-series query over the
@@ -308,7 +373,7 @@ func buildTimeSeriesSQL(metricsTable, metric, dimension string, f *ireport.Filte
 		return buildCacheTokensTimeSeriesSQL(metricsTable, column, f, bucketSec)
 	}
 
-	where := metricsWhere(f)
+	w := metricsWhere(f)
 	groupBy := "time"
 	if column != "" {
 		groupBy = "time," + column
@@ -319,14 +384,12 @@ func buildTimeSeriesSQL(metricsTable, metric, dimension string, f *ireport.Filte
 			groupBy = "time,ai_cost_currency," + column
 		}
 	}
-	where["_groupby"] = groupBy
-	where["_orderby"] = "time ASC"
 
 	fields, err := timeSeriesMetricFields(metric, bucketSec, column)
 	if err != nil {
 		return "", nil, err
 	}
-	return builder.BuildSelect(metricsTable, where, fields)
+	return selectQuery(metricsTable, strings.Join(fields, ","), w.clause(), groupBy, "time ASC"), w.args, nil
 }
 
 // timeSeriesMetricFields is the SELECT field list of one metric arm; the
@@ -346,13 +409,13 @@ func timeSeriesMetricFields(metric string, bucketSec int, column string) ([]stri
 			"SUM(total_tokens) AS total")
 	case ireport.MetricLatency:
 		fields = append(fields,
-			"SUM(all_time_sum) AS all_time_sum",
-			"SUM(request_count) AS request_count",
+			"SUM(all_time_sum) AS all_time_sum_total",
+			"SUM(request_count) AS request_count_total",
 			"MAX(all_time_sum/request_count) AS latency_max")
 	case ireport.MetricTTFT, ireport.MetricTPOT:
 		fields = append(fields,
-			"SUM(ttft_us_sum) AS ttft_us_sum",
-			"SUM(tpot_us_sum) AS tpot_us_sum",
+			"SUM(ttft_us_sum) AS ttft_us_sum_total",
+			"SUM(tpot_us_sum) AS tpot_us_sum_total",
 			"SUM(CASE WHEN ai_stream=1 THEN request_count ELSE 0 END) AS stream_requests")
 	case ireport.MetricCost:
 		fields = append(fields,
@@ -365,34 +428,28 @@ func timeSeriesMetricFields(metric string, bucketSec int, column string) ([]stri
 }
 
 // buildCacheTokensTimeSeriesSQL renders the cache_read/cache_write series
-// as a UNION ALL over the same WHERE, the same caliber as the MySQL
-// backend (Doris accepts UNION ALL with a trailing ORDER BY). The optional
-// dimension column is carried as "name" in each arm.
+// as a UNION ALL over the same WHERE, the same caliber as the MySQL and
+// Doris backends (ClickHouse accepts UNION ALL with a trailing ORDER BY).
+// The optional dimension column is carried as "name" in each arm and the
+// kind literals are inlined (whitelist literal, see the package doc).
 func buildCacheTokensTimeSeriesSQL(metricsTable, column string, f *ireport.Filter, bucketSec int) (string, []interface{}, error) {
-	where := metricsWhere(f)
 	groupBy := "time"
 	if column != "" {
 		groupBy = "time," + column
 	}
-	where["_groupby"] = groupBy
 
-	arm := func(kind, sumField string) (string, []interface{}, error) {
+	arm := func(kind, sumField string) (string, []interface{}) {
 		fields := []string{bucketExpr("ts_min", bucketSec), "'" + kind + "' AS kind"}
 		if column != "" {
 			fields = append(fields, column+" AS name")
 		}
 		fields = append(fields, "SUM("+sumField+") AS value")
-		return builder.BuildSelect(metricsTable, where, fields)
+		w := metricsWhere(f)
+		return selectQuery(metricsTable, strings.Join(fields, ","), w.clause(), groupBy, ""), w.args
 	}
 
-	readSQL, readArgs, err := arm("cache_read", "cache_read_tokens")
-	if err != nil {
-		return "", nil, err
-	}
-	writeSQL, writeArgs, err := arm("cache_write", "cache_write_tokens")
-	if err != nil {
-		return "", nil, err
-	}
+	readSQL, readArgs := arm("cache_read", "cache_read_tokens")
+	writeSQL, writeArgs := arm("cache_write", "cache_write_tokens")
 
 	orderBy := "time ASC"
 	if column != "" {
@@ -403,31 +460,26 @@ func buildCacheTokensTimeSeriesSQL(metricsTable, column string, f *ireport.Filte
 	return query, append(readArgs, writeArgs...), nil
 }
 
-// buildLatencyPercentileSQL is the Doris-only companion of the latency
-// time-series: per-bucket p50/p90/p99 of all_time from the detail table.
+// buildLatencyPercentileSQL is the companion of the latency time-series:
+// per-bucket p50/p90/p99 of all_time from the detail table.
 func buildLatencyPercentileSQL(detailTable string, f *ireport.Filter, bucketSec int) (string, []interface{}, error) {
-	where := detailWhere(f)
-	where["all_time null"] = builder.IsNotNull
-	where["_groupby"] = "time"
-	where["_orderby"] = "time ASC"
-	return builder.BuildSelect(detailTable, where, []string{
-		bucketExpr("log_time", bucketSec),
-		"PERCENTILE_APPROX(all_time, 0.5) AS p50",
-		"PERCENTILE_APPROX(all_time, 0.9) AS p90",
-		"PERCENTILE_APPROX(all_time, 0.99) AS p99",
-	})
+	w := detailWhere(f)
+	w.add("all_time IS NOT NULL")
+	fields := append([]string{bucketExpr("log_time", bucketSec)}, percentileFields...)
+	return selectQuery(detailTable, strings.Join(fields, ","), w.clause(), "time", "time ASC"), w.args, nil
 }
 
 // rankingEmptyPredicate excludes the empty marker of a dimension from
 // top-N rankings (0 for the numeric status column, ” for strings), the
-// same caliber as the MySQL backend. It returns the gendry where key and
-// value: the operator is always "!=" and the value is bound as a
-// parameter.
+// same caliber as the MySQL and Doris backends. The operator is always
+// "!=" and the value is bound as a parameter (the aggregate-table
+// dimensions are NOT NULL DEFAULT ” so plain three-valued comparison
+// applies).
 func rankingEmptyPredicate(dimension, column string) (string, interface{}) {
 	if dimension == ireport.DimensionStatus {
-		return column + " !=", 0
+		return column + " != ?", 0
 	}
-	return column + " !=", ""
+	return column + " != ?", ""
 }
 
 func buildRankingsSQL(metricsTable, dimension string, f *ireport.Filter, limit int) (string, []interface{}, error) {
@@ -438,55 +490,45 @@ func buildRankingsSQL(metricsTable, dimension string, f *ireport.Filter, limit i
 
 	field := column + " AS name"
 	if dimension == ireport.DimensionStatus || dimension == ireport.DimensionStream || dimension == ireport.DimensionMirrorHit {
-		field = "CAST(" + column + " AS CHAR) AS name"
+		field = "toString(" + column + ") AS name"
 	}
 
-	where := metricsWhere(f)
+	w := metricsWhere(f)
 	// mirror_hit is a numeric 0/1 dimension without an empty marker; both
 	// buckets rank. String dimensions keep the empty-marker exclusion.
 	if dimension != ireport.DimensionMirrorHit {
-		emptyKey, emptyValue := rankingEmptyPredicate(dimension, column)
-		where[emptyKey] = emptyValue
+		cond, value := rankingEmptyPredicate(dimension, column)
+		w.add(cond, value)
 	}
-	where["_groupby"] = column
-	where["_orderby"] = "request_count DESC"
 
-	query, args, err := builder.BuildSelect(metricsTable, where, []string{
-		field,
-		"SUM(request_count) AS request_count",
-		"SUM(error_count) AS error_count",
-		"SUM(input_tokens) AS input_tokens",
-		"SUM(output_tokens) AS output_tokens",
-	})
-	if err != nil {
-		return "", nil, err
-	}
-	// Doris cannot parse bound parameters in LIMIT (a prepared `LIMIT ?,?`
-	// fails with "mismatched input 'LIMIT'"); limit is a server-derived
-	// integer clamped by the manager, inlined as a literal like the
-	// time-bucket width in bucketExpr.
-	return fmt.Sprintf("%s LIMIT %d", query, limit), args, nil
+	query := selectQuery(metricsTable,
+		field+",SUM(request_count) AS request_count_total,SUM(error_count) AS error_count_total,"+
+			"SUM(input_tokens) AS input_tokens_total,SUM(output_tokens) AS output_tokens_total",
+		w.clause(), column, "request_count_total DESC")
+	// limit is a server-derived integer clamped by the manager, inlined as
+	// a literal like the time-bucket width in bucketExpr.
+	return fmt.Sprintf("%s LIMIT %d", query, limit), w.args, nil
 }
 
 // distributionNameExpr renders the dimension value as its display name,
-// normalizing NULL/empty to 'unknown'. Numeric dimensions are cast to
-// strings so the response shape is uniform.
+// normalizing NULL/empty to 'unknown'. Numeric dimensions are cast with
+// toString so the response shape is uniform.
 func distributionNameExpr(dimension string) (string, error) {
 	switch dimension {
 	case ireport.DimensionStatus:
-		return "CASE WHEN IFNULL(res_status_code,0)=0 THEN 'unknown' ELSE CAST(res_status_code AS CHAR) END AS name", nil
+		return "if(res_status_code = 0, 'unknown', toString(res_status_code)) AS name", nil
 	case ireport.DimensionStream:
-		return "CAST(ai_stream AS CHAR) AS name", nil
+		return "toString(ai_stream) AS name", nil
 	case ireport.DimensionProtocol:
-		return "CASE WHEN IFNULL(ai_protocol,'')='' THEN 'unknown' ELSE ai_protocol END AS name", nil
+		return "if(ai_protocol = '', 'unknown', toString(ai_protocol)) AS name", nil
 	case ireport.DimensionMode:
-		return "CASE WHEN IFNULL(ai_mode,'')='' THEN 'unknown' ELSE ai_mode END AS name", nil
+		return "if(ai_mode = '', 'unknown', toString(ai_mode)) AS name", nil
 	case ireport.DimensionCacheStatus:
-		return "CASE WHEN IFNULL(ai_cache_status,'')='' THEN 'unknown' ELSE ai_cache_status END AS name", nil
+		return "if(ai_cache_status = '', 'unknown', toString(ai_cache_status)) AS name", nil
 	case ireport.DimensionIntentAnswer:
-		return "CASE WHEN IFNULL(ai_intent_answer,'')='' THEN 'unknown' ELSE ai_intent_answer END AS name", nil
+		return "if(ai_intent_answer = '', 'unknown', toString(ai_intent_answer)) AS name", nil
 	case ireport.DimensionMirrorHit:
-		return "CAST(mirror_hit AS CHAR) AS name", nil
+		return "toString(mirror_hit) AS name", nil
 	default:
 		return "", xerror.WrapParamErrorWithMsg("invalid dimension: %s", dimension)
 	}
@@ -498,27 +540,24 @@ func buildDistributionSQL(metricsTable, dimension string, f *ireport.Filter) (st
 		return "", nil, err
 	}
 
-	where := metricsWhere(f)
-	where["_groupby"] = "name"
-	where["_orderby"] = "request_count DESC"
-
-	return builder.BuildSelect(metricsTable, where, []string{
-		nameExpr,
-		"SUM(request_count) AS request_count",
-	})
+	w := metricsWhere(f)
+	return selectQuery(metricsTable,
+		nameExpr+",SUM(request_count) AS request_count_total",
+		w.clause(), "name", "request_count_total DESC"), w.args, nil
 }
 
 func buildLogsCountSQL(detailTable string, f *ireport.LogFilter) (string, []interface{}, error) {
-	return builder.BuildSelect(detailTable, logWhere(f), []string{"COUNT(*)"})
+	w := logWhere(f)
+	return selectQuery(detailTable, "count()", w.clause(), "", ""), w.args, nil
 }
 
 // logRowFields is the display projection of the detail row, identical to
-// the MySQL backend (the two tables share column names by design).
-// log_time renders via TIMESTAMPDIFF so the value is session-timezone
-// neutral on both backends.
+// the MySQL and Doris backends (the tables share column names by design).
+// log_time renders via toUnixTimestamp so the value is the UTC epoch,
+// session-timezone neutral.
 var logRowFields = []string{
 	"logid",
-	"TIMESTAMPDIFF(SECOND, " + epochLiteral + ", log_time) AS log_time",
+	"toUnixTimestamp(log_time) AS log_time",
 	"hostid",
 	"product",
 	"ai_apikey_id",
@@ -539,8 +578,22 @@ var logRowFields = []string{
 	"ai_tpot_us",
 	"ai_cost_value",
 	"ai_cost_currency",
-	"ai_rate_limit_hits",
-	"ai_auth_reject_quota_plans",
+	// Complex columns are rendered as JSON text via toJSONString: the
+	// clickhouse-go stdlib driver returns Nested/Array values as Go slices,
+	// which database/sql cannot scan into a string (unlike the MySQL/Doris
+	// backends where these columns are JSON text). Two physical-schema notes:
+	//  - req_headers/res_headers are declared Nested(...) but the server
+	//    default flatten_nested=1 materializes them as parallel subcolumns
+	//    (req_headers.key / req_headers.value); the base name is a virtual
+	//    projection, not a physical column (see observability
+	//    bfe_ai_log_load_mv.sql header). arrayMap recombines the subcolumns
+	//    into a named Tuple array so toJSONString yields the
+	//    [{"key":...,"value":...}] shape of the MySQL wire format; an empty
+	//    pair renders as '[]' (MySQL renders NULL instead — equivalent).
+	//  - ai_rate_limit_hits is Array(Tuple(...)) and survives flattening
+	//    intact, so a plain toJSONString works.
+	"toJSONString(ai_rate_limit_hits) AS ai_rate_limit_hits",
+	"toJSONString(ai_auth_reject_quota_plans) AS ai_auth_reject_quota_plans",
 	"level1Name",
 	"level1",
 	"level2Name",
@@ -554,8 +607,8 @@ var logRowFields = []string{
 	"client_ip",
 	"header_host",
 	"origin_uri",
-	"req_headers",
-	"res_headers",
+	"toJSONString(CAST(arrayMap((k, v) -> (k, v), req_headers.key, req_headers.value) AS Array(Tuple(key String, value String)))) AS req_headers",
+	"toJSONString(CAST(arrayMap((k, v) -> (k, v), res_headers.key, res_headers.value) AS Array(Tuple(key String, value String)))) AS res_headers",
 	"ai_cache_status",
 	"mirror_hit",
 	"mirror_cluster",
@@ -569,27 +622,21 @@ var logRowFields = []string{
 }
 
 func buildLogsSQL(detailTable string, f *ireport.LogFilter) (string, []interface{}, error) {
-	offset := uint(0)
+	offset := 0
 	if f.Page > 1 {
-		offset = uint(f.Page-1) * uint(f.PageSize)
+		offset = (f.Page - 1) * f.PageSize
 	}
 
-	where := logWhere(f)
-	where["_orderby"] = "log_time DESC"
-	query, args, err := builder.BuildSelect(detailTable, where, logRowFields)
-	if err != nil {
-		return "", nil, err
-	}
-	// Doris cannot parse bound parameters in LIMIT (a prepared `LIMIT ?,?`
-	// fails with "mismatched input 'LIMIT'"); offset/pageSize are
-	// server-derived integers clamped by the manager, inlined as literals
-	// like the time-bucket width in bucketExpr.
-	return fmt.Sprintf("%s LIMIT %d OFFSET %d", query, uint(f.PageSize), offset), args, nil
+	w := logWhere(f)
+	query := selectQuery(detailTable, strings.Join(logRowFields, ","), w.clause(), "", "log_time DESC")
+	// pageSize/offset are server-derived integers clamped by the manager,
+	// inlined as literals like the time-bucket width in bucketExpr.
+	return fmt.Sprintf("%s LIMIT %d OFFSET %d", query, f.PageSize, offset), w.args, nil
 }
 
-// Overview implements ireport.ReportStorager. Compared to the MySQL
-// backend it additionally fills latency_p50_ms / p90 / p99 from the detail
-// table via PERCENTILE_APPROX.
+// Overview implements ireport.ReportStorager. Like the Doris backend it
+// additionally fills latency_p50_ms / p90 / p99 from the detail table via
+// quantile t-digest.
 func (s *ReportStorager) Overview(ctx context.Context, f *ireport.Filter) (*ireport.OverviewResult, error) {
 	metricsTable := s.table(tableMetrics)
 	detailTable := s.table(tableDetail)
@@ -664,15 +711,19 @@ func (s *ReportStorager) Overview(ctx context.Context, f *ireport.Filter) (*irep
 	if err := s.db.QueryRowContext(ctx, percentileSQL, percentileArgs...).Scan(&p50, &p90, &p99); err != nil {
 		return nil, xerror.WrapDaoError(err)
 	}
-	if p50.Valid {
+	// ClickHouse quantile returns NaN (not NULL) for an empty input set,
+	// unlike Doris PERCENTILE_APPROX; drop the NaNs so an empty window
+	// degrades exactly like the Doris backend (fields omitted from the JSON
+	// payload instead of NaN, which encoding/json cannot marshal).
+	if p50.Valid && !math.IsNaN(p50.Float64) {
 		v := p50.Float64
 		result.LatencyP50Ms = &v
 	}
-	if p90.Valid {
+	if p90.Valid && !math.IsNaN(p90.Float64) {
 		v := p90.Float64
 		result.LatencyP90Ms = &v
 	}
-	if p99.Valid {
+	if p99.Valid && !math.IsNaN(p99.Float64) {
 		v := p99.Float64
 		result.LatencyP99Ms = &v
 	}
@@ -734,8 +785,8 @@ type overviewDetailCounts struct {
 }
 
 // overviewResultFromRow assembles the overview card with the documented
-// calibers (identical to the MySQL backend); the percentile fields stay
-// nil here and are attached by Overview (Doris only).
+// calibers (identical to the MySQL and Doris backends); the percentile
+// fields stay nil here and are attached by Overview.
 func overviewResultFromRow(row *overviewMetricsRow, cost []*ireport.CostItem, logsTotal int64,
 	detailCounts *overviewDetailCounts) *ireport.OverviewResult {
 	requestTotal := row.requestTotal.Int64
@@ -789,11 +840,11 @@ func overviewResultFromRow(row *overviewMetricsRow, cost []*ireport.CostItem, lo
 
 // TimeSeries implements ireport.ReportStorager. For the latency metric it
 // additionally queries per-bucket percentiles from the detail table and
-// merges them into the aggregate points (Doris only). Percentiles are
-// whole-bucket calibers, so they are only attached to the plain
-// single-series latency points; a dimension-split latency series carries
-// avg/max per (bucket, name) only — the same degradation as the MySQL
-// backend, which never returns percentiles.
+// merges them into the aggregate points. Percentiles are whole-bucket
+// calibers, so they are only attached to the plain single-series latency
+// points; a dimension-split latency series carries avg/max per (bucket,
+// name) only — the same degradation as the MySQL backend, which never
+// returns percentiles.
 func (s *ReportStorager) TimeSeries(ctx context.Context, metric, dimension string, f *ireport.Filter, bucketSec int) ([]*ireport.MetricPoint, error) {
 	query, args, err := buildTimeSeriesSQL(s.table(tableMetrics), metric, dimension, f, bucketSec)
 	if err != nil {
@@ -931,7 +982,7 @@ func scanMetricPoint(scanner rowScanner, metric, dimension string, bucketSec int
 
 // rowToMetricPoint converts raw per-bucket sums into a point, applying the
 // per-second rates and per-request calibers (pure function, identical
-// semantics to the MySQL backend).
+// semantics to the MySQL and Doris backends).
 func rowToMetricPoint(metric string, bucket int64, bucketSec int, v metricRowValues) *ireport.MetricPoint {
 	point := &ireport.MetricPoint{Time: bucket, Name: v.name, Kind: v.kind}
 	float64Ptr := func(f float64) *float64 { return &f }
@@ -971,7 +1022,9 @@ func avgLatencyMs(usSum, streamRequests int64) float64 {
 }
 
 // mergeLatencyPercentiles attaches per-bucket p50/p90/p99 to the aggregate
-// latency points, keyed by bucket time (pure merge over the scanned rows).
+// latency points, keyed by bucket time (pure merge over the scanned rows;
+// a present bucket always has rows with all_time NOT NULL, so quantile
+// never yields NaN here).
 func mergeLatencyPercentiles(rows *sql.Rows, points []*ireport.MetricPoint) error {
 	byTime := make(map[int64]*ireport.MetricPoint, len(points))
 	for _, point := range points {
@@ -1176,8 +1229,8 @@ func nullCostAmountPtr(n sql.NullInt64) *float64 {
 	return &v
 }
 
-// scanLogRow scans one detail projection row (same shape as the MySQL
-// backend; the two tables share column names by design).
+// scanLogRow scans one detail projection row (same shape as the MySQL and
+// Doris backends; the tables share column names by design).
 func scanLogRow(scanner rowScanner) (*ireport.LogRow, error) {
 	var (
 		logid               sql.NullInt64
