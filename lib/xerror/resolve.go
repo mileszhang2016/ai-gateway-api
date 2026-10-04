@@ -92,6 +92,9 @@ func Resolve(err error) *ResolveResult {
 	case etAuthorizateFail:
 		rr.ErrNo = 402
 		rr.Type = "Authorizate Fail"
+	case etAccessForbidden:
+		rr.ErrNo = 403
+		rr.Type = "Access Forbidden"
 
 	default: // never come here
 		rr.Type = "Unknown Exception"

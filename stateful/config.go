@@ -33,7 +33,6 @@ import (
 	"time"
 
 	"github.com/bfenetworks/bfe/bfe_util/redis_client"
-	"github.com/go-playground/validator/v10"
 	"github.com/go-sql-driver/mysql"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 )
@@ -41,6 +40,7 @@ import (
 type ServerConfig struct {
 	ServerAddr          string `validate:"ip"`             // service bind address, default 0.0.0.0
 	ServerPort          int    `validate:"required,min=1"` // service port
+	MonitorAddr         string `validate:"omitempty,ip"`   // monitor bind address, empty = all interfaces
 	MonitorPort         int    // monitor port
 	GracefulTimeOutInMs int    `validate:"required,min=1"` // time out setting for graceful shutdown
 }
@@ -87,12 +87,13 @@ func (c *ReportConfig) applyDefaults() {
 }
 
 type Config struct {
-	Server    ServerConfig
-	Loggers   map[string]*LoggerConfig `validate:"dive"`
-	Databases map[string]*DbConfig     `validate:"dive"`
-	Depends   DependsConfig
-	RunTime   RunTimeConfig
-	Report    ReportConfig
+	Server        ServerConfig
+	Loggers       map[string]*LoggerConfig `validate:"dive"`
+	Databases     map[string]*DbConfig     `validate:"dive"`
+	Depends       DependsConfig
+	RunTime       RunTimeConfig
+	Report        ReportConfig
+	AccessControl AccessControlConf
 
 	Vars      map[string]string
 	LogDir    string
@@ -129,12 +130,21 @@ func LoadConfig(file string) error {
 	if err := lib.LoadConfAuto(file, config); err != nil {
 		return err
 	}
+	confFilePath = file
 
 	config.Report.applyDefaults()
 
-	if err := validator.New().Struct(config); err != nil {
+	if err := newConfigValidator().Struct(config); err != nil {
 		return err
 	}
+
+	// Compile the management-plane IP whitelist; the compiled form is the
+	// runtime source of truth (swapped atomically by reload).
+	cc, err := CompileAccessControl(&config.AccessControl)
+	if err != nil {
+		return err
+	}
+	StoreCompiledAccessControl(cc)
 
 	DefaultConfig = config
 	return nil

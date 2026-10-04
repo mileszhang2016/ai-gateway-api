@@ -1,10 +1,14 @@
 # ---------------------------------
 # AI GATEWAY API Config
 [Server]
+# server bind address
+ServerAddr = "0.0.0.0"
 # server port
 ServerPort = 8183
 # server graceful exit timeout
 GracefulTimeOutInMs = 5000
+# monitor bind address, empty means all interfaces
+# MonitorAddr = ""
 # monitor port, don't start monitor server if less than 0
 MonitorPort = 8284
 
@@ -234,3 +238,34 @@ MaxIdle = 10
 # AggregateIntervalSec = 60
 # RetentionDays = 7
 # EnablePartitionMgmt = false
+# ---------------------------------
+# Management Plane Access Control (IP Whitelist)
+# 管理面 IP 白名单：保护 Dashboard / OpenAPI / InnerAPI 三类管理入口。
+# 默认关闭（向后兼容）；启用后非白名单网段请求在网络层直接 403（先于鉴权）。
+# 配置位于服务端文件而非 DB：白名单保护的是控制面 API 自身，必须保证
+# "被锁死"时仍可通过修改本文件自救（见 design-docs/modifications/
+# 2026-10-04-mgmt-ip-whitelist）。
+# 变更生效：curl -X POST http://<pod-ip>:8284/reload/access_control（热加载，
+# 原子替换、失败保留旧配置）；优雅重启兜底。
+# 上线建议：新规则先 Audit=true 观察（只记录不拒绝），确认"本应拒绝"清单
+# 为空后再切 false；首条规则务必包含当前运维出口网段，防止锁死。
+# [AccessControl]
+# Enable = false
+# 可信代理网段（LB / Ingress / BFE 反代出口）。仅当请求对端属于可信代理时才
+# 解析 X-Forwarded-For（右起跳过可信代理取首个非可信 IP）；不可信来源的
+# XFF 一律忽略，伪造头无效。K8s 场景通常为 Ingress/Node 网段。
+# TrustedProxies = ["10.244.0.0/16"]
+#
+# InnerAPI：仅基础设施网段（conf-agent / BFE / EPP 拉取配置）
+# [[AccessControl.Rules]]
+# Name       = "inner-api"
+# PathPrefix = "/inner-api/v1"
+# Subnets    = ["10.10.0.0/16"]
+# Audit      = false
+#
+# 管理 API + Dashboard：仅运维网段（最长前缀匹配，上面的 inner-api 优先命中）
+# [[AccessControl.Rules]]
+# Name       = "mgmt"
+# PathPrefix = "/"
+# Subnets    = ["192.168.1.0/24", "100.64.0.0/16"]
+# Audit      = false

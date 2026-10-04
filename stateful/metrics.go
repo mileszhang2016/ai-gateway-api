@@ -41,6 +41,14 @@ var (
 	MetricPaincCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "panic",
 	})
+
+	// MetricMgmtAccessReject counts requests rejected by the management-plane
+	// IP whitelist (see endpoints/middleware/ip_probe.go). The "rule" label
+	// carries the rule name, or "unresolvable" when the client IP could not
+	// be determined (fail-open, but visible).
+	MetricMgmtAccessReject = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "mgmt_access_reject_total",
+	}, []string{"rule"})
 )
 
 func init() {
@@ -49,11 +57,17 @@ func init() {
 		MetricAPICostHisCounter,
 		MetricSQLAccessCounter,
 		MetricSQLCostCounter,
-		MetricPaincCounter)
+		MetricPaincCounter,
+		MetricMgmtAccessReject)
 }
 
 func NewMonitorServerWithRun(version string, port int) *web_monitor.MonitorServer {
-	monitorServer := web_monitor.NewMonitorServer("AI_GATEWAY_API", version, port)
+	var monitorServer *web_monitor.MonitorServer
+	if addr := DefaultConfig.Server.MonitorAddr; addr != "" {
+		monitorServer = web_monitor.NewMonitorServerWithAddr("AI_GATEWAY_API", version, addr, port)
+	} else {
+		monitorServer = web_monitor.NewMonitorServer("AI_GATEWAY_API", version, port)
+	}
 
 	monitorServer.RegisterHandler(web_monitor.WebHandleMonitor, "metrics", func(p url.Values) ([]byte, error) {
 		rsp, req := httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil)
@@ -64,6 +78,8 @@ func NewMonitorServerWithRun(version string, port int) *web_monitor.MonitorServe
 
 		return []byte(rsp.Body.String()), nil
 	})
+
+	monitorServer.RegisterHandler(web_monitor.WebHandleReload, "access_control", ReloadAccessControl)
 
 	go monitorServer.Start()
 

@@ -112,7 +112,7 @@ ConnMaxLifetimeInMs  = 5000000`,
 		strconv.Quote(cfg.User),
 		strconv.Quote(cfg.Passwd))
 
-	sm, err := startServer(nil, "", "", &dbPatch{driver: "mysql", section: section})
+	sm, err := startServer(nil, "", "", &dbPatch{driver: "mysql", section: section}, 0)
 	if err != nil {
 		if admin, oErr := sql.Open("mysql", adminDSN); oErr == nil {
 			admin.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName))

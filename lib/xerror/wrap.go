@@ -36,6 +36,7 @@ const (
 
 	etAuthenticateFail = "Authentication.Fail"
 	etAuthorizateFail  = "Authorization.Fail"
+	etAccessForbidden  = "Access.Forbidden"
 )
 
 func unwrapMsg(err error) string {
@@ -91,6 +92,13 @@ func WrapAuthorizateFailErrorWithMsg(msg string, args ...interface{}) error {
 
 func WrapAuthenticateFailErrorWithMsg(msg string, args ...interface{}) error {
 	return errors.Wrap(fmt.Errorf(msg, args...), etAuthenticateFail)
+}
+
+// WrapAccessForbiddenErrorWithMsg is returned by the management-plane IP
+// whitelist middleware when a request is rejected by network-layer access
+// control (see endpoints/middleware/ip_probe.go).
+func WrapAccessForbiddenErrorWithMsg(msg string, args ...interface{}) error {
+	return errors.Wrap(fmt.Errorf(msg, args...), etAccessForbidden)
 }
 
 // WrapDependentUnReadyErrorWithMsg Just Service layout invoke
