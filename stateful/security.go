@@ -45,6 +45,17 @@ import (
 // (writes stay plaintext until a keyring file is configured and reloaded).
 var secretRing atomic.Value // stores *xcrypto.Keyring
 
+// exportCrypto is the runtime state of export-file encryption: the dedicated
+// conf-file keyring plus the resolved active export keyID. enabled is fixed
+// at load time: the switch AND a usable keyring must both be present.
+type exportCrypto struct {
+	kr       *xcrypto.Keyring
+	activeID uint8
+	enabled  bool
+}
+
+var exportCryptoState atomic.Value // stores *exportCrypto
+
 // SecurityConfig is the [Security] section of ai_gateway_api.toml.
 type SecurityConfig struct {
 	// MasterKeyFile points to the keyring file (the ONLY injection way; no
@@ -52,6 +63,18 @@ type SecurityConfig struct {
 	MasterKeyFile string `toml:"MasterKeyFile"`
 	// ActiveKeyID selects which key in the keyring encrypts new values.
 	ActiveKeyID int `toml:"ActiveKeyID"`
+	// EncryptExports enables field-level enc$v1$ encryption of sensitive
+	// fields in the two key-bearing export topics (mod-api-key Tokens outer
+	// keys, server_data_conf AIConf.Keys[].Key). Default false.
+	EncryptExports bool `toml:"EncryptExports"`
+	// ExportKeyFile is the dedicated conf-file keyring, distributed to all
+	// BFE instances (BFE reads the same file via [Security].KeyFile). It is
+	// an independent root: fully separated from MasterKeyFile.
+	ExportKeyFile string `toml:"ExportKeyFile"`
+	// ActiveExportKeyID selects which key in ExportKeyFile encrypts new
+	// export ciphertexts. 0 (default) follows the keyring file's
+	// ActiveKeyID.
+	ActiveExportKeyID int `toml:"ActiveExportKeyID"`
 }
 
 // LoadSecretRing loads (or reloads) the keyring from the current
@@ -110,8 +133,84 @@ func DecryptIfEnabled(value string) (string, error) {
 	return kr.Decrypt(value)
 }
 
-// ReloadSecurity is the monitor-port /reload/security handler: re-read the
-// keyring file and swap it atomically. Any failure keeps the old keyring.
+// LoadExportSecretRing loads (or reloads) the conf-file keyring for export
+// encryption and atomically swaps the runtime state. Failure keeps the
+// previous state effective.
+func LoadExportSecretRing() error {
+	if DefaultConfig == nil {
+		return errors.New("security: DefaultConfig not initialized")
+	}
+	return loadExportSecretRing(&DefaultConfig.Security)
+}
+
+func loadExportSecretRing(conf *SecurityConfig) error {
+	path := conf.ExportKeyFile
+	if path == "" {
+		if conf.EncryptExports {
+			return errors.New("security: EncryptExports=true but [Security].ExportKeyFile is not configured; refuse to start")
+		}
+		exportCryptoState.Store(&exportCrypto{})
+		log.Logger.Info("security: ExportKeyFile not configured, export encryption disabled")
+		return nil
+	}
+
+	kr, err := xcrypto.LoadKeyringFile(path)
+	if err != nil {
+		if conf.EncryptExports {
+			return fmt.Errorf("security: EncryptExports=true but export keyring %s is unusable: %v", path, err)
+		}
+		// Gradual enable: a bad ExportKeyFile with the switch off is a
+		// warning, not a startup failure.
+		log.Logger.Warn("security: ExportKeyFile %s not usable yet (EncryptExports=false): %v", path, err)
+		exportCryptoState.Store(&exportCrypto{})
+		return nil
+	}
+
+	activeID := uint8(conf.ActiveExportKeyID)
+	if activeID == 0 {
+		activeID = kr.ActiveID()
+	}
+	if !kr.HasKey(activeID) {
+		return fmt.Errorf("security: ActiveExportKeyID %d not found in export keyring %s", activeID, path)
+	}
+
+	exportCryptoState.Store(&exportCrypto{kr: kr, activeID: activeID, enabled: conf.EncryptExports})
+	log.Logger.Info("security: export keyring loaded from %s, activeExportKeyID=%d, keys=%v, encryptExports=%v",
+		path, activeID, kr.KeyIDs(), conf.EncryptExports)
+	return nil
+}
+
+// ExportCryptoEnabled reports whether export-file encryption is active
+// (switch on AND a usable keyring loaded, both fixed at load/reload time).
+func ExportCryptoEnabled() bool {
+	ec := currentExportCrypto()
+	return ec != nil && ec.enabled
+}
+
+// ExportEncrypt encrypts one sensitive export field with the raw key material
+// of the active export keyID, producing a deterministic enc$v1$ envelope
+// decryptable by the BFE data plane.
+func ExportEncrypt(plaintext string) (string, error) {
+	ec := currentExportCrypto()
+	if ec == nil || !ec.enabled {
+		return "", errors.New("security: export encryption not enabled ([Security].EncryptExports/ExportKeyFile)")
+	}
+	return ec.kr.EncryptWithRawKey(plaintext, ec.activeID)
+}
+
+func currentExportCrypto() *exportCrypto {
+	if v := exportCryptoState.Load(); v != nil {
+		return v.(*exportCrypto)
+	}
+	return nil
+}
+
+// ReloadSecurity is the monitor-port /reload/security handler: re-read both
+// keyring files (MasterKeyFile for DB at-rest, ExportKeyFile for export
+// encryption) and swap them atomically. Each ring is validated and replaced
+// independently: a failure keeps that ring's previous value; any failure
+// makes the handler return an error so callers know a partial reload
+// happened.
 func ReloadSecurity(query url.Values) (string, error) {
 	old := SecretRing()
 	var oldRules = -1
@@ -126,8 +225,27 @@ func ReloadSecurity(query url.Values) (string, error) {
 	if now != nil {
 		newKeys = len(now.KeyIDs())
 	}
-	log.Logger.Info("security: keyring reloaded: keys %d -> %d", oldRules, newKeys)
-	return fmt.Sprintf("security keyring reloaded: keys %d -> %d", oldRules, newKeys), nil
+
+	oldExp := currentExportCrypto()
+	oldExpKeys := -1
+	if oldExp != nil && oldExp.kr != nil {
+		oldExpKeys = len(oldExp.kr.KeyIDs())
+	}
+	expErr := LoadExportSecretRing()
+	nowExp := currentExportCrypto()
+	newExpKeys := 0
+	if nowExp != nil && nowExp.kr != nil {
+		newExpKeys = len(nowExp.kr.KeyIDs())
+	}
+
+	log.Logger.Info("security: keyring reloaded: keys %d -> %d; export keys %d -> %d",
+		oldRules, newKeys, oldExpKeys, newExpKeys)
+	msg := fmt.Sprintf("security keyring reloaded: keys %d -> %d; export keys %d -> %d",
+		oldRules, newKeys, oldExpKeys, newExpKeys)
+	if expErr != nil {
+		return msg, fmt.Errorf("security: export keyring reload failed (previous export keyring kept): %v", expErr)
+	}
+	return msg, nil
 }
 
 // CheckSecretAtRest enforces the fail-fast discipline AFTER the DB is up:

@@ -153,6 +153,12 @@ func LoadConfig(file string) error {
 		return err
 	}
 
+	// Load the conf-file keyring for export encryption (fail-fast when the
+	// switch is on; warning-only when off and the file is not usable yet).
+	if err := loadExportSecretRing(&config.Security); err != nil {
+		return err
+	}
+
 	DefaultConfig = config
 	return nil
 }

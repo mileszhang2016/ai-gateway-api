@@ -114,6 +114,23 @@ func (k *Keyring) KeyHash(plaintext string) string {
 	return KeyHash(plaintext)
 }
 
+// EncryptWithRawKey encrypts plaintext with the RAW 32-byte key material of
+// the given keyID (NOT the HKDF-derived encKeys used for DB at-rest
+// encryption), producing a deterministic envelope. This is the export-file
+// encryption primitive: the data plane (BFE bfe_util/crypto) decrypts with
+// the raw keyring key directly, so derivation here would be incompatible.
+// keyID==0 means the keyring's active ID.
+func (k *Keyring) EncryptWithRawKey(plaintext string, keyID uint8) (string, error) {
+	if keyID == 0 {
+		keyID = k.active
+	}
+	key, ok := k.keys[keyID]
+	if !ok {
+		return "", fmt.Errorf("%w: keyID=%d", ErrKeyNotFound, keyID)
+	}
+	return EncryptDeterministic(plaintext, key, keyID)
+}
+
 // keyringFile is the TOML layout of MasterKeyFile:
 //
 //	ActiveKeyID = 2

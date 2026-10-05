@@ -23,7 +23,9 @@ package xcrypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -68,6 +70,41 @@ func Encrypt(plaintext string, key []byte, keyID uint8) (string, error) {
 	}
 	nonce := make([]byte, nonceLen)
 	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	ct := gcm.Seal(nil, nonce, []byte(plaintext), nil)
+	raw := make([]byte, 0, keyIDLen+nonceLen+len(ct))
+	raw = append(raw, keyID)
+	raw = append(raw, nonce...)
+	raw = append(raw, ct...)
+	return Marker + base64.StdEncoding.EncodeToString(raw), nil
+}
+
+// EncryptDeterministic encrypts like Encrypt but derives the nonce from the
+// key and plaintext (HMAC-SHA256(key, plaintext)[0:12]) instead of drawing a
+// random one. The same (keyID, plaintext) therefore always produces the same
+// ciphertext bytes. This is REQUIRED for export-file encryption: export
+// content feeds config_versions' data_sign (content MD5), and random nonce
+// would make every export look like a new version to conf-agent.
+//
+// Security note: deterministic encryption leaks plaintext equality. Export
+// secrets (api keys / upstream provider keys) are high-entropy random
+// strings, so equality carries no exploitable information; do not use this
+// for low-entropy secrets.
+func EncryptDeterministic(plaintext string, key []byte, keyID uint8) (string, error) {
+	if len(key) != keyLen {
+		return "", fmt.Errorf("xcrypto: key length %d, want %d", len(key), keyLen)
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(plaintext))
+	nonce := mac.Sum(nil)[:nonceLen]
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
 		return "", err
 	}
 	ct := gcm.Seal(nil, nonce, []byte(plaintext), nil)

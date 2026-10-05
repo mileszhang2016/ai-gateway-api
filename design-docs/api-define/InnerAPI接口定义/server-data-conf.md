@@ -216,7 +216,7 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
 | Provider | string | 对应 OpenAPI `llm_config.provider`；默认空字符串 |
 | Keys | array | API-Key 列表；为空数组时表示该 cluster 不配置 API-Key |
 | Keys[].Name | string | Key 名称/标识（必填） |
-| Keys[].Key | string | API-Key 值 |
+| Keys[].Key | string | API-Key 值；**`[Security].EncryptExports=true` 时为 `enc$v1$` 字段级密文**（同 mod-api-key 信封规范），无此前缀按明文直通 |
 | Keys[].Weight | int | 权重，范围 `[0,100]` |
 | KeyPolicy | object | Key 路由策略 |
 | KeyPolicy.Strategy | string | 本版仅支持 `weighted_random` |

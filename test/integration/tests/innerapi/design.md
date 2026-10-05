@@ -10,6 +10,8 @@ v0.0.7 起，Cluster 表导出（`/configs/gslb_data/cluster_table`）中的 `AI
 
 v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、`SessionAffinityRedisPrefix`、`SessionAffinityPenaltyEnable` 字段，对应 OpenAPI `llm_config.key_affinity`，用于会话级 Key 亲和性。InnerAPI 应验证这些字段与 OpenAPI 写入的 `key_affinity` 配置一致（含默认值）。
 
+v0.10 起，`[Security].EncryptExports=true` 时，本清单的 IN-1（`AIConf.Keys[].Key`）与 IN-6（`tokens` 外层键、内层 `key` 置空）以 `enc$v1$` 字段级密文导出（信封/marker 直通/确定性密文等契约见 `api-define/InnerAPI接口定义/mod-api-key.md` §3.5 与 `modifications/2026-10-05-export-config-field-encryption/api-changes.md`）；其余 topic 不受影响。加密导出专项用例见独立模块 `tests/export_encryption/`（前缀 EFE），本目录各 submodule 用例保持明文形态（默认开关关闭）。
+
 ## 2. 接口列表
 
 | 编号 | 接口名称 | 方法 | 路径 | 说明 |

@@ -1229,7 +1229,7 @@ func NewBfeClusterConf(ctx context.Context, version string, clusters []*Cluster,
 	providerProtocolTable map[string][]string,
 	providerProtocolPathsTable map[string]map[string]string,
 	providerPricingTable map[string]ProviderPricingInfo,
-	eppResolver EPPAssignmentResolver) *cluster_conf.BfeClusterConf {
+	eppResolver EPPAssignmentResolver) (*cluster_conf.BfeClusterConf, error) {
 	clusterConfMap := cluster_conf.ClusterToConf{}
 
 	int322intp := func(i int32) *int {
@@ -1353,10 +1353,30 @@ func NewBfeClusterConf(ctx context.Context, version string, clusters []*Cluster,
 
 		clusterConfMap[cluster.Name] = clusterConf
 	}
+
+	// Field-level encryption at rest: encrypt AIConf.Keys[].Key so no
+	// upstream provider key lands on BFE disk in plaintext. Name/Weight/
+	// KeyPolicy/model mappings stay readable. Any failure aborts the
+	// export rather than emitting a half-encrypted file.
+	if stateful.ExportCryptoEnabled() {
+		for name, conf := range clusterConfMap {
+			if conf.AIConf == nil {
+				continue
+			}
+			for i := range conf.AIConf.Keys {
+				enc, err := stateful.ExportEncrypt(conf.AIConf.Keys[i].Key)
+				if err != nil {
+					return nil, fmt.Errorf("cluster %s: encrypt AIConf.Keys[%d] failed: %s", name, i, err)
+				}
+				conf.AIConf.Keys[i].Key = enc
+			}
+		}
+	}
+
 	return &cluster_conf.BfeClusterConf{
 		Version: &version,
 		Config:  &clusterConfMap,
-	}
+	}, nil
 }
 
 func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,
