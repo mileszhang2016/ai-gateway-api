@@ -48,6 +48,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iroute_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/itxn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iversion_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/keyrotate"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quota"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/quotacache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/rate_limit_policy"
@@ -67,6 +68,7 @@ var (
 	DomainStoragerSingleton         iroute_conf.DomainStorager
 	ClusterStoragerSingleton        icluster_conf.ClusterStorager
 	APIKeyStorager                  api_key.APIKeyStorager
+	KeyRotateStorager               keyrotate.Storager
 	APIKeyIDGenerator               api_key.APIKeyIDGenerator
 	PoolStoragerSingleton           icluster_conf.PoolStorager
 	SubClusterStoragerSingleton     icluster_conf.SubClusterStorager
@@ -136,6 +138,7 @@ var (
 	// Operation logs
 	OperationLogStorager ioperlog.OperationLogStorager
 	OperationLogManager  ioperlog.OperationLogManagerInterface
+	KeyRotateManager     *keyrotate.Manager
 
 	// Report query module (see design-docs modifications/2026-09-15-report-query-api);
 	// nil when [Report].Backend is not configured.

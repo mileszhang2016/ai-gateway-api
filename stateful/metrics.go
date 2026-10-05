@@ -49,6 +49,21 @@ var (
 	MetricMgmtAccessReject = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "mgmt_access_reject_total",
 	}, []string{"rule"})
+
+	// MetricCryptoDecryptFail counts secret-at-rest decryption failures
+	// (unknown keyID, wrong key, corrupted data). Logs never carry the
+	// ciphertext, only keyID and length.
+	MetricCryptoDecryptFail = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "crypto_decrypt_fail_total",
+	}, []string{"table", "key_id"})
+
+	// MetricCryptoSweep counts reencrypt/decrypt sweep progress.
+	MetricCryptoSweep = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "crypto_sweep_total",
+	}, []string{"table", "action"})
+	MetricCryptoSweepRunning = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "crypto_sweep_running",
+	})
 )
 
 func init() {
@@ -58,7 +73,10 @@ func init() {
 		MetricSQLAccessCounter,
 		MetricSQLCostCounter,
 		MetricPaincCounter,
-		MetricMgmtAccessReject)
+		MetricMgmtAccessReject,
+		MetricCryptoDecryptFail,
+		MetricCryptoSweep,
+		MetricCryptoSweepRunning)
 }
 
 func NewMonitorServerWithRun(version string, port int) *web_monitor.MonitorServer {
@@ -80,6 +98,7 @@ func NewMonitorServerWithRun(version string, port int) *web_monitor.MonitorServe
 	})
 
 	monitorServer.RegisterHandler(web_monitor.WebHandleReload, "access_control", ReloadAccessControl)
+	monitorServer.RegisterHandler(web_monitor.WebHandleReload, "security", ReloadSecurity)
 
 	go monitorServer.Start()
 

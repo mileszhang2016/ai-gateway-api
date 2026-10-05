@@ -40,6 +40,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/report"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route_tables"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/security"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/subcluster"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/traffic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/traffic_mirror"
@@ -79,6 +80,7 @@ func endpoints() []*xreq.Endpoint {
 		traffic_mirror.Endpoints,
 		intent_config.Endpoints,
 		route_tables.Endpoints,
+		security.Routes,
 		model_price.Endpoints,
 		operation_log.Endpoints,
 		provider.Endpoints,

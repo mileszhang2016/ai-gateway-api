@@ -308,6 +308,7 @@ CREATE TABLE api_keys (
   id TEXT NOT NULL DEFAULT '',
   enable INTEGER NOT NULL DEFAULT 0,
   api_key TEXT NOT NULL DEFAULT '',
+  api_key_hash TEXT NOT NULL DEFAULT '',
   description TEXT DEFAULT '',
   unlimited_quota INTEGER DEFAULT 0,
   product_name TEXT NOT NULL DEFAULT '',
@@ -321,7 +322,7 @@ CREATE TABLE api_keys (
   created_at DATETIME NOT NULL DEFAULT '0000-01-01 00:00:00',
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (id),
-  UNIQUE (api_key)
+  UNIQUE (api_key_hash)
 );
 CREATE INDEX api_keys_product_name ON api_keys (product_name);
 CREATE INDEX api_keys_entity_id ON api_keys (entity_id);
@@ -704,3 +705,28 @@ INSERT INTO bfe_clusters (id, name, pool_name, capacity, enabled, gtc_enabled, g
 
 -- 初始化默认 global 路由表
 INSERT OR IGNORE INTO route_rules (type, owner, enabled, rules) VALUES ('global', 'global', 0, '[]');
+
+-- key rotation sweep tasks (see design-docs/modifications/2026-10-05-db-encryption-at-rest)
+CREATE TABLE IF NOT EXISTS keyrotate_sweep_tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  dry_run INTEGER NOT NULL DEFAULT 0,
+  scope TEXT NOT NULL DEFAULT 'all',
+  active_key_id INTEGER NOT NULL DEFAULT 0,
+  scanned INTEGER NOT NULL DEFAULT 0,
+  rewritten INTEGER NOT NULL DEFAULT 0,
+  summary TEXT,
+  error TEXT NOT NULL DEFAULT '',
+  heartbeat_at DATETIME NOT NULL,
+  started_at DATETIME NOT NULL,
+  finished_at DATETIME,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS keyrotate_sweep_lock (
+  id INTEGER PRIMARY KEY,
+  holder_task_id TEXT NOT NULL DEFAULT ''
+);
+INSERT OR IGNORE INTO keyrotate_sweep_lock (id) VALUES (1);

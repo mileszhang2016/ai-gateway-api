@@ -107,6 +107,12 @@ func main() {
 		stateful.Exit("rdb.Init", err, -1)
 	}
 
+	// Fail-fast after the DB is up: encrypted secrets require a usable
+	// keyring (see stateful.CheckSecretAtRest).
+	if err := stateful.CheckSecretAtRest(); err != nil {
+		stateful.Exit("CheckSecretAtRest", err, -1)
+	}
+
 	serverStartUp()
 }
 

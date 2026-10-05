@@ -46,13 +46,13 @@ type ServerConfig struct {
 }
 
 type RunTimeConfig struct {
-	SessionExpireInDay        int  `validate:"required,min=1"`
-	SkipTokenValidate         bool // skip user identify, you can open it when debug
-	RecordSQL                 bool
-	StaticFilePath            string
-	Debug                     bool
-	AIRouteInnerProductName   string // AI inner product name,default AI_product
-	DefaultAIClusterName      string // default AI cluster name, e.g. "BFE-AI_product.szyf"
+	SessionExpireInDay      int  `validate:"required,min=1"`
+	SkipTokenValidate       bool // skip user identify, you can open it when debug
+	RecordSQL               bool
+	StaticFilePath          string
+	Debug                   bool
+	AIRouteInnerProductName string // AI inner product name,default AI_product
+	DefaultAIClusterName    string // default AI cluster name, e.g. "BFE-AI_product.szyf"
 
 	// EPP scheduling integration (see model/epp_pool).
 	DefaultEPPInstancePoolName  string // default EPP instance pool name, e.g. "EPP.pool"
@@ -94,6 +94,7 @@ type Config struct {
 	RunTime       RunTimeConfig
 	Report        ReportConfig
 	AccessControl AccessControlConf
+	Security      SecurityConfig
 
 	Vars      map[string]string
 	LogDir    string
@@ -145,6 +146,12 @@ func LoadConfig(file string) error {
 		return err
 	}
 	StoreCompiledAccessControl(cc)
+
+	// Load the secret keyring (fail-fast if configured but invalid). An
+	// empty MasterKeyFile stores a nil ring (encryption disabled).
+	if err := loadSecretRing(&config.Security); err != nil {
+		return err
+	}
 
 	DefaultConfig = config
 	return nil

@@ -61,7 +61,6 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/clickhousereport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/dorisreport"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/mysqlreport"
-	"github.com/rainway-ai-gateway/ai-gateway-api/storage/starrocksreport"
 	aiCacheStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_cache"
 	aiContextStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_context"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ai_route"
@@ -72,8 +71,9 @@ import (
 	entityStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/entity"
 	eppPoolStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/epp_pool"
 	intentConfigStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/iintent_config"
-	k8sPoolStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/k8s_pool"
 	operationLogStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/ioperlog"
+	k8sPoolStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/k8s_pool"
+	keyrotateStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/keyrotate"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/model_price"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/protocol"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/provider"
@@ -81,11 +81,13 @@ import (
 	rateLimitPolicyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/rate_limit_policy"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_conf"
 	routeRulesStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/route_rules"
-	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/txn"
 	trafficMirrorStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/traffic_mirror"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/txn"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/version_control"
+	"github.com/rainway-ai-gateway/ai-gateway-api/storage/starrocksreport"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/keyrotate"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/traffic_mirror"
 )
 
@@ -93,6 +95,9 @@ func Init() error {
 	container.TxnStoragerSingleton = txn.NewRDBTxnStorager(stateful.NewBFEDBContext)
 	container.VersionControlStoragerSingleton = version_control.NewVersionControllerStorage(stateful.NewBFEDBContext)
 	container.OperationLogStorager = operationLogStorage.NewOperationLogStorager(stateful.NewBFEDBContext)
+	container.KeyRotateStorager = keyrotateStorage.NewStorager(
+		stateful.NewBFEDBContext, container.TxnStoragerSingleton, keyrotate.DefaultHeartbeatTTL)
+	container.KeyRotateManager = keyrotate.NewManager(container.KeyRotateStorager, stateful.NewBFEDBContext)
 	container.OperationLogManager = ioperlog.NewOperationLogManager(container.OperationLogStorager, 0)
 	container.OperationLogManager.SetContextExtractor(operationLogContextExtractor)
 

@@ -144,6 +144,7 @@ const (
 
 	// operation logs
 	FeatureOperationLog Feature = "OperationLog"
+	FeatureSecurity     Feature = "Security"
 
 	// report query
 	FeatureReport Feature = "Report"
@@ -199,6 +200,8 @@ var scope2permission = map[string]map[Feature]Action{
 		FeatureOperationLog: actionAll,
 
 		FeatureReport: actionAll,
+
+		FeatureSecurity: actionAll,
 	},
 	ScopeProduct: {
 		FeatureUser:       ActionReadAll,

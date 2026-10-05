@@ -299,7 +299,8 @@ CREATE TABLE api_keys (
   `inner_id` bigint(20) NOT NULL AUTO_INCREMENT comment "内部id",
   `id` varchar(255) NOT NULL DEFAULT '' comment "API-Key标识",
   `enable` boolean NOT NULL DEFAULT false comment "api keys开关",
-  `api_key` varchar(128) NOT NULL default '' comment "具体的key",
+  `api_key` varchar(255) NOT NULL default '' comment "具体的key（加密态存储，enc$v1$ 前缀；明文兼容）",
+  `api_key_hash` char(64) NOT NULL DEFAULT '' comment "api_key 的 HMAC-SHA256 查询哈希（稳定，不随加密轮换变化）",
   `description` varchar(512) DEFAULT '' comment "API-Key描述",
   `unlimited_quota` tinyint(1) DEFAULT 0 comment "是否无限配额：0-有限，1-无限",
   `product_name` varchar(255) NOT NULL DEFAULT '' comment "产品线名称",
@@ -314,7 +315,7 @@ CREATE TABLE api_keys (
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP  comment "更新时间",
   PRIMARY KEY (`inner_id`),
   UNIQUE KEY `uk_id` (`id`),
-  UNIQUE KEY `uk_api_key` (`api_key`),
+  UNIQUE KEY `uk_api_key_hash` (`api_key_hash`),
   INDEX idx_product_name (product_name),
   INDEX idx_entity_id (entity_id),
   INDEX idx_quota_plan_id (quota_plan_id),
@@ -689,3 +690,34 @@ INSERT INTO `bfe_clusters` (
 
 -- 初始化默认 global 路由表
 INSERT IGNORE INTO `route_rules` (`type`, `owner`, `enabled`, `rules`) VALUES ('global', 'global', 0, '[]');
+
+-- key rotation sweep tasks (see design-docs/modifications/2026-10-05-db-encryption-at-rest)
+DROP TABLE IF EXISTS `keyrotate_sweep_tasks`;
+CREATE TABLE `keyrotate_sweep_tasks` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `task_id` varchar(64) NOT NULL comment "任务标识",
+  `status` varchar(16) NOT NULL comment "running | succeeded | failed",
+  `mode` varchar(16) NOT NULL comment "reencrypt | decrypt",
+  `dry_run` tinyint(1) NOT NULL DEFAULT 0,
+  `scope` varchar(16) NOT NULL DEFAULT 'all',
+  `active_key_id` int NOT NULL DEFAULT 0,
+  `scanned` bigint NOT NULL DEFAULT 0,
+  `rewritten` bigint NOT NULL DEFAULT 0,
+  `summary` text comment "按表分组计数 JSON",
+  `error` varchar(1024) NOT NULL DEFAULT '',
+  `heartbeat_at` datetime NOT NULL comment "执行心跳，失联接管判定依据",
+  `started_at` datetime NOT NULL,
+  `finished_at` datetime DEFAULT NULL,
+  `duration_ms` bigint NOT NULL DEFAULT 0,
+  `created_by` varchar(255) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_krst_task_id` (`task_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 comment = "密钥收敛任务表";
+
+DROP TABLE IF EXISTS `keyrotate_sweep_lock`;
+CREATE TABLE `keyrotate_sweep_lock` (
+  `id` bigint(20) NOT NULL,
+  `holder_task_id` varchar(64) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 comment = "密钥收敛任务单行锁（id 恒为 1）";
+INSERT INTO `keyrotate_sweep_lock` (`id`) VALUES (1);

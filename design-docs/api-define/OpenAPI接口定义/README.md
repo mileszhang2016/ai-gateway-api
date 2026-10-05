@@ -30,6 +30,7 @@
 | /epp-pool | [epp-pool.md](./epp-pool.md) |
 | /model-prices | [model-prices.md](./model-prices.md) |
 | /operation-logs | [operation-logs.md](./operation-logs.md) |
+| /security/reencrypt-sweeps | [security.md](./security.md) |
 | /report | [report.md](./report.md) |
 | /expression/verify | [expression-verify.md](./expression-verify.md) |
 | 关键业务流程 | [workflows.md](./workflows.md) |
