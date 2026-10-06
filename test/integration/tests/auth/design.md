@@ -21,6 +21,7 @@ Auth 模块负责管理用户（User）、Session Key、Token 及系统导航配
 | AUTH-11 | Token 详情 | GET | `/open-api/v1/auth/tokens/{token_name}` | 返回 name/token/scope |
 | AUTH-12 | Token 列表 | GET | `/open-api/v1/auth/tokens` | 数组，元素同详情 |
 | AUTH-13 | 获取系统导航配置 | GET | `/open-api/v1/meta` | 无需鉴权 |
+| AUTH-14 | 密码哈希化（跨接口安全场景） | POST/PATCH/DB | `/open-api/v1/auth/users`、`/open-api/v1/auth/users/{user_name}/passwd`、`/open-api/v1/auth/session-keys` + `users` 表直读 | 口令 bcrypt 哈希落库、懒迁移、SKIP 后门移除、审计脱敏（2026-10-06 安全整改，见 `design-docs/modifications/2026-10-06-password-hash`） |
 
 ## 3. 测试用例统计
 
@@ -39,7 +40,8 @@ Auth 模块负责管理用户（User）、Session Key、Token 及系统导航配
 | Token 详情 | 1 |
 | Token 列表 | 1 |
 | 获取系统导航配置 | 1 |
-| **合计** | **39** |
+| 密码哈希化 | 6 |
+| **合计** | **45** |
 
 ## 4. 认证方式
 
@@ -74,6 +76,8 @@ auth/
 │   └── token_detail_test.go
 ├── token_list/
 │   └── token_list_test.go
+├── password_hash/
+│   └── password_hash_test.go
 └── meta/
     └── meta_test.go
 ```
@@ -99,7 +103,7 @@ auth/
 | 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
 |--------|------|------|------|------------|
 | user_name | string | Y | 用户名 | 长度 1-64；仅允许字母、数字、`_`、`-`、`.`；不能以 `.`、`-`、`_` 开头或结尾；全局唯一（大小写不敏感）；不能为 `admin`/`root`/`system` 等保留用户名 |
-| password | string | Y | 用户密码 | 长度 8-128；不能包含空白字符；不能等于 `user_name` 或其逆序 |
+| password | string | Y | 用户密码 | 长度 8-72 字节（bcrypt 上限）；不能包含空白字符；不能等于 `user_name` 或其逆序；库内 bcrypt 哈希存储 |
 | is_admin | bool | N | 固定为 true，默认填充 true | 仅支持 `true` |
 
 #### 6.2.2 返回数据字段
@@ -613,7 +617,7 @@ URI：`non_existent_user`
 | 参数名 | 类型 | 必填 | 说明 | 合法性条件 |
 |--------|------|------|------|------------|
 | old_password | string | N | 旧密码，修改当前登录用户时需要 | - |
-| password | string | Y | 新密码 | 长度 8-128；不能包含空白字符；不能等于 `user_name` 或其逆序 |
+| password | string | Y | 新密码 | 长度 8-72 字节（bcrypt 上限）；不能包含空白字符；不能等于 `user_name` 或其逆序；库内 bcrypt 哈希存储 |
 
 #### 8.2.2 返回数据字段
 
@@ -1850,13 +1854,201 @@ Data 为数组，元素同 Token 详情。
 
 ---
 
-## 19. 依赖与数据准备
+## 19. 密码哈希化（AUTH-14）
+
+### 19.1 接口信息
+
+| 项目 | 值 |
+|------|-----|
+| 模块 | Auth |
+| 接口名称 | 密码哈希化（跨接口安全场景组） |
+| 方法 | POST / PATCH + DB 直读 |
+| 路径 | `/open-api/v1/auth/users`、`/open-api/v1/auth/users/{user_name}/passwd`、`/open-api/v1/auth/session-keys` |
+| 说明 | 2026-10-06 安全整改（`design-docs/modifications/2026-10-06-password-hash`）：口令 bcrypt 哈希存储、移除 `"SKIP"` 后门、存量明文懒迁移、审计脱敏。本组用例复用 AUTH-1/3/7 接口并以 testutil 直读/改写 SQLite `users` 表做存储断言。 |
+
+### 19.2 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| AUTH-14-001 | DDL 种子 admin 口令哈希 | 存储断言（DB 直读） | `users.password` 为 `$2` 前缀 bcrypt 哈希；admin/admin 登录 200 |
+| AUTH-14-002 | 创建用户落库哈希 | 存储断言（DB 直读） | DB password 非明文且 `$2` 前缀；错误密码登录 401 |
+| AUTH-14-003 | 存量明文懒迁移 | 迁移行为 | DB 置回明文 → 登录 200 → DB 变 `$2` 前缀 → 同口令再次登录 200（哈希路径） |
+| AUTH-14-004 | SKIP 字面量不再旁路 | 安全回归 | 密码 `"SKIP"` 登录 401 |
+| AUTH-14-005 | 73 字节密码拒绝且回读零变更 | 边界值 | 创建 422 且 DB 无该用户；改密 422 且 DB password 与操作前一致 |
+| AUTH-14-006 | 重置密码落库哈希且审计脱敏 | 存储断言 + 审计 | 改密后 DB 为 `$2` 前缀、新密码可登录旧密码 401；操作日志整段 JSON 不含新旧密码明文 |
+
+### 19.3 测试场景详细设计
+
+#### 19.3.1 AUTH-14-001：DDL 种子 admin 口令哈希（存储断言）
+
+##### 设计思路
+
+新装环境由 `db_ddl_sqlite.sql` 初始化，admin 初始口令 `admin` 必须以 bcrypt 哈希落库（库内无明文），且初始口令仍可登录（快速开始体验不变）。
+
+##### 前提数据准备
+
+无（依赖 DDL 种子数据）。
+
+##### 执行步骤
+
+1. testutil.GetUserPassword 直读 `users` 表 admin 记录：断言 `$2a$`/`$2b$`/`$2y$` 前缀。
+2. POST `/open-api/v1/auth/session-keys`，`user_name=admin`、`password=admin`：断言 200。
+
+##### 预期返回结果
+
+**DB 断言**：`users.password` 为 bcrypt 哈希串（60 字符，非明文 `admin`）。
+**ErrNum**：200
+
+---
+
+#### 19.3.2 AUTH-14-002：创建用户落库哈希（存储断言）
+
+##### 设计思路
+
+创建用户后，库中 password 必须为 bcrypt 哈希（不是请求明文），错误密码登录被拒。
+
+##### 前提数据准备
+
+无
+
+##### 执行步骤
+
+1. POST `/open-api/v1/auth/users` 创建用户（密码 `password@123`）：断言 200。
+2. GetUserPassword 直读：断言为 `$2` 前缀且不等于明文。
+3. POST `/open-api/v1/auth/session-keys` 用错误密码登录：断言 401。
+4. 清理：删除该用户。
+
+##### 请求参数
+
+```json
+{
+    "user_name": "<run-scoped>",
+    "password": "password@123",
+    "is_admin": true
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200（创建）/ 401（错误密码登录）
+**DB 断言**：`users.password` 以 `$2` 前缀存储。
+
+---
+
+#### 19.3.3 AUTH-14-003：存量明文懒迁移（迁移行为）
+
+##### 设计思路
+
+模拟老版本升级后的存量明文库：将用户 password 直写为明文后，登录成功的同时必须在同一事务内重哈希落库；迁移后同一口令走哈希校验路径仍可登录。
+
+##### 前提数据准备
+
+已创建用户（密码 `password@123`）。
+
+##### 执行步骤
+
+1. testutil.SetUserPassword 将该用户 password 改写为明文 `password@123`（模拟存量库）。
+2. POST `/open-api/v1/auth/session-keys` 登录：断言 200。
+3. GetUserPassword 直读：断言已变为 `$2` 前缀（懒迁移生效）。
+4. 再次以 `password@123` 登录：断言 200（哈希校验路径，口令本身不变）。
+5. 清理：删除该用户。
+
+##### 预期返回结果
+
+**ErrNum**：200（两次登录）
+**DB 断言**：步骤 1 后为明文，步骤 3 后为 bcrypt 哈希。
+
+---
+
+#### 19.3.4 AUTH-14-004：SKIP 字面量不再旁路（安全回归）
+
+##### 设计思路
+
+历史上 `authentication.go:259` 存在 `"SKIP"` 硬编码后门（密码字面量等于 SKIP 即跳过校验）。整改后 `"SKIP"` 必须是普通错误口令。
+
+##### 前提数据准备
+
+已创建用户。
+
+##### 执行步骤
+
+1. POST `/open-api/v1/auth/session-keys`，`password="SKIP"`：断言 401。
+2. 清理：删除该用户。
+
+##### 请求参数
+
+```json
+{
+    "user_name": "<run-scoped>",
+    "password": "SKIP"
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：401
+**Data**：null
+
+---
+
+#### 19.3.5 AUTH-14-005：73 字节密码拒绝且回读零变更（边界值）
+
+##### 设计思路
+
+bcrypt 输入上限 72 字节，合同收紧为 8-72 字节。73 字节密码创建/改密必须 422，且拒绝路径不留任何写入（校验先于持久化）。
+
+##### 前提数据准备
+
+无（创建路径）；已创建用户（改密路径）。
+
+##### 执行步骤
+
+1. POST `/open-api/v1/auth/users`，`password=<73 个 'a'>`：断言 422；GetUserPassword 直读断言该用户不存在（回读零变更）。
+2. 创建合法用户，记录其 password 存储值 H1。
+3. PATCH `/open-api/v1/auth/users/{user_name}/passwd`，`password=<73 个 'a'>`：断言 422；GetUserPassword 直读断言仍为 H1（回读零变更）。
+4. 清理：删除该用户。
+
+##### 预期返回结果
+
+**ErrNum**：422（两次）
+**DB 断言**：创建拒绝后无记录；改密拒绝后存储值逐字节不变。
+
+---
+
+#### 19.3.6 AUTH-14-006：重置密码落库哈希且审计脱敏（存储断言 + 审计）
+
+##### 设计思路
+
+管理员重置密码后：库中为新口令的 bcrypt 哈希；新口令可登录、旧口令失效；操作日志整段 JSON 不得出现新旧口令明文（`MaskSensitiveFields` 脱敏为 `******`）。
+
+##### 前提数据准备
+
+已创建用户（旧密码 `oldpassword@123`）。
+
+##### 执行步骤
+
+1. PATCH `/open-api/v1/auth/users/{user_name}/passwd`，`password=newpassword@456`：断言 200。
+2. GetUserPassword 直读：断言为 `$2` 前缀。
+3. 旧密码登录：断言 401；新密码登录：断言 200。
+4. testutil.WaitForOperationLog 查询该用户的 update 操作日志，将整条日志 JSON 序列化：断言不含 `newpassword@456` 与 `oldpassword@123` 明文。
+5. 清理：删除该用户。
+
+##### 预期返回结果
+
+**ErrNum**：200（改密/新密码登录）/ 401（旧密码登录）
+**DB 断言**：`users.password` 为 `$2` 前缀。
+**审计断言**：日志 JSON 不含新旧口令明文。
+
+---
+
+## 20. 依赖与数据准备
 
 1. 用户、Token、Session Key 均使用全局唯一名称，测试用例间需避免冲突。
 2. Session Key 用例依赖预先创建的用户记录。
 3. 测试环境 `SkipTokenValidate=true`，无需构造真实 Token 即可调用管理接口。
+4. AUTH-14 组依赖 testutil 直读/改写 SQLite `users` 表（`GetUserPassword`/`SetUserPassword`），仅适用于集成测试的 SQLite 环境；SetUserPassword 用于模拟存量明文库，用例间互不影响（run-scoped 用户名）。
 
-## 20. 注意事项
+## 21. 注意事项
 
 1. v0.3.0 已删除以下接口，测试方案不再覆盖：
    - `POST/DELETE /auth/users/{user_name}/products/{product_name}`
@@ -1866,3 +2058,4 @@ Data 为数组，元素同 Token 详情。
 3. Token `scope` 仅支持 `System`/`Support`，不再接受 `Product` 或 `product_name`。
 4. 用户列表、Token 列表、Token 详情均不再返回 `products`/`product_name`。
 5. 测试环境 `SkipTokenValidate=true`，无需认证头。
+6. AUTH-14 组断言以合同（`design-docs/api-define/OpenAPI接口定义/00-common.md` Password 类型：8-72 字节、bcrypt 哈希存储）与整改方案（`design-docs/modifications/2026-10-06-password-hash`）为依据；口令长度合同已由 8-128 字符修订为 8-72 字节，AUTH-14-005 锁定该新语义。

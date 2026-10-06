@@ -75,6 +75,10 @@ type SecurityConfig struct {
 	// export ciphertexts. 0 (default) follows the keyring file's
 	// ActiveKeyID.
 	ActiveExportKeyID int `toml:"ActiveExportKeyID"`
+	// PasswordHashCost is the bcrypt cost factor for users.password hashing.
+	// 0 (the default) selects xcrypto.DefaultPasswordHashCost (10). Valid
+	// range 4-16; out-of-range values fail startup (fail-fast).
+	PasswordHashCost int `toml:"PasswordHashCost"`
 }
 
 // LoadSecretRing loads (or reloads) the keyring from the current
@@ -292,4 +296,25 @@ func anyCiphertextPresent(db *sql.DB) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+// LoadPasswordHashCost validates [Security].PasswordHashCost and injects it
+// into xcrypto (see SetPasswordHashCost). Failure is fatal (fail-fast).
+func LoadPasswordHashCost() error {
+	if DefaultConfig == nil {
+		return errors.New("security: DefaultConfig not initialized")
+	}
+	return loadPasswordHashCost(&DefaultConfig.Security)
+}
+
+func loadPasswordHashCost(conf *SecurityConfig) error {
+	cost := conf.PasswordHashCost
+	if err := xcrypto.SetPasswordHashCost(cost); err != nil {
+		return fmt.Errorf("security: invalid [Security].PasswordHashCost %d: %v", conf.PasswordHashCost, err)
+	}
+	if cost == 0 {
+		cost = xcrypto.DefaultPasswordHashCost
+	}
+	log.Logger.Info("security: password hash cost = %d", cost)
+	return nil
 }

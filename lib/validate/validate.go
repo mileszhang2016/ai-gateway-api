@@ -207,10 +207,12 @@ func UserName(s string) error {
 	return nil
 }
 
-// Password validates a password. It must not equal the user name or its reverse.
+// Password validates a password. It must not equal the user name or its
+// reverse. Length is measured in bytes (Go's len) and capped at 72, the
+// bcrypt input limit.
 func Password(password, userName string) error {
-	if len(password) < 8 || len(password) > 128 {
-		return xerror.WrapParamErrorWithMsg("password length must be between 8 and 128")
+	if len(password) < 8 || len(password) > 72 {
+		return xerror.WrapParamErrorWithMsg("password length must be between 8 and 72 bytes")
 	}
 	for _, r := range password {
 		if unicode.IsSpace(r) {

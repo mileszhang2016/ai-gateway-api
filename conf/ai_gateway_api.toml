@@ -269,3 +269,9 @@ MaxIdle = 10
 # PathPrefix = "/"
 # Subnets    = ["192.168.1.0/24", "100.64.0.0/16"]
 # Audit      = false
+
+# [Security] 安全相关配置（DB 落盘加密 keyring / 下发链路加密 / 口令哈希成本因子）
+# PasswordHashCost：users.password 的 bcrypt 成本因子。默认 10（现代 CPU 单次
+# 校验约 60-80ms），合法范围 4-16；0 或缺省 = 默认 10，越界启动失败（fail-fast）。
+# bcrypt 哈希串自带成本因子，调整该值无需迁移存量口令哈希。
+# PasswordHashCost = 10

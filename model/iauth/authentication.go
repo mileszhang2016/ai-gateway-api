@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
+	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xcrypto"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ioperlog"
@@ -253,11 +254,27 @@ func authTypePassword(ctx context.Context, param *AuthenticateParam, manager *Au
 		}
 
 		if user == nil {
+			// Equalize response timing against user enumeration: consume
+			// one bcrypt comparison before reporting the account missing.
+			_, _ = xcrypto.CheckPassword(xcrypto.DummyHash(), param.Extend)
 			return xerror.WrapAuthenticateFailErrorWithMsg("User %s Not Exist", userName)
 		}
 
-		if param.Extend != "SKIP" && user.Password != param.Extend {
+		// Constant-time verification. A legacy plaintext row that verifies
+		// is re-hashed and persisted in this same transaction (lazy
+		// migration). The "SKIP" literal bypass is removed: there is no way
+		// around password verification anymore.
+		ok, needMigrate := xcrypto.CheckPassword(user.Password, param.Extend)
+		if !ok {
 			return xerror.WrapAuthenticateFailErrorWithMsg("Password Wrong")
+		}
+
+		if needMigrate {
+			reHashed, err := xcrypto.HashPassword(param.Extend)
+			if err != nil {
+				return err
+			}
+			user.Password = reHashed
 		}
 
 		// update session key
@@ -283,10 +300,15 @@ func authTypePassword(ctx context.Context, param *AuthenticateParam, manager *Au
 				User: user,
 			}
 
-			return manager.storager.UpdateUser(ctx, user, &UserParam{
+			updateParam := &UserParam{
 				SessionKey:         &sessionKey,
 				SessionKeyCreateAt: lib.PTimeNow(),
-			})
+			}
+			if needMigrate {
+				updateParam.Password = &user.Password
+			}
+
+			return manager.storager.UpdateUser(ctx, user, updateParam)
 		}
 	})
 
@@ -523,10 +545,17 @@ func (m *AuthenticateManager) CreateToken(ctx context.Context, param *TokenParam
 }
 
 func (m *AuthenticateManager) CreateUser(ctx context.Context, param *UserParam) (err error) {
+	var hashed string
 	if param.Password != nil {
 		if err = passwordCheck(*param.Password); err != nil {
 			return err
 		}
+		if hashed, err = xcrypto.HashPassword(*param.Password); err != nil {
+			return err
+		}
+		// Store the hash only; from here on (storager and operation log)
+		// the plaintext is no longer reachable.
+		param.Password = &hashed
 	}
 
 	if err = m.txn.AtomExecute(ctx, func(ctx context.Context) error {
@@ -588,8 +617,10 @@ func (m *AuthenticateManager) DeleteUser(ctx context.Context, userName string) (
 }
 
 func passwordCheck(password string) error {
-	if len(password) < 6 {
-		return xerror.WrapParamErrorWithMsg("Password Lenght Must Bigger Than 6")
+	// 8-72 bytes (UTF-8), aligned with the API-layer validate.Password and
+	// the bcrypt 72-byte limit. Login verification does not apply this check.
+	if len(password) < 8 || len(password) > 72 {
+		return xerror.WrapParamErrorWithMsg("Password Length Must Be Between 8 and 72 Bytes")
 	}
 
 	return nil
@@ -606,17 +637,26 @@ func (m *AuthenticateManager) UpdateUserPassword(ctx context.Context, pcd *Passw
 		return err
 	}
 
+	// Hash up front: the plaintext leaves this function via no path,
+	// including the operation log below.
+	hashed, err := xcrypto.HashPassword(pcd.Password)
+	if err != nil {
+		return err
+	}
+
 	oldUser, err := m.updateUser(ctx, &UserFilter{
 		Name: &pcd.UserName,
 	}, func(user *User) error {
 		if pcd.OldPassword != "" {
-			if user.Password != pcd.OldPassword {
+			// Constant-time verification; tolerates legacy plaintext rows.
+			ok, _ := xcrypto.CheckPassword(user.Password, pcd.OldPassword)
+			if !ok {
 				return xerror.WrapParamErrorWithMsg("Invalid Password")
 			}
 		}
 		return nil
 	}, &UserParam{
-		Password:           &pcd.Password,
+		Password:           &hashed,
 		SessionKey:         lib.PString(""),
 		SessionKeyCreateAt: lib.PTime(time.Time{}.AddDate(0, 1, 1)),
 	})
@@ -628,7 +668,7 @@ func (m *AuthenticateManager) UpdateUserPassword(ctx context.Context, pcd *Passw
 			name = oldUser.Name
 		}
 		m.recordUserOperation(ctx, string(ioperlog.ActionUpdate), userID, name, "", userToMap(oldUser), userParamToMap(&UserParam{
-			Password:           &pcd.Password,
+			Password:           &hashed,
 			SessionKey:         lib.PString(""),
 			SessionKeyCreateAt: lib.PTime(time.Time{}.AddDate(0, 1, 1)),
 		}), err)
@@ -636,7 +676,7 @@ func (m *AuthenticateManager) UpdateUserPassword(ctx context.Context, pcd *Passw
 	}
 
 	m.recordUserOperation(ctx, string(ioperlog.ActionUpdate), oldUser.ID, oldUser.Name, "", userToMap(oldUser), userParamToMap(&UserParam{
-		Password:           &pcd.Password,
+		Password:           &hashed,
 		SessionKey:         lib.PString(""),
 		SessionKeyCreateAt: lib.PTime(time.Time{}.AddDate(0, 1, 1)),
 	}), nil)

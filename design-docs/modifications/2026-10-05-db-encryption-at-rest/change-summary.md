@@ -44,7 +44,7 @@
 |------|------|
 | 主要新增 | `lib/xcrypto/`（envelope/keyring/marker）；`stateful` `[Security]` 配置 + `/reload/security`；`model/keyrotate/`（sweep 管理器）；`endpoints/openapi_v1/security/`（2 端点）；`stateful/metrics.go` 计数器；DDL：`db_ddl.sql`/`db_ddl_sqlite.sql` 加 `api_keys.api_key_hash` 列、`keyrotate_sweep_tasks`、`keyrotate_sweep_lock` |
 | 主要修改 | `storage/rdb/provider`（出入参加解密）；`storage/rdb/api_key`（双列写入 + filter 改道）；`model/iauth/features.go`（FeatureSecurity）；两个 `endpoints.go` 注册 |
-| 明确不动 | OpenAPI/InnerAPI 既有端点契约（除新增 2 端点）；导出配置文件格式（下发链路加密另行立项，不在本变更）；`users.password`（口令散列化单独立项）；conf-agent、bfe 数据面（本变更零改动）；KMS/Vault（商业版，`MasterKeyProvider` 接口预留） |
+| 明确不动 | OpenAPI/InnerAPI 既有端点契约（除新增 2 端点）；导出配置文件格式（下发链路加密另行立项，不在本变更）；`users.password`（口令散列化单独立项，已于 2026-10-06 实现：`modifications/2026-10-06-password-hash`）；conf-agent、bfe 数据面（本变更零改动）；KMS/Vault（商业版，`MasterKeyProvider` 接口预留） |
 | 接口契约 | 新增 2 端点；无既有端点变更；响应包装遵循 `00-common.md`（ErrNum=403 不在本变更，本变更无新错误码进 OpenAPI 通用表，422/409 语义照既有） |
 | 数据迁移 | `api_keys` 加列 + 唯一键切换（在线变更模板随 DDL 给出）；存量明文/哈希由 sweep 任务收敛，无需离线脚本 |
 

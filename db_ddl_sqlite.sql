@@ -668,7 +668,7 @@ CREATE INDEX operation_logs_log_id ON operation_logs (log_id);
 CREATE INDEX operation_logs_resource_parent ON operation_logs (resource_parent_id);
 
 -- insert default user
-INSERT INTO users (id, name, password, scopes, created_at) VALUES (1, 'admin', 'admin', 'System', CURRENT_TIMESTAMP);
+INSERT INTO users (id, name, password, scopes, created_at) VALUES (1, 'admin', '$2a$10$w2oNyh4MO7SB.NHLPSq6kOj1GMiX1fApPYcWJmL8toZXGCQs3AJ0K', 'System', CURRENT_TIMESTAMP);
 
 INSERT INTO products (id, name, description, mail_list, contact_person, created_at) VALUES
   (1, 'BFE', 'Build-in Product, User by System Manager', 'bfe@cncf.com', 'bfe', CURRENT_TIMESTAMP);

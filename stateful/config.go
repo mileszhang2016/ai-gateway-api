@@ -159,6 +159,12 @@ func LoadConfig(file string) error {
 		return err
 	}
 
+	// Validate and inject the users.password bcrypt cost factor (fail-fast
+	// on out-of-range values).
+	if err := loadPasswordHashCost(&config.Security); err != nil {
+		return err
+	}
+
 	DefaultConfig = config
 	return nil
 }

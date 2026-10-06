@@ -70,6 +70,8 @@ func TestUserName(t *testing.T) {
 
 func TestPassword(t *testing.T) {
 	assert.NoError(t, Password("password123", "user1"))
+	assert.NoError(t, Password(strings.Repeat("a", 72), "user1"))
+	assert.Error(t, Password(strings.Repeat("a", 73), "user1"))
 	assert.Error(t, Password("short1", "user1"))
 	assert.Error(t, Password("user1", "user1"))
 	assert.Error(t, Password("1resu", "user1"))

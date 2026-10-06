@@ -193,6 +193,42 @@ func CleanupTestDB(dbPath string) {
 	os.Remove(dbPath + "-shm")
 }
 
+// GetUserPassword 读取 users 表中指定用户的 password 存储值。
+// 用于口令哈希落库断言：改造后该值应为 bcrypt 哈希（$2a$/$2b$/$2y$ 前缀）。
+func GetUserPassword(dbPath, userName string) (string, error) {
+	db, err := sql.Open("sqlite-strip", dbPath)
+	if err != nil {
+		return "", fmt.Errorf("open sqlite db: %w", err)
+	}
+	defer db.Close()
+
+	var password string
+	err = db.QueryRow("SELECT password FROM users WHERE name = ? AND type = 0", userName).Scan(&password)
+	if err != nil {
+		return "", err
+	}
+	return password, nil
+}
+
+// SetUserPassword 直接改写 users.password 存储值（绕过 API）。
+// 用于模拟存量明文口令库（老版本升级场景），验证登录懒迁移重哈希。
+func SetUserPassword(dbPath, userName, password string) error {
+	db, err := sql.Open("sqlite-strip", dbPath)
+	if err != nil {
+		return fmt.Errorf("open sqlite db: %w", err)
+	}
+	defer db.Close()
+
+	res, err := db.Exec("UPDATE users SET password = ? WHERE name = ? AND type = 0", password, userName)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return fmt.Errorf("user %s not updated (rows=%d, err=%v)", userName, n, err)
+	}
+	return nil
+}
+
 func truncateSQL(s string, maxLen int) string {
 	s = strings.TrimSpace(s)
 	if len(s) > maxLen {
