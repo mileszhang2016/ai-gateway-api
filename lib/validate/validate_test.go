@@ -401,6 +401,56 @@ func TestLLMConfig(t *testing.T) {
 		RedisPrefix: lib.PString(""),
 	}
 	assert.Error(t, LLMConfig(&c13))
+
+	// valid normalize_upstream_error (full and partial)
+	c14 := *c
+	c14.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		Enabled:            lib.PBool(true),
+		StreamEnabled:      lib.PBool(true),
+		UnrecognizedAction: lib.PString("rewrite_generic"),
+		MaxBodyBytes:       lib.PInt64(65536),
+		RedactSecrets:      lib.PBool(false),
+	}
+	assert.NoError(t, LLMConfig(&c14))
+
+	c15 := *c
+	c15.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		Enabled: lib.PBool(true),
+	}
+	assert.NoError(t, LLMConfig(&c15))
+
+	// invalid normalize_upstream_error.unrecognized_action
+	c16 := *c
+	c16.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		UnrecognizedAction: lib.PString("replace"),
+	}
+	assert.Error(t, LLMConfig(&c16))
+
+	// invalid normalize_upstream_error.max_body_bytes (negative / oversized)
+	c17 := *c
+	c17.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		MaxBodyBytes: lib.PInt64(-1),
+	}
+	assert.Error(t, LLMConfig(&c17))
+
+	c18 := *c
+	c18.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		MaxBodyBytes: lib.PInt64(4*1024*1024 + 1),
+	}
+	assert.Error(t, LLMConfig(&c18))
+
+	// boundary values are accepted: 0 (BFE default) and exactly 4MB
+	c19 := *c
+	c19.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		MaxBodyBytes: lib.PInt64(0),
+	}
+	assert.NoError(t, LLMConfig(&c19))
+
+	c20 := *c
+	c20.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		MaxBodyBytes: lib.PInt64(4 * 1024 * 1024),
+	}
+	assert.NoError(t, LLMConfig(&c20))
 }
 
 func TestInstancePool(t *testing.T) {

@@ -719,3 +719,170 @@ func TestClusters_Create(t *testing.T) {
 		testutil.DeleteProvider(providerAffinity)
 	})
 }
+
+// TestClusters_Create_NormalizeUpstreamError covers the llm_config
+// .normalize_upstream_error field (2026-10-06 upstream error normalization):
+// full/partial create, invalid-value matrix with field-attributable errors,
+// and InnerAPI export leak prevention for rejected configs.
+// Design: tests/integration/tests/clusters/design.md §12.
+func TestClusters_Create_NormalizeUpstreamError(t *testing.T) {
+	provider := testutil.UniqueProviderName()
+	if _, err := testutil.CreateProvider(provider, map[string]interface{}{
+		"models": []string{"deepseek-chat"},
+	}); err != nil {
+		t.Fatalf("setup provider failed: %v", err)
+	}
+	defer testutil.DeleteProvider(provider)
+
+	fullNue := func() map[string]interface{} {
+		return map[string]interface{}{
+			"enabled":             true,
+			"stream_enabled":      true,
+			"unrecognized_action": "rewrite_generic",
+			"max_body_bytes":      65536,
+			"redact_secrets":      false,
+		}
+	}
+	bodyWithNue := func(name string, nue map[string]interface{}) map[string]interface{} {
+		body := minClusterBody(name, provider)
+		body["llm_config"].(map[string]interface{})["normalize_upstream_error"] = nue
+		return body
+	}
+	readBackNue := func(t *testing.T, cluster string) map[string]interface{} {
+		t.Helper()
+		resp, err := testutil.GetClient().Get("/open-api/v1/clusters/" + cluster)
+		if err != nil {
+			t.Fatalf("get cluster failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		json.Unmarshal(resp.Data, &data)
+		llm, ok := data["llm_config"].(map[string]interface{})
+		if !assert.True(t, ok, "llm_config should be an object") {
+			return nil
+		}
+		nue, _ := llm["normalize_upstream_error"].(map[string]interface{})
+		return nue
+	}
+	assertExportMissing := func(t *testing.T, cluster string) {
+		t.Helper()
+		resp, err := testutil.GetClient().Get("/inner-api/v1/configs/tls_conf/server_data_conf")
+		if err != nil {
+			t.Fatalf("export request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		var data map[string]interface{}
+		json.Unmarshal(resp.Data, &data)
+		clusterConf, _ := data["ClusterConf"].(map[string]interface{})
+		config, _ := clusterConf["Config"].(map[string]interface{})
+		_, exists := config[cluster]
+		assert.False(t, exists, "rejected cluster %s must not leak into export", cluster)
+	}
+
+	t.Run("CL-1-101 全字段创建", func(t *testing.T) {
+		name := testutil.UniqueClusterName()
+		defer testutil.DeleteCluster(name)
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", bodyWithNue(name, fullNue()))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 200 {
+			t.Fatalf("expected 200, got %d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+		nue := readBackNue(t, name)
+		if assert.NotNil(t, nue, "normalize_upstream_error should exist") {
+			assert.Equal(t, true, nue["enabled"])
+			assert.Equal(t, true, nue["stream_enabled"])
+			assert.Equal(t, "rewrite_generic", nue["unrecognized_action"])
+			assert.Equal(t, float64(65536), nue["max_body_bytes"])
+			assert.Equal(t, false, nue["redact_secrets"])
+		}
+	})
+
+	t.Run("CL-1-102 部分字段创建（仅 enabled）", func(t *testing.T) {
+		name := testutil.UniqueClusterName()
+		defer testutil.DeleteCluster(name)
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", bodyWithNue(name, map[string]interface{}{
+			"enabled": true,
+		}))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 200 {
+			t.Fatalf("expected 200, got %d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+		nue := readBackNue(t, name)
+		if assert.NotNil(t, nue, "normalize_upstream_error should exist") {
+			assert.Equal(t, true, nue["enabled"])
+			// unset fields read back as null (all-pointer struct, same as key_affinity)
+			assert.Nil(t, nue["stream_enabled"])
+			assert.Nil(t, nue["unrecognized_action"])
+			assert.Nil(t, nue["max_body_bytes"])
+			assert.Nil(t, nue["redact_secrets"])
+		}
+	})
+
+	t.Run("CL-1-103 unrecognized_action 非法值 + 防泄漏", func(t *testing.T) {
+		name := testutil.UniqueClusterName()
+		nue := fullNue()
+		nue["unrecognized_action"] = "replace"
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", bodyWithNue(name, nue))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 422 {
+			t.Fatalf("expected 422, got %d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+		assert.Contains(t, resp.ErrMsg, "unrecognized_action")
+		assertExportMissing(t, name)
+	})
+
+	t.Run("CL-1-104 max_body_bytes 越界（-1 / 4MB+1）+ 防泄漏", func(t *testing.T) {
+		for _, bad := range []int64{-1, 4*1024*1024 + 1} {
+			name := testutil.UniqueClusterName()
+			nue := fullNue()
+			nue["max_body_bytes"] = bad
+			resp, err := testutil.GetClient().Post("/open-api/v1/clusters", bodyWithNue(name, nue))
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			if resp.ErrNum != 422 {
+				t.Fatalf("max_body_bytes=%d: expected 422, got %d, ErrMsg=%s", bad, resp.ErrNum, resp.ErrMsg)
+			}
+			assert.Contains(t, resp.ErrMsg, "max_body_bytes")
+			assertExportMissing(t, name)
+		}
+	})
+
+	t.Run("CL-1-105 max_body_bytes=0（用默认）", func(t *testing.T) {
+		name := testutil.UniqueClusterName()
+		defer testutil.DeleteCluster(name)
+		nue := fullNue()
+		nue["max_body_bytes"] = 0
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", bodyWithNue(name, nue))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 200 {
+			t.Fatalf("expected 200, got %d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+		nueBack := readBackNue(t, name)
+		assert.Equal(t, float64(0), nueBack["max_body_bytes"])
+	})
+
+	t.Run("CL-1-106 max_body_bytes=4194304（上限边界）", func(t *testing.T) {
+		name := testutil.UniqueClusterName()
+		defer testutil.DeleteCluster(name)
+		nue := fullNue()
+		nue["max_body_bytes"] = 4 * 1024 * 1024
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", bodyWithNue(name, nue))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		if resp.ErrNum != 200 {
+			t.Fatalf("expected 200, got %d, ErrMsg=%s", resp.ErrNum, resp.ErrMsg)
+		}
+		nueBack := readBackNue(t, name)
+		assert.Equal(t, float64(4*1024*1024), nueBack["max_body_bytes"])
+	})
+}

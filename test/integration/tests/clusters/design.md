@@ -2794,7 +2794,35 @@ URI：`c`
 3. 测试环境数据库需包含产品线初始化数据，以支持 `{product_name}.{cluster_name}` 实例池命名。
 4. 涉及 global/entity/apikey 路由规则的用例，需先通过对应接口写入规则，测试结束后清理规则或清空 `rules` 数组，避免影响其他用例。
 
-## 12. 注意事项
+## 12. normalize_upstream_error 用例（2026-10-06 上游错误体归一）
+
+### 12.1 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| CL-1-101 | 全字段创建 normalize_upstream_error | 正常参数 | 验证五字段写入与 GET 回读一致 |
+| CL-1-102 | 部分字段创建（仅 enabled） | 正常参数 | 验证未配置字段回读为 null（全指针结构，与 key_affinity 一致） |
+| CL-1-103 | unrecognized_action 非法值 | 合法性条件 | 验证 ErrNum=422 且消息归因该字段；导出产物防泄漏 |
+| CL-1-104 | max_body_bytes 越界（-1 / 4MB+1） | 合法性条件 | 验证 ErrNum=422；边界 0 与 4MB 为合法（见 CL-1-105/106） |
+| CL-1-105 | max_body_bytes=0（用默认） | 正常参数 | 验证 200 且导出 MaxBodyBytes=0（BFE 按 65536 处理） |
+| CL-1-106 | max_body_bytes=4194304（上限边界） | 正常参数 | 验证 200 |
+| CL-4-101 | PATCH 省略字段保留原值 | 更新语义 | 全字段创建后 PATCH 只改 description，GET 断言 normalize_upstream_error 五字段原值不变（检查项 #1） |
+| CL-4-102 | PATCH 整体替换 nue 对象 | 更新语义 | 对齐 CL-4-011 key_affinity 模式：PATCH 提交完整 nue 对象（五字段全量、部分改值），GET 断言新值全量生效 |
+| CL-4-103 | PATCH llm_config 省略 nue = 清空 | 更新语义 | `llm_config` PATCH 为整体替换（与 `keys` 全量替换同合同语义）：省略 `normalize_upstream_error` 即清空，GET 断言为 null |
+| CL-4-104 | PATCH 非法值拒绝 + 回读零变更 | 合法性条件 | 非法 body PATCH → 422 且消息归因字段；GET 逐字段不变（检查项 #3）。注：`/clusters` 无 PUT 接口（405 实证），对称性检查项 #2 不适用 |
+
+### 12.2 详细设计要点
+
+- 合同依据：`design-docs/api-define/OpenAPI接口定义/clusters.md` 表"上游错误归一配置"
+  与 `modifications/2026-10-06-upstream-error-normalization/api-changes.md`；
+- 防泄漏（检查项 #4）：CL-1-103/104 的集群名不得出现在 InnerAPI 导出
+  `ClusterConf.Config` 中（该集群未创建成功）；
+- 审计（检查项 #7）：沿用 create/update 既有审计断言模式，本批用例不重复展开
+  （字段随 llm_config 整体快照，无独立审计键）；
+- 并发（检查项 #10）：本变更为纯配置透传，无 ID 生成/行锁路径，**不适用**，
+  不新增 `//go:build mysql` 用例。
+
+## 13. 注意事项
 
 1. v0.3.0 已删除 `/clusters/{cluster_name}/ready`、`/model-providers`、`/models`。
 2. 返回中不应出现 `ready`、`sub_clusters`、`scheduler`、`Instance.tags`、`llm_config.service_name`、`llm_config.group`。

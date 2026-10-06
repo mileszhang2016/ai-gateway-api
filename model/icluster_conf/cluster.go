@@ -221,13 +221,28 @@ type KeyAffinity struct {
 	PenaltyEnable *bool   `json:"penalty_enable"` // default true
 }
 
+// NormalizeUpstreamError configures upstream error normalization (unified
+// error codes) for this cluster. Nil means disabled: the exported AIConf
+// carries no NormalizeUpstreamError and BFE keeps the historical
+// pass-through behavior. Field semantics and validation mirror the BFE
+// AIConfCheck rules (no default synthesis here; BFE Effective() applies
+// defaults at load time).
+type NormalizeUpstreamError struct {
+	Enabled            *bool   `json:"enabled"`             // non-streaming normalization switch, default false
+	StreamEnabled      *bool   `json:"stream_enabled"`      // streaming (SSE) normalization switch, default false
+	UnrecognizedAction *string `json:"unrecognized_action"` // passthrough / rewrite_generic
+	MaxBodyBytes       *int64  `json:"max_body_bytes"`      // error body read limit; <=0/unset uses BFE default 65536
+	RedactSecrets      *bool   `json:"redact_secrets"`      // credential redaction; nil = BFE default true, explicit false disables
+}
+
 type LLMConfig struct {
-	Models        []string        `json:"models"`         // model name list
-	ModelMappings []*Mapping      `json:"model_mappings"` // model mapping
-	Keys          []ClusterKeyRef `json:"keys"`           // references to provider keys with weights
-	KeyPolicy     *KeyPolicy      `json:"key_policy"`     // key routing policy
-	KeyAffinity   *KeyAffinity    `json:"key_affinity"`   // session-level key affinity
-	Provider      *string         `json:"provider"`       // provider name; required
+	Models                 []string                `json:"models"`                   // model name list
+	ModelMappings          []*Mapping              `json:"model_mappings"`           // model mapping
+	Keys                   []ClusterKeyRef         `json:"keys"`                     // references to provider keys with weights
+	KeyPolicy              *KeyPolicy              `json:"key_policy"`               // key routing policy
+	KeyAffinity            *KeyAffinity            `json:"key_affinity"`             // session-level key affinity
+	NormalizeUpstreamError *NormalizeUpstreamError `json:"normalize_upstream_error"` // upstream error normalization (unified error codes)
+	Provider               *string                 `json:"provider"`                 // provider name; required
 
 	// MatchPrefix defines the provider/model prefix this cluster matches.
 	// Must end with '/' to avoid matching model names themselves.
@@ -1438,6 +1453,17 @@ func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,
 		aiConf.KeyPolicy.SessionAffinityRedisPrefix = derefString(llmConfig.KeyAffinity.RedisPrefix, "bfe:ai:key_affinity")
 		aiConf.KeyPolicy.SessionAffinityPenaltyEnable = derefBool(llmConfig.KeyAffinity.PenaltyEnable, true)
 	}
+	if llmConfig.NormalizeUpstreamError != nil {
+		aiConf.NormalizeUpstreamError = &cluster_conf.UpstreamErrorNormalizeConf{
+			Enabled:            derefBool(llmConfig.NormalizeUpstreamError.Enabled, false),
+			StreamEnabled:      derefBool(llmConfig.NormalizeUpstreamError.StreamEnabled, false),
+			UnrecognizedAction: derefString(llmConfig.NormalizeUpstreamError.UnrecognizedAction, ""),
+			MaxBodyBytes:       derefInt64(llmConfig.NormalizeUpstreamError.MaxBodyBytes, 0),
+			// pointer passthrough: nil stays nil so BFE can distinguish
+			// "unset" (default true) from an explicit false
+			RedactSecrets: llmConfig.NormalizeUpstreamError.RedactSecrets,
+		}
+	}
 
 	return aiConf
 }
@@ -1450,6 +1476,13 @@ func derefString(s *string, defaultValue string) string {
 }
 
 func derefInt(i *int, defaultValue int) int {
+	if i == nil {
+		return defaultValue
+	}
+	return *i
+}
+
+func derefInt64(i *int64, defaultValue int64) int64 {
 	if i == nil {
 		return defaultValue
 	}

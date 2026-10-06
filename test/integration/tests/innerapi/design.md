@@ -1326,6 +1326,22 @@ IN-EPP-003 中 `flow_control` 写入 `{"max_requests": 200, "queue_ttl": 45, "no
 2. `/configs/gslb_data/gslb` 依赖正确的 `bfe_cluster` 参数，通常为 `BFE-AI_product.szyf`。
 3. InnerAPI 鉴权为 `McUserProbe`，测试环境需配置为可跳过或使用 Support Token。
 
+## 19. normalize_upstream_error 导出用例（2026-10-06 上游错误体归一）
+
+### 19.1 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| IN-NUE-1-001 | 导出 AIConf.NormalizeUpstreamError 存在性与取值 | 返回数据 | 创建全字段配置集群 → 导出断言 Enabled/StreamEnabled/UnrecognizedAction/MaxBodyBytes/RedactSecrets 逐字段（检查项 #8） |
+| IN-NUE-1-002 | redact_secrets 显式 false 导出 | 返回数据 | 验证显式 false 不被默认值污染（指针直通回归锚点） |
+| IN-NUE-1-003 | 未配置集群导出为 null | 返回数据 | 验证 `AIConf.NormalizeUpstreamError == null`（BFE 关闭，合同见 api-changes §3） |
+
+### 19.2 详细设计要点
+
+- 与 IN-1-002 同模式：创建集群后拉取 `/inner-api/v1/configs/tls_conf/server_data_conf`，
+  下钻 `ClusterConf.Config.<cluster>.AIConf`；
+- 数值断言对反序列化值（MaxBodyBytes 无精度风险，int64 直比）。
+
 ## 20. 注意事项
 
 1. InnerAPI 返回值仍包含 `WorkMode`（与 OpenAPI v0.3.0 不同，InnerAPI 未移除该字段）。

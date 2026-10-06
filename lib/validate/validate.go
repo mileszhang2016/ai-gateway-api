@@ -1088,6 +1088,21 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 		}
 	}
 
+	// Validate normalize_upstream_error; the rules mirror the BFE
+	// AIConfCheck exactly so an accepted config never fails BFE loading.
+	if c.NormalizeUpstreamError != nil {
+		nue := c.NormalizeUpstreamError
+		if nue.UnrecognizedAction != nil && *nue.UnrecognizedAction != "" &&
+			*nue.UnrecognizedAction != "passthrough" && *nue.UnrecognizedAction != "rewrite_generic" {
+			return xerror.WrapParamErrorWithMsg(
+				"llm_config.normalize_upstream_error.unrecognized_action must be passthrough or rewrite_generic")
+		}
+		if nue.MaxBodyBytes != nil && (*nue.MaxBodyBytes < 0 || *nue.MaxBodyBytes > 4*1024*1024) {
+			return xerror.WrapParamErrorWithMsg(
+				"llm_config.normalize_upstream_error.max_body_bytes must be between 0 and 4194304")
+		}
+	}
+
 	// Validate prefix stripping configuration
 	if c.StripPrefix != nil && *c.StripPrefix {
 		if c.MatchPrefix == nil || *c.MatchPrefix == "" {

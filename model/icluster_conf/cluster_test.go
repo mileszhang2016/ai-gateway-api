@@ -456,9 +456,25 @@ func newTestClusterLLM() *Cluster {
 			RedisPrefix:   lib.PString("bfe:ai:key_affinity"),
 			PenaltyEnable: lib.PBool(true),
 		},
+		NormalizeUpstreamError: &NormalizeUpstreamError{
+			Enabled:            lib.PBool(true),
+			StreamEnabled:      lib.PBool(true),
+			UnrecognizedAction: lib.PString("passthrough"),
+			MaxBodyBytes:       lib.PInt64(65536),
+			RedactSecrets:      lib.PBool(true),
+		},
 		MatchPrefix: lib.PString("openrouter/"),
 		StripPrefix: lib.PBool(true),
 	}
+	return c
+}
+
+// newTestClusterLLMWithoutNue returns the LLM test cluster without the
+// normalize_upstream_error config (the historical shape before the
+// upstream-error-normalization change).
+func newTestClusterLLMWithoutNue() *Cluster {
+	c := newTestClusterLLM()
+	c.LLMConfig.NormalizeUpstreamError = nil
 	return c
 }
 
@@ -1204,6 +1220,51 @@ func TestNewBfeClusterConf(t *testing.T) {
 		assert.True(t, *cConf.ClusterBasic.DisableHostHeader)
 	})
 
+	t.Run("normalize_upstream_error three states", func(t *testing.T) {
+		providerKeyTable := map[string][]iprovider.ProviderKey{
+			"openai": {
+				{Name: "key-primary", Key: "sk-aaaaaaaaaaaa"},
+			},
+		}
+		providerProtocolTable := map[string][]string{
+			"openai": {"openai"},
+		}
+
+		exportNue := func(c *Cluster) *cluster_conf.UpstreamErrorNormalizeConf {
+			conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{c}, nil,
+				providerKeyTable, providerProtocolTable, nil, nil, nil)
+			assert.NoError(t, err)
+			return (*conf.Config)["c1"].AIConf.NormalizeUpstreamError
+		}
+
+		// state 1: unset -> field absent (BFE disabled)
+		assert.Nil(t, exportNue(newTestClusterLLMWithoutNue()))
+
+		// state 2: partial fields -> unset fields export as zero values
+		partial := newTestClusterLLMWithoutNue()
+		partial.LLMConfig.NormalizeUpstreamError = &NormalizeUpstreamError{
+			Enabled: lib.PBool(true),
+		}
+		nue := exportNue(partial)
+		require.NotNil(t, nue)
+		assert.True(t, nue.Enabled)
+		assert.False(t, nue.StreamEnabled)
+		assert.Equal(t, "", nue.UnrecognizedAction)
+		assert.Equal(t, int64(0), nue.MaxBodyBytes)
+		assert.Nil(t, nue.RedactSecrets) // unset stays nil: BFE defaults to true
+
+		// state 3: explicit redact_secrets=false must survive the export
+		disabled := newTestClusterLLMWithoutNue()
+		disabled.LLMConfig.NormalizeUpstreamError = &NormalizeUpstreamError{
+			Enabled:       lib.PBool(true),
+			RedactSecrets: lib.PBool(false),
+		}
+		nue = exportNue(disabled)
+		require.NotNil(t, nue)
+		require.NotNil(t, nue.RedactSecrets)
+		assert.False(t, *nue.RedactSecrets)
+	})
+
 	t.Run("LLM config", func(t *testing.T) {
 		providerKeyTable := map[string][]iprovider.ProviderKey{
 			"openai": {
@@ -1243,6 +1304,13 @@ func TestNewBfeClusterConf(t *testing.T) {
 		assert.True(t, cConf.AIConf.StripPrefix)
 		assert.Equal(t, []string{"openai"}, cConf.AIConf.ModelProtocols)
 		assert.Equal(t, map[string]string{"openai": "/compatible-mode/v1"}, cConf.AIConf.ProtocolPaths)
+		require.NotNil(t, cConf.AIConf.NormalizeUpstreamError)
+		assert.True(t, cConf.AIConf.NormalizeUpstreamError.Enabled)
+		assert.True(t, cConf.AIConf.NormalizeUpstreamError.StreamEnabled)
+		assert.Equal(t, "passthrough", cConf.AIConf.NormalizeUpstreamError.UnrecognizedAction)
+		assert.Equal(t, int64(65536), cConf.AIConf.NormalizeUpstreamError.MaxBodyBytes)
+		require.NotNil(t, cConf.AIConf.NormalizeUpstreamError.RedactSecrets)
+		assert.True(t, *cConf.AIConf.NormalizeUpstreamError.RedactSecrets)
 	})
 
 	t.Run("LLM config with tiered pricing", func(t *testing.T) {

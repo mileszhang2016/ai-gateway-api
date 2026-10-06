@@ -162,6 +162,13 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
                     "MatchPrefix": "deepseek/",
                     "StripPrefix": true,
                     "ModelProtocols": ["openai"],
+                    "NormalizeUpstreamError": {
+                        "Enabled": true,
+                        "StreamEnabled": false,
+                        "UnrecognizedAction": "passthrough",
+                        "MaxBodyBytes": 65536,
+                        "RedactSecrets": true
+                    },
                     "ModelTable": {
                         "Currency": "RMB",
                         "TimeZone": "Asia/Shanghai",
@@ -230,6 +237,12 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/tls_conf/server_data_co
 | MatchPrefix | string | 需要匹配的 provider/model 前缀；对应 OpenAPI `llm_config.match_prefix` |
 | StripPrefix | bool | 是否裁剪 `MatchPrefix` 前缀；对应 OpenAPI `llm_config.strip_prefix` |
 | ModelProtocols | []string | 该集群所属 provider 支持的模型访问协议；来源为 OpenAPI `/providers` 的 `model_protocols`。枚举值如 `openai`、`anthropic`；为空数组时 BFE 兜底为仅支持 `openai` |
+| NormalizeUpstreamError | object | 上游错误体归一配置；对应 OpenAPI `llm_config.normalize_upstream_error`；**未配置时整个字段不下发**（BFE 关闭归一，历史透传行为）；缺省字段不在导出中合成默认值，由 BFE 加载期 `Effective()` 合成（单一默认值来源） |
+| NormalizeUpstreamError.Enabled | bool | 非流式归一开关；对应 `normalize_upstream_error.enabled`，默认 `false` |
+| NormalizeUpstreamError.StreamEnabled | bool | 流式（SSE）归一开关；对应 `normalize_upstream_error.stream_enabled`，默认 `false` |
+| NormalizeUpstreamError.UnrecognizedAction | string | 未识别错误体处理；对应 `normalize_upstream_error.unrecognized_action`；`""`/`passthrough`（默认）/ `rewrite_generic` |
+| NormalizeUpstreamError.MaxBodyBytes | int64 | 错误响应体读取上限（字节）；对应 `normalize_upstream_error.max_body_bytes`；`0`（默认）= BFE 按 65536 处理；最大 4194304 |
+| NormalizeUpstreamError.RedactSecrets | *bool | 凭证脱敏开关；对应 `normalize_upstream_error.redact_secrets`；未配置（nil）= BFE 按 `true` 处理；显式 `false` 关闭。**指针类型以区分"未配置"与"显式 false"** |
 | ModelTable | object | 该 cluster 的成本定价表 |
 | ModelTable.Currency | string | 价格货币；固定为 `"RMB"` |
 | ModelTable.TimeZone | string | 计算时段所使用的时区；默认 `"Asia/Shanghai"` |
