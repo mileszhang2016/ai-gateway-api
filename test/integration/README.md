@@ -44,6 +44,7 @@ integration/
     │   └── get/get_test.go
     ├── ai_route/
     ├── auth/
+    ├── batch/                       # 批量任务管控（一期：list/detail/cancel/file + helper）
     ├── entity/
     ├── entity_type/
     ├── clusters/
@@ -110,7 +111,8 @@ go test -v -run TestCreate_Normal_MinimalParams ./tests/api_key/create/
 
 ### MySQL 并发用例（build tag 隔离）
 
-并发正确性（ID 生成竞态、行锁超时，issue #80/#99/#132）在 SQLite 单连接串行
+并发正确性（ID 生成竞态、行锁超时，issue #80/#99/#132；批量任务 cancel
+抢占原子性 BT-3-007）在 SQLite 单连接串行
 环境下无法暴露，相关用例以 `//go:build mysql` 隔离，需真实 MySQL：
 
 ```bash
@@ -121,6 +123,23 @@ AIAPI_MYSQL_DSN="root:pass@tcp(127.0.0.1:3306)/" \
 ```
 
 未设置 `AIAPI_MYSQL_DSN` 时上述用例自动 Skip；不带 `-tags mysql` 时不编译。
+
+### 双后端全量运行（StartServerAuto）
+
+批量特性新增包（`tests/batch/*`、`tests/model_price/batch_price`、
+`tests/api_key/batch_limits`）的 TestMain 使用 `testutil.StartServerAuto`：
+默认 SQLite；设置 `AIAPI_MYSQL_DSN` 后同一批用例在 MySQL 上运行（自动
+建库 `ai_gateway_it_*`、执行主项目 `db_ddl.sql`、用毕 DROP）。因此：
+
+```bash
+# 仅跑 MySQL 隔离的并发用例
+AIAPI_MYSQL_DSN="root:pass@tcp(127.0.0.1:3306)/" \
+  go test -tags mysql -count=1 -timeout 600s ./tests/batch/cancel/ -run Concurrent
+
+# 三个模块全量用例跑到 MySQL 上（新包自动切换后端，既有包仍为 SQLite）
+AIAPI_MYSQL_DSN="root:pass@tcp(127.0.0.1:3306)/" \
+  go test -count=1 -timeout 900s ./tests/batch/... ./tests/model_price/... ./tests/api_key/...
+```
 
 ### 4. 清理运行时数据
 

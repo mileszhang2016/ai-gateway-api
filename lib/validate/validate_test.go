@@ -226,6 +226,39 @@ func TestRateLimitPolicy(t *testing.T) {
 	assert.Error(t, RateLimitPolicy(policy))
 }
 
+func TestRateLimitPolicy_BatchLimits(t *testing.T) {
+	enabled := true
+
+	// batch_limits alone satisfies the "at least one rule" requirement.
+	policy := &shared.RateLimitPolicyParam{
+		Enabled: &enabled,
+		Rules:   &shared.RateLimitRules{BatchLimits: &shared.BatchLimits{}},
+	}
+	assert.NoError(t, RateLimitPolicy(policy))
+
+	policy.Rules.BatchLimits = &shared.BatchLimits{
+		MaxCreateRPM:     10,
+		MaxActiveBatches: 5,
+		MaxFileBytes:     104857600,
+		MaxFileLines:     50000,
+	}
+	assert.NoError(t, RateLimitPolicy(policy))
+
+	// Negative dimensions are rejected.
+	policy.Rules.BatchLimits = &shared.BatchLimits{MaxCreateRPM: -1}
+	assert.Error(t, RateLimitPolicy(policy))
+	policy.Rules.BatchLimits = &shared.BatchLimits{MaxActiveBatches: -1}
+	assert.Error(t, RateLimitPolicy(policy))
+	policy.Rules.BatchLimits = &shared.BatchLimits{MaxFileBytes: -1}
+	assert.Error(t, RateLimitPolicy(policy))
+	policy.Rules.BatchLimits = &shared.BatchLimits{MaxFileLines: -1}
+	assert.Error(t, RateLimitPolicy(policy))
+
+	// Zero values are valid (dimension not limited).
+	policy.Rules.BatchLimits = &shared.BatchLimits{MaxCreateRPM: 0}
+	assert.NoError(t, RateLimitPolicy(policy))
+}
+
 func TestRouteRules(t *testing.T) {
 	name := "r1"
 	cluster := "cluster_1"

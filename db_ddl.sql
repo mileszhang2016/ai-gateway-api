@@ -446,6 +446,7 @@ CREATE TABLE `model_prices` (
   `limits` JSON COMMENT '限制对象',
   `prices` JSON NOT NULL COMMENT '价格对象',
   `tier_prices` JSON COMMENT '分时段价格对象',
+  `batch_discount` DOUBLE COMMENT '批量价折扣系数（0~1，2026-10-07新增）：导出时把本行各价格键×系数展开生成 mode=batch 价格行；NULL=不展开',
   `price_currency` VARCHAR(10) DEFAULT 'RMB' COMMENT '币种',
   `metadata` JSON COMMENT '元数据',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -496,6 +497,7 @@ CREATE TABLE `rate_limit_policies` (
   `max_concurrency` INT DEFAULT -1 COMMENT '最大并发数（-1表示不限制）',
   `tpm_configs` TEXT COMMENT 'TPM限流配置（JSON数组）',
   `rpm_configs` TEXT COMMENT 'RPM限流配置（JSON数组）',
+  `batch_limits` TEXT COMMENT '批量限流配置（JSON对象，2026-10-07新增）：max_create_rpm/max_active_batches/max_file_bytes/max_file_lines；省略/NULL=该策略不参与批量限流',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   INDEX `idx_enabled` (`enabled`)
@@ -721,3 +723,63 @@ CREATE TABLE `keyrotate_sweep_lock` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 comment = "密钥收敛任务单行锁（id 恒为 1）";
 INSERT INTO `keyrotate_sweep_lock` (`id`) VALUES (1);
+
+-- create batch_files (批量文件元数据表，2026-10-07新增，批量与异步任务支持一期)
+-- 同步源为 Redis BATCH_FILE:<provider>:<file_id>（TTL 48h），由对账 job 幂等 upsert 落库；
+-- 表内不存文件内容，内容只在数据面转发链路流式通过。
+DROP TABLE IF EXISTS `batch_files`;
+CREATE TABLE `batch_files` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `file_id` VARCHAR(128) NOT NULL COMMENT 'provider 侧文件 ID',
+  `provider` VARCHAR(128) NOT NULL COMMENT 'provider 名',
+  `key_name` VARCHAR(128) COMMENT '上传时使用的 provider key 名',
+  `api_key_id` VARCHAR(128) NOT NULL COMMENT 'API-Key ID（逻辑引用 api_keys.id）',
+  `product_name` VARCHAR(128) NOT NULL COMMENT '产品线名称（强制隔离维度）',
+  `direction` VARCHAR(8) NOT NULL COMMENT '方向：input | output',
+  `purpose` VARCHAR(32) COMMENT '文件用途（如 batch）',
+  `line_count` INT COMMENT '文件行数（预留金额估算与对账用）',
+  `bytes` BIGINT COMMENT '文件字节数',
+  `first_seen_at` DATETIME COMMENT '首次见到时间',
+  `last_seen_at` DATETIME COMMENT '最近见到时间（幂等 upsert 刷新）',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_file_provider` (`file_id`, `provider`),
+  KEY `idx_apikey` (`api_key_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量文件元数据表';
+
+-- create batch_tasks (批量任务表，2026-10-07新增，批量与异步任务支持一期)
+-- 承载 provider 原生 Batch API 任务（OpenAI /v1/batches）在控制面的权威实体：
+-- 状态机、用量、预留/结算/释放三态对账主字段。同步源为 Redis BATCH_TASK:<batch_id>（TTL 48h）。
+DROP TABLE IF EXISTS `batch_tasks`;
+CREATE TABLE `batch_tasks` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `batch_id` VARCHAR(128) NOT NULL COMMENT 'provider 侧 batch ID（业务标识，详情/取消端点寻址键）',
+  `api_key_id` VARCHAR(128) NOT NULL COMMENT 'API-Key ID（逻辑引用 api_keys.id）',
+  `product_name` VARCHAR(128) NOT NULL COMMENT '产品线名称（管控 API 强制隔离维度）',
+  `entity_id` VARCHAR(128) COMMENT 'Entity ID（可空）',
+  `provider` VARCHAR(128) NOT NULL COMMENT 'provider 名',
+  `key_name` VARCHAR(128) COMMENT '控制面直调 provider（cancel/兜底结算下载输出文件）用 key 名',
+  `endpoint` VARCHAR(256) COMMENT '批量端点（如 /v1/chat/completions）',
+  `input_file_id` VARCHAR(128) COMMENT '输入文件 ID',
+  `output_file_id` VARCHAR(128) COMMENT '输出文件 ID（状态推进时发现即补登记输出 batch_files）',
+  `status` VARCHAR(16) NOT NULL COMMENT '状态机，对齐 OpenAI：validating/queued/in_progress/finalizing/completed/expired/failed/cancelled/cancelling；二期方言（ended/deleted）为枚举增量；provider 返回状态原样存、终态不回退',
+  `request_counts` JSON COMMENT '请求计数对象（provider 原样）',
+  `est_lines` INT COMMENT '预估行数（创建时取自输入文件）',
+  `usage_input_tokens` BIGINT COMMENT '结算 input tokens',
+  `usage_output_tokens` BIGINT COMMENT '结算 output tokens',
+  `usage_source` VARCHAR(16) COMMENT '用量来源：download（下载拦截解析）| reconcile（对账 job 兜底解析）',
+  `reserve_units` BIGINT COMMENT '预留金额（1e-8 定点 RMB，与数据面同口径：行数×预估 token 上限×batch 价）',
+  `settle_units` BIGINT COMMENT '实结金额（1e-8 定点 RMB；实结允许透支预留，over_reserved=1 标记）',
+  `settle_status` VARCHAR(16) NOT NULL COMMENT '三态对账主字段：reserved | settled | released；兜底结算与释放均按 WHERE settle_status=reserved 条件更新推进，防双倍结算',
+  `over_reserved` TINYINT DEFAULT 0 COMMENT '实际超出预留标记（允许透支，不静默截断）',
+  `sync_source` VARCHAR(8) DEFAULT 'redis' COMMENT '同步来源：redis | log（日志补登标记，对账巡检告警）',
+  `idem_key` VARCHAR(128) NOT NULL UNIQUE COMMENT '幂等键，恒等于 batch_id；Redis SCAN 同步 upsert 的冲突定位键',
+  `created_at` DATETIME COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `terminal_at` DATETIME COMMENT '进入终态时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_apikey` (`api_key_id`),
+  KEY `idx_terminal` (`terminal_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量任务表';

@@ -33,6 +33,7 @@ const (
 	etDuplicateData    = "Model.DuplicateData"
 	etDao              = "DAO"
 	etConflict         = "Model.Conflict"
+	etUpstream         = "Upstream.Unreachable"
 
 	etAuthenticateFail = "Authentication.Fail"
 	etAuthorizateFail  = "Authorization.Fail"
@@ -162,4 +163,11 @@ func WrapDirtyDataErrorWithMsg(msg string, args ...interface{}) error {
 // WrapConflictErrorWithMsg Just Service layout invoke
 func WrapConflictErrorWithMsg(msg string, args ...interface{}) error {
 	return errors.Wrap(fmt.Errorf(msg, args...), etConflict)
+}
+
+// WrapUpstreamErrorWithMsg 包装控制面出网访问上游（provider）失败错误，
+// xerror.Resolve 映射为 502 UPSTREAM_UNREACHABLE（api-changes.md §5
+// batches 域错误码表）。
+func WrapUpstreamErrorWithMsg(msg string, args ...interface{}) error {
+	return errors.Wrap(fmt.Errorf(msg, args...), etUpstream)
 }

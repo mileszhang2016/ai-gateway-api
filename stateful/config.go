@@ -76,6 +76,16 @@ type ReportConfig struct {
 	EnablePartitionMgmt  bool   // backend=mysql: run the partition management job
 }
 
+// BatchJobConfig is the [BatchJob] section. It switches the batch reconcile
+// job (Redis BATCH_* sync -> status advance -> backstop settle, see
+// design-docs/sys-design/details/批量任务与对账.md §5). The job needs the
+// control-plane -> provider egress for duties 2/3; deployments without
+// egress leave it disabled (degraded path, 批量任务与对账.md §9).
+type BatchJobConfig struct {
+	Enable      bool // run the reconcile job; default off
+	IntervalSec int  // tick period, default 60
+}
+
 // applyDefaults fills the default calibration values.
 func (c *ReportConfig) applyDefaults() {
 	if c.AggregateIntervalSec <= 0 {
@@ -86,6 +96,12 @@ func (c *ReportConfig) applyDefaults() {
 	}
 }
 
+func (c *BatchJobConfig) applyDefaults() {
+	if c.IntervalSec <= 0 {
+		c.IntervalSec = 60
+	}
+}
+
 type Config struct {
 	Server        ServerConfig
 	Loggers       map[string]*LoggerConfig `validate:"dive"`
@@ -93,6 +109,7 @@ type Config struct {
 	Depends       DependsConfig
 	RunTime       RunTimeConfig
 	Report        ReportConfig
+	BatchJob      BatchJobConfig
 	AccessControl AccessControlConf
 	Security      SecurityConfig
 
@@ -134,6 +151,7 @@ func LoadConfig(file string) error {
 	confFilePath = file
 
 	config.Report.applyDefaults()
+	config.BatchJob.applyDefaults()
 
 	if err := newConfigValidator().Struct(config); err != nil {
 		return err

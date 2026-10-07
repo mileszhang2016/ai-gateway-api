@@ -65,13 +65,14 @@ var (
 )
 
 const (
-	ActionDeny    Action = 1 << iota // 000001
-	ActionRead                       // 000010
-	ActionReadAll                    // 000010
-	ActionUpdate                     // 000100
-	ActionCreate                     // 001000
-	ActionDelete                     // 010000
-	ActionExport                     // 100000
+	ActionDeny    Action = 1 << iota // 0000001
+	ActionRead                       // 0000010
+	ActionReadAll                    // 0000010
+	ActionUpdate                     // 0000100
+	ActionCreate                     // 0001000
+	ActionDelete                     // 0010000
+	ActionExport                     // 0100000
+	ActionCancel                     // 1000000
 )
 
 func (a Action) Revoke(b Action) Action {
@@ -148,6 +149,9 @@ const (
 
 	// report query
 	FeatureReport Feature = "Report"
+
+	// batch & async tasks (批量任务与对账.md：读 + 取消两类动作)
+	FeatureBatch Feature = "Batch"
 )
 
 var (
@@ -202,6 +206,8 @@ var scope2permission = map[string]map[Feature]Action{
 		FeatureReport: actionAll,
 
 		FeatureSecurity: actionAll,
+
+		FeatureBatch: actionAll,
 	},
 	ScopeProduct: {
 		FeatureUser:       ActionReadAll,
@@ -232,6 +238,10 @@ var scope2permission = map[string]map[Feature]Action{
 		// Report stays read-only for the product scope; it is reserved for
 		// the tenant self-service usage report.
 		FeatureReport: ActionRead,
+
+		// Batch tasks of the product line: read + cancel (api-changes.md
+		// §4.5：FeatureBatch actionRead/actionCancel 挂既有角色体系)。
+		FeatureBatch: ActionRead.Grant(ActionCancel),
 	},
 	ScopeSupport: {
 		FeatureProxyPool:         ActionExport,

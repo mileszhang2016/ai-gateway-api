@@ -239,6 +239,16 @@ MaxIdle = 10
 # RetentionDays = 7
 # EnablePartitionMgmt = false
 # ---------------------------------
+# Batch & Async Tasks Reconcile Job (批量任务与对账.md §5)
+# 批量对账 job：每分钟 tick（MySQL named lock 多副本互斥；SQLite 退化为
+# 单实例空操作锁），依次执行 Redis BATCH_* 同步落库 → 状态推进 → 兜底结算。
+# 默认关闭。注意：状态推进/兜底结算需要控制面 → provider 出网（cancel 与
+# 兜底结算共用的 egress 能力），不允许出网的部署保持关闭（降级路径见
+# 批量任务与对账.md §9：只依赖下载拦截结算 + 预留 TTL 释放）。
+# [BatchJob]
+# Enable = true
+# IntervalSec = 60               # tick 周期，默认 60
+# ---------------------------------
 # Management Plane Access Control (IP Whitelist)
 # 管理面 IP 白名单：保护 Dashboard / OpenAPI / InnerAPI 三类管理入口。
 # 默认关闭（向后兼容）；启用后非白名单网段请求在网络层直接 403（先于鉴权）。

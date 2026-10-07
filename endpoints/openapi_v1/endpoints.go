@@ -22,6 +22,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/ai_context"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/auth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/batches"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_cluster"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/certificate"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/domain"
@@ -84,6 +85,7 @@ func endpoints() []*xreq.Endpoint {
 		model_price.Endpoints,
 		operation_log.Endpoints,
 		provider.Endpoints,
+		batches.Endpoints,
 	)
 
 	// The report module only registers when it is assembled

@@ -11,8 +11,8 @@
 | 总体设计文档 | [总体设计文档.md](./总体设计文档.md) | 描述 `ai-gateway-api` 在 AI 网关中的定位、功能范围、三层架构（接口层/模型层/存储层）、组件交互关系、核心数据流以及 OpenAPI 与 InnerAPI 的职责划分。 |
 | 接口层设计文档 | [接口层设计文档.md](./接口层设计文档.md) | 描述管理面 OpenAPI（`/open-api/v1`）与数据面 InnerAPI（`/inner-api/v1`）的路由组织、统一的 `xreq.Endpoint` 抽象、全局与业务中间件链、子包划分以及典型接口实现模式。 |
 | 模型层设计文档 | [模型层设计文档.md](./模型层设计文档.md) | 描述 `model/` 层的子包职责、Manager + Storager 接口的分层模式、Param/Filter 设计、事务管理、典型业务流程以及各业务模型（API-Key、Entity、Provider、Cluster、Quota、RateLimit、Route 等）的交互方式。 |
-| 存储层设计文档 | [存储层设计文档.md](./存储层设计文档.md) | 描述 `storage/rdb` 层的 DAO + Storage 两层结构、通用 DAO 设计模式、事务与连接管理、36 张表的 DAO 映射关系以及 Storage 实现如何向上暴露接口供模型层调用。 |
-| 数据库设计文档 | [数据库设计文档.md](./数据库设计文档.md) | 描述 `ai-gateway-api` 当前实现中全部 36 张持久化表的字段、约束、索引、JSON 字段结构以及表间逻辑关系，覆盖基础配置、集群、路由、证书、API-Key、Entity、配额、限流、AI 缓存、AI 上下文压缩、AI 意图、模型定价、操作日志、安全（密钥静态加密）等模块（38 张表）。 |
+| 存储层设计文档 | [存储层设计文档.md](./存储层设计文档.md) | 描述 `storage/rdb` 层的 DAO + Storage 两层结构、通用 DAO 设计模式、事务与连接管理、42 张表的 DAO 映射关系以及 Storage 实现如何向上暴露接口供模型层调用。 |
+| 数据库设计文档 | [数据库设计文档.md](./数据库设计文档.md) | 描述 `ai-gateway-api` 当前实现中全部 42 张持久化表（2026-10-07 新增 `batch_files`/`batch_tasks` 后；原 36/38 的口径不一致已一并修正）的字段、约束、索引、JSON 字段结构以及表间逻辑关系，覆盖基础配置、集群、路由、证书、API-Key、Entity、配额、限流、AI 缓存、AI 上下文压缩、AI 意图、模型定价、批量任务、操作日志、安全（密钥静态加密）等模块。 |
 | 报表库设计文档 | [报表库设计文档.md](./报表库设计文档.md) | 描述独立报表库（`bfe_report`）的两张表设计：`bfe_ai_request_log` 明细表（99 列，含 2026-09-27 缓存/镜像/意图 10 列；幂等键/空值语义/按天 RANGE 分区/索引）与 `bfe_ai_metrics_1m` 分钟聚合表（40 维 + 24 指标，含 `ai_cache_status`/`mirror_hit`/`ai_intent_answer` 3 个维度列，与 Doris 对齐、不设唯一键的理由）、聚合与分区管理语义、账号权限矩阵、容量建议与列演进规则；DDL 归 `db_ddl_report_mysql.sql`。 |
 
 ---
@@ -43,6 +43,7 @@
 | EPP 调度对接 | [details/EPP调度对接.md](./details/EPP调度对接.md) | 描述 EPP（llm-d 调度器）接入后控制面的四块能力：cluster `balance_mode`/`epp_config`（简化用户形态 + 确定性编译）、`/epp-pool` 静态实例池、分配器（贪心确定性算法、悬空修复、周期对账）、双向下发（server_data_conf 的 `BalanceMode`/`EPPAddr` 含降级语义、epp_data 单 topic 两段合并）。 |
 | 部分更新语义与 DAO 的 nil-skip 约定 | [details/部分更新语义与DAO-nil-skip约定.md](./details/部分更新语义与DAO-nil-skip约定.md) | 描述 PATCH"仅传需修改字段"契约的实现机制（DAO `struct2map` nil-skip）与 storager 层约束（不得把省略抹平为默认值）；各资源省略字段行为对照表（API-Key `models`/`subnet`、Entity `allow_models`/`block_models`、Provider 五字段）；Create/PATCH 默认值语义差异与"显式空数组不区分"的已知限制（issue #151、#147）。 |
 | 规则文件顶层全局块的合并导出模式 | [details/规则文件顶层全局块的合并导出模式.md](./details/规则文件顶层全局块的合并导出模式.md) | 沉淀 ai-cache `Semantic` 块与 ai-context `Defaults` 块两个落地实例，固化"单例设置表 + 生成器合并顶层键恒导出"模式：否决 imods 独立 topic 的三条理由、空表=默认（不预置默认行）、设置变更驱动 MD5 版本流、连接配置经 CopyFiles 不下发、二期字段前向兼容前提（数据面未知字段容忍），以及新模块复用清单与不适用边界。 |
+| 批量任务与对账 | [details/批量任务与对账.md](./details/批量任务与对账.md) | 描述批量与异步任务支持（一期）的控制面机制：`batch_tasks` / `batch_files` 实体与 OpenAI 状态机、Redis `BATCH_*` 五类键结构与 TTL、预留-结算-释放三态金额语义（1e-8 定点 RMB、允许透支 + `over_reserved`）、对账 job 五职责（Redis SCAN 同步、状态推进、兜底结算、对账巡检与日志补登、TTL 清理）、cancel 五步流程与两把幂等锁竞态收敛、多实例协调（named lock / 条件更新 / Redis Lua）、与报表后端解耦的理由（`[Report].Backend` 可插拔）及不出网部署的降级路径。 |
 
 ---
 

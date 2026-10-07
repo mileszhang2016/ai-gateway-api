@@ -56,9 +56,24 @@ type RPMConfig struct {
 }
 
 type RateLimitRules struct {
-	TpmConfigs     []TPMConfig `json:"tpm"`
-	RpmConfigs     []RPMConfig `json:"rpm"`
-	MaxConcurrency *int        `json:"max_concurrency"`
+	TpmConfigs     []TPMConfig  `json:"tpm"`
+	RpmConfigs     []RPMConfig  `json:"rpm"`
+	MaxConcurrency *int         `json:"max_concurrency"`
+	BatchLimits    *BatchLimits `json:"batch_limits,omitempty"`
+}
+
+// BatchLimits defines the batch-request rate limit dimensions of a policy
+// (2026-10-07, batch & async task support phase 1). All dimensions are
+// counted per api key and are model-agnostic (batch request bodies carry no
+// model field). Nil means the policy does not participate in batch rate
+// limiting (omitted/null, zero migration for existing rows); 0 means the
+// dimension is not limited. A policy with no batch segment still falls under
+// the BFE mod_ai_batch global hard caps.
+type BatchLimits struct {
+	MaxCreateRPM     int   `json:"max_create_rpm"`
+	MaxActiveBatches int   `json:"max_active_batches"`
+	MaxFileBytes     int64 `json:"max_file_bytes"`
+	MaxFileLines     int   `json:"max_file_lines"`
 }
 
 type RateLimitPolicyParam struct {

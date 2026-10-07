@@ -56,6 +56,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/shared"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/entity"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibatch"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/traffic_mirror"
 )
 
@@ -139,6 +140,12 @@ var (
 	OperationLogStorager ioperlog.OperationLogStorager
 	OperationLogManager  ioperlog.OperationLogManagerInterface
 	KeyRotateManager     *keyrotate.Manager
+
+	// Batch & async tasks (批量任务与对账.md：管控 API + 对账 job)。
+	// BatchManager 为 endpoints 面向接口；BatchJob 仅 [BatchJob].Enable
+	// 时装配，否则 nil。
+	BatchManager ibatch.BatchManager
+	BatchJob     *ibatch.Job
 
 	// Report query module (see design-docs modifications/2026-09-15-report-query-api);
 	// nil when [Report].Backend is not configured.

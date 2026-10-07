@@ -256,6 +256,16 @@
 | `tpm` | []TPMConfig | N | Token 每分钟限制配置 | 最多 3 个；为空不做 tpm 限制；每个元素类型为 [TPMConfig](#10-tpm-限流配置tpmconfig) |
 | `rpm` | []RPMConfig | N | 请求每分钟限制配置 | 最多 3 个；为空不做 rpm 限制；每个元素类型为 [RPMConfig](#11-rpm-限流配置rpmconfig) |
 | `max_concurrency` | int | N | 最大并发数 | `-1` 表示不限制，否则须为 >=0 的整数 |
+| `batch_limits` | object | N | 批量限流维度（2026-10-07 新增） | 省略/`null` = 该策略不参与批量限流；四维度均按 API-Key 计、与 `model` 无关（批量创建请求体无 model 字段）；导出为 BFE `ai_rate_limit.data` 策略 `rules.batch` 段；**不配置 batch_limits 不代表批量不限流**——仍受 BFE `mod_ai_batch.data` 全局硬顶约束 |
+
+`batch_limits` 结构：
+
+| 字段 | 类型 | 必填 | 说明 | 合法性条件 |
+|------|------|------|------|------------|
+| `max_create_rpm` | int | N | 单 API-Key 批量任务创建 RPM | >=0；`0` 或省略 = 不配此维度；计数器按策略独立（导出生成 `RL_BATCH_<policyId>_rpm`） |
+| `max_active_batches` | int | N | 单 API-Key 在途批量任务上限 | >=0；`0` 或省略 = 不配此维度；数据面复用共享 `BATCH_ACTIVE` ZSET 基数校验 |
+| `max_file_bytes` | int64 | N | 单文件字节上限 | >=0；`0` 或省略 = 不配此维度；与数据面全局硬顶取 min；请求内本地校验 |
+| `max_file_lines` | int | N | 单文件行数上限 | >=0；`0` 或省略 = 不配此维度；同上 |
 
 `rules` 跨元素约束：
 

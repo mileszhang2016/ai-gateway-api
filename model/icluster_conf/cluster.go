@@ -31,10 +31,12 @@ package icluster_conf
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 
 	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/cluster_conf"
 	"github.com/bfenetworks/bfe/bfe_config/bfe_route_conf/route_rule_conf"
+	"github.com/bfenetworks/go-lib/log"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
@@ -1330,23 +1332,7 @@ func NewBfeClusterConf(ctx context.Context, version string, clusters []*Cluster,
 			}
 			if provider != "" {
 				if entries, ok := providerModelTable[provider]; ok && len(entries) > 0 {
-					models := make([]cluster_conf.ModelPrice, 0, len(entries))
-					for _, e := range entries {
-						if e != nil {
-							models = append(models, cluster_conf.ModelPrice{
-								Provider:            e.Provider,
-								Model:               e.Model,
-								BaseModel:           e.BaseModel,
-								Mode:                e.Mode,
-								Capabilities:        e.Capabilities,
-								SupportedParameters: e.SupportedParameters,
-								Limits:              e.Limits,
-								Prices:              cluster_conf.PriceMap(e.Prices),
-								TierPrices:          cluster_conf.TierPriceMap(e.TierPrices),
-								Metadata:            e.Metadata,
-							})
-						}
-					}
+					models := buildModelTableModels(entries)
 					pricingInfo := providerPricingTable[provider]
 					timeZone := pricingInfo.TimeZone
 					if timeZone == "" {
@@ -1392,6 +1378,91 @@ func NewBfeClusterConf(ctx context.Context, version string, clusters []*Cluster,
 		Version: &version,
 		Config:  &clusterConfMap,
 	}, nil
+}
+
+// batchPricePrecision keeps expanded batch prices on the 1e-8 fixed-point
+// denomination (same as quota.RmbPrecision used by the data-plane cost math).
+const batchPricePrecision = 1e8
+
+// buildModelTableModels converts stored model price entries into the BFE
+// ModelTable rows. Entries carrying a BatchDiscount additionally expand into
+// an explicit mode=batch row whose price keys are multiplied by the discount
+// (rounded to 8 decimal places). A manually maintained (provider, model,
+// mode=batch) row takes precedence over the expanded row: the expansion is
+// skipped with a warning log and the export continues.
+func buildModelTableModels(entries []*imodel_price.ModelPrice) []cluster_conf.ModelPrice {
+	manualBatch := map[string]bool{}
+	for _, e := range entries {
+		if e != nil && e.Mode == "batch" {
+			manualBatch[e.Model] = true
+		}
+	}
+
+	models := make([]cluster_conf.ModelPrice, 0, len(entries))
+	for _, e := range entries {
+		if e == nil {
+			continue
+		}
+		models = append(models, cluster_conf.ModelPrice{
+			Provider:            e.Provider,
+			Model:               e.Model,
+			BaseModel:           e.BaseModel,
+			Mode:                e.Mode,
+			Capabilities:        e.Capabilities,
+			SupportedParameters: e.SupportedParameters,
+			Limits:              e.Limits,
+			Prices:              cluster_conf.PriceMap(e.Prices),
+			TierPrices:          cluster_conf.TierPriceMap(e.TierPrices),
+			Metadata:            e.Metadata,
+		})
+
+		if e.BatchDiscount == nil || e.Mode == "batch" {
+			continue
+		}
+		if manualBatch[e.Model] {
+			log.Logger.Warn("model price export: manual (provider=%s, model=%s, mode=batch) row exists, skip batch_discount expansion", e.Provider, e.Model)
+			continue
+		}
+
+		models = append(models, cluster_conf.ModelPrice{
+			Provider:            e.Provider,
+			Model:               e.Model,
+			BaseModel:           e.BaseModel,
+			Mode:                "batch",
+			Capabilities:        e.Capabilities,
+			SupportedParameters: e.SupportedParameters,
+			Limits:              e.Limits,
+			Prices:              scaleBatchPrices(e.Prices, *e.BatchDiscount),
+			TierPrices:          scaleBatchTierPrices(e.TierPrices, *e.BatchDiscount),
+			Metadata:            e.Metadata,
+		})
+	}
+	return models
+}
+
+// scaleBatchPrices multiplies every price key by the batch discount, rounding
+// to 8 decimal places so the 1e-8 fixed-point denomination stays clean.
+func scaleBatchPrices(src imodel_price.PriceMap, discount float64) cluster_conf.PriceMap {
+	if src == nil {
+		return nil
+	}
+	rst := make(cluster_conf.PriceMap, len(src))
+	for k, v := range src {
+		rst[k] = math.Round(v*discount*batchPricePrecision) / batchPricePrecision
+	}
+	return rst
+}
+
+// scaleBatchTierPrices expands tier prices tier by tier with the same factor.
+func scaleBatchTierPrices(src imodel_price.TierPriceMap, discount float64) cluster_conf.TierPriceMap {
+	if src == nil {
+		return nil
+	}
+	rst := make(cluster_conf.TierPriceMap, len(src))
+	for tier, prices := range src {
+		rst[tier] = scaleBatchPrices(prices, discount)
+	}
+	return rst
 }
 
 func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,

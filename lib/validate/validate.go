@@ -444,8 +444,9 @@ func RateLimitPolicy(p *shared.RateLimitPolicyParam) error {
 		hasTpm := len(p.Rules.TpmConfigs) > 0
 		hasRpm := len(p.Rules.RpmConfigs) > 0
 		hasConcurrency := p.Rules.MaxConcurrency != nil && *p.Rules.MaxConcurrency >= 0
-		if !hasTpm && !hasRpm && !hasConcurrency {
-			return xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, at least one of rules.tpm, rules.rpm, or rules.max_concurrency(>=0) must be set")
+		hasBatch := p.Rules.BatchLimits != nil
+		if !hasTpm && !hasRpm && !hasConcurrency && !hasBatch {
+			return xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, at least one of rules.tpm, rules.rpm, rules.max_concurrency(>=0), or rules.batch_limits must be set")
 		}
 	}
 	if p.Rules == nil {
@@ -459,6 +460,20 @@ func RateLimitPolicy(p *shared.RateLimitPolicyParam) error {
 	}
 	if p.Rules.MaxConcurrency != nil && *p.Rules.MaxConcurrency < -1 {
 		return xerror.WrapParamErrorWithMsg("max_concurrency must be -1 or >= 0")
+	}
+	if p.Rules.BatchLimits != nil {
+		if p.Rules.BatchLimits.MaxCreateRPM < 0 {
+			return xerror.WrapParamErrorWithMsg("batch_limits.max_create_rpm must be >= 0")
+		}
+		if p.Rules.BatchLimits.MaxActiveBatches < 0 {
+			return xerror.WrapParamErrorWithMsg("batch_limits.max_active_batches must be >= 0")
+		}
+		if p.Rules.BatchLimits.MaxFileBytes < 0 {
+			return xerror.WrapParamErrorWithMsg("batch_limits.max_file_bytes must be >= 0")
+		}
+		if p.Rules.BatchLimits.MaxFileLines < 0 {
+			return xerror.WrapParamErrorWithMsg("batch_limits.max_file_lines must be >= 0")
+		}
 	}
 
 	nameSet := map[string]struct{}{}

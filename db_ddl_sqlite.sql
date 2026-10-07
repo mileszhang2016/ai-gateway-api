@@ -462,6 +462,7 @@ CREATE TABLE model_prices (
   limits TEXT,
   prices TEXT NOT NULL,
   tier_prices TEXT,
+  batch_discount REAL,
   price_currency TEXT DEFAULT 'RMB',
   metadata TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -520,6 +521,7 @@ CREATE TABLE rate_limit_policies (
   max_concurrency INTEGER DEFAULT -1,
   tpm_configs TEXT,
   rpm_configs TEXT,
+  batch_limits TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -730,3 +732,65 @@ CREATE TABLE IF NOT EXISTS keyrotate_sweep_lock (
   holder_task_id TEXT NOT NULL DEFAULT ''
 );
 INSERT OR IGNORE INTO keyrotate_sweep_lock (id) VALUES (1);
+
+-- create batch_files (批量文件元数据表，2026-10-07新增，批量与异步任务支持一期)
+-- 同步源为 Redis BATCH_FILE:<provider>:<file_id>（TTL 48h），由对账 job 幂等 upsert 落库；
+-- 表内不存文件内容，内容只在数据面转发链路流式通过。
+DROP TABLE IF EXISTS batch_files;
+CREATE TABLE batch_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  file_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  key_name TEXT,
+  api_key_id TEXT NOT NULL,
+  product_name TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  purpose TEXT,
+  line_count INTEGER,
+  bytes INTEGER,
+  first_seen_at DATETIME,
+  last_seen_at DATETIME,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (file_id, provider)
+);
+CREATE INDEX batch_files_apikey ON batch_files (api_key_id);
+CREATE TRIGGER batch_files_updated_at AFTER UPDATE ON batch_files
+  FOR EACH ROW BEGIN UPDATE batch_files SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;
+
+-- create batch_tasks (批量任务表，2026-10-07新增，批量与异步任务支持一期)
+-- 承载 provider 原生 Batch API 任务（OpenAI /v1/batches）在控制面的权威实体：
+-- 状态机、用量、预留/结算/释放三态对账主字段。同步源为 Redis BATCH_TASK:<batch_id>（TTL 48h）。
+DROP TABLE IF EXISTS batch_tasks;
+CREATE TABLE batch_tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  batch_id TEXT NOT NULL,
+  api_key_id TEXT NOT NULL,
+  product_name TEXT NOT NULL,
+  entity_id TEXT,
+  provider TEXT NOT NULL,
+  key_name TEXT,
+  endpoint TEXT,
+  input_file_id TEXT,
+  output_file_id TEXT,
+  status TEXT NOT NULL,
+  request_counts TEXT,
+  est_lines INTEGER,
+  usage_input_tokens INTEGER,
+  usage_output_tokens INTEGER,
+  usage_source TEXT,
+  reserve_units INTEGER,
+  settle_units INTEGER,
+  settle_status TEXT NOT NULL,
+  over_reserved INTEGER DEFAULT 0,
+  sync_source TEXT DEFAULT 'redis',
+  idem_key TEXT NOT NULL UNIQUE,
+  created_at DATETIME,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  terminal_at DATETIME
+);
+CREATE INDEX batch_tasks_status ON batch_tasks (status);
+CREATE INDEX batch_tasks_apikey ON batch_tasks (api_key_id);
+CREATE INDEX batch_tasks_terminal ON batch_tasks (terminal_at);
+CREATE TRIGGER batch_tasks_updated_at AFTER UPDATE ON batch_tasks
+  FOR EACH ROW BEGIN UPDATE batch_tasks SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id; END;

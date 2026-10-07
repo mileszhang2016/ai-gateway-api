@@ -31,8 +31,10 @@ package rdb
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/bfenetworks/bfe/bfe_util/bns"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xreq"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ai_cache"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ai_context"
@@ -41,6 +43,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iai_route"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iauth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibasic"
+	"github.com/rainway-ai-gateway/ai-gateway-api/model/ibatch"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/icluster_conf"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iintent_config"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/ik8s_pool"
@@ -67,6 +70,7 @@ import (
 	apiKeyStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/auth"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/basic"
+	batchStoragePkg "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/batch"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/cluster_conf"
 	entityStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/entity"
 	eppPoolStorage "github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/epp_pool"
@@ -396,6 +400,13 @@ func Init() error {
 	container.APIKeyManager.SetQuotaPlanAuditor(container.QuotaPlanManager)
 	container.APIKeyManager.SetRateLimitPolicyAuditor(container.RateLimitPolicyManager)
 
+	// Batch & async tasks (批量任务与对账.md §4/§5): manager serves the
+	// /batches control APIs; the reconcile job is assembled only when
+	// [BatchJob].Enable is set (it needs the provider egress).
+	if err := initBatch(); err != nil {
+		return err
+	}
+
 	// Initialize quota reset scheduler
 	container.BalanceSyncManager = quota.NewBalanceSyncManager(
 		container.TxnStoragerSingleton,
@@ -417,7 +428,82 @@ func Init() error {
 		return err
 	}
 
+	// The batch reconcile job follows the process lifecycle like
+	// QuotaResetScheduler (started in initBatch when enabled).
 	return nil
+}
+
+// initBatch assembles the batch task manager (storage + RedisClient adapter +
+// real querier dependencies) and, when [BatchJob].Enable is set, the
+// reconcile job. Redis SCAN needs every backend instance address: the bfe
+// redis client shards keys by hash and exposes no SCAN, so addresses are
+// re-resolved from the same bns conf the client was built from.
+func initBatch() error {
+	batchStorage := batchStoragePkg.NewBatchStorager(stateful.NewBFEDBContext)
+	redisAdapter := ibatch.NewRedisClientAdapter(stateful.DefaultClientSet.RedisClient, newBatchRedisScanner())
+
+	manager := ibatch.NewManager(
+		batchStorage,
+		redisAdapter,
+		container.APIKeyManager,
+		container.ProviderManager,
+		container.ModelPriceManager,
+		nil, // httpClientFactory：http.DefaultClient + 请求级超时
+		nil, // clock：系统时钟
+	)
+	manager.SetOperationLogManager(container.OperationLogManager)
+	container.BatchManager = manager
+
+	if !stateful.DefaultConfig.BatchJob.Enable {
+		return nil
+	}
+	db, err := stateful.BFEDB()
+	if err != nil {
+		return err
+	}
+	container.BatchJob = ibatch.NewJob(
+		manager,
+		db,
+		time.Duration(stateful.DefaultConfig.BatchJob.IntervalSec)*time.Second,
+	)
+	container.BatchJob.Start()
+	return nil
+}
+
+// newBatchRedisScanner 按 [RedisConf].Bns 解析全部后端实例地址，构建
+// redigo SCAN 器。mock 模式 / 解析失败时返回 nil（同步职责降级为空，
+// 其余职责不受影响）。多集群形态（"bns,weight|bns,weight"）逐一解析：
+// bfe 客户端按 key 哈希把键分片到各集群，每个 bns 名背后的实例集合
+// 持有该集群的全量键，SCAN 必须遍历全部集群。
+func newBatchRedisScanner() ibatch.RedisScanner {
+	cfg := stateful.DefaultConfig.RedisConf
+	if cfg == nil || cfg.Bns == "" || cfg.Bns == "mock" {
+		return nil
+	}
+
+	var addrs []string
+	for _, part := range strings.Split(cfg.Bns, "|") {
+		name := strings.TrimSpace(strings.SplitN(part, ",", 2)[0])
+		if name == "" {
+			continue
+		}
+		resolved, err := bns.NewClient().GetInstancesAddr(name)
+		if err != nil {
+			stateful.AccessLogger.Warn("batch: resolve redis bns %s for scanner failed: %v", name, err)
+			continue
+		}
+		addrs = append(addrs, resolved...)
+	}
+	if len(addrs) == 0 {
+		stateful.AccessLogger.Warn("batch: no redis instance resolved for scanner, sync duty degraded")
+		return nil
+	}
+
+	timeout := time.Duration(cfg.ReadTimeout) * time.Millisecond
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+	return ibatch.NewRedigoScanner(addrs, cfg.Password, timeout)
 }
 
 func initReport() error {
