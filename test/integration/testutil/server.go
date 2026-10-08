@@ -554,6 +554,69 @@ func (sm *ServerManager) GetQuotaPlanLastResetAt(ownerID string, ownerType strin
 	return &lastResetAt, nil
 }
 
+// NullQuotaPlanLastResetAt 将某 API-Key / Entity 对应 quota_plans.last_reset_at 置为 NULL，
+// 用于模拟修复前创建的存量计划（issue #228）。
+func (sm *ServerManager) NullQuotaPlanLastResetAt(ownerID string, ownerType string) error {
+	db, err := sql.Open("sqlite-strip", sm.DBPath)
+	if err != nil {
+		return fmt.Errorf("open sqlite db: %w", err)
+	}
+	defer db.Close()
+
+	quotaPlanID, err := lookupQuotaPlanID(db, ownerID, ownerType)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec("UPDATE quota_plans SET last_reset_at = NULL WHERE id = ?", quotaPlanID)
+	if err != nil {
+		return fmt.Errorf("null quota_plans.last_reset_at: %w", err)
+	}
+	return nil
+}
+
+// GetQuotaPlanLastResetAtNullable 读取某 API-Key / Entity 对应 quota_plans.last_reset_at，
+// 列为 NULL 时返回 (nil, nil)。
+func (sm *ServerManager) GetQuotaPlanLastResetAtNullable(ownerID string, ownerType string) (*time.Time, error) {
+	db, err := sql.Open("sqlite-strip", sm.DBPath)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite db: %w", err)
+	}
+	defer db.Close()
+
+	quotaPlanID, err := lookupQuotaPlanID(db, ownerID, ownerType)
+	if err != nil {
+		return nil, err
+	}
+
+	var lastResetAt sql.NullTime
+	err = db.QueryRow("SELECT last_reset_at FROM quota_plans WHERE id = ?", quotaPlanID).Scan(&lastResetAt)
+	if err != nil {
+		return nil, fmt.Errorf("select quota_plans.last_reset_at: %w", err)
+	}
+	if !lastResetAt.Valid {
+		return nil, nil
+	}
+	return &lastResetAt.Time, nil
+}
+
+func lookupQuotaPlanID(db *sql.DB, ownerID string, ownerType string) (int64, error) {
+	var quotaPlanID int64
+	var err error
+	switch ownerType {
+	case "api_key":
+		err = db.QueryRow("SELECT quota_plan_id FROM api_keys WHERE id = ?", ownerID).Scan(&quotaPlanID)
+	case "entity":
+		err = db.QueryRow("SELECT quota_plan_id FROM entities WHERE entity_id = ?", ownerID).Scan(&quotaPlanID)
+	default:
+		return 0, fmt.Errorf("unsupported ownerType: %s", ownerType)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("find quota_plan_id for %s %s: %w", ownerType, ownerID, err)
+	}
+	return quotaPlanID, nil
+}
+
 // findIntegrationRoot 查找 integration 目录
 func findIntegrationRoot() (string, error) {
 	_, filename, _, ok := runtime.Caller(0)
