@@ -40,6 +40,7 @@ type ServerManager struct {
 	cmd         *exec.Cmd
 	cancel      context.CancelFunc
 	ServerURL   string
+	MonitorURL  string // 监控端口地址（仅 StartServerWithMonitor 启动时非空）
 	DBPath      string
 	DataDir     string
 	ConfDir     string
@@ -92,7 +93,7 @@ func replaceDBSection(confText, section string) string {
 
 // StartServer 使用项目编译的 ai-gateway-api.exe 作为子进程启动测试服务器
 func StartServer() (*ServerManager, error) {
-	return startServer(nil, "", "", nil)
+	return startServer(nil, "", "", nil, 0)
 }
 
 // StartServerWithExtraConfig 启动一个测试服务器，并把 extraTOML 追加到临时
@@ -100,17 +101,26 @@ func StartServer() (*ServerManager, error) {
 // （如 [Report]、[Databases.xxx]）。extraTOML 为空串时行为与 StartServer 完全
 // 一致。注意：额外数据源（如 MySQL）需要测试自身保证可用。
 func StartServerWithExtraConfig(extraTOML string) (*ServerManager, error) {
-	return startServer(nil, "", extraTOML, nil)
+	return startServer(nil, "", extraTOML, nil, 0)
+}
+
+// StartServerWithMonitor 启动一个测试服务器，同时把模板中被禁用的监控端口
+// （MonitorPort = -1）改为随机可用端口，用于需要访问 monitor 端口能力
+// （如 /reload/*、/monitor/metrics）的用例。MonitorURL 为监控端口地址。
+func StartServerWithMonitor(extraTOML string) (*ServerManager, error) {
+	return startServer(nil, "", extraTOML, nil, 1)
 }
 
 // StartServerWithSharedInfra 启动一个测试服务器，可复用外部传入的 miniredis 与 SQLite 数据库文件。
 // 当 sharedRedis == nil 时创建新的 miniredis；当 sharedDBPath == "" 时创建新的 SQLite 数据库。
 // 该函数用于多实例部署场景，让多个 ai-gateway-api 实例共享同一 Redis（分布式锁）与同一 DB。
 func StartServerWithSharedInfra(sharedRedis *miniredis.Miniredis, sharedDBPath string) (*ServerManager, error) {
-	return startServer(sharedRedis, sharedDBPath, "", nil)
+	return startServer(sharedRedis, sharedDBPath, "", nil, 0)
 }
 
-func startServer(sharedRedis *miniredis.Miniredis, sharedDBPath string, extraTOML string, dbPatchCfg *dbPatch) (*ServerManager, error) {
+// startServer 启动测试服务器。monitorPortMode: 0=沿用模板（禁用监控端口）；
+// 1=把 MonitorPort 替换为随机可用端口并填充 MonitorURL。
+func startServer(sharedRedis *miniredis.Miniredis, sharedDBPath string, extraTOML string, dbPatchCfg *dbPatch, monitorPortMode int) (*ServerManager, error) {
 	sm := &ServerManager{}
 
 	// 1. 获取 integration 目录和项目根目录
@@ -195,7 +205,16 @@ func startServer(sharedRedis *miniredis.Miniredis, sharedDBPath string, extraTOM
 		return nil, fmt.Errorf("get random port: %w", err)
 	}
 
-	tmpConfDir, err := createTempConfig(confDir, sm.binPath, dbPath, port, redisServer.Addr(), extraTOML, dbPatchCfg)
+	// 6.5 监控端口（monitorPortMode=1 时启用随机端口，否则沿用模板禁用态）
+	monitorPort := 0
+	if monitorPortMode == 1 {
+		monitorPort, err = getRandomPort()
+		if err != nil {
+			return nil, fmt.Errorf("get random monitor port: %w", err)
+		}
+	}
+
+	tmpConfDir, err := createTempConfig(confDir, sm.binPath, dbPath, port, redisServer.Addr(), extraTOML, dbPatchCfg, monitorPort)
 	if err != nil {
 		return nil, fmt.Errorf("create temp config: %w", err)
 	}
@@ -230,6 +249,9 @@ func startServer(sharedRedis *miniredis.Miniredis, sharedDBPath string, extraTOM
 	// 8. 等待服务器就绪（TCP 拨号检测，带超时）
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	sm.ServerURL = fmt.Sprintf("http://%s", addr)
+	if monitorPort > 0 {
+		sm.MonitorURL = fmt.Sprintf("http://127.0.0.1:%d", monitorPort)
+	}
 
 	// 启动 stdout 消费 goroutine，防止子进程阻塞
 	go func() {
@@ -326,7 +348,8 @@ func getRandomPort() (int, error) {
 // createTempConfig 创建临时配置文件（覆盖端口、数据库路径和 Redis 配置）。
 // extraTOML 非空时追加到文件末尾，用于注入 [Report] 等额外配置段。
 // dbPatchCfg 非空时用其 driver/dbName 覆盖默认 SQLite 连接（MySQL 并发用例）。
-func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr string, extraTOML string, dbPatchCfg *dbPatch) (string, error) {
+// monitorPort > 0 时把模板中的 MonitorPort = -1 替换为该端口（启用监控端口）。
+func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr string, extraTOML string, dbPatchCfg *dbPatch, monitorPort int) (string, error) {
 	// 创建临时配置目录
 	tmpDir, err := os.MkdirTemp("", "ai-gateway-test-conf-")
 	if err != nil {
@@ -363,8 +386,15 @@ func createTempConfig(srcConfDir, binPath, dbPath string, port int, redisAddr st
 	}
 
 	confStr := string(content)
-	// 替换端口
+	// 替换端口。注意：测试模板已显式配置 ServerAddr = "127.0.0.1"
+	//（避免 Windows 防火墙弹窗），此处不得再插入 ServerAddr 键（TOML 重复键报错）。
 	confStr = strings.Replace(confStr, "ServerPort = 8199", fmt.Sprintf("ServerPort = %d", port), 1)
+	// 替换监控端口（模板为 -1 禁用；仅 monitorPort > 0 时启用）并绑定回环地址：
+	// 监控端口默认监听所有网卡会触发 Windows 防火墙弹窗，测试环境只需本机访问
+	if monitorPort > 0 {
+		confStr = strings.Replace(confStr, "MonitorPort = -1",
+			fmt.Sprintf("MonitorPort = %d\nMonitorAddr = \"127.0.0.1\"", monitorPort), 1)
+	}
 	if dbPatchCfg != nil {
 		// 外部 DB 覆盖（MySQL）：整体替换 [Databases.bfe_db] 段
 		confStr = replaceDBSection(confStr, dbPatchCfg.section)
@@ -475,6 +505,12 @@ func copyDir(src, dst string) error {
 		}
 	}
 	return nil
+}
+
+// ConfFile 返回本实例临时配置文件 ai_gateway_api.toml 的完整路径。
+// 用于热加载类用例在运行期改写配置段后触发 /reload/*（配合 MonitorURL）。
+func (sm *ServerManager) ConfFile() string {
+	return filepath.Join(sm.tmpConfDir, "ai_gateway_api.toml")
 }
 
 // SetQuotaRemaining 直接设置 miniredis 中某 owner 的配额剩余量。

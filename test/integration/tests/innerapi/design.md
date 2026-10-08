@@ -10,6 +10,8 @@ v0.0.7 起，Cluster 表导出（`/configs/gslb_data/cluster_table`）中的 `AI
 
 v0.6 起，`AIConf.KeyPolicy` 新增 `SessionAffinity`、`SessionAffinityTTL`、`SessionAffinityRedisPrefix`、`SessionAffinityPenaltyEnable` 字段，对应 OpenAPI `llm_config.key_affinity`，用于会话级 Key 亲和性。InnerAPI 应验证这些字段与 OpenAPI 写入的 `key_affinity` 配置一致（含默认值）。
 
+v0.10 起，`[Security].EncryptExports=true` 时，本清单的 IN-1（`AIConf.Keys[].Key`）与 IN-6（`tokens` 外层键、内层 `key` 置空）以 `enc$v1$` 字段级密文导出（信封/marker 直通/确定性密文等契约见 `api-define/InnerAPI接口定义/mod-api-key.md` §3.5 与 `modifications/2026-10-05-export-config-field-encryption/api-changes.md`）；其余 topic 不受影响。加密导出专项用例见独立模块 `tests/export_encryption/`（前缀 EFE），本目录各 submodule 用例保持明文形态（默认开关关闭）。
+
 ## 2. 接口列表
 
 | 编号 | 接口名称 | 方法 | 路径 | 说明 |
@@ -1323,6 +1325,22 @@ IN-EPP-003 中 `flow_control` 写入 `{"max_requests": 200, "queue_ttl": 45, "no
 1. 需要预先通过 OpenAPI 创建 API-Key、Entity、Cluster、证书、Global Route 等数据，才能验证导出内容非空；验证模型定价表时需先导入 model prices 并创建对应 provider 的 Cluster；验证分时段定价时需先设置 provider 的 `time_zone`/`tiers` 并导入含 `tier_prices` 的 model prices。
 2. `/configs/gslb_data/gslb` 依赖正确的 `bfe_cluster` 参数，通常为 `BFE-AI_product.szyf`。
 3. InnerAPI 鉴权为 `McUserProbe`，测试环境需配置为可跳过或使用 Support Token。
+
+## 19. normalize_upstream_error 导出用例（2026-10-06 上游错误体归一）
+
+### 19.1 测试场景总览
+
+| 编号 | 场景 | 测试类型 | 简要说明 |
+|------|------|---------|---------|
+| IN-NUE-1-001 | 导出 AIConf.NormalizeUpstreamError 存在性与取值 | 返回数据 | 创建全字段配置集群 → 导出断言 Enabled/StreamEnabled/UnrecognizedAction/MaxBodyBytes/RedactSecrets 逐字段（检查项 #8） |
+| IN-NUE-1-002 | redact_secrets 显式 false 导出 | 返回数据 | 验证显式 false 不被默认值污染（指针直通回归锚点） |
+| IN-NUE-1-003 | 未配置集群导出为 null | 返回数据 | 验证 `AIConf.NormalizeUpstreamError == null`（BFE 关闭，合同见 api-changes §3） |
+
+### 19.2 详细设计要点
+
+- 与 IN-1-002 同模式：创建集群后拉取 `/inner-api/v1/configs/tls_conf/server_data_conf`，
+  下钻 `ClusterConf.Config.<cluster>.AIConf`；
+- 数值断言对反序列化值（MaxBodyBytes 无精度风险，int64 直比）。
 
 ## 20. 注意事项
 

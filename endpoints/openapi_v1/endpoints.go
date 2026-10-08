@@ -22,6 +22,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/ai_context"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/api_key"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/auth"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/batches"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/bfe_cluster"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/certificate"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/domain"
@@ -40,6 +41,7 @@ import (
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/report"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/route_tables"
+	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/security"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/subcluster"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/traffic"
 	"github.com/rainway-ai-gateway/ai-gateway-api/endpoints/openapi_v1/traffic_mirror"
@@ -79,9 +81,11 @@ func endpoints() []*xreq.Endpoint {
 		traffic_mirror.Endpoints,
 		intent_config.Endpoints,
 		route_tables.Endpoints,
+		security.Routes,
 		model_price.Endpoints,
 		operation_log.Endpoints,
 		provider.Endpoints,
+		batches.Endpoints,
 	)
 
 	// The report module only registers when it is assembled

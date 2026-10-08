@@ -31,10 +31,12 @@ package icluster_conf
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 
 	"github.com/bfenetworks/bfe/bfe_config/bfe_cluster_conf/cluster_conf"
 	"github.com/bfenetworks/bfe/bfe_config/bfe_route_conf/route_rule_conf"
+	"github.com/bfenetworks/go-lib/log"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib/xerror"
@@ -221,13 +223,28 @@ type KeyAffinity struct {
 	PenaltyEnable *bool   `json:"penalty_enable"` // default true
 }
 
+// NormalizeUpstreamError configures upstream error normalization (unified
+// error codes) for this cluster. Nil means disabled: the exported AIConf
+// carries no NormalizeUpstreamError and BFE keeps the historical
+// pass-through behavior. Field semantics and validation mirror the BFE
+// AIConfCheck rules (no default synthesis here; BFE Effective() applies
+// defaults at load time).
+type NormalizeUpstreamError struct {
+	Enabled            *bool   `json:"enabled"`             // non-streaming normalization switch, default false
+	StreamEnabled      *bool   `json:"stream_enabled"`      // streaming (SSE) normalization switch, default false
+	UnrecognizedAction *string `json:"unrecognized_action"` // passthrough / rewrite_generic
+	MaxBodyBytes       *int64  `json:"max_body_bytes"`      // error body read limit; <=0/unset uses BFE default 65536
+	RedactSecrets      *bool   `json:"redact_secrets"`      // credential redaction; nil = BFE default true, explicit false disables
+}
+
 type LLMConfig struct {
-	Models        []string        `json:"models"`         // model name list
-	ModelMappings []*Mapping      `json:"model_mappings"` // model mapping
-	Keys          []ClusterKeyRef `json:"keys"`           // references to provider keys with weights
-	KeyPolicy     *KeyPolicy      `json:"key_policy"`     // key routing policy
-	KeyAffinity   *KeyAffinity    `json:"key_affinity"`   // session-level key affinity
-	Provider      *string         `json:"provider"`       // provider name; required
+	Models                 []string                `json:"models"`                   // model name list
+	ModelMappings          []*Mapping              `json:"model_mappings"`           // model mapping
+	Keys                   []ClusterKeyRef         `json:"keys"`                     // references to provider keys with weights
+	KeyPolicy              *KeyPolicy              `json:"key_policy"`               // key routing policy
+	KeyAffinity            *KeyAffinity            `json:"key_affinity"`             // session-level key affinity
+	NormalizeUpstreamError *NormalizeUpstreamError `json:"normalize_upstream_error"` // upstream error normalization (unified error codes)
+	Provider               *string                 `json:"provider"`                 // provider name; required
 
 	// MatchPrefix defines the provider/model prefix this cluster matches.
 	// Must end with '/' to avoid matching model names themselves.
@@ -1229,7 +1246,7 @@ func NewBfeClusterConf(ctx context.Context, version string, clusters []*Cluster,
 	providerProtocolTable map[string][]string,
 	providerProtocolPathsTable map[string]map[string]string,
 	providerPricingTable map[string]ProviderPricingInfo,
-	eppResolver EPPAssignmentResolver) *cluster_conf.BfeClusterConf {
+	eppResolver EPPAssignmentResolver) (*cluster_conf.BfeClusterConf, error) {
 	clusterConfMap := cluster_conf.ClusterToConf{}
 
 	int322intp := func(i int32) *int {
@@ -1315,23 +1332,7 @@ func NewBfeClusterConf(ctx context.Context, version string, clusters []*Cluster,
 			}
 			if provider != "" {
 				if entries, ok := providerModelTable[provider]; ok && len(entries) > 0 {
-					models := make([]cluster_conf.ModelPrice, 0, len(entries))
-					for _, e := range entries {
-						if e != nil {
-							models = append(models, cluster_conf.ModelPrice{
-								Provider:            e.Provider,
-								Model:               e.Model,
-								BaseModel:           e.BaseModel,
-								Mode:                e.Mode,
-								Capabilities:        e.Capabilities,
-								SupportedParameters: e.SupportedParameters,
-								Limits:              e.Limits,
-								Prices:              cluster_conf.PriceMap(e.Prices),
-								TierPrices:          cluster_conf.TierPriceMap(e.TierPrices),
-								Metadata:            e.Metadata,
-							})
-						}
-					}
+					models := buildModelTableModels(entries)
 					pricingInfo := providerPricingTable[provider]
 					timeZone := pricingInfo.TimeZone
 					if timeZone == "" {
@@ -1353,10 +1354,115 @@ func NewBfeClusterConf(ctx context.Context, version string, clusters []*Cluster,
 
 		clusterConfMap[cluster.Name] = clusterConf
 	}
+
+	// Field-level encryption at rest: encrypt AIConf.Keys[].Key so no
+	// upstream provider key lands on BFE disk in plaintext. Name/Weight/
+	// KeyPolicy/model mappings stay readable. Any failure aborts the
+	// export rather than emitting a half-encrypted file.
+	if stateful.ExportCryptoEnabled() {
+		for name, conf := range clusterConfMap {
+			if conf.AIConf == nil {
+				continue
+			}
+			for i := range conf.AIConf.Keys {
+				enc, err := stateful.ExportEncrypt(conf.AIConf.Keys[i].Key)
+				if err != nil {
+					return nil, fmt.Errorf("cluster %s: encrypt AIConf.Keys[%d] failed: %s", name, i, err)
+				}
+				conf.AIConf.Keys[i].Key = enc
+			}
+		}
+	}
+
 	return &cluster_conf.BfeClusterConf{
 		Version: &version,
 		Config:  &clusterConfMap,
+	}, nil
+}
+
+// batchPricePrecision keeps expanded batch prices on the 1e-8 fixed-point
+// denomination (same as quota.RmbPrecision used by the data-plane cost math).
+const batchPricePrecision = 1e8
+
+// buildModelTableModels converts stored model price entries into the BFE
+// ModelTable rows. Entries carrying a BatchDiscount additionally expand into
+// an explicit mode=batch row whose price keys are multiplied by the discount
+// (rounded to 8 decimal places). A manually maintained (provider, model,
+// mode=batch) row takes precedence over the expanded row: the expansion is
+// skipped with a warning log and the export continues.
+func buildModelTableModels(entries []*imodel_price.ModelPrice) []cluster_conf.ModelPrice {
+	manualBatch := map[string]bool{}
+	for _, e := range entries {
+		if e != nil && e.Mode == "batch" {
+			manualBatch[e.Model] = true
+		}
 	}
+
+	models := make([]cluster_conf.ModelPrice, 0, len(entries))
+	for _, e := range entries {
+		if e == nil {
+			continue
+		}
+		models = append(models, cluster_conf.ModelPrice{
+			Provider:            e.Provider,
+			Model:               e.Model,
+			BaseModel:           e.BaseModel,
+			Mode:                e.Mode,
+			Capabilities:        e.Capabilities,
+			SupportedParameters: e.SupportedParameters,
+			Limits:              e.Limits,
+			Prices:              cluster_conf.PriceMap(e.Prices),
+			TierPrices:          cluster_conf.TierPriceMap(e.TierPrices),
+			Metadata:            e.Metadata,
+		})
+
+		if e.BatchDiscount == nil || e.Mode == "batch" {
+			continue
+		}
+		if manualBatch[e.Model] {
+			log.Logger.Warn("model price export: manual (provider=%s, model=%s, mode=batch) row exists, skip batch_discount expansion", e.Provider, e.Model)
+			continue
+		}
+
+		models = append(models, cluster_conf.ModelPrice{
+			Provider:            e.Provider,
+			Model:               e.Model,
+			BaseModel:           e.BaseModel,
+			Mode:                "batch",
+			Capabilities:        e.Capabilities,
+			SupportedParameters: e.SupportedParameters,
+			Limits:              e.Limits,
+			Prices:              scaleBatchPrices(e.Prices, *e.BatchDiscount),
+			TierPrices:          scaleBatchTierPrices(e.TierPrices, *e.BatchDiscount),
+			Metadata:            e.Metadata,
+		})
+	}
+	return models
+}
+
+// scaleBatchPrices multiplies every price key by the batch discount, rounding
+// to 8 decimal places so the 1e-8 fixed-point denomination stays clean.
+func scaleBatchPrices(src imodel_price.PriceMap, discount float64) cluster_conf.PriceMap {
+	if src == nil {
+		return nil
+	}
+	rst := make(cluster_conf.PriceMap, len(src))
+	for k, v := range src {
+		rst[k] = math.Round(v*discount*batchPricePrecision) / batchPricePrecision
+	}
+	return rst
+}
+
+// scaleBatchTierPrices expands tier prices tier by tier with the same factor.
+func scaleBatchTierPrices(src imodel_price.TierPriceMap, discount float64) cluster_conf.TierPriceMap {
+	if src == nil {
+		return nil
+	}
+	rst := make(cluster_conf.TierPriceMap, len(src))
+	for tier, prices := range src {
+		rst[tier] = scaleBatchPrices(prices, discount)
+	}
+	return rst
 }
 
 func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,
@@ -1418,6 +1524,17 @@ func newAIConf(llmConfig *LLMConfig, modelTable *cluster_conf.ModelTable,
 		aiConf.KeyPolicy.SessionAffinityRedisPrefix = derefString(llmConfig.KeyAffinity.RedisPrefix, "bfe:ai:key_affinity")
 		aiConf.KeyPolicy.SessionAffinityPenaltyEnable = derefBool(llmConfig.KeyAffinity.PenaltyEnable, true)
 	}
+	if llmConfig.NormalizeUpstreamError != nil {
+		aiConf.NormalizeUpstreamError = &cluster_conf.UpstreamErrorNormalizeConf{
+			Enabled:            derefBool(llmConfig.NormalizeUpstreamError.Enabled, false),
+			StreamEnabled:      derefBool(llmConfig.NormalizeUpstreamError.StreamEnabled, false),
+			UnrecognizedAction: derefString(llmConfig.NormalizeUpstreamError.UnrecognizedAction, ""),
+			MaxBodyBytes:       derefInt64(llmConfig.NormalizeUpstreamError.MaxBodyBytes, 0),
+			// pointer passthrough: nil stays nil so BFE can distinguish
+			// "unset" (default true) from an explicit false
+			RedactSecrets: llmConfig.NormalizeUpstreamError.RedactSecrets,
+		}
+	}
 
 	return aiConf
 }
@@ -1430,6 +1547,13 @@ func derefString(s *string, defaultValue string) string {
 }
 
 func derefInt(i *int, defaultValue int) int {
+	if i == nil {
+		return defaultValue
+	}
+	return *i
+}
+
+func derefInt64(i *int64, defaultValue int64) int64 {
 	if i == nil {
 		return defaultValue
 	}

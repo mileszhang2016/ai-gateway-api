@@ -207,10 +207,12 @@ func UserName(s string) error {
 	return nil
 }
 
-// Password validates a password. It must not equal the user name or its reverse.
+// Password validates a password. It must not equal the user name or its
+// reverse. Length is measured in bytes (Go's len) and capped at 72, the
+// bcrypt input limit.
 func Password(password, userName string) error {
-	if len(password) < 8 || len(password) > 128 {
-		return xerror.WrapParamErrorWithMsg("password length must be between 8 and 128")
+	if len(password) < 8 || len(password) > 72 {
+		return xerror.WrapParamErrorWithMsg("password length must be between 8 and 72 bytes")
 	}
 	for _, r := range password {
 		if unicode.IsSpace(r) {
@@ -442,8 +444,9 @@ func RateLimitPolicy(p *shared.RateLimitPolicyParam) error {
 		hasTpm := len(p.Rules.TpmConfigs) > 0
 		hasRpm := len(p.Rules.RpmConfigs) > 0
 		hasConcurrency := p.Rules.MaxConcurrency != nil && *p.Rules.MaxConcurrency >= 0
-		if !hasTpm && !hasRpm && !hasConcurrency {
-			return xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, at least one of rules.tpm, rules.rpm, or rules.max_concurrency(>=0) must be set")
+		hasBatch := p.Rules.BatchLimits != nil
+		if !hasTpm && !hasRpm && !hasConcurrency && !hasBatch {
+			return xerror.WrapParamErrorWithMsg("when rate_limit_policy.enabled is true, at least one of rules.tpm, rules.rpm, rules.max_concurrency(>=0), or rules.batch_limits must be set")
 		}
 	}
 	if p.Rules == nil {
@@ -457,6 +460,20 @@ func RateLimitPolicy(p *shared.RateLimitPolicyParam) error {
 	}
 	if p.Rules.MaxConcurrency != nil && *p.Rules.MaxConcurrency < -1 {
 		return xerror.WrapParamErrorWithMsg("max_concurrency must be -1 or >= 0")
+	}
+	if p.Rules.BatchLimits != nil {
+		if p.Rules.BatchLimits.MaxCreateRPM < 0 {
+			return xerror.WrapParamErrorWithMsg("batch_limits.max_create_rpm must be >= 0")
+		}
+		if p.Rules.BatchLimits.MaxActiveBatches < 0 {
+			return xerror.WrapParamErrorWithMsg("batch_limits.max_active_batches must be >= 0")
+		}
+		if p.Rules.BatchLimits.MaxFileBytes < 0 {
+			return xerror.WrapParamErrorWithMsg("batch_limits.max_file_bytes must be >= 0")
+		}
+		if p.Rules.BatchLimits.MaxFileLines < 0 {
+			return xerror.WrapParamErrorWithMsg("batch_limits.max_file_lines must be >= 0")
+		}
 	}
 
 	nameSet := map[string]struct{}{}
@@ -1083,6 +1100,21 @@ func LLMConfig(c *icluster_conf.LLMConfig) error {
 		}
 		if c.KeyAffinity.RedisPrefix != nil && *c.KeyAffinity.RedisPrefix == "" {
 			return xerror.WrapParamErrorWithMsg("llm_config.key_affinity.redis_prefix must not be empty")
+		}
+	}
+
+	// Validate normalize_upstream_error; the rules mirror the BFE
+	// AIConfCheck exactly so an accepted config never fails BFE loading.
+	if c.NormalizeUpstreamError != nil {
+		nue := c.NormalizeUpstreamError
+		if nue.UnrecognizedAction != nil && *nue.UnrecognizedAction != "" &&
+			*nue.UnrecognizedAction != "passthrough" && *nue.UnrecognizedAction != "rewrite_generic" {
+			return xerror.WrapParamErrorWithMsg(
+				"llm_config.normalize_upstream_error.unrecognized_action must be passthrough or rewrite_generic")
+		}
+		if nue.MaxBodyBytes != nil && (*nue.MaxBodyBytes < 0 || *nue.MaxBodyBytes > 4*1024*1024) {
+			return xerror.WrapParamErrorWithMsg(
+				"llm_config.normalize_upstream_error.max_body_bytes must be between 0 and 4194304")
 		}
 	}
 

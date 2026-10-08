@@ -78,6 +78,7 @@ const (
 	ResourceTypeTrafficMirrorRule       ResourceType = "traffic_mirror_rule"
 	ResourceTypeIntentConfig            ResourceType = "intent_config"
 	ResourceTypeModelPrice              ResourceType = "model_price"
+	ResourceTypeBatchTask               ResourceType = "batch_task"
 	ResourceTypeUser                    ResourceType = "user"
 	ResourceTypeToken                   ResourceType = "token"
 )

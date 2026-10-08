@@ -205,6 +205,36 @@ func TestNormalizeLLMConfig(t *testing.T) {
 		assert.Equal(t, true, *got.KeyAffinity.PenaltyEnable)
 	})
 
+	t.Run("copies normalize_upstream_error (no default synthesis)", func(t *testing.T) {
+		in := &icluster_conf.LLMConfig{
+			Models: []string{"gpt-4"},
+			NormalizeUpstreamError: &icluster_conf.NormalizeUpstreamError{
+				Enabled:            lib.PBool(true),
+				StreamEnabled:      lib.PBool(true),
+				UnrecognizedAction: lib.PString("rewrite_generic"),
+				MaxBodyBytes:       lib.PInt64(65536),
+				RedactSecrets:      lib.PBool(false),
+			},
+		}
+		got := normalizeLLMConfig(in)
+		require.NotNil(t, got)
+		require.NotNil(t, got.NormalizeUpstreamError)
+		assert.Equal(t, true, *got.NormalizeUpstreamError.Enabled)
+		assert.Equal(t, true, *got.NormalizeUpstreamError.StreamEnabled)
+		assert.Equal(t, "rewrite_generic", *got.NormalizeUpstreamError.UnrecognizedAction)
+		assert.Equal(t, int64(65536), *got.NormalizeUpstreamError.MaxBodyBytes)
+		assert.Equal(t, false, *got.NormalizeUpstreamError.RedactSecrets)
+	})
+
+	t.Run("normalize_upstream_error nil stays nil (BFE Effective applies defaults)", func(t *testing.T) {
+		in := &icluster_conf.LLMConfig{
+			Models: []string{"gpt-4"},
+		}
+		got := normalizeLLMConfig(in)
+		require.NotNil(t, got)
+		assert.Nil(t, got.NormalizeUpstreamError)
+	})
+
 	t.Run("key_affinity fills defaults when empty object", func(t *testing.T) {
 		in := &icluster_conf.LLMConfig{
 			Models:      []string{"gpt-4"},

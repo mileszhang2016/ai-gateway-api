@@ -416,14 +416,15 @@ func normalizeLLMConfig(llm *icluster_conf.LLMConfig) *icluster_conf.LLMConfig {
 	}
 
 	rst := &icluster_conf.LLMConfig{
-		Models:        llm.Models,
-		ModelMappings: llm.ModelMappings,
-		Keys:          llm.Keys,
-		KeyPolicy:     llm.KeyPolicy,
-		KeyAffinity:   normalizeKeyAffinity(llm.KeyAffinity),
-		Provider:      llm.Provider,
-		MatchPrefix:   llm.MatchPrefix,
-		StripPrefix:   llm.StripPrefix,
+		Models:                 llm.Models,
+		ModelMappings:          llm.ModelMappings,
+		Keys:                   llm.Keys,
+		KeyPolicy:              llm.KeyPolicy,
+		KeyAffinity:            normalizeKeyAffinity(llm.KeyAffinity),
+		NormalizeUpstreamError: llm.NormalizeUpstreamError,
+		Provider:               llm.Provider,
+		MatchPrefix:            llm.MatchPrefix,
+		StripPrefix:            llm.StripPrefix,
 	}
 	if rst.Keys == nil {
 		rst.Keys = []icluster_conf.ClusterKeyRef{}

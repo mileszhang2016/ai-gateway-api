@@ -456,9 +456,25 @@ func newTestClusterLLM() *Cluster {
 			RedisPrefix:   lib.PString("bfe:ai:key_affinity"),
 			PenaltyEnable: lib.PBool(true),
 		},
+		NormalizeUpstreamError: &NormalizeUpstreamError{
+			Enabled:            lib.PBool(true),
+			StreamEnabled:      lib.PBool(true),
+			UnrecognizedAction: lib.PString("passthrough"),
+			MaxBodyBytes:       lib.PInt64(65536),
+			RedactSecrets:      lib.PBool(true),
+		},
 		MatchPrefix: lib.PString("openrouter/"),
 		StripPrefix: lib.PBool(true),
 	}
+	return c
+}
+
+// newTestClusterLLMWithoutNue returns the LLM test cluster without the
+// normalize_upstream_error config (the historical shape before the
+// upstream-error-normalization change).
+func newTestClusterLLMWithoutNue() *Cluster {
+	c := newTestClusterLLM()
+	c.LLMConfig.NormalizeUpstreamError = nil
 	return c
 }
 
@@ -1100,7 +1116,8 @@ func TestAppendAdvancedRuleCluster(t *testing.T) {
 
 func TestNewBfeClusterConf(t *testing.T) {
 	t.Run("basic", func(t *testing.T) {
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterBase()}, nil, nil, nil, nil, nil, nil)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterBase()}, nil, nil, nil, nil, nil, nil)
+		assert.NoError(t, err)
 		require.NotNil(t, conf)
 		require.NotNil(t, conf.Config)
 		assert.Equal(t, "v1", *conf.Version)
@@ -1113,10 +1130,11 @@ func TestNewBfeClusterConf(t *testing.T) {
 	})
 
 	t.Run("skip system route", func(t *testing.T) {
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{
 			newTestClusterBase(),
 			{ID: RouteAdvancedModeClusterID, Name: RouteAdvancedModeClusterName},
 		}, nil, nil, nil, nil, nil, nil)
+		assert.NoError(t, err)
 		require.Len(t, *conf.Config, 1)
 	})
 
@@ -1126,7 +1144,8 @@ func TestNewBfeClusterConf(t *testing.T) {
 				return []string{"10.0.0.1:9002", "10.0.0.2:9002"}, true, nil
 			},
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, resolver)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, resolver)
+		assert.NoError(t, err)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic.EPPAddr)
 		assert.Equal(t, []string{"10.0.0.1:9002", "10.0.0.2:9002"}, *cConf.GslbBasic.EPPAddr)
@@ -1140,7 +1159,8 @@ func TestNewBfeClusterConf(t *testing.T) {
 				return nil, false, nil
 			},
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, resolver)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, resolver)
+		assert.NoError(t, err)
 		cConf := (*conf.Config)["c1"]
 		assert.Nil(t, cConf.GslbBasic.EPPAddr)
 		require.NotNil(t, cConf.GslbBasic.BalanceMode)
@@ -1153,7 +1173,8 @@ func TestNewBfeClusterConf(t *testing.T) {
 				return nil, false, errors.New("db down")
 			},
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, resolver)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, resolver)
+		assert.NoError(t, err)
 		cConf := (*conf.Config)["c1"]
 		assert.Nil(t, cConf.GslbBasic.EPPAddr)
 		require.NotNil(t, cConf.GslbBasic.BalanceMode)
@@ -1161,7 +1182,8 @@ func TestNewBfeClusterConf(t *testing.T) {
 	})
 
 	t.Run("EPP without resolver degrades to WRR", func(t *testing.T) {
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, nil)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterEPP()}, nil, nil, nil, nil, nil, nil)
+		assert.NoError(t, err)
 		cConf := (*conf.Config)["c1"]
 		assert.Nil(t, cConf.GslbBasic.EPPAddr)
 		require.NotNil(t, cConf.GslbBasic.BalanceMode)
@@ -1174,7 +1196,8 @@ func TestNewBfeClusterConf(t *testing.T) {
 				return []string{"10.0.0.1:9002"}, true, nil
 			},
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterBase()}, nil, nil, nil, nil, nil, resolver)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterBase()}, nil, nil, nil, nil, nil, resolver)
+		assert.NoError(t, err)
 		cConf := (*conf.Config)["c1"]
 		assert.Nil(t, cConf.GslbBasic.EPPAddr)
 		require.NotNil(t, cConf.GslbBasic.BalanceMode)
@@ -1182,17 +1205,64 @@ func TestNewBfeClusterConf(t *testing.T) {
 	})
 
 	t.Run("https conf", func(t *testing.T) {
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterHTTPS()}, nil, nil, nil, nil, nil, nil)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterHTTPS()}, nil, nil, nil, nil, nil, nil)
+		assert.NoError(t, err)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.HTTPSConf)
 		assert.True(t, *cConf.HTTPSConf.RSInsecureSkipVerify)
 	})
 
 	t.Run("domain pool disable checks", func(t *testing.T) {
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterDomain()}, nil, nil, nil, nil, nil, nil)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterDomain()}, nil, nil, nil, nil, nil, nil)
+		assert.NoError(t, err)
 		cConf := (*conf.Config)["c1"]
 		assert.True(t, *cConf.ClusterBasic.DisableHealthCheck)
 		assert.True(t, *cConf.ClusterBasic.DisableHostHeader)
+	})
+
+	t.Run("normalize_upstream_error three states", func(t *testing.T) {
+		providerKeyTable := map[string][]iprovider.ProviderKey{
+			"openai": {
+				{Name: "key-primary", Key: "sk-aaaaaaaaaaaa"},
+			},
+		}
+		providerProtocolTable := map[string][]string{
+			"openai": {"openai"},
+		}
+
+		exportNue := func(c *Cluster) *cluster_conf.UpstreamErrorNormalizeConf {
+			conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{c}, nil,
+				providerKeyTable, providerProtocolTable, nil, nil, nil)
+			assert.NoError(t, err)
+			return (*conf.Config)["c1"].AIConf.NormalizeUpstreamError
+		}
+
+		// state 1: unset -> field absent (BFE disabled)
+		assert.Nil(t, exportNue(newTestClusterLLMWithoutNue()))
+
+		// state 2: partial fields -> unset fields export as zero values
+		partial := newTestClusterLLMWithoutNue()
+		partial.LLMConfig.NormalizeUpstreamError = &NormalizeUpstreamError{
+			Enabled: lib.PBool(true),
+		}
+		nue := exportNue(partial)
+		require.NotNil(t, nue)
+		assert.True(t, nue.Enabled)
+		assert.False(t, nue.StreamEnabled)
+		assert.Equal(t, "", nue.UnrecognizedAction)
+		assert.Equal(t, int64(0), nue.MaxBodyBytes)
+		assert.Nil(t, nue.RedactSecrets) // unset stays nil: BFE defaults to true
+
+		// state 3: explicit redact_secrets=false must survive the export
+		disabled := newTestClusterLLMWithoutNue()
+		disabled.LLMConfig.NormalizeUpstreamError = &NormalizeUpstreamError{
+			Enabled:       lib.PBool(true),
+			RedactSecrets: lib.PBool(false),
+		}
+		nue = exportNue(disabled)
+		require.NotNil(t, nue)
+		require.NotNil(t, nue.RedactSecrets)
+		assert.False(t, *nue.RedactSecrets)
 	})
 
 	t.Run("LLM config", func(t *testing.T) {
@@ -1208,7 +1278,8 @@ func TestNewBfeClusterConf(t *testing.T) {
 		providerProtocolPathsTable := map[string]map[string]string{
 			"openai": {"openai": "/compatible-mode/v1"},
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterLLM()}, nil, providerKeyTable, providerProtocolTable, providerProtocolPathsTable, nil, nil)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{newTestClusterLLM()}, nil, providerKeyTable, providerProtocolTable, providerProtocolPathsTable, nil, nil)
+		assert.NoError(t, err)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.AIConf)
 		require.Len(t, cConf.AIConf.Keys, 2)
@@ -1233,6 +1304,13 @@ func TestNewBfeClusterConf(t *testing.T) {
 		assert.True(t, cConf.AIConf.StripPrefix)
 		assert.Equal(t, []string{"openai"}, cConf.AIConf.ModelProtocols)
 		assert.Equal(t, map[string]string{"openai": "/compatible-mode/v1"}, cConf.AIConf.ProtocolPaths)
+		require.NotNil(t, cConf.AIConf.NormalizeUpstreamError)
+		assert.True(t, cConf.AIConf.NormalizeUpstreamError.Enabled)
+		assert.True(t, cConf.AIConf.NormalizeUpstreamError.StreamEnabled)
+		assert.Equal(t, "passthrough", cConf.AIConf.NormalizeUpstreamError.UnrecognizedAction)
+		assert.Equal(t, int64(65536), cConf.AIConf.NormalizeUpstreamError.MaxBodyBytes)
+		require.NotNil(t, cConf.AIConf.NormalizeUpstreamError.RedactSecrets)
+		assert.True(t, *cConf.AIConf.NormalizeUpstreamError.RedactSecrets)
 	})
 
 	t.Run("LLM config with tiered pricing", func(t *testing.T) {
@@ -1276,7 +1354,8 @@ func TestNewBfeClusterConf(t *testing.T) {
 		}
 		c := newTestClusterLLM()
 		c.LLMConfig.Provider = lib.PString("deepseek")
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{c}, providerModelTable, nil, nil, nil, providerPricingTable, nil)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{c}, providerModelTable, nil, nil, nil, providerPricingTable, nil)
+		assert.NoError(t, err)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.AIConf)
 		require.NotNil(t, cConf.AIConf.ModelTable)
@@ -1300,7 +1379,8 @@ func TestNewBfeClusterConf(t *testing.T) {
 			HashStrategy:  ClusterHashStrategyClientIDOnlyI,
 			HashHeader:    "",
 		}
-		conf := NewBfeClusterConf(context.Background(), "v1", []*Cluster{c}, nil, nil, nil, nil, nil, nil)
+		conf, err := NewBfeClusterConf(context.Background(), "v1", []*Cluster{c}, nil, nil, nil, nil, nil, nil)
+		assert.NoError(t, err)
 		cConf := (*conf.Config)["c1"]
 		require.NotNil(t, cConf.GslbBasic)
 		require.NotNil(t, cConf.GslbBasic.HashConf)

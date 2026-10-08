@@ -70,6 +70,8 @@ func TestUserName(t *testing.T) {
 
 func TestPassword(t *testing.T) {
 	assert.NoError(t, Password("password123", "user1"))
+	assert.NoError(t, Password(strings.Repeat("a", 72), "user1"))
+	assert.Error(t, Password(strings.Repeat("a", 73), "user1"))
 	assert.Error(t, Password("short1", "user1"))
 	assert.Error(t, Password("user1", "user1"))
 	assert.Error(t, Password("1resu", "user1"))
@@ -222,6 +224,39 @@ func TestRateLimitPolicy(t *testing.T) {
 
 	policy.Rules.TpmConfigs = append(policy.Rules.TpmConfigs, shared.TPMConfig{Name: "t1", Model: "*", WindowMinutes: 1, MaxTokens: 100, StepMinutes: 1})
 	assert.Error(t, RateLimitPolicy(policy))
+}
+
+func TestRateLimitPolicy_BatchLimits(t *testing.T) {
+	enabled := true
+
+	// batch_limits alone satisfies the "at least one rule" requirement.
+	policy := &shared.RateLimitPolicyParam{
+		Enabled: &enabled,
+		Rules:   &shared.RateLimitRules{BatchLimits: &shared.BatchLimits{}},
+	}
+	assert.NoError(t, RateLimitPolicy(policy))
+
+	policy.Rules.BatchLimits = &shared.BatchLimits{
+		MaxCreateRPM:     10,
+		MaxActiveBatches: 5,
+		MaxFileBytes:     104857600,
+		MaxFileLines:     50000,
+	}
+	assert.NoError(t, RateLimitPolicy(policy))
+
+	// Negative dimensions are rejected.
+	policy.Rules.BatchLimits = &shared.BatchLimits{MaxCreateRPM: -1}
+	assert.Error(t, RateLimitPolicy(policy))
+	policy.Rules.BatchLimits = &shared.BatchLimits{MaxActiveBatches: -1}
+	assert.Error(t, RateLimitPolicy(policy))
+	policy.Rules.BatchLimits = &shared.BatchLimits{MaxFileBytes: -1}
+	assert.Error(t, RateLimitPolicy(policy))
+	policy.Rules.BatchLimits = &shared.BatchLimits{MaxFileLines: -1}
+	assert.Error(t, RateLimitPolicy(policy))
+
+	// Zero values are valid (dimension not limited).
+	policy.Rules.BatchLimits = &shared.BatchLimits{MaxCreateRPM: 0}
+	assert.NoError(t, RateLimitPolicy(policy))
 }
 
 func TestRouteRules(t *testing.T) {
@@ -399,6 +434,56 @@ func TestLLMConfig(t *testing.T) {
 		RedisPrefix: lib.PString(""),
 	}
 	assert.Error(t, LLMConfig(&c13))
+
+	// valid normalize_upstream_error (full and partial)
+	c14 := *c
+	c14.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		Enabled:            lib.PBool(true),
+		StreamEnabled:      lib.PBool(true),
+		UnrecognizedAction: lib.PString("rewrite_generic"),
+		MaxBodyBytes:       lib.PInt64(65536),
+		RedactSecrets:      lib.PBool(false),
+	}
+	assert.NoError(t, LLMConfig(&c14))
+
+	c15 := *c
+	c15.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		Enabled: lib.PBool(true),
+	}
+	assert.NoError(t, LLMConfig(&c15))
+
+	// invalid normalize_upstream_error.unrecognized_action
+	c16 := *c
+	c16.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		UnrecognizedAction: lib.PString("replace"),
+	}
+	assert.Error(t, LLMConfig(&c16))
+
+	// invalid normalize_upstream_error.max_body_bytes (negative / oversized)
+	c17 := *c
+	c17.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		MaxBodyBytes: lib.PInt64(-1),
+	}
+	assert.Error(t, LLMConfig(&c17))
+
+	c18 := *c
+	c18.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		MaxBodyBytes: lib.PInt64(4*1024*1024 + 1),
+	}
+	assert.Error(t, LLMConfig(&c18))
+
+	// boundary values are accepted: 0 (BFE default) and exactly 4MB
+	c19 := *c
+	c19.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		MaxBodyBytes: lib.PInt64(0),
+	}
+	assert.NoError(t, LLMConfig(&c19))
+
+	c20 := *c
+	c20.NormalizeUpstreamError = &icluster_conf.NormalizeUpstreamError{
+		MaxBodyBytes: lib.PInt64(4 * 1024 * 1024),
+	}
+	assert.NoError(t, LLMConfig(&c20))
 }
 
 func TestInstancePool(t *testing.T) {

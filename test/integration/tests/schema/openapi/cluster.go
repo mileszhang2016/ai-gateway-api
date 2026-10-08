@@ -141,14 +141,26 @@ var KeyAffinitySchema = &testutil.ObjectSchema{
 	},
 }
 
+// NormalizeUpstreamErrorSchema llm_config.normalize_upstream_error schema
+var NormalizeUpstreamErrorSchema = &testutil.ObjectSchema{
+	Optional: []string{"enabled", "stream_enabled", "unrecognized_action", "max_body_bytes", "redact_secrets"},
+	Fields: map[string]testutil.FieldSpec{
+		"enabled":              {Type: testutil.TypeBool},
+		"stream_enabled":       {Type: testutil.TypeBool},
+		"unrecognized_action":  {Type: testutil.TypeString},
+		"max_body_bytes":       {Type: testutil.TypeInt},
+		"redact_secrets":       {Type: testutil.TypeBool},
+	},
+}
+
 // LLMConfigSchema LLM 配置 schema
-// model_endpoint、model_mappings、keys、key_policy、key_affinity、match_prefix、strip_prefix
+// model_endpoint、model_mappings、keys、key_policy、key_affinity、normalize_upstream_error、match_prefix、strip_prefix
 // 在未配置时为 null，因此设为可选。
 var LLMConfigSchema = &testutil.ObjectSchema{
 	Required: []string{"models", "provider"},
 	Optional: []string{
 		"model_mappings", "keys",
-		"key_policy", "key_affinity", "match_prefix", "strip_prefix",
+		"key_policy", "key_affinity", "normalize_upstream_error", "match_prefix", "strip_prefix",
 	},
 	Fields: map[string]testutil.FieldSpec{
 		"models":         {Type: testutil.TypeArray, Item: &testutil.FieldSpec{Type: testutil.TypeString}},
@@ -156,6 +168,7 @@ var LLMConfigSchema = &testutil.ObjectSchema{
 		"keys":           {Type: testutil.TypeArray, Elem: ClusterKeySchema},
 		"key_policy":     {Type: testutil.TypeObject, Nested: KeyPolicySchema},
 		"key_affinity":   {Type: testutil.TypeObject, Nested: KeyAffinitySchema},
+		"normalize_upstream_error": {Type: testutil.TypeObject, Nested: NormalizeUpstreamErrorSchema},
 		"provider":       {Type: testutil.TypeString},
 		"match_prefix":   {Type: testutil.TypeString},
 		"strip_prefix":   {Type: testutil.TypeBool},

@@ -17,10 +17,12 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 
 	"github.com/rainway-ai-gateway/ai-gateway-api/lib"
 	"github.com/rainway-ai-gateway/ai-gateway-api/model/iprovider"
+	"github.com/rainway-ai-gateway/ai-gateway-api/stateful"
 	"github.com/rainway-ai-gateway/ai-gateway-api/storage/rdb/internal/dao"
 )
 
@@ -91,7 +93,11 @@ func (s *RDBProviderStorager) FetchProvider(ctx context.Context, filter *iprovid
 	if one == nil {
 		return nil, nil
 	}
-	return fromDAO(one), nil
+	p, err := fromDAO(one)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 func (s *RDBProviderStorager) FetchProviderNames(ctx context.Context) ([]string, error) {
@@ -120,7 +126,11 @@ func (s *RDBProviderStorager) FetchProviderList(ctx context.Context, filter *ipr
 
 		rst := make([]*iprovider.Provider, 0, len(list))
 		for _, one := range list {
-			rst = append(rst, fromDAO(one))
+			p, err := fromDAO(one)
+			if err != nil {
+				return nil, 0, err
+			}
+			rst = append(rst, p)
 		}
 		return rst, int64(len(rst)), nil
 	}
@@ -149,7 +159,11 @@ func (s *RDBProviderStorager) FetchProviderList(ctx context.Context, filter *ipr
 
 	rst := make([]*iprovider.Provider, 0, len(list))
 	for _, one := range list {
-		rst = append(rst, fromDAO(one))
+		p, err := fromDAO(one)
+		if err != nil {
+			return nil, 0, err
+		}
+		rst = append(rst, p)
 	}
 	return rst, total, nil
 }
@@ -173,6 +187,11 @@ func toDAOParam(param *iprovider.ProviderParam) (*dao.TProviderParam, error) {
 	if err != nil {
 		return nil, err
 	}
+	encKeys, err := stateful.EncryptIfEnabled(*keys)
+	if err != nil {
+		return nil, err
+	}
+	keys = lib.PString(encKeys)
 	instancePool, err := marshalJSON(param.InstancePool)
 	if err != nil {
 		return nil, err
@@ -229,9 +248,14 @@ func filterToDAOParam(filter *iprovider.ProviderFilter) *dao.TProviderParam {
 	}
 }
 
-func fromDAO(one *dao.TProvider) *iprovider.Provider {
+func fromDAO(one *dao.TProvider) (*iprovider.Provider, error) {
 	if one == nil {
-		return nil
+		return nil, nil
+	}
+
+	keysJSON, err := stateful.DecryptIfEnabled(one.Keys)
+	if err != nil {
+		return nil, fmt.Errorf("provider %s: decrypt api_keys: %v", one.Name, err)
 	}
 
 	createTime := one.CreatedAt.Unix()
@@ -268,7 +292,7 @@ func fromDAO(one *dao.TProvider) *iprovider.Provider {
 		Description:     one.Description,
 		ModelEndpoint:   unmarshalEndpoint(one.ModelEndpoint),
 		Models:          unmarshalStringSlice(one.Models),
-		Keys:            unmarshalKeys(one.Keys),
+		Keys:            unmarshalKeys(keysJSON),
 		InstancePool:    unmarshalInstancePool(one.InstancePool),
 		InstanceSource:  instanceSource,
 		K8sPoolName:     k8sPoolName,
@@ -279,7 +303,7 @@ func fromDAO(one *dao.TProvider) *iprovider.Provider {
 		Tiers:           tiers,
 		CreateTime:      createTime,
 		UpdateTime:      updateTime,
-	}
+	}, nil
 }
 
 func toDAOParamForUpdate(param *iprovider.ProviderParam) (*dao.TProviderParam, error) {
@@ -298,6 +322,13 @@ func toDAOParamForUpdate(param *iprovider.ProviderParam) (*dao.TProviderParam, e
 	keys, err := marshalJSONPtr(param.Keys)
 	if err != nil {
 		return nil, err
+	}
+	if keys != nil {
+		encKeys, err := stateful.EncryptIfEnabled(*keys)
+		if err != nil {
+			return nil, err
+		}
+		keys = lib.PString(encKeys)
 	}
 	instancePool, err := marshalJSONPtr(param.InstancePool)
 	if err != nil {

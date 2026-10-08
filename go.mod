@@ -14,6 +14,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.0
 	github.com/go-playground/validator/v10 v10.9.0
 	github.com/go-sql-driver/mysql v1.9.3
+	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/pkg/errors v0.9.1
@@ -48,7 +49,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/gomodule/redigo v2.0.0+incompatible // indirect
 	github.com/jehiah/go-strftime v0.0.0-20171201141054-1d33003b3869 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
@@ -69,7 +69,7 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tjfoc/gmsm v1.3.2 // indirect
 	github.com/zmap/go-iptree v0.0.0-20170831022036-1948b1097e25 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
+	golang.org/x/crypto v0.45.0
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	google.golang.org/protobuf v1.36.5 // indirect
@@ -80,6 +80,6 @@ require (
 	modernc.org/sqlite v1.23.1 // indirect
 )
 
-// replace github.com/bfenetworks/bfe => ../bfe
+replace github.com/bfenetworks/bfe => github.com/mileszhang2016/bfe v1.4.1-0.20261006053058-d12472ad13a3
 
-replace github.com/bfenetworks/bfe => github.com/mileszhang2016/bfe v1.4.1-0.20260927103007-ccc589eb665a
+// 本地联调时可临时切换：replace github.com/bfenetworks/bfe => ../bfe

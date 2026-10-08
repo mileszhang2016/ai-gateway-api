@@ -112,7 +112,7 @@ ConnMaxLifetimeInMs  = 5000000`,
 		strconv.Quote(cfg.User),
 		strconv.Quote(cfg.Passwd))
 
-	sm, err := startServer(nil, "", "", &dbPatch{driver: "mysql", section: section})
+	sm, err := startServer(nil, "", "", &dbPatch{driver: "mysql", section: section}, 0)
 	if err != nil {
 		if admin, oErr := sql.Open("mysql", adminDSN); oErr == nil {
 			admin.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", dbName))
@@ -123,6 +123,35 @@ ConnMaxLifetimeInMs  = 5000000`,
 	sm.mysqlAdminDSN = adminDSN
 	sm.mysqlDBName = dbName
 	return sm, nil
+}
+
+// MySQLDSN 返回 MySQL 后端模式下被测库的完整 DSN（供测试直写种子数据 /
+// 直查断言使用）。非 MySQL（SQLite）模式返回空串，调用方据此后退
+// sm.DBPath + sqlite-strip 驱动。
+func (sm *ServerManager) MySQLDSN() string {
+	if sm.mysqlAdminDSN == "" || sm.mysqlDBName == "" {
+		return ""
+	}
+	return sm.mysqlAdminDSN + sm.mysqlDBName + "?parseTime=true&multiStatements=true"
+}
+
+// StartServerAuto 按环境选择测试后端：设置 AIAPI_MYSQL_DSN（管理员
+// DSN，不带库名，形如 root:pass@tcp(127.0.0.1:3306)/）时以 MySQL 启动
+//（StartServerWithMySQL：自动建库 ai_gateway_it_*、执行 db_ddl.sql、
+// 用毕 DROP），否则以 SQLite 启动（StartServer）。使同一测试包在两套
+// 后端下零改动运行；MySQL 模式下单实例包补设全局 client URL，保持
+// testutil.GetClient() 可用。
+func StartServerAuto() (*ServerManager, error) {
+	dsn := strings.TrimSpace(os.Getenv("AIAPI_MYSQL_DSN"))
+	if dsn != "" {
+		sm, err := StartServerWithMySQL(dsn)
+		if err != nil {
+			return nil, err
+		}
+		SetServerURL(sm.ServerURL)
+		return sm, nil
+	}
+	return StartServer()
 }
 
 // execDDLFile 在已选定的库上执行项目 db_ddl.sql。该文件开头含库级语句
