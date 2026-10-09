@@ -62,10 +62,28 @@ func TestCIDR(t *testing.T) {
 func TestUserName(t *testing.T) {
 	assert.NoError(t, UserName("user_1"))
 	assert.Error(t, UserName("admin"))
+	assert.Error(t, UserName("root"))
+	assert.Error(t, UserName("system"))
+	assert.Error(t, UserName("ADMIN"))
 	assert.Error(t, UserName("-user"))
 	assert.Error(t, UserName("user."))
 	assert.Error(t, UserName("user name"))
 	assert.Error(t, UserName(""))
+}
+
+func TestUserNameRef(t *testing.T) {
+	// Reserved names are valid references: the built-in account "admin"
+	// must stay operable through by-name update endpoints (issue #226).
+	assert.NoError(t, UserNameRef("admin"))
+	assert.NoError(t, UserNameRef("root"))
+	assert.NoError(t, UserNameRef("system"))
+	assert.NoError(t, UserNameRef("Admin"))
+	assert.NoError(t, UserNameRef("user_1"))
+	assert.Error(t, UserNameRef("-user"))
+	assert.Error(t, UserNameRef("user."))
+	assert.Error(t, UserNameRef("user name"))
+	assert.Error(t, UserNameRef(""))
+	assert.Error(t, UserNameRef(strings.Repeat("a", MaxUserNameLength+1)))
 }
 
 func TestPassword(t *testing.T) {

@@ -42,7 +42,7 @@ type UserUpdateIsAdminParam struct {
 
 // Validate performs centralized business validation on the request parameters.
 func (p *UserUpdateIsAdminParam) Validate() error {
-	if err := validate.UserName(*p.UserName); err != nil {
+	if err := validate.UserNameRef(*p.UserName); err != nil {
 		return err
 	}
 	return validate.IsAdmin(p.IsAdmin)

@@ -113,6 +113,11 @@ func TestUserUpdateIsAdminParamValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "reserved user name is allowed",
+			param:   &UserUpdateIsAdminParam{UserName: lib.PString("admin"), IsAdmin: true},
+			wantErr: false,
+		},
+		{
 			name:    "invalid user name",
 			param:   &UserUpdateIsAdminParam{UserName: lib.PString("-user"), IsAdmin: true},
 			wantErr: true,
@@ -148,8 +153,13 @@ func TestUserUpdatePasswordParamValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "invalid user name",
+			name:    "reserved user name is allowed",
 			param:   &UserUpdatePasswordParam{UserName: lib.PString("admin"), Password: lib.PString("NewPass123")},
+			wantErr: false,
+		},
+		{
+			name:    "invalid user name",
+			param:   &UserUpdatePasswordParam{UserName: lib.PString("-user"), Password: lib.PString("NewPass123")},
 			wantErr: true,
 		},
 		{

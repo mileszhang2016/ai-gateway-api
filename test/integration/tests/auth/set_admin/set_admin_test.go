@@ -56,6 +56,23 @@ func TestAuth_SetAdmin(t *testing.T) {
 		testutil.AssertDataFieldEquals(t, getResp, "is_admin", true)
 	})
 
+	t.Run("AUTH-5-002 为内置 admin 设置 is_admin", func(t *testing.T) {
+		// issue #226：保留名校验不得阻断对内置账号的引用。
+		resp, err := testutil.GetClient().Patch("/open-api/v1/auth/users/admin/is_admin", map[string]interface{}{
+			"is_admin": true,
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		getResp, err := testutil.GetClient().Get("/open-api/v1/auth/users/admin")
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, getResp)
+		testutil.AssertDataFieldEquals(t, getResp, "is_admin", true)
+	})
+
 	t.Cleanup(func() {
 		testutil.DeleteUser(userName)
 	})
