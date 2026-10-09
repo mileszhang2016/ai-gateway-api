@@ -27,7 +27,7 @@ import (
 // UserCreateParam Request Param
 type UserCreateParam struct {
 	UserName *string `json:"user_name" validate:"required,min=1"`
-	Password *string `json:"password" validate:"required,min=1"`
+	Password *string `json:"password" validate:"required,min=8"`
 	IsAdmin  bool    `json:"is_admin"`
 }
 

@@ -190,21 +190,38 @@ func validateNameEdges(s string, name string) error {
 	return nil
 }
 
-// UserName validates a user name.
-func UserName(s string) error {
+// userNameFormat validates the generic user_name format: length 1..64,
+// charset [a-zA-Z0-9_.-], and no leading/trailing '.', '-', '_'.
+// It does not check reserved names.
+func userNameFormat(s string) error {
 	if err := validateName(s, 1, MaxUserNameLength, "user_name"); err != nil {
 		return err
 	}
 	if err := validateNamePattern(s, nameToken, "user_name"); err != nil {
 		return err
 	}
-	if err := validateNameEdges(s, "user_name"); err != nil {
+	return validateNameEdges(s, "user_name")
+}
+
+// UserName validates a user name for creating a new user: format plus the
+// reserved names (admin/root/system). Use only on create-style endpoints to
+// prevent new accounts from squatting on system identities.
+func UserName(s string) error {
+	if err := userNameFormat(s); err != nil {
 		return err
 	}
 	if reservedUserNames[strings.ToLower(s)] {
 		return xerror.WrapParamErrorWithMsg("user_name %q is reserved", s)
 	}
 	return nil
+}
+
+// UserNameRef validates a user_name that references an existing user (the
+// by-name lookup used by update/query endpoints): format only, reserved names
+// are allowed — the built-in account "admin" must remain operable through
+// these very endpoints. Do not add a reserved-name check here.
+func UserNameRef(s string) error {
+	return userNameFormat(s)
 }
 
 // Password validates a password. It must not equal the user name or its
