@@ -9,6 +9,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.0.10.1] - 2026-10-08
+
+### Fixed
+- Quota: fix quota plans with `reset_period` weekly/monthly and NULL `last_reset_at` being reset to full quota unconditionally every minute. The idempotent fallback `UPDATE ... WHERE last_reset_at < ?` never matched NULL rows (SQL three-valued logic), so the reset marker was never persisted and, combined with the nil->true period check, formed a permanent reset loop. The scheduler now claims the reset first (a dedicated DAO update whose WHERE covers `IS NULL OR < periodStart`, with the affected-row count as the sole claim criterion) and only then resets Redis balances; the create path initializes `last_reset_at` for weekly/monthly plans, and existing NULL rows are backfilled by the first scheduler tick after the fix.
+
+### Changed
+- Sync the `test/integration` module's `bfe` dependency to v1.8.8: PR #211 upgraded the main module only, leaving the standalone integration module failing to build with "updates to go.mod needed".
+- Implement `HGetAll` on the mock Redis client to satisfy the local `bfe redis_client.Client` interface (via the replace directive) required to compile the `test/integration` module; v0.0.10 code itself does not call `HGetAll`.
+
 ## [0.0.10] - 2026-09-24
 
 ### Added
