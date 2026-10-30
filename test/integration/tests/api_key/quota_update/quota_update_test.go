@@ -349,7 +349,7 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 		assert.InDelta(t, float64(199.8766), balance["remaining"], 0.00001)
 	})
 
-	t.Run("AK-9-009 配额总量修改为 0 后剩余额度清零（回归 issue #136）", func(t *testing.T) {
+	t.Run("AK-9-009 配额总量修改为 0 后剩余额度展示清零、欠费保留在 Redis（回归 issue #136 / #1476）", func(t *testing.T) {
 		id, err := testutil.CreateAPIKey("quota-update-to-zero", "")
 		if err != nil {
 			t.Fatalf("setup failed: %v", err)
@@ -384,16 +384,17 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 
-		// remaining = max(0, 0 - 600) = 0
+		// issue #1476：remaining = 0 - 600 = -600 不再钳零，欠费保留在 Redis
+		// （负值表示新配额仍不足以覆盖已用量，BFE 鉴权继续拒绝）；对外展示
+		// 的 remaining 钳 0，used 如实为 600。
 		balance := fetchAPIKeyBalance(t, id)
-		assert.InDelta(t, float64(0), balance["used"], 0.00001)
+		assert.InDelta(t, float64(600), balance["used"], 0.00001)
 		assert.InDelta(t, float64(0), balance["remaining"], 0.00001)
 
-		// Redis 余额被同步清零，BFE 将立即拒绝该 Key 的请求（QuotaExhausted）
-		assert.InDelta(t, float64(0), sm.GetQuotaRemaining(apiKeyValue, "total_token"), 0.00001)
+		assert.InDelta(t, float64(-600), sm.GetQuotaRemaining(apiKeyValue, "total_token"), 0.00001)
 	})
 
-	t.Run("AK-9-010 RMB 配额总量修改为 0 后剩余额度清零", func(t *testing.T) {
+	t.Run("AK-9-010 RMB 配额总量修改为 0 后剩余额度展示清零、欠费保留在 Redis", func(t *testing.T) {
 		id, err := testutil.CreateAPIKey("quota-update-rmb-to-zero", "")
 		if err != nil {
 			t.Fatalf("setup failed: %v", err)
@@ -428,10 +429,125 @@ func TestAPIKey_QuotaUpdate(t *testing.T) {
 		}
 		testutil.AssertSuccess(t, resp)
 
+		// issue #1476：同 AK-9-009，负数保留在 Redis（RMB 为 1e-8 定点口径）。
 		balance := fetchAPIKeyBalance(t, id)
-		assert.InDelta(t, float64(0), balance["used"], 0.00001)
+		assert.InDelta(t, float64(600.1234), balance["used"], 0.00001)
 		assert.InDelta(t, float64(0), balance["remaining"], 0.00001)
-		assert.InDelta(t, float64(0), sm.GetQuotaRemaining(apiKeyValue, "RMB"), 0.00001)
+		assert.InDelta(t, float64(-600.1234), sm.GetQuotaRemaining(apiKeyValue, "RMB"), 0.00001)
+	})
+
+	t.Run("AK-9-011 欠费余额（Redis 为负）下 used 超 quota、remaining 展示 0", func(t *testing.T) {
+		id, err := testutil.CreateAPIKey("quota-overage-display", "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(id)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        1000,
+				"unit":         "total_token",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		// issue #1476：BFE 全额扣减后余额可为负——模拟欠费 100，
+		// 实际消耗 used = 1000 - (-100) = 1100，允许大于 quota。
+		apiKeyValue := getAPIKeyValue(t, id)
+		sm.SetQuotaRemaining(apiKeyValue, -100, "total_token")
+
+		balance := fetchAPIKeyBalance(t, id)
+		assert.InDelta(t, float64(1100), balance["used"], 0.00001)
+		assert.InDelta(t, float64(0), balance["remaining"], 0.00001)
+	})
+
+	t.Run("AK-9-012 欠费状态下调大配额仍不足时 remaining 保持为负", func(t *testing.T) {
+		id, err := testutil.CreateAPIKey("quota-overage-raise-insufficient", "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(id)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        1000,
+				"unit":         "total_token",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		// used = 1000 - (-100) = 1100
+		apiKeyValue := getAPIKeyValue(t, id)
+		sm.SetQuotaRemaining(apiKeyValue, -100, "total_token")
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited": false,
+				"quota":     1050,
+				"unit":      "total_token",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		// issue #1476：targetRemaining = 1050 - 1100 = -50 不再钳零，
+		// 欠费不会被调额凭空抹掉；used 保持 1100，展示 remaining = 0。
+		balance := fetchAPIKeyBalance(t, id)
+		assert.InDelta(t, float64(1100), balance["used"], 0.00001)
+		assert.InDelta(t, float64(0), balance["remaining"], 0.00001)
+		assert.InDelta(t, float64(-50), sm.GetQuotaRemaining(apiKeyValue, "total_token"), 0.00001)
+	})
+
+	t.Run("AK-9-013 欠费状态下调大配额覆盖欠费后 remaining 转正", func(t *testing.T) {
+		id, err := testutil.CreateAPIKey("quota-overage-raise-cover", "")
+		if err != nil {
+			t.Fatalf("setup failed: %v", err)
+		}
+		defer testutil.DeleteAPIKey(id)
+
+		_, err = testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited":    false,
+				"quota":        1000,
+				"unit":         "total_token",
+				"reset_period": "monthly",
+			},
+		})
+		if err != nil {
+			t.Fatalf("setup quota failed: %v", err)
+		}
+
+		// used = 1000 - (-100) = 1100
+		apiKeyValue := getAPIKeyValue(t, id)
+		sm.SetQuotaRemaining(apiKeyValue, -100, "total_token")
+
+		resp, err := testutil.GetClient().Patch("/open-api/v1/api-keys/"+id, map[string]interface{}{
+			"quota_plan": map[string]interface{}{
+				"unlimited": false,
+				"quota":     2000,
+				"unit":      "total_token",
+			},
+		})
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		// targetRemaining = 2000 - 1100 = 900，鉴权恢复放行。
+		balance := fetchAPIKeyBalance(t, id)
+		assert.InDelta(t, float64(1100), balance["used"], 0.00001)
+		assert.InDelta(t, float64(900), balance["remaining"], 0.00001)
+		assert.InDelta(t, float64(900), sm.GetQuotaRemaining(apiKeyValue, "total_token"), 0.00001)
 	})
 
 	t.Cleanup(func() {

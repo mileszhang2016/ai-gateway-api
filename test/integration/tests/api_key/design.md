@@ -1953,18 +1953,21 @@ URI：`id`
 | AK-9-006 | 普通属性修改不影响配额余额 | 正常参数 | 修改 `enabled`/`description` 等，余额不变 |
 | AK-9-007 | 仅修改 quota（单位不变）时保留非零 used | 正常参数 | 预置 Redis 剩余 400（used=600），修改 quota 为 800 后 `used=600`、`remaining=200` |
 | AK-9-008 | RMB 配额仅修改 quota 时保留非零 used | 正常参数 | 预置 Redis 剩余 400.0000（used=600.1234），修改 quota 为 800 后 `used=600.1234`、`remaining=199.8766` |
-| AK-9-009 | 配额总量修改为 0 后剩余额度清零（回归 issue #136） | 正常参数 | 预置 Redis 剩余 400（used=600），修改 quota 为 0 后 `remaining=0`，且 Redis 余额同步为 0 |
-| AK-9-010 | RMB 配额总量修改为 0 后剩余额度清零 | 正常参数 | 预置 Redis 剩余 400.0000（used=600.1234），修改 quota 为 0 后 `remaining=0`，且 Redis 余额同步为 0 |
+| AK-9-009 | 配额总量修改为 0 后剩余额度展示清零、欠费保留在 Redis（回归 issue #136 / #1476） | 正常参数 | 预置 Redis 剩余 400（used=600），修改 quota 为 0 后 `remaining=0`（展示钳零）、`used=600`，Redis 余额为 **-600**（issue #1476：不再钳零，欠费保留） |
+| AK-9-010 | RMB 配额总量修改为 0 后剩余额度展示清零、欠费保留在 Redis | 正常参数 | 预置 Redis 剩余 400.0000（used=600.1234），修改 quota 为 0 后 `remaining=0`、`used=600.1234`，Redis 余额为 **-600.1234** |
+| AK-9-011 | 欠费余额（Redis 为负）下 used 超 quota、remaining 展示 0 | 正常参数 | 预置 Redis 余额 -100（used=1100 > quota=1000）后查询，`used=1100`、`remaining=0`（issue #1476） |
+| AK-9-012 | 欠费状态下调大配额仍不足时 remaining 保持为负 | 正常参数 | 预置余额 -100（used=1100），quota 调到 1050 后 Redis 为 **-50**、`used=1100`、`remaining=0`（欠费不被凭空抹掉） |
+| AK-9-013 | 欠费状态下调大配额覆盖欠费后 remaining 转正 | 正常参数 | 预置余额 -100（used=1100），quota 调到 2000 后 Redis 为 **900**、`used=1100`、`remaining=900` |
 
 ### 14.3 测试场景详细设计
 
-> 说明：本组集成测试使用嵌入式 Redis（miniredis），测试进程可通过 `ServerManager.SetQuotaRemaining` / `GetQuotaRemaining` 直接读写 Redis，因此非零 used 路径（AK-9-007/008）与 quota 清零路径（AK-9-009/010）均在集成测试中覆盖。
+> 说明：本组集成测试使用嵌入式 Redis（miniredis），测试进程可通过 `ServerManager.SetQuotaRemaining` / `GetQuotaRemaining` 直接读写 Redis，因此非零 used 路径（AK-9-007/008）、quota 清零路径（AK-9-009/010）与欠费/超额路径（AK-9-011/012/013，issue #1476）均在集成测试中覆盖。
 
 #### 14.3.1 AK-9-001：仅修改 quota（total_token）保留 used
 
 ##### 设计思路
 
-验证单位不变、仅调额时，历史已用量 `used` 被保留，`remaining = max(0, 新 quota - used)`。
+验证单位不变、仅调额时，历史已用量 `used` 被保留，`remaining = 新 quota - used`（issue #1476 起不再钳零，可为负，见 14.3.12）。
 
 ##### 前提数据准备
 
@@ -2296,11 +2299,11 @@ URI：`id`
 | balance.remaining | 199.8766 | Equals |
 | Redis 余额（`GetQuotaRemaining`） | 199.8766 | Equals |
 
-#### 14.3.9 AK-9-009：配额总量修改为 0 后剩余额度清零（回归 issue #136）
+#### 14.3.9 AK-9-009：配额总量修改为 0 后剩余额度展示清零、欠费保留在 Redis（回归 issue #136 / #1476）
 
 ##### 设计思路
 
-回归 [ai-gateway-api#136](https://github.com/rainway-ai-gateway/ai-gateway-api/issues/136)：预置 Redis 剩余 400（used=600），将 total_token 配额总量修改为 0 后，`remaining` 清零（`max(0, 0 - 600)`），且 Redis 余额被同步为 0，BFE 将立即以 QuotaExhausted 拒绝请求。
+回归 [ai-gateway-api#136](https://github.com/rainway-ai-gateway/ai-gateway-api/issues/136)：预置 Redis 剩余 400（used=600），将 total_token 配额总量修改为 0 后，`remaining` 展示清零（对外钳 0）、`used` 如实为 600。issue #1476 起调额不再对 `targetRemaining = 新quota - used` 钳零：Redis 余额为 **-600**，欠费保留在余额中（负值表示新配额仍不足以覆盖已用量，BFE 鉴权继续以 QuotaExhausted 拒绝）。
 
 ##### 前提数据准备
 
@@ -2333,15 +2336,15 @@ URI：`id`
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| balance.used | 0 | Equals |
+| balance.used | 600 | Equals |
 | balance.remaining | 0 | Equals |
-| Redis 余额（`GetQuotaRemaining`） | 0 | Equals |
+| Redis 余额（`GetQuotaRemaining`） | -600 | Equals |
 
-#### 14.3.10 AK-9-010：RMB 配额总量修改为 0 后剩余额度清零
+#### 14.3.10 AK-9-010：RMB 配额总量修改为 0 后剩余额度展示清零、欠费保留在 Redis
 
 ##### 设计思路
 
-RMB 配额的 quota 清零场景：预置 Redis 剩余 400.0000（used=600.1234），将 quota 从 1000.1234 修改为 0 后，`remaining` 清零，且 Redis 余额被同步为 0。
+RMB 配额的 quota 清零场景：预置 Redis 剩余 400.0000（used=600.1234），将 quota 从 1000.1234 修改为 0 后，`remaining` 展示清零、`used` 如实为 600.1234；issue #1476 起 Redis 余额保留为 **-600.1234**（1e-8 定点口径），不再钳零。
 
 ##### 前提数据准备
 
@@ -2374,9 +2377,117 @@ RMB 配额的 quota 清零场景：预置 Redis 剩余 400.0000（used=600.1234�
 
 | 字段 | 预期值 | 校验方式 |
 |------|--------|---------|
-| balance.used | 0 | Equals |
+| balance.used | 600.1234 | Equals |
 | balance.remaining | 0 | Equals |
-| Redis 余额（`GetQuotaRemaining`） | 0 | Equals |
+| Redis 余额（`GetQuotaRemaining`） | -600.1234 | Equals |
+
+#### 14.3.11 AK-9-011：欠费余额（Redis 为负）下 used 超 quota、remaining 展示 0
+
+##### 设计思路
+
+issue #1476：BFE 扣减改为全额执行后余额可为负（越过配额边界的用量不再被丢弃）。预置 Redis 余额 -100，`used = quota - remaining = 1000 - (-100) = 1100`，允许大于 quota；对外展示的 `remaining` 钳 0。修复前该场景 remaining 被钳 0，used 恒等于 quota=1000，超额 100 不可见。
+
+##### 前提数据准备
+
+已创建有限配额 API-Key（quota=1000，total_token），并通过 `ServerManager.SetQuotaRemaining(apiKeyValue, -100, "total_token")` 模拟欠费。
+
+##### 执行步骤
+
+1. 查询 quota-plan 接口并校验 `balance`。
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| balance.used | 1100 | Equals |
+| balance.remaining | 0 | Equals |
+
+#### 14.3.12 AK-9-012：欠费状态下调大配额仍不足时 remaining 保持为负
+
+##### 设计思路
+
+issue #1476：`adjustQuota` 的 `targetRemaining = 新quota - used` 不再钳零。欠费状态（余额 -100，used=1100）下将 quota 调到 1050：`targetRemaining = 1050 - 1100 = -50` 写入 Redis，欠费不被调额凭空抹掉；`used` 保持 1100、展示 `remaining` 为 0，BFE 鉴权继续拒绝。修复前 -50 被钳为 0，欠费 50 被凭空清除。
+
+##### 前提数据准备
+
+已创建有限配额 API-Key（quota=1000，total_token），预置 Redis 余额 -100。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求修改 `quota_plan.quota` 为 1050。
+2. 查询 quota-plan 接口并校验 `balance`。
+3. 通过 `ServerManager.GetQuotaRemaining` 校验 Redis 余额。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 1050,
+        "unit": "total_token"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| balance.used | 1100 | Equals |
+| balance.remaining | 0 | Equals |
+| Redis 余额（`GetQuotaRemaining`） | -50 | Equals |
+
+#### 14.3.13 AK-9-013：欠费状态下调大配额覆盖欠费后 remaining 转正
+
+##### 设计思路
+
+issue #1476：欠费状态（余额 -100，used=1100）下将 quota 调到 2000，`targetRemaining = 2000 - 1100 = 900`，鉴权恢复放行；`used` 保持 1100、`remaining` 展示 900。
+
+##### 前提数据准备
+
+已创建有限配额 API-Key（quota=1000，total_token），预置 Redis 余额 -100。
+
+##### 执行步骤
+
+1. 发送 PATCH 请求修改 `quota_plan.quota` 为 2000。
+2. 查询 quota-plan 接口并校验 `balance`。
+3. 通过 `ServerManager.GetQuotaRemaining` 校验 Redis 余额。
+
+##### 请求参数
+
+```json
+{
+    "quota_plan": {
+        "unlimited": false,
+        "quota": 2000,
+        "unit": "total_token"
+    }
+}
+```
+
+##### 预期返回结果
+
+**ErrNum**：200  
+**ErrMsg**：success
+
+**Data 字段校验**：
+
+| 字段 | 预期值 | 校验方式 |
+|------|--------|---------|
+| balance.used | 1100 | Equals |
+| balance.remaining | 900 | Equals |
+| Redis 余额（`GetQuotaRemaining`） | 900 | Equals |
 
 ## 15. 依赖与数据准备
 
