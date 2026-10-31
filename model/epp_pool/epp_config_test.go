@@ -250,4 +250,122 @@ func TestEppConfigSimplified_IsEmpty(t *testing.T) {
 	conf, err = ParseEppConfig(`{"flow_control":{"enable_eviction":false}}`)
 	require.NoError(t, err)
 	assert.False(t, conf.IsEmpty())
+
+	// issue #1482: a config that only selects the detector must not look empty
+	// (balance_mode=EPP requires a non-empty epp_config).
+	conf, err = ParseEppConfig(`{"saturation_detector":{"mode":"concurrency"}}`)
+	require.NoError(t, err)
+	assert.False(t, conf.IsEmpty())
+}
+
+// TestSaturationDetectorSimplified_Validate locks the issue #1482 validation
+// rules: concurrency knobs are only meaningful with mode=concurrency, and
+// silently ignoring them would repeat the "configured but no effect" report.
+func TestSaturationDetectorSimplified_Validate(t *testing.T) {
+	t.Run("nil is valid", func(t *testing.T) {
+		var sd *SaturationDetectorSimplified
+		require.NoError(t, sd.Validate())
+	})
+
+	t.Run("mode only concurrency is valid", func(t *testing.T) {
+		sd := &SaturationDetectorSimplified{Mode: lib.PString(SaturationDetectorConcurrency)}
+		require.NoError(t, sd.Validate())
+	})
+
+	t.Run("full concurrency config is valid", func(t *testing.T) {
+		sd := &SaturationDetectorSimplified{
+			Mode:                lib.PString(SaturationDetectorConcurrency),
+			MaxConcurrency:      lib.PInt(256),
+			MaxTokenConcurrency: lib.PInt(500_000),
+			Headroom:            float64Ptr(1),
+			ConcurrencyMode:     lib.PString(ConcurrencyModeTokens),
+		}
+		require.NoError(t, sd.Validate())
+	})
+
+	t.Run("utilization with explicit mode is valid", func(t *testing.T) {
+		sd := &SaturationDetectorSimplified{Mode: lib.PString(SaturationDetectorUtilization)}
+		require.NoError(t, sd.Validate())
+	})
+
+	t.Run("mode enum", func(t *testing.T) {
+		sd := &SaturationDetectorSimplified{Mode: lib.PString("bogus")}
+		require.ErrorContains(t, sd.Validate(), "saturation_detector.mode")
+	})
+
+	t.Run("utilization rejects concurrency knobs", func(t *testing.T) {
+		for _, sd := range []*SaturationDetectorSimplified{
+			{Mode: lib.PString(SaturationDetectorUtilization), MaxConcurrency: lib.PInt(10)},
+			{MaxConcurrency: lib.PInt(10)},
+			{Mode: lib.PString(SaturationDetectorUtilization), MaxTokenConcurrency: lib.PInt(10)},
+			{Mode: lib.PString(SaturationDetectorUtilization), Headroom: float64Ptr(0.1)},
+			{Mode: lib.PString(SaturationDetectorUtilization), ConcurrencyMode: lib.PString(ConcurrencyModeRequests)},
+		} {
+			require.ErrorContains(t, sd.Validate(), "require mode=")
+		}
+	})
+
+	t.Run("concurrency ranges", func(t *testing.T) {
+		base := func() *SaturationDetectorSimplified {
+			return &SaturationDetectorSimplified{Mode: lib.PString(SaturationDetectorConcurrency)}
+		}
+
+		sd := base()
+		sd.MaxConcurrency = lib.PInt(0)
+		require.ErrorContains(t, sd.Validate(), "max_concurrency must be > 0")
+
+		sd = base()
+		sd.MaxTokenConcurrency = lib.PInt(-1)
+		require.ErrorContains(t, sd.Validate(), "max_token_concurrency must be > 0")
+
+		sd = base()
+		sd.Headroom = float64Ptr(-0.1)
+		require.ErrorContains(t, sd.Validate(), "headroom must be in [0, 1]")
+
+		sd = base()
+		sd.Headroom = float64Ptr(1.5)
+		require.ErrorContains(t, sd.Validate(), "headroom must be in [0, 1]")
+
+		sd = base()
+		sd.ConcurrencyMode = lib.PString("tokens2")
+		require.ErrorContains(t, sd.Validate(), "concurrency_mode must be")
+	})
+
+	t.Run("epp_config validate delegates", func(t *testing.T) {
+		conf := &EppConfigSimplified{
+			SaturationDetector: &SaturationDetectorSimplified{
+				Mode:           lib.PString(SaturationDetectorUtilization),
+				MaxConcurrency: lib.PInt(10),
+			},
+		}
+		require.ErrorContains(t, conf.Validate(), "require mode=")
+	})
+
+	t.Run("unknown sub field rejected by strict parse", func(t *testing.T) {
+		_, err := ParseEppConfig(`{"saturation_detector":{"bogus":1}}`)
+		require.Error(t, err)
+	})
+}
+
+// TestSaturationDetectorSimplified_EffectiveDefaults locks the api defaults to
+// the llm-d concurrency-detector defaults (issue #1482 decision D4).
+func TestSaturationDetectorSimplified_EffectiveDefaults(t *testing.T) {
+	var sd *SaturationDetectorSimplified
+	assert.Equal(t, DefaultSaturationDetectorMode, sd.EffectiveMode())
+	assert.Equal(t, DefaultMaxConcurrency, sd.EffectiveMaxConcurrency())
+	assert.Equal(t, DefaultMaxTokenConcurrency, sd.EffectiveMaxTokenConcurrency())
+	assert.Equal(t, DefaultConcurrencyHeadroom, sd.EffectiveHeadroom())
+	assert.Equal(t, DefaultConcurrencyMode, sd.EffectiveConcurrencyMode())
+
+	sd = &SaturationDetectorSimplified{
+		MaxConcurrency:      lib.PInt(7),
+		MaxTokenConcurrency: lib.PInt(8),
+		Headroom:            float64Ptr(0.3),
+		ConcurrencyMode:     lib.PString(ConcurrencyModeTokens),
+	}
+	assert.Equal(t, SaturationDetectorUtilization, sd.EffectiveMode())
+	assert.Equal(t, 7, sd.EffectiveMaxConcurrency())
+	assert.Equal(t, 8, sd.EffectiveMaxTokenConcurrency())
+	assert.Equal(t, 0.3, sd.EffectiveHeadroom())
+	assert.Equal(t, ConcurrencyModeTokens, sd.EffectiveConcurrencyMode())
 }

@@ -364,4 +364,117 @@ func TestClusters_EPP(t *testing.T) {
 		}
 		testutil.AssertErrCode(t, resp, 422)
 	})
+
+	// issue #1482: saturation_detector（并发饱和检测）.
+	t.Run("CL-EPP-016 仅配置 saturation_detector 即视为非空且创建成功", func(t *testing.T) {
+		clusterName := testutil.UniqueClusterName()
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", minEPPClusterBody(
+			clusterName, providerName, map[string]interface{}{
+				"saturation_detector": map[string]interface{}{"mode": "concurrency"},
+			}))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		defer testutil.DeleteCluster(clusterName)
+
+		data := getCluster(t, clusterName)
+		eppConfig, ok := data["epp_config"].(map[string]interface{})
+		require.True(t, ok)
+		detector, ok := eppConfig["saturation_detector"].(map[string]interface{})
+		require.True(t, ok, "saturation_detector should be echoed")
+		assert.Equal(t, "concurrency", detector["mode"])
+	})
+
+	t.Run("CL-EPP-017 saturation_detector 合法全量配置原样回读", func(t *testing.T) {
+		clusterName := testutil.UniqueClusterName()
+		detectorConfig := map[string]interface{}{
+			"mode":                  "concurrency",
+			"max_concurrency":       256,
+			"max_token_concurrency": 2000000,
+			"headroom":              0.2,
+			"concurrency_mode":      "tokens",
+		}
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", minEPPClusterBody(
+			clusterName, providerName, map[string]interface{}{
+				"saturation_detector": detectorConfig,
+			}))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		defer testutil.DeleteCluster(clusterName)
+
+		data := getCluster(t, clusterName)
+		eppConfig, ok := data["epp_config"].(map[string]interface{})
+		require.True(t, ok)
+		detector, ok := eppConfig["saturation_detector"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "concurrency", detector["mode"])
+		assert.Equal(t, float64(256), detector["max_concurrency"])
+		assert.Equal(t, float64(2000000), detector["max_token_concurrency"])
+		assert.Equal(t, 0.2, detector["headroom"])
+		assert.Equal(t, "tokens", detector["concurrency_mode"])
+	})
+
+	t.Run("CL-EPP-018 saturation_detector 非法取值返回 422", func(t *testing.T) {
+		cases := map[string]map[string]interface{}{
+			"mode 枚举越界":                {"mode": "concurrency2"},
+			"utilization 下填写并发阈值":      {"mode": "utilization", "max_concurrency": 10},
+			"未设 mode 但填写并发阈值":          {"max_concurrency": 10},
+			"max_concurrency 非正":       {"mode": "concurrency", "max_concurrency": 0},
+			"max_token_concurrency 非正": {"mode": "concurrency", "max_token_concurrency": -1},
+			"headroom 越界（负）":           {"mode": "concurrency", "headroom": -0.1},
+			"headroom 越界（大于 1）":        {"mode": "concurrency", "headroom": 1.5},
+			"concurrency_mode 枚举越界":    {"mode": "concurrency", "concurrency_mode": "batches"},
+			"未知子字段":                    {"mode": "concurrency", "bogus": 1},
+		}
+		for name, detector := range cases {
+			t.Run(name, func(t *testing.T) {
+				resp, err := testutil.GetClient().Post("/open-api/v1/clusters", minEPPClusterBody(
+					testutil.UniqueClusterName(), providerName, map[string]interface{}{
+						"saturation_detector": detector,
+					}))
+				if err != nil {
+					t.Fatalf("request failed: %v", err)
+				}
+				testutil.AssertErrCode(t, resp, 422)
+			})
+		}
+	})
+
+	t.Run("CL-EPP-019 PATCH 整体替换 saturation_detector", func(t *testing.T) {
+		clusterName := testutil.UniqueClusterName()
+		resp, err := testutil.GetClient().Post("/open-api/v1/clusters", minEPPClusterBody(
+			clusterName, providerName, map[string]interface{}{
+				"saturation_detector": map[string]interface{}{
+					"mode":            "concurrency",
+					"max_concurrency": 128,
+				},
+			}))
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+		defer testutil.DeleteCluster(clusterName)
+
+		// 改为 utilization：并发阈值必须一并删除（否则触发 422）。
+		resp, err = testutil.GetClient().Patch("/open-api/v1/clusters/"+clusterName, map[string]interface{}{
+			"epp_config": map[string]interface{}{
+				"saturation_detector": map[string]interface{}{"mode": "utilization"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("patch failed: %v", err)
+		}
+		testutil.AssertSuccess(t, resp)
+
+		data := getCluster(t, clusterName)
+		eppConfig, ok := data["epp_config"].(map[string]interface{})
+		require.True(t, ok)
+		detector, ok := eppConfig["saturation_detector"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "utilization", detector["mode"])
+		assert.NotContains(t, detector, "max_concurrency")
+	})
 }

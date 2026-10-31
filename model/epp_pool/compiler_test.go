@@ -176,7 +176,7 @@ func TestCompileEppConfig_FixedPlugins(t *testing.T) {
 	// Saturation detector is always injected.
 	detector := findPlugin(t, conf, pluginNameSaturationDetector)
 	require.NotNil(t, detector)
-	assert.Equal(t, pluginTypeSaturationDetector, detector.Type)
+	assert.Equal(t, pluginTypeUtilizationDetector, detector.Type)
 
 	require.NotNil(t, findPlugin(t, conf, pluginNameKVScorer))
 	require.NotNil(t, findPlugin(t, conf, pluginNameQueueScorer))
@@ -249,6 +249,90 @@ func TestCompileEppConfig_SaturationDetector(t *testing.T) {
 	conf = CompileEppConfig("cluster-a", &EppConfigSimplified{WaitingQueueMax: float64Ptr(0.5)})
 	assert.Equal(t, defaultSaturationQueueDepthThreshold,
 		findPlugin(t, conf, pluginNameSaturationDetector).Parameters["queueDepthThreshold"])
+}
+
+// TestCompileEppConfig_SaturationDetectorUtilizationUnchanged locks issue #1482
+// decision D2: an unset (or explicit utilization) saturation_detector keeps the
+// pre-fix output byte-for-byte, so existing clusters see no change.
+func TestCompileEppConfig_SaturationDetectorUtilizationUnchanged(t *testing.T) {
+	base := CompileEppConfig("cluster-a", &EppConfigSimplified{
+		KVCacheUtilizationMax: float64Ptr(0.85),
+		WaitingQueueMax:       float64Ptr(8),
+		FlowControl:           &FlowControlSimplified{MaxRequests: lib.PInt(10)},
+	})
+	explicit := CompileEppConfig("cluster-a", &EppConfigSimplified{
+		KVCacheUtilizationMax: float64Ptr(0.85),
+		WaitingQueueMax:       float64Ptr(8),
+		FlowControl:           &FlowControlSimplified{MaxRequests: lib.PInt(10)},
+		SaturationDetector:    &SaturationDetectorSimplified{Mode: lib.PString(SaturationDetectorUtilization)},
+	})
+
+	assert.Equal(t, findPlugin(t, base, pluginNameSaturationDetector),
+		findPlugin(t, explicit, pluginNameSaturationDetector))
+	assert.Equal(t, pluginTypeUtilizationDetector, findPlugin(t, explicit, pluginNameSaturationDetector).Type)
+	assert.Equal(t, base.FeatureGates, explicit.FeatureGates)
+}
+
+// TestCompileEppConfig_SaturationDetectorConcurrency verifies issue #1482: mode
+// concurrency swaps the detector plugin type and passes the four parameters
+// through, while the flowControl reference and the plugin instance count stay
+// unchanged.
+func TestCompileEppConfig_SaturationDetectorConcurrency(t *testing.T) {
+	conf := CompileEppConfig("cluster-a", &EppConfigSimplified{
+		FlowControl: &FlowControlSimplified{MaxRequests: lib.PInt(2), QueueTTL: lib.PInt(1)},
+		SaturationDetector: &SaturationDetectorSimplified{
+			Mode:                lib.PString(SaturationDetectorConcurrency),
+			MaxConcurrency:      lib.PInt(256),
+			MaxTokenConcurrency: lib.PInt(2_000_000),
+			Headroom:            float64Ptr(0.2),
+			ConcurrencyMode:     lib.PString(ConcurrencyModeTokens),
+		},
+	})
+
+	detector := findPlugin(t, conf, pluginNameSaturationDetector)
+	assert.Equal(t, pluginTypeConcurrencyDetector, detector.Type)
+	assert.Equal(t, 256, detector.Parameters["maxConcurrency"])
+	assert.Equal(t, 2_000_000, detector.Parameters["maxTokenConcurrency"])
+	assert.Equal(t, 0.2, detector.Parameters["headroom"])
+	assert.Equal(t, ConcurrencyModeTokens, detector.Parameters["concurrencyMode"])
+	// No inflightLoadProducerName: ai-gateway-epp uses its default producer.
+	_, hasProducer := detector.Parameters["inFlightLoadProducerName"]
+	assert.False(t, hasProducer)
+
+	require.NotNil(t, conf.FlowControl)
+	require.NotNil(t, conf.FlowControl.SaturationDetector)
+	assert.Equal(t, pluginNameSaturationDetector, conf.FlowControl.SaturationDetector.PluginRef)
+
+	// Exactly one detector instance is emitted.
+	n := 0
+	for _, p := range conf.Plugins {
+		if p.Name == pluginNameSaturationDetector {
+			n++
+		}
+	}
+	assert.Equal(t, 1, n)
+
+	// util filter conditions are untouched (candidate filtering still applies).
+	filter := findPlugin(t, conf, pluginNameUtilFilter)
+	conditions, ok := filter.Parameters["conditions"].([]map[string]interface{})
+	require.True(t, ok)
+	require.NotEmpty(t, conditions)
+	assert.Equal(t, metricKVCacheUtilization, conditions[0]["metric"])
+}
+
+// TestCompileEppConfig_SaturationDetectorConcurrencyDefaults verifies the api
+// defaults mirror llm-d concurrency-detector defaults (issue #1482 decision D4).
+func TestCompileEppConfig_SaturationDetectorConcurrencyDefaults(t *testing.T) {
+	conf := CompileEppConfig("cluster-a", &EppConfigSimplified{
+		SaturationDetector: &SaturationDetectorSimplified{Mode: lib.PString(SaturationDetectorConcurrency)},
+	})
+
+	detector := findPlugin(t, conf, pluginNameSaturationDetector)
+	assert.Equal(t, pluginTypeConcurrencyDetector, detector.Type)
+	assert.Equal(t, DefaultMaxConcurrency, detector.Parameters["maxConcurrency"])
+	assert.Equal(t, DefaultMaxTokenConcurrency, detector.Parameters["maxTokenConcurrency"])
+	assert.Equal(t, DefaultConcurrencyHeadroom, detector.Parameters["headroom"])
+	assert.Equal(t, DefaultConcurrencyMode, detector.Parameters["concurrencyMode"])
 }
 
 func TestCompileEppConfig_FlowControl(t *testing.T) {

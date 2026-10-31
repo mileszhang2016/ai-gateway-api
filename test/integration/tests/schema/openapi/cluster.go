@@ -188,6 +188,19 @@ var EppConfigFlowControlSchema = &testutil.ObjectSchema{
 	},
 }
 
+// EppConfigSaturationDetectorSchema epp_config.saturation_detector schema
+// （clusters.md 表：epp_config.saturation_detector，issue #1482）
+var EppConfigSaturationDetectorSchema = &testutil.ObjectSchema{
+	Optional: []string{"mode", "max_concurrency", "max_token_concurrency", "headroom", "concurrency_mode"},
+	Fields: map[string]testutil.FieldSpec{
+		"mode":                  {Type: testutil.TypeString, Enum: []interface{}{"utilization", "concurrency"}},
+		"max_concurrency":       {Type: testutil.TypeInt},
+		"max_token_concurrency": {Type: testutil.TypeInt},
+		"headroom":              {Type: testutil.TypeNumber},
+		"concurrency_mode":      {Type: testutil.TypeString, Enum: []interface{}{"requests", "tokens"}},
+	},
+}
+
 // EppConfigSchema 集群 epp_config（简化用户形态）schema。
 // 存储保留用户原始 JSON——未显式携带的字段不落盘，因此全部可选；
 // balance_mode=WRR 时 epp_config 可为 null（休眠保留），故 ClusterSchema 中设为 Optional。
@@ -197,6 +210,7 @@ var EppConfigSchema = &testutil.ObjectSchema{
 		"prefix_cache_affinity", "session_affinity_enabled", "session_affinity_header",
 		"kv_cache_utilization_max", "waiting_queue_max", "running_requests_max",
 		"fallback_on_empty", "metrics_staleness_threshold_ms", "flow_control",
+		"saturation_detector",
 	},
 	Fields: map[string]testutil.FieldSpec{
 		"load_profile":                   {Type: testutil.TypeString, Enum: []interface{}{"queue-first", "balanced", "kv-first"}},
@@ -210,6 +224,7 @@ var EppConfigSchema = &testutil.ObjectSchema{
 		"fallback_on_empty":              {Type: testutil.TypeBool},
 		"metrics_staleness_threshold_ms": {Type: testutil.TypeNumber},
 		"flow_control":                   {Type: testutil.TypeObject, Nested: EppConfigFlowControlSchema},
+		"saturation_detector":            {Type: testutil.TypeObject, Nested: EppConfigSaturationDetectorSchema},
 	},
 }
 

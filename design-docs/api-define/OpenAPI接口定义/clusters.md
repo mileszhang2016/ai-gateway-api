@@ -106,6 +106,12 @@
             "queue_ttl": 30,
             "no_endpoint_queue_ttl": 600,
             "enable_eviction": false
+        },
+        "saturation_detector": {
+            "mode": "concurrency",
+            "max_concurrency": 256,
+            "headroom": 0,
+            "concurrency_mode": "requests"
         }
     },
     "epp_runtime": {
@@ -263,6 +269,7 @@
 | fallback_on_empty | bool | 所有端点都被过滤时的行为：`false` = 无端点可选、不派发；`true` = 回退派给"最不差"的端点 | N | 透传 `utilization-filter.fallbackOnEmpty` | 非必填；默认值为 `false`；必须为 bool |
 | metrics_staleness_threshold_ms | int | **坏后端剔除**：后端指标超过该时长未更新，即从调度候选剔除，直到恢复抓取 | N | EPP 周期抓取各后端 `/metrics`（周期约 50ms）；默认 `200ms` ≈ 连续 4 次抓取失败；建议取值 100–500ms | 非必填；默认值为 `200`；须为 `> 0` 的整数（单位 ms） |
 | flow_control | object | 流控参数；**编译产物始终包含流控段**（含检测器声明与 priority band 0），但仅当传入 `flow_control` 时才启用排队/背压 featureGate | N | 见下方 表：epp_config.flow_control | 非必填；若传入，须满足 flow_control 结构约束 |
+| saturation_detector | object | 饱和判定模式与并发阈值（bfe #1482）：决定 EPP 用哪个检测器判断"池已饱和、需要排队/拒绝"；未配置 = `mode=utilization`（改动前行为） | N | 见下方 表：epp_config.saturation_detector | 非必填；若传入，须满足子字段约束 |
 
 **表：epp_config.flow_control**
 
@@ -271,7 +278,21 @@
 | max_requests | int | 全局并发上限（跨全部优先级带）；`-1` 为显式"不限"（更新时用于明确恢复不限） | N | 缺省表示不限；`-1` 也表示不限 | 非必填；若传入，取值 `>0` 或 `-1` |
 | queue_ttl | int | 池**有端点**时的排队预算（**单位：秒**），超期以可重试背压错误拒绝 | N | 缺省由 EPP 决定（llm-d 默认 60 秒）；`0` 为显式禁用驱逐 | 非必填；取值 ≥ 0 的整数 |
 | no_endpoint_queue_ttl | int | 池**无端点**（冷启动扩容）时的排队预算（**单位：秒**），regime 切换时重新起算 | N | 默认值为跟随 `queue_ttl` | 非必填；同 `queue_ttl` |
-| enable_eviction | bool | 需求驱动驱逐：高优先级被饱和阻塞时终止负优先级在飞请求回收容量 | N | **当前 EPP 未接线，请保持 `false`**；编译产物不下发该字段 | 非必填；默认值为 `false`；**建议仅允许 `false`（`true` 拒绝）** |
+| enable_eviction | bool | 需求驱动驱逐：高优先级被饱和阻塞时终止负优先级在飞请求回收容量 | N | **当前 EPP 未接线，请保持 `false`**；编译产物不下发该字段。后续计划见 bfe #1482 的过载保护方案（独立卡） | 非必填；默认值为 `false`；**建议仅允许 `false`（`true` 拒绝）** |
+
+**表：epp_config.saturation_detector**（bfe #1482）
+
+| 参数名 | 类型 | 参数含义 | 必填 | 补充描述 | 合法性条件 |
+| - | - | - | - | - | - |
+| mode | string | 饱和判定模式 | N | `utilization`：按 KV cache 利用率与后端排队深度判（**默认，等价改动前行为**）；`concurrency`：按**在飞并发**判（含已派发到后端的请求，池容量 = 端点数 × `max_concurrency`） | 非必填；默认值为 `utilization`；有效枚举：`utilization`、`concurrency` |
+| max_concurrency | int | `mode=concurrency` 时每端点的理想并发上限 | 条件可选 | 池容量 = 端点数 × 该值（`headroom` 允许突发）；建议取后端推理引擎的实际并发上限（如 vLLM `--max-num-seqs`） | 仅 `mode=concurrency` 允许；取值 `> 0`；默认值为 `100` |
+| max_token_concurrency | int | `concurrency_mode=tokens` 时每端点的 token 并发上限 | N | 仅按 token 计数时生效 | 仅 `mode=concurrency` 允许；取值 `> 0`；默认值为 `1000000` |
+| headroom | number | 允许的突发余量（相对 `max_concurrency` 的比例） | N | `0` = 不允许突发（默认）；`0.2` = 允许 20%。仅放宽**调度过滤**上限，池级背压仍按严格容量 | 仅 `mode=concurrency` 允许；取值 `[0, 1]`；默认值为 `0` |
+| concurrency_mode | string | 并发计数模式 | N | `requests`：按请求数（默认）；`tokens`：按 token 数 | 仅 `mode=concurrency` 允许；有效枚举：`requests`、`tokens`；默认值为 `requests` |
+
+> **`mode=utilization` 时不得出现** `max_concurrency` / `max_token_concurrency` / `headroom` / `concurrency_mode`——出现即 `422`（错误信息提示 `require mode="concurrency"`）。`mode=utilization` 是默认形态，因此"只填阈值不填 mode"同样返回 `422`，避免"配了却没生效"。
+>
+> **与 `kv_cache_utilization_max` / `waiting_queue_max` 的关系**：`mode=concurrency` 下这两项**不再参与**"是否排队/拒绝"的判定（检测器改为按在飞并发），但仍作为**候选过滤**阈值（`utilization-filter`）生效——KV 已满的端点依旧不会被调度过去。
 
 **表：EPP运行时配置（`epp_runtime`）**
 
@@ -328,7 +349,7 @@
   - `match_prefix` 若传入，必须以 `/` 结尾。
 - `llm_config.model_table` 不在 OpenAPI `/clusters` 端点中展示，调用方传入时忽略或返回 `422`；该字段由 InnerAPI 根据 `provider` 自动填充后下发给 BFE。
 - `balance_mode` 非必填，默认值为 `WRR`；有效枚举：`WRR`（BFE 本地加权轮询）、`EPP`（由 EPP 调度器接管后端选择）；`balance_mode` 是 EPP 模式的唯一判定来源。
-- `epp_config` 条件必填：`balance_mode=EPP` 时必填且通过字段校验（简化字段校验：`load_profile`/`affinity` 枚举、`kv_cache_utilization_max` ∈ `(0,1]`、`waiting_queue_max`/`running_requests_max` ≥ 0、`metrics_staleness_threshold_ms` > 0、`flow_control` 秒数取值范围及 `enable_eviction=false`，全部 api 侧强制，不合法拒绝提交）；`balance_mode=WRR` 时可选——传入则保留并做格式校验，但不编译、不导出（休眠）。
+- `epp_config` 条件必填：`balance_mode=EPP` 时必填且通过字段校验（简化字段校验：`load_profile`/`affinity` 枚举、`kv_cache_utilization_max` ∈ `(0,1]`、`waiting_queue_max`/`running_requests_max` ≥ 0、`metrics_staleness_threshold_ms` > 0、`flow_control` 秒数取值范围及 `enable_eviction=false`、`saturation_detector` 的枚举/范围与"并发阈值需 `mode=concurrency`"，全部 api 侧强制，不合法拒绝提交）；`balance_mode=WRR` 时可选——传入则保留并做格式校验，但不编译、不导出（休眠）。
 - `balance_mode` 更新规则：允许 `WRR → EPP`（须同时提供合法 `epp_config`）；`EPP → WRR` 仅改 `balance_mode` 即可，`epp_config` 与分配记录保留（休眠，不编译/不导出），再切回 `EPP` 时原配置与原分配继续生效（分配如已悬空由 `/epp-pool` 变更时的自动修复处理）。**任一写入中 `epp_config` 非空即须通过字段校验，与 `balance_mode` 无关**（含 `EPP → WRR` 时随请求一并携带或休眠保留的配置）。
 - 生效语义：`epp_config` 仅在 `balance_mode=EPP` 时生效；停用 EPP 调度 = 将 `balance_mode` 改回 `WRR`（无需清空 `epp_config`）。
 - `epp_runtime` 非必填；传入即**整体替换**（`check`/`timeout` 未设置的子字段按 §1 表：EPP运行时配置 的默认值补齐后落盘），不传则保留存储值。校验：`check.check_interval`/`check.cooldown`/`timeout.connect`/`timeout.call` 须为 >0 的合法 duration，`check.fail_threshold`/`check.success_threshold` 须 >=1。
@@ -488,6 +509,12 @@
             "queue_ttl": 30,
             "no_endpoint_queue_ttl": 600,
             "enable_eviction": false
+        },
+        "saturation_detector": {
+            "mode": "concurrency",
+            "max_concurrency": 256,
+            "headroom": 0,
+            "concurrency_mode": "requests"
         }
     },
     "epp_runtime": {

@@ -50,6 +50,24 @@ const (
 	// to 5 when waiting_queue_max is not enabled.
 	defaultSaturationQueueDepthThreshold = 5
 	stalenessPolicyIgnore                = "ignore"
+
+	// Saturation detector modes (issue #1482): "utilization" is the pre-fix
+	// behavior; "concurrency" judges saturation by in-flight load.
+	SaturationDetectorUtilization = "utilization"
+	SaturationDetectorConcurrency = "concurrency"
+
+	// Concurrency counting modes, same names and values as llm-d's
+	// concurrency-detector concurrencyMode.
+	ConcurrencyModeRequests = "requests"
+	ConcurrencyModeTokens   = "tokens"
+
+	// Defaults mirroring llm-d concurrency-detector apiConfig defaults
+	// (pkg/epp/framework/plugins/flowcontrol/saturationdetector/concurrency/config.go).
+	DefaultSaturationDetectorMode = SaturationDetectorUtilization
+	DefaultMaxConcurrency         = 100
+	DefaultMaxTokenConcurrency    = 1_000_000
+	DefaultConcurrencyHeadroom    = 0.0
+	DefaultConcurrencyMode        = ConcurrencyModeRequests
 )
 
 // FlowControlUnlimited marks an explicit "no limit" max_requests.
@@ -76,6 +94,29 @@ type EppConfigSimplified struct {
 
 	// ── ③ 容量与排队 ──
 	FlowControl *FlowControlSimplified `json:"flow_control,omitempty"`
+
+	// ── ④ 饱和判定（issue #1482） ──
+	SaturationDetector *SaturationDetectorSimplified `json:"saturation_detector,omitempty"`
+}
+
+// SaturationDetectorSimplified is the per-cluster saturation detector
+// selection. Unset or mode=utilization keeps the pre-fix behavior; mode=
+// concurrency compiles the llm-d concurrency-detector, which judges pool
+// saturation by in-flight load (pool capacity = endpoints x maxConcurrency).
+type SaturationDetectorSimplified struct {
+	// Mode selects the detector: "utilization" (default) or "concurrency".
+	Mode *string `json:"mode,omitempty"`
+	// MaxConcurrency is the ideal per-endpoint concurrency when mode=
+	// concurrency. Pool capacity = endpoints * MaxConcurrency.
+	MaxConcurrency *int `json:"max_concurrency,omitempty"`
+	// MaxTokenConcurrency bounds per-endpoint token concurrency when
+	// concurrency_mode is "tokens".
+	MaxTokenConcurrency *int `json:"max_token_concurrency,omitempty"`
+	// Headroom is the allowed burst above the ideal capacity (e.g. 0.2 = 20%),
+	// in [0, 1]; only relaxes the scheduling filter, not pool-level backpressure.
+	Headroom *float64 `json:"headroom,omitempty"`
+	// ConcurrencyMode counts requests or tokens ("requests" default).
+	ConcurrencyMode *string `json:"concurrency_mode,omitempty"`
 }
 
 // FlowControlSimplified is the simplified flow-control section of epp_config.
@@ -118,7 +159,8 @@ func (c *EppConfigSimplified) IsEmpty() bool {
 			c.RunningRequestsMax == nil &&
 			c.FallbackOnEmpty == nil &&
 			c.MetricsStalenessThresholdMs == nil &&
-			c.FlowControl == nil)
+			c.FlowControl == nil &&
+			c.SaturationDetector == nil)
 }
 
 // Validate checks all field-level rules of the simplified epp_config. It is
@@ -182,6 +224,50 @@ func (c *EppConfigSimplified) Validate() error {
 		}
 	}
 
+	if c.SaturationDetector != nil {
+		if err := c.SaturationDetector.Validate(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Validate checks the saturation_detector section (issue #1482). Concurrency
+// knobs under mode=utilization are rejected explicitly — silently ignoring
+// them would repeat the exact confusion reported as "flow control has no
+// effect" when a value looks configured but never applies.
+func (s *SaturationDetectorSimplified) Validate() error {
+	if s == nil {
+		return nil
+	}
+
+	switch s.EffectiveMode() {
+	case SaturationDetectorUtilization:
+		if s.MaxConcurrency != nil || s.MaxTokenConcurrency != nil ||
+			s.Headroom != nil || s.ConcurrencyMode != nil {
+			return xerror.WrapParamErrorWithMsg("epp_config.saturation_detector.max_concurrency/max_token_concurrency/headroom/concurrency_mode require mode=%q",
+				SaturationDetectorConcurrency)
+		}
+	case SaturationDetectorConcurrency:
+		if s.MaxConcurrency != nil && *s.MaxConcurrency <= 0 {
+			return xerror.WrapParamErrorWithMsg("epp_config.saturation_detector.max_concurrency must be > 0, got %d", *s.MaxConcurrency)
+		}
+		if s.MaxTokenConcurrency != nil && *s.MaxTokenConcurrency <= 0 {
+			return xerror.WrapParamErrorWithMsg("epp_config.saturation_detector.max_token_concurrency must be > 0, got %d", *s.MaxTokenConcurrency)
+		}
+		if s.Headroom != nil && (*s.Headroom < 0 || *s.Headroom > 1) {
+			return xerror.WrapParamErrorWithMsg("epp_config.saturation_detector.headroom must be in [0, 1], got %v", *s.Headroom)
+		}
+		if s.ConcurrencyMode != nil && *s.ConcurrencyMode != ConcurrencyModeRequests && *s.ConcurrencyMode != ConcurrencyModeTokens {
+			return xerror.WrapParamErrorWithMsg("epp_config.saturation_detector.concurrency_mode must be %q or %q, got %q",
+				ConcurrencyModeRequests, ConcurrencyModeTokens, *s.ConcurrencyMode)
+		}
+	default:
+		return xerror.WrapParamErrorWithMsg("epp_config.saturation_detector.mode must be %q or %q, got %q",
+			SaturationDetectorUtilization, SaturationDetectorConcurrency, *s.Mode)
+	}
+
 	return nil
 }
 
@@ -203,10 +289,11 @@ func (f *FlowControlSimplified) Validate() error {
 		return xerror.WrapParamErrorWithMsg("epp_config.flow_control.no_endpoint_queue_ttl must be >= 0, got %d", *f.NoEndpointQueueTTL)
 	}
 
-	// enable_eviction is not wired in EPP yet; keep it false (the compiled
-	// output never emits it).
+	// enable_eviction (in-flight negative-priority eviction) is not wired in
+	// EPP yet; keep it false (the compiled output never emits it). See the EPP
+	// overload-protection plan (issue #1482) for the planned follow-up card.
 	if f.EnableEviction != nil && *f.EnableEviction {
-		return xerror.WrapParamErrorWithMsg("epp_config.flow_control.enable_eviction is not supported, keep false")
+		return xerror.WrapParamErrorWithMsg("epp_config.flow_control.enable_eviction is not supported yet, keep false")
 	}
 
 	return nil
@@ -322,6 +409,46 @@ func validatePort(port int) error {
 }
 
 // validateHeaderName checks a non-empty HTTP header name.
+// EffectiveSaturationDetectorMode returns the detector mode with default applied.
+func (s *SaturationDetectorSimplified) EffectiveMode() string {
+	if s == nil || s.Mode == nil {
+		return DefaultSaturationDetectorMode
+	}
+	return *s.Mode
+}
+
+// EffectiveMaxConcurrency returns the per-endpoint concurrency with default applied.
+func (s *SaturationDetectorSimplified) EffectiveMaxConcurrency() int {
+	if s == nil || s.MaxConcurrency == nil {
+		return DefaultMaxConcurrency
+	}
+	return *s.MaxConcurrency
+}
+
+// EffectiveMaxTokenConcurrency returns the per-endpoint token concurrency with default applied.
+func (s *SaturationDetectorSimplified) EffectiveMaxTokenConcurrency() int {
+	if s == nil || s.MaxTokenConcurrency == nil {
+		return DefaultMaxTokenConcurrency
+	}
+	return *s.MaxTokenConcurrency
+}
+
+// EffectiveHeadroom returns the burst allowance with default applied.
+func (s *SaturationDetectorSimplified) EffectiveHeadroom() float64 {
+	if s == nil || s.Headroom == nil {
+		return DefaultConcurrencyHeadroom
+	}
+	return *s.Headroom
+}
+
+// EffectiveConcurrencyMode returns the counting mode with default applied.
+func (s *SaturationDetectorSimplified) EffectiveConcurrencyMode() string {
+	if s == nil || s.ConcurrencyMode == nil {
+		return DefaultConcurrencyMode
+	}
+	return *s.ConcurrencyMode
+}
+
 func validateHeaderName(name string) error {
 	if strings.TrimSpace(name) == "" {
 		return xerror.WrapParamErrorWithMsg("header name is required")

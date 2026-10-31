@@ -102,7 +102,12 @@ curl -X GET "http://api-server:port/inner-api/v1/configs/epp_data/config?version
 
 > **结构稳定**：本次优化**不改变**本段的结构（键名、类型、`map[cluster名]EndpointPickerConfig` 形态）；仅**编译产物内容**发生如下变化：
 
-- `plugins[]` 新增 `saturation-detector`（type `utilization-detector`），**始终下发**（即使用户未配 `flow_control`）；`queue-scorer` / `prefix-scorer` / `openai-parser` 亦为编译模板固定注入项。
+- `plugins[]` 新增 `saturation-detector`，**始终下发**（即使用户未配 `flow_control`）；`queue-scorer` / `prefix-scorer` / `openai-parser` 亦为编译模板固定注入项。
+- `saturation-detector` 的 **type 取决于 `epp_config.saturation_detector.mode`**（bfe #1482）：
+  - 未配置该段或 `mode=utilization`（默认）：`type=utilization-detector`，`parameters = {kvCacheUtilThreshold, queueDepthThreshold, stalenessPolicy, headroom:0, metricsStalenessThreshold}`，与改动前逐字段一致；
+  - `mode=concurrency`：`type=concurrency-detector`，`parameters = {maxConcurrency, maxTokenConcurrency, headroom, concurrencyMode}`（默认 `100 / 1000000 / 0 / requests`，与 llm-d 插件默认值同源）。**不下发 `inFlightLoadProducerName`**：ai-gateway-epp 已把 `inflightload` 注册为默认 producer，空值即走默认在飞数据源。
+  - 两种模式下 `flowControl.saturationDetector.pluginRef` 都是 `saturation-detector`，且 `plugins[]` 中只有 1 个检测器实例——**契约结构不变，只换 type 与参数**。
+  - 消费方要求：EPP 部署版本需含 `llm-d-router ≥ v0.11.0-rc.2`（`concurrency-detector` 自该版本提供）；旧 EPP 收到未知 type 会编译失败并保留上一代引擎（服务不中断，但该集群新配置不生效）。
 - `util-filter.parameters` 新增 `fallbackOnEmpty`；`conditions` 在简化参数 `waiting_queue_max > 0` / `running_requests_max > 0` 时追加 `waiting-queue` / `running-requests` 条件（`kv-cache-utilization` 条件始终存在）。
 - `schedulingProfiles[0].plugins` 中 `kv-scorer` / `queue-scorer` 权重随 `load_profile`（`queue-first` = (0.2, 1.0)、`balanced` = (0.6, 0.6)、`kv-first` = (1.0, 0.2)）；`prefix-scorer` / `session-scorer` 权重随 `affinity`（`off` / `low` / `medium` / `high` = 0 / 0.3 / 0.6 / 1.0，`off` 时不注入亲和 scorer）。
 - `flowControl` 段**始终下发**（含 `saturationDetector.pluginRef` 与 priority band 0）；`featureGates: ["flowControl"]` 仅在简化配置含 `flow_control` 时追加；`enableEviction` 不再下发（恒缺省 `false`）。

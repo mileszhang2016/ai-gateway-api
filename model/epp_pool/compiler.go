@@ -159,7 +159,11 @@ const (
 const (
 	pluginTypeDiscovery          = "cluster-table-discovery"
 	pluginTypeUtilFilter         = "utilization-filter"
-	pluginTypeSaturationDetector = "utilization-detector"
+	// Saturation detector plugin types (issue #1482): the default stays the
+	// pre-fix utilization detector; mode=concurrency selects the llm-d
+	// concurrency-detector.
+	pluginTypeUtilizationDetector = "utilization-detector"
+	pluginTypeConcurrencyDetector = "concurrency-detector"
 	pluginTypeKVScorer           = "kv-cache-utilization-scorer"
 	pluginTypeQueueScorer        = "queue-scorer"
 	pluginTypePrefixScorer       = "prefix-cache-scorer"
@@ -381,19 +385,42 @@ func compileUtilFilterPlugin(conf *EppConfigSimplified) *PluginConfig {
 // policy is fixed to "ignore" and headroom to 0; the bad-endpoint eviction
 // threshold comes from metrics_staleness_threshold_ms.
 func compileSaturationDetectorPlugin(conf *EppConfigSimplified) *PluginConfig {
-	qDepth := defaultSaturationQueueDepthThreshold
-	if q := conf.EffectiveWaitingQueueMax(); q >= 1 {
-		qDepth = int(q)
+	sd := conf.SaturationDetector
+
+	// Default (and mode=utilization): the pre-fix detector. Kept byte-for-byte
+	// identical to the original output so unconfigured clusters see no change.
+	if sd.EffectiveMode() == SaturationDetectorUtilization {
+		qDepth := defaultSaturationQueueDepthThreshold
+		if q := conf.EffectiveWaitingQueueMax(); q >= 1 {
+			qDepth = int(q)
+		}
+		return &PluginConfig{
+			Name: pluginNameSaturationDetector,
+			Type: pluginTypeUtilizationDetector,
+			Parameters: map[string]interface{}{
+				"kvCacheUtilThreshold":      conf.EffectiveKVCacheUtilizationMax(),
+				"queueDepthThreshold":       qDepth,
+				"stalenessPolicy":           stalenessPolicyIgnore,
+				"headroom":                  0.0,
+				"metricsStalenessThreshold": fmt.Sprintf("%dms", conf.EffectiveMetricsStalenessThresholdMs()),
+			},
+		}
 	}
+
+	// mode=concurrency: judge saturation by in-flight load (including requests
+	// already dispatched to backends). Pool capacity = endpoints x
+	// maxConcurrency; headroom only relaxes the scheduling filter, not pool-
+	// level backpressure. inFlightLoadProducerName is not emitted: ai-gateway-
+	// epp registers the inflightload default producer, an empty producer name
+	// selects it.
 	return &PluginConfig{
 		Name: pluginNameSaturationDetector,
-		Type: pluginTypeSaturationDetector,
+		Type: pluginTypeConcurrencyDetector,
 		Parameters: map[string]interface{}{
-			"kvCacheUtilThreshold":      conf.EffectiveKVCacheUtilizationMax(),
-			"queueDepthThreshold":       qDepth,
-			"stalenessPolicy":           stalenessPolicyIgnore,
-			"headroom":                  0.0,
-			"metricsStalenessThreshold": fmt.Sprintf("%dms", conf.EffectiveMetricsStalenessThresholdMs()),
+			"maxConcurrency":      sd.EffectiveMaxConcurrency(),
+			"maxTokenConcurrency": sd.EffectiveMaxTokenConcurrency(),
+			"headroom":            sd.EffectiveHeadroom(),
+			"concurrencyMode":     sd.EffectiveConcurrencyMode(),
 		},
 	}
 }

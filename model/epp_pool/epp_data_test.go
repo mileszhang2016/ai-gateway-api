@@ -255,3 +255,73 @@ func TestCompileIntegration_FromStoredJSON(t *testing.T) {
 	assert.Equal(t, "300ms", detectorParams["metricsStalenessThreshold"])
 	assert.Equal(t, stalenessPolicyIgnore, detectorParams["stalenessPolicy"])
 }
+
+// TestCompileIntegration_ConcurrencyDetector locks the InnerAPI epp-data
+// contract of issue #1482: mode=concurrency exports the llm-d
+// concurrency-detector plugin with its four parameters, while the
+// flowControl.saturationDetector reference keeps pointing at the same fixed
+// plugin name (so bfe/epp need no contract change).
+func TestCompileIntegration_ConcurrencyDetector(t *testing.T) {
+	raw := `{
+		"kv_cache_utilization_max": 0.9,
+		"saturation_detector": {
+			"mode": "concurrency",
+			"max_concurrency": 256,
+			"max_token_concurrency": 2000000,
+			"headroom": 0.2,
+			"concurrency_mode": "tokens"
+		},
+		"flow_control": {"max_requests": 2, "queue_ttl": 1}
+	}`
+	conf, err := ParseEppConfig(raw)
+	require.NoError(t, err)
+	require.NoError(t, conf.Validate())
+
+	compiled := CompileEppConfig("llm-cluster-a", conf)
+	bs, err := json.Marshal(compiled)
+	require.NoError(t, err)
+
+	var decoded map[string]interface{}
+	require.NoError(t, json.Unmarshal(bs, &decoded))
+
+	// flowControl: the detector reference and the queue knobs are unchanged.
+	flowControl := decoded["flowControl"].(map[string]interface{})
+	saturationDetector := flowControl["saturationDetector"].(map[string]interface{})
+	assert.Equal(t, pluginNameSaturationDetector, saturationDetector["pluginRef"])
+	assert.Equal(t, "2", flowControl["maxRequests"])
+	assert.Equal(t, "1s", flowControl["defaultRequestTTL"])
+
+	// plugins[]: exactly one detector, of the concurrency type, with the
+	// configured parameters (no inflightLoadProducerName: EPP default).
+	pluginList := decoded["plugins"].([]interface{})
+	detectors := 0
+	for _, p := range pluginList {
+		plugin := p.(map[string]interface{})
+		if plugin["name"] == pluginNameSaturationDetector {
+			detectors++
+			params := plugin["parameters"].(map[string]interface{})
+			assert.Equal(t, pluginTypeConcurrencyDetector, plugin["type"])
+			assert.Equal(t, float64(256), params["maxConcurrency"])
+			assert.Equal(t, float64(2000000), params["maxTokenConcurrency"])
+			assert.Equal(t, 0.2, params["headroom"])
+			assert.Equal(t, string(ConcurrencyModeTokens), params["concurrencyMode"])
+			assert.NotContains(t, params, "inFlightLoadProducerName")
+			assert.NotContains(t, params, "kvCacheUtilThreshold")
+		}
+	}
+	assert.Equal(t, 1, detectors)
+
+	// The utilization filter still uses kv_cache_utilization_max (candidate
+	// filtering is untouched by the detector switch).
+	var filterParams map[string]interface{}
+	for _, p := range pluginList {
+		plugin := p.(map[string]interface{})
+		if plugin["name"] == pluginNameUtilFilter {
+			filterParams = plugin["parameters"].(map[string]interface{})
+		}
+	}
+	require.NotNil(t, filterParams)
+	conditions := filterParams["conditions"].([]interface{})
+	require.NotEmpty(t, conditions)
+	assert.Equal(t, 0.9, conditions[0].(map[string]interface{})["maxValue"])
+}
